@@ -1,0 +1,10 @@
+# User-provided config (may contain credentials) and run outputs
+**/config.yaml
+**/results/
+**/logs/
+*.sif
+
+# Python
+__pycache__/
+*.pyc
+.venv/
