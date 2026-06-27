@@ -4,6 +4,9 @@
 **/logs/
 *.sif
 
+# Root README (not yet published)
+README.md
+
 # Workflows not yet published
 workflows/drug-discovery/w02-de-novo-protein-design/
 workflows/drug-discovery/w03-abfe-pipeline/

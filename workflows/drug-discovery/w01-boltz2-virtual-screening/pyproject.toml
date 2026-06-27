@@ -1,0 +1,17 @@
+[project]
+name = "w01-boltz2-virtual-screening"
+version = "0.1.0"
+requires-python = ">=3.11"
+dependencies = [
+    "pyyaml>=6.0",
+    "horus-runtime>=0.1",
+    "horus-builtin>=0.1",
+    "horus-ssh>=0.1",   # ponytail: optional if predict_target=local, but simpler to always install
+]
+
+[tool.uv.sources]
+# Internal packages — point uv at your private index if needed:
+#   uv sync --index-url https://pypi.your-org.com/simple
+horus-runtime = { git = "https://github.com/temple-compute/horus-runtime" }
+horus-builtin = { git = "https://github.com/temple-compute/horus-builtin" }
+horus-ssh     = { git = "https://github.com/temple-compute/horus-ssh" }

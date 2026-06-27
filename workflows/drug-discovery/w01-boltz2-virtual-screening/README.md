@@ -64,23 +64,26 @@ dependencies from those edges, not by inferring them from artifact ids.
 ```bash
 cd workflows/drug-discovery/w01-boltz2-virtual-screening
 
-# 0. Build the image on the GPU host (one time)
+# 0. Install orchestrator dependencies (one time)
+uv sync
+
+# 1. Build the Boltz-2 image on the GPU host (one time)
 docker build -t boltz2:latest -f containers/boltz2.Dockerfile .
 
-# 1. Configure
+# 2. Configure
 cp config.example.yaml config.yaml
 $EDITOR config.yaml          # ssh host, engine, image, input paths
 
-# 2. Run (live TUI with task progress, DAG, and logs)
-python run.py                # or: python run.py path/to/config.yaml
+# 3. Run (live TUI with task progress, DAG, and logs)
+uv run python run.py         # or: uv run python run.py path/to/config.yaml
 ```
 
 Outputs land in `out_dir/`: `boltz_inputs.tar.gz`, `predictions.tar.gz`, and
 `top_hits.csv` (ranked best-first).
 
-**Requirements:** the orchestrator needs `horus-runtime` and `horus-ssh`
-installed; the GPU box needs the chosen engine (or `boltz` on `PATH` for
-`baremetal`) and an NVIDIA runtime.
+**GPU host requirements:** the chosen container engine (Docker / Singularity)
+with an NVIDIA runtime, or `boltz` on `PATH` for `engine: baremetal`.
+The orchestrator itself runs locally and only needs `uv sync`.
 
 ---
 
