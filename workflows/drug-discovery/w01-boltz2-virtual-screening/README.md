@@ -71,7 +71,7 @@ docker build -t boltz2:latest -f containers/boltz2.Dockerfile .
 cp config.example.yaml config.yaml
 $EDITOR config.yaml          # ssh host, engine, image, input paths
 
-# 2. Run (this script is the entry point — the runtime has no workflow CLI yet)
+# 2. Run (live TUI with task progress, DAG, and logs)
 python run.py                # or: python run.py path/to/config.yaml
 ```
 
@@ -116,7 +116,7 @@ paths, and `out_dir`. `config.yaml` is gitignored — never commit credentials.
 ## Files
 
 ```
-run.py                      # driver: builds + runs the 3-task workflow from config.yaml
+run.py                      # driver: builds + runs the 3-task workflow from config.yaml (with TUI)
 config.example.yaml         # copy to config.yaml and edit
 scripts/prep.py             # stage 1 (stdlib only; --selftest)
 scripts/rank.py             # stage 3 (stdlib only; --selftest)
@@ -158,8 +158,6 @@ here and depend on upstream features (tracked as issues):
   second container + stage.
 - **Slurm submission** for the GPU stage — target is a stub today
   ([horus-slurm#2](https://github.com/temple-compute/horus-slurm/issues/2)).
-- **`horus run workflow.yaml`** CLI — currently you run `run.py`
-  ([horus-runtime#89](https://github.com/temple-compute/horus-runtime/issues/89)).
 - **Recursive/folder transfer** over SSH — would drop the tarball workaround
   ([horus-ssh#6](https://github.com/temple-compute/horus-ssh/issues/6)).
 

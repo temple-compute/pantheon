@@ -10,7 +10,6 @@ Builds and runs a 3-task workflow from ``config.yaml``:
       |  SSHToLocal transfer (automatic)
     rank    (local)            predictions.tar.gz -> top_hits.csv
 
-The runtime has no workflow CLI yet, so this script *is* the entry point.
 Switching the GPU stage between docker / singularity / baremetal is the
 ``engine`` knob; moving it between an SSH box and the local machine is the
 ``predict_target`` knob. Nothing else changes.
@@ -19,13 +18,13 @@ Usage:
     python run.py [config.yaml]      # defaults to ./config.yaml
 """
 
-import asyncio
 import shlex
 import sys
 from pathlib import Path
 
 import yaml
 from horus_builtin.artifact.file import FileArtifact
+from horus_builtin.event.tui_subscriber import render_workflow
 from horus_builtin.executor.shell import ShellExecutor
 from horus_builtin.runtime.command import CommandRuntime
 from horus_builtin.runtime.python_script import PythonScriptRuntime
@@ -182,16 +181,6 @@ def build_workflow(config: dict) -> HorusWorkflow:
     )
 
 
-async def _run(config: dict) -> None:
-    HorusContext.boot()
-    workflow = build_workflow(config)
-    await workflow.run(trigger_id="prep")
-    out_dir = Path(config["out_dir"]).expanduser().resolve()
-    top = out_dir / "top_hits.csv"
-    assert top.exists(), f"FAIL: {top} not produced"
-    print(f"\n[w01] Done. Ranked hits: {top}")
-
-
 def main(argv: list[str] | None = None) -> int:
     argv = sys.argv[1:] if argv is None else argv
     config_path = Path(argv[0]) if argv else HERE / "config.yaml"
@@ -201,7 +190,16 @@ def main(argv: list[str] | None = None) -> int:
             "Copy config.example.yaml to config.yaml and edit it."
         )
     config = yaml.safe_load(config_path.read_text())
-    asyncio.run(_run(config))
+    ctx = HorusContext.boot()
+    try:
+        workflow = build_workflow(config)
+        render_workflow(workflow, trigger_id="prep")
+    finally:
+        ctx.shutdown()
+    out_dir = Path(config["out_dir"]).expanduser().resolve()
+    top = out_dir / "top_hits.csv"
+    assert top.exists(), f"FAIL: {top} not produced"
+    print(f"\n[w01] Done. Ranked hits: {top}")
     return 0
 
 
