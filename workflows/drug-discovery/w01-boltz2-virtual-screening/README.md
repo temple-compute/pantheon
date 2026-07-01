@@ -31,6 +31,12 @@ rank (local, CPU)          parse affinity + confidence ──► top_hits.csv
 # Install the horus-runtime and plugins (one time)
 uv sync
 
+# You can install UV with this command if you don't have it yet:
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+# Otherwise, you can install the horus-runtime and plugins with pip:
+pip install horus-runtime horus-environments
+
 # Run the workflow
 horus run workflow.yaml
 ```

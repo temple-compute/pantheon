@@ -84,3 +84,4 @@ edges:
     target_input: predictions
 orchestrator_target:
   kind: local
+  working_directory: horus_workflow_results
