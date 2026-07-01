@@ -1,5 +1,3 @@
 # SMILES [name] — one ligand per line. Names become the ranked-output ids.
-CC(=O)Oc1ccccc1C(=O)O aspirin
-CN1C=NC2=C1C(=O)N(C(=O)N2C)C caffeine
-CC(C)Cc1ccc(cc1)C(C)C(=O)O ibuprofen
 c1ccccc1 benzene
+CN1C=NC2=C1C(=O)N(C(=O)N2C)C caffeine

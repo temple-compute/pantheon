@@ -1,0 +1,86 @@
+kind: horus_workflow
+name: Boltz2 Virtual Screening
+tasks:
+  - kind: horus_task
+    id: prep
+    name: Build Boltz-2 inputs
+    skip_if_complete: false
+    inputs:
+      - id: fasta
+        name: fasta
+        kind: file
+        path: examples/target.fasta
+      - id: ligands
+        name: ligands
+        kind: file
+        path: examples/ligands.smi
+    outputs:
+      - id: boltz_inputs
+        name: boltz_inputs
+        path: results/boltz_inputs.tar.gz
+        kind: file
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/prep.py
+      args: --fasta ${fasta} --ligands ${ligands} --out ${boltz_inputs}
+    target:
+      kind: local
+  - kind: horus_task
+    id: predict
+    name: Boltz-2 structure + affinity
+    inputs:
+      - id: boltz_inputs
+        name: boltz_inputs
+        path: results/boltz_inputs.tar.gz
+        kind: file
+    outputs:
+      - id: predictions
+        name: predictions
+        path: results/predictions.tar.gz
+        kind: file
+    executor:
+      kind: uv_python_environment
+      python: "3.11"
+      requirements:
+        - boltz
+    runtime:
+      kind: command
+      command:
+        tar xzf ${boltz_inputs} -C . && boltz predict inputs --out_dir out --use_msa_server --accelerator cpu &&
+        tar czf ${predictions} -C out .
+    target:
+      kind: local
+  - kind: horus_task
+    id: rank
+    name: Rank hits
+    inputs:
+      - id: predictions
+        name: predictions
+        path: results/predictions.tar.gz
+        kind: file
+    outputs:
+      - id: top_hits
+        name: top_hits
+        path: results/top_hits.csv
+        kind: file
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/rank.py
+      args: --predictions ${predictions} --out ${top_hits}
+    target:
+      kind: local
+edges:
+  - source: prep
+    source_output: boltz_inputs
+    target: predict
+    target_input: boltz_inputs
+  - source: predict
+    source_output: predictions
+    target: rank
+    target_input: predictions
+orchestrator_target:
+  kind: local

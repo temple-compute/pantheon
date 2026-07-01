@@ -57,28 +57,3 @@ Add your workflow to the structure table and, if appropriate, the GTM priority m
 
 Branch naming: `workflow/wXX-short-description`. PRs require at least one review from a Temple Compute engineer before merge.
 
----
-
-## Workflow Maturity Levels
-
-| Level | Meaning | Requirements |
-|-------|---------|--------------|
-| `draft` | Concept documented, not yet implementable | README complete |
-| `spec` | Fully specified, ready for implementation | README + config.example.yaml |
-| `alpha` | workflow.yaml exists, tested internally | All files present, tested on one cluster config |
-| `stable` | Tested on multiple cluster types, documented edge cases | Full test coverage, public |
-
-All workflows in this repo start at `draft`. Add a badge to your README header:
-
-```markdown
-![Status: draft](https://img.shields.io/badge/status-draft-lightgrey)
-```
-
----
-
-## Style Guidelines
-
-- Stage names in `README.md` should be uppercase and match the names used in `workflow.yaml` when it exists.
-- Estimated resources should be conservative (p50, not p10).
-- All tool/model references should link to the canonical source (paper, GitHub, or HuggingFace).
-- Do not include proprietary data paths or API keys anywhere in the repo.
