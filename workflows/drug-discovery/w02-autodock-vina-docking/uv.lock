@@ -34,20 +34,30 @@ wheels = [
 
 [[package]]
 name = "horus-environments"
-version = "0.1.0"
-source = { registry = "https://pypi.org/simple" }
+source = { directory = "/Users/cdominguez/Developer/horus-environments" }
 dependencies = [
     { name = "horus-runtime" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/bc/b4/9da8c504862522099b01a9bfc7738ced31e6fdc129ca4863fee68186e65b/horus_environments-0.1.0.tar.gz", hash = "sha256:d8d2ad62349fef2ee74151e661dbe9f8e49531e23b5a2e9567500cbe5705f714", size = 9835, upload-time = "2026-07-01T22:09:50.021Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/a0/7c/5d31d28be5691ad0380b02ef4caa9aefb373b7f94b9095a27b56a2354869/horus_environments-0.1.0-py3-none-any.whl", hash = "sha256:3d8df58515660be0ef69ca4a907125abe4ef410fec34c9fd54a0a594893901de", size = 7496, upload-time = "2026-07-01T22:09:48.943Z" },
+
+[package.metadata]
+requires-dist = [{ name = "horus-runtime", specifier = ">=0.1.4" }]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "babel", specifier = "~=2.0" },
+    { name = "mypy", specifier = "~=1.19" },
+    { name = "pre-commit", specifier = "~=4.0" },
+    { name = "pytest", specifier = "~=9.0" },
+    { name = "pytest-asyncio", specifier = "~=1.3.0" },
+    { name = "pytest-cov", specifier = "~=7.0" },
+    { name = "ruff", specifier = "~=0.15" },
+    { name = "types-pyyaml", specifier = "~=6.0" },
+    { name = "uv-dynamic-versioning", specifier = ">=0.14.0" },
 ]
 
 [[package]]
 name = "horus-runtime"
-version = "0.1.4"
-source = { registry = "https://pypi.org/simple" }
+source = { directory = "/Users/cdominguez/Developer/horus-runtime" }
 dependencies = [
     { name = "click" },
     { name = "loguru" },
@@ -56,9 +66,29 @@ dependencies = [
     { name = "pyyaml" },
     { name = "rich" },
 ]
-sdist = { url = "https://files.pythonhosted.org/packages/47/da/46cc7311d9dd3bef5063f75e683961baf105162d0e93036c7172699d2592/horus_runtime-0.1.4.tar.gz", hash = "sha256:2cc76764808c122c0001928356aa87708fbc528d2cc852b600b671fd56677bf6", size = 136096, upload-time = "2026-07-01T21:30:49.284Z" }
-wheels = [
-    { url = "https://files.pythonhosted.org/packages/2e/59/a990b0e48b1cf3c25b365fd251041c5e87ddae904612f5088c284db3ab5e/horus_runtime-0.1.4-py3-none-any.whl", hash = "sha256:d4c2267ededaa8b3b21fddd064adf4f8e71bd4a9f38ad598a76ff0a2fc7e62d9", size = 158199, upload-time = "2026-07-01T21:30:47.703Z" },
+
+[package.metadata]
+requires-dist = [
+    { name = "click", specifier = ">=8.3.3" },
+    { name = "loguru", specifier = "~=0.7" },
+    { name = "pydantic", specifier = "~=2.0" },
+    { name = "pydantic-settings", specifier = "~=2.0" },
+    { name = "pyyaml", specifier = "~=6.0" },
+    { name = "rich", specifier = ">=13.7" },
+]
+
+[package.metadata.requires-dev]
+dev = [
+    { name = "babel", specifier = "~=2.0" },
+    { name = "licenseheaders", specifier = "~=0.8" },
+    { name = "mypy", specifier = "~=1.19" },
+    { name = "pre-commit", specifier = "~=4.0" },
+    { name = "pytest", specifier = "~=9.0" },
+    { name = "pytest-asyncio", specifier = "~=1.3.0" },
+    { name = "pytest-cov", specifier = "~=7.0" },
+    { name = "ruff", specifier = "~=0.15" },
+    { name = "types-pyyaml", specifier = "~=6.0" },
+    { name = "uv-dynamic-versioning", specifier = ">=0.14.0" },
 ]
 
 [[package]]
@@ -279,8 +309,8 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
-    { name = "horus-environments", specifier = ">=0.1.0" },
-    { name = "horus-runtime", specifier = ">=0.1.4" },
+    { name = "horus-environments", directory = "/Users/cdominguez/Developer/horus-environments" },
+    { name = "horus-runtime", directory = "/Users/cdominguez/Developer/horus-runtime" },
 ]
 
 [[package]]
