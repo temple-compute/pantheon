@@ -1,0 +1,5 @@
+properties:
+  center_selection: Protein
+  output_selection: Protein
+  pbc: mol
+  center: true

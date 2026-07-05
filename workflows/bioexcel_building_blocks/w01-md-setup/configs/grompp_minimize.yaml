@@ -1,0 +1,5 @@
+properties:
+  simulation_type: minimization
+  mdp:
+    emtol: "500"
+    nsteps: "5000"
