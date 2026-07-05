@@ -1,0 +1,443 @@
+kind: horus_workflow
+name: BioExcel MD Setup - Lysozyme 1AKI
+tasks:
+  - kind: horus_task
+    id: fetch_and_fix
+    name: Download PDB and fix side chains
+    outputs:
+      - id: fixed_pdb
+        kind: file
+        path: results/fixed.pdb
+    executor:
+      kind: conda_python_environment
+      environment_dir: "../.horus_conda_env"
+      conda: micromamba
+      python_version: "3.12"
+      channels:
+        - conda-forge
+        - bioconda
+      conda_requirements:
+        - biobb_io
+        - biobb_model
+        - biobb_gromacs
+        - biobb_analysis
+    runtime:
+      kind: python_script
+      script: scripts/fetch_and_fix.py
+      args: --pdb-code 1AKI --out-fixed ${fixed_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: build_topology
+    name: Build GROMACS topology (pdb2gmx)
+    inputs:
+      - id: fixed_pdb
+        kind: file
+        path: results/fixed.pdb
+    outputs:
+      - id: system_gro
+        kind: file
+        path: results/system.gro
+      - id: pdb2gmx_top
+        kind: file
+        path: results/pdb2gmx_top.zip
+    executor:
+      kind: conda_python_environment
+      environment_dir: "../.horus_conda_env"
+      conda: micromamba
+      python_version: "3.12"
+      channels:
+        - conda-forge
+        - bioconda
+      conda_requirements:
+        - biobb_io
+        - biobb_model
+        - biobb_gromacs
+        - biobb_analysis
+    runtime:
+      kind: python_script
+      script: scripts/build_topology.py
+      args: --fixed ${fixed_pdb} --out-gro ${system_gro} --out-top ${pdb2gmx_top}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: solvate
+    name: Create solvent box and add water
+    inputs:
+      - id: system_gro
+        kind: file
+        path: results/system.gro
+      - id: pdb2gmx_top
+        kind: file
+        path: results/pdb2gmx_top.zip
+    outputs:
+      - id: solvated_gro
+        kind: file
+        path: results/solvated.gro
+      - id: solvated_top
+        kind: file
+        path: results/solvated_top.zip
+    executor:
+      kind: conda_python_environment
+      environment_dir: "../.horus_conda_env"
+      conda: micromamba
+      python_version: "3.12"
+      channels:
+        - conda-forge
+        - bioconda
+      conda_requirements:
+        - biobb_io
+        - biobb_model
+        - biobb_gromacs
+        - biobb_analysis
+    runtime:
+      kind: python_script
+      script: scripts/solvate.py
+      args: >-
+        --gro ${system_gro} --top ${pdb2gmx_top}
+        --out-gro ${solvated_gro} --out-top ${solvated_top}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: add_ions
+    name: Add ions to neutralize system
+    inputs:
+      - id: solvated_gro
+        kind: file
+        path: results/solvated.gro
+      - id: solvated_top
+        kind: file
+        path: results/solvated_top.zip
+    outputs:
+      - id: ionized_gro
+        kind: file
+        path: results/ionized.gro
+      - id: ionized_top
+        kind: file
+        path: results/ionized_top.zip
+    executor:
+      kind: conda_python_environment
+      environment_dir: "../.horus_conda_env"
+      conda: micromamba
+      python_version: "3.12"
+      channels:
+        - conda-forge
+        - bioconda
+      conda_requirements:
+        - biobb_io
+        - biobb_model
+        - biobb_gromacs
+        - biobb_analysis
+    runtime:
+      kind: python_script
+      script: scripts/add_ions.py
+      args: >-
+        --gro ${solvated_gro} --top ${solvated_top}
+        --out-gro ${ionized_gro} --out-top ${ionized_top}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: minimize
+    name: Energy minimization (steepest descent)
+    inputs:
+      - id: ionized_gro
+        kind: file
+        path: results/ionized.gro
+      - id: ionized_top
+        kind: file
+        path: results/ionized_top.zip
+    outputs:
+      - id: minimized_gro
+        kind: file
+        path: results/minimized.gro
+      - id: min_tpr
+        kind: file
+        path: results/min.tpr
+    executor:
+      kind: conda_python_environment
+      environment_dir: "../.horus_conda_env"
+      conda: micromamba
+      python_version: "3.12"
+      channels:
+        - conda-forge
+        - bioconda
+      conda_requirements:
+        - biobb_io
+        - biobb_model
+        - biobb_gromacs
+        - biobb_analysis
+    runtime:
+      kind: python_script
+      script: scripts/minimize.py
+      args: >-
+        --gro ${ionized_gro} --top ${ionized_top}
+        --out-gro ${minimized_gro} --out-tpr ${min_tpr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: nvt_equil
+    name: NVT equilibration (10 ps, restrained)
+    inputs:
+      - id: minimized_gro
+        kind: file
+        path: results/minimized.gro
+      - id: ionized_top
+        kind: file
+        path: results/ionized_top.zip
+    outputs:
+      - id: nvt_gro
+        kind: file
+        path: results/nvt.gro
+      - id: nvt_cpt
+        kind: file
+        path: results/nvt.cpt
+    executor:
+      kind: conda_python_environment
+      environment_dir: "../.horus_conda_env"
+      conda: micromamba
+      python_version: "3.12"
+      channels:
+        - conda-forge
+        - bioconda
+      conda_requirements:
+        - biobb_io
+        - biobb_model
+        - biobb_gromacs
+        - biobb_analysis
+    runtime:
+      kind: python_script
+      script: scripts/nvt_equil.py
+      args: >-
+        --gro ${minimized_gro} --top ${ionized_top}
+        --out-gro ${nvt_gro} --out-cpt ${nvt_cpt}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: npt_equil
+    name: NPT equilibration (10 ps, restrained)
+    inputs:
+      - id: nvt_gro
+        kind: file
+        path: results/nvt.gro
+      - id: nvt_cpt
+        kind: file
+        path: results/nvt.cpt
+      - id: ionized_top
+        kind: file
+        path: results/ionized_top.zip
+    outputs:
+      - id: npt_gro
+        kind: file
+        path: results/npt.gro
+      - id: npt_cpt
+        kind: file
+        path: results/npt.cpt
+    executor:
+      kind: conda_python_environment
+      environment_dir: "../.horus_conda_env"
+      conda: micromamba
+      python_version: "3.12"
+      channels:
+        - conda-forge
+        - bioconda
+      conda_requirements:
+        - biobb_io
+        - biobb_model
+        - biobb_gromacs
+        - biobb_analysis
+    runtime:
+      kind: python_script
+      script: scripts/npt_equil.py
+      args: >-
+        --gro ${nvt_gro} --cpt ${nvt_cpt} --top ${ionized_top}
+        --out-gro ${npt_gro} --out-cpt ${npt_cpt}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: free_md
+    name: Free MD simulation (100 ps)
+    inputs:
+      - id: npt_gro
+        kind: file
+        path: results/npt.gro
+      - id: npt_cpt
+        kind: file
+        path: results/npt.cpt
+      - id: ionized_top
+        kind: file
+        path: results/ionized_top.zip
+    outputs:
+      - id: md_gro
+        kind: file
+        path: results/md.gro
+      - id: md_trr
+        kind: file
+        path: results/md.trr
+      - id: md_tpr
+        kind: file
+        path: results/md.tpr
+    executor:
+      kind: conda_python_environment
+      environment_dir: "../.horus_conda_env"
+      conda: micromamba
+      python_version: "3.12"
+      channels:
+        - conda-forge
+        - bioconda
+      conda_requirements:
+        - biobb_io
+        - biobb_model
+        - biobb_gromacs
+        - biobb_analysis
+    runtime:
+      kind: python_script
+      script: scripts/free_md.py
+      args: >-
+        --gro ${npt_gro} --cpt ${npt_cpt} --top ${ionized_top}
+        --out-gro ${md_gro} --out-trr ${md_trr} --out-tpr ${md_tpr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: postprocess
+    name: Strip solvent and fix PBC in trajectory
+    inputs:
+      - id: md_trr
+        kind: file
+        path: results/md.trr
+      - id: md_tpr
+        kind: file
+        path: results/md.tpr
+      - id: md_gro
+        kind: file
+        path: results/md.gro
+    outputs:
+      - id: imaged_trr
+        kind: file
+        path: results/imaged.trr
+      - id: dry_gro
+        kind: file
+        path: results/dry.gro
+    executor:
+      kind: conda_python_environment
+      environment_dir: "../.horus_conda_env"
+      conda: micromamba
+      python_version: "3.12"
+      channels:
+        - conda-forge
+        - bioconda
+      conda_requirements:
+        - biobb_io
+        - biobb_model
+        - biobb_gromacs
+        - biobb_analysis
+    runtime:
+      kind: python_script
+      script: scripts/postprocess.py
+      args: >-
+        --trr ${md_trr} --tpr ${md_tpr} --gro ${md_gro}
+        --out-trr ${imaged_trr} --out-gro ${dry_gro}
+    target:
+      kind: local
+
+edges:
+  - source: fetch_and_fix
+    source_output: fixed_pdb
+    target: build_topology
+    target_input: fixed_pdb
+
+  - source: build_topology
+    source_output: system_gro
+    target: solvate
+    target_input: system_gro
+
+  - source: build_topology
+    source_output: pdb2gmx_top
+    target: solvate
+    target_input: pdb2gmx_top
+
+  - source: solvate
+    source_output: solvated_gro
+    target: add_ions
+    target_input: solvated_gro
+
+  - source: solvate
+    source_output: solvated_top
+    target: add_ions
+    target_input: solvated_top
+
+  - source: add_ions
+    source_output: ionized_gro
+    target: minimize
+    target_input: ionized_gro
+
+  - source: add_ions
+    source_output: ionized_top
+    target: minimize
+    target_input: ionized_top
+
+  - source: add_ions
+    source_output: ionized_top
+    target: nvt_equil
+    target_input: ionized_top
+
+  - source: add_ions
+    source_output: ionized_top
+    target: npt_equil
+    target_input: ionized_top
+
+  - source: add_ions
+    source_output: ionized_top
+    target: free_md
+    target_input: ionized_top
+
+  - source: minimize
+    source_output: minimized_gro
+    target: nvt_equil
+    target_input: minimized_gro
+
+  - source: nvt_equil
+    source_output: nvt_gro
+    target: npt_equil
+    target_input: nvt_gro
+
+  - source: nvt_equil
+    source_output: nvt_cpt
+    target: npt_equil
+    target_input: nvt_cpt
+
+  - source: npt_equil
+    source_output: npt_gro
+    target: free_md
+    target_input: npt_gro
+
+  - source: npt_equil
+    source_output: npt_cpt
+    target: free_md
+    target_input: npt_cpt
+
+  - source: free_md
+    source_output: md_gro
+    target: postprocess
+    target_input: md_gro
+
+  - source: free_md
+    source_output: md_trr
+    target: postprocess
+    target_input: md_trr
+
+  - source: free_md
+    source_output: md_tpr
+    target: postprocess
+    target_input: md_tpr
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"
