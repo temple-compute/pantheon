@@ -1,0 +1,12 @@
+[project]
+name = "w04-autodock-vina-docking"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "horus-environments>=0.1.0",
+  "horus-runtime>=0.1.4",
+]
+
+[tool.uv.sources]
+horus-environments = { path = "/Users/cdominguez/Developer/horus-environments" }
+horus-runtime = { path = "/Users/cdominguez/Developer/horus-runtime" }
