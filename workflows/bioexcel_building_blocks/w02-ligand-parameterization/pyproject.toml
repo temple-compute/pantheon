@@ -1,0 +1,12 @@
+[project]
+name = "w01-md-setup"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "horus-environments>=0.1.1",
+  "horus-runtime>=0.1.6",
+]
+
+[tool.uv.sources]
+horus-runtime = { path = "/Users/cdominguez/Developer/horus-runtime" }
+horus-environments = { path = "/Users/cdominguez/Developer/horus-environments" }
