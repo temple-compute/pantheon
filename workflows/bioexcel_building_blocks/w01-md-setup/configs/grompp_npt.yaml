@@ -1,0 +1,4 @@
+properties:
+  simulation_type: npt
+  mdp:
+    nsteps: "5000"
