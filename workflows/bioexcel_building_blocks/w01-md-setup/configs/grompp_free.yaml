@@ -1,0 +1,4 @@
+properties:
+  simulation_type: free
+  mdp:
+    nsteps: "50000"

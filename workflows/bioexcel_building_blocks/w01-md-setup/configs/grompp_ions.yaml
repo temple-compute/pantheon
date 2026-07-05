@@ -1,0 +1,3 @@
+properties:
+  simulation_type: ions
+  maxwarn: 1

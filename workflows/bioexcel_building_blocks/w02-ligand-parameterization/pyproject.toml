@@ -9,3 +9,4 @@ dependencies = [
 
 [tool.uv.sources]
 horus-runtime = { path = "/Users/cdominguez/Developer/horus-runtime" }
+horus-environments = { path = "/Users/cdominguez/Developer/horus-environments" }
