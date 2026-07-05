@@ -1,0 +1,890 @@
+kind: horus_workflow
+name: BioExcel AMBER MD Setup - Lysozyme 1AKI
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+tasks:
+  - kind: horus_task
+    id: fetch_pdb
+    name: Download 1AKI structure from PDB
+    inputs:
+      - id: fetch_pdb_config
+        kind: file
+        path: configs/fetch_pdb.yaml
+    outputs:
+      - id: downloaded_pdb
+        kind: file
+        path: results/downloaded.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_pdb_config}
+        --output_pdb_path ${downloaded_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pdb4amber
+    name: Prepare PDB for AMBER (pdb4amber)
+    inputs:
+      - id: downloaded_pdb
+        kind: file
+        path: results/downloaded.pdb
+    outputs:
+      - id: pdb4amber_pdb
+        kind: file
+        path: results/structure.pdb4amber.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb4amber_run
+        --input_pdb_path ${downloaded_pdb}
+        --output_pdb_path ${pdb4amber_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: gen_top
+    name: Create protein system topology (leap)
+    inputs:
+      - id: gen_top_config
+        kind: file
+        path: configs/gen_top.yaml
+      - id: pdb4amber_pdb
+        kind: file
+        path: results/structure.pdb4amber.pdb
+    outputs:
+      - id: top_pdb
+        kind: file
+        path: results/structure.leap.pdb
+      - id: top_top
+        kind: file
+        path: results/structure.leap.top
+      - id: top_crd
+        kind: file
+        path: results/structure.leap.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        leap_gen_top
+        --config ${gen_top_config}
+        --input_pdb_path ${pdb4amber_pdb}
+        --output_pdb_path ${top_pdb}
+        --output_top_path ${top_top}
+        --output_crd_path ${top_crd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: sander_h_min
+    name: Minimize hydrogens in vacuo (sander)
+    inputs:
+      - id: sander_h_min_config
+        kind: file
+        path: configs/sander_h_min.yaml
+      - id: top_top
+        kind: file
+        path: results/structure.leap.top
+      - id: top_crd
+        kind: file
+        path: results/structure.leap.crd
+    outputs:
+      - id: h_min_traj
+        kind: file
+        path: results/sander.h_min.x
+      - id: h_min_rst
+        kind: file
+        path: results/sander.h_min.rst
+      - id: h_min_log
+        kind: file
+        path: results/sander.h_min.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_h_min_config}
+        --input_top_path ${top_top}
+        --input_crd_path ${top_crd}
+        --input_ref_path ${top_crd}
+        --output_traj_path ${h_min_traj}
+        --output_rst_path ${h_min_rst}
+        --output_log_path ${h_min_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: process_h_min
+    name: Extract hydrogen minimization energy (process_minout)
+    inputs:
+      - id: process_energy_config
+        kind: file
+        path: configs/process_energy.yaml
+      - id: h_min_log
+        kind: file
+        path: results/sander.h_min.log
+    outputs:
+      - id: h_min_dat
+        kind: file
+        path: results/sander.h_min.energy.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        process_minout
+        --config ${process_energy_config}
+        --input_log_path ${h_min_log}
+        --output_dat_path ${h_min_dat}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: sander_n_min
+    name: Minimize system in vacuo (sander)
+    inputs:
+      - id: sander_n_min_config
+        kind: file
+        path: configs/sander_n_min.yaml
+      - id: top_top
+        kind: file
+        path: results/structure.leap.top
+      - id: h_min_rst
+        kind: file
+        path: results/sander.h_min.rst
+    outputs:
+      - id: n_min_traj
+        kind: file
+        path: results/sander.n_min.x
+      - id: n_min_rst
+        kind: file
+        path: results/sander.n_min.rst
+      - id: n_min_log
+        kind: file
+        path: results/sander.n_min.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_n_min_config}
+        --input_top_path ${top_top}
+        --input_crd_path ${h_min_rst}
+        --input_ref_path ${h_min_rst}
+        --output_traj_path ${n_min_traj}
+        --output_rst_path ${n_min_rst}
+        --output_log_path ${n_min_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: process_n_min
+    name: Extract system minimization energy (process_minout)
+    inputs:
+      - id: process_energy_config
+        kind: file
+        path: configs/process_energy.yaml
+      - id: n_min_log
+        kind: file
+        path: results/sander.n_min.log
+    outputs:
+      - id: n_min_dat
+        kind: file
+        path: results/sander.n_min.energy.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        process_minout
+        --config ${process_energy_config}
+        --input_log_path ${n_min_log}
+        --output_dat_path ${n_min_dat}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: amber_to_pdb
+    name: Convert minimized structure to PDB (ambpdb)
+    inputs:
+      - id: top_top
+        kind: file
+        path: results/structure.leap.top
+      - id: n_min_rst
+        kind: file
+        path: results/sander.n_min.rst
+    outputs:
+      - id: ambpdb_pdb
+        kind: file
+        path: results/structure.ambpdb.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        amber_to_pdb
+        --input_top_path ${top_top}
+        --input_crd_path ${n_min_rst}
+        --output_pdb_path ${ambpdb_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: leap_solvate
+    name: Create solvent box and solvate system (leap)
+    inputs:
+      - id: leap_solvate_config
+        kind: file
+        path: configs/leap_solvate.yaml
+      - id: ambpdb_pdb
+        kind: file
+        path: results/structure.ambpdb.pdb
+    outputs:
+      - id: solv_pdb
+        kind: file
+        path: results/structure.solv.pdb
+      - id: solv_top
+        kind: file
+        path: results/structure.solv.parmtop
+      - id: solv_crd
+        kind: file
+        path: results/structure.solv.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        leap_solvate
+        --config ${leap_solvate_config}
+        --input_pdb_path ${ambpdb_pdb}
+        --output_pdb_path ${solv_pdb}
+        --output_top_path ${solv_top}
+        --output_crd_path ${solv_crd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: leap_add_ions
+    name: Neutralize and add ions (leap)
+    inputs:
+      - id: leap_add_ions_config
+        kind: file
+        path: configs/leap_add_ions.yaml
+      - id: solv_pdb
+        kind: file
+        path: results/structure.solv.pdb
+    outputs:
+      - id: ions_pdb
+        kind: file
+        path: results/structure.ions.pdb
+      - id: ions_top
+        kind: file
+        path: results/structure.ions.parmtop
+      - id: ions_crd
+        kind: file
+        path: results/structure.ions.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        leap_add_ions
+        --config ${leap_add_ions_config}
+        --input_pdb_path ${solv_pdb}
+        --output_pdb_path ${ions_pdb}
+        --output_top_path ${ions_top}
+        --output_crd_path ${ions_crd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: sander_min
+    name: Energy minimize the system (sander)
+    inputs:
+      - id: sander_min_config
+        kind: file
+        path: configs/sander_min.yaml
+      - id: ions_top
+        kind: file
+        path: results/structure.ions.parmtop
+      - id: ions_crd
+        kind: file
+        path: results/structure.ions.crd
+    outputs:
+      - id: min_traj
+        kind: file
+        path: results/sander.min.x
+      - id: min_rst
+        kind: file
+        path: results/sander.min.rst
+      - id: min_log
+        kind: file
+        path: results/sander.min.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_min_config}
+        --input_top_path ${ions_top}
+        --input_crd_path ${ions_crd}
+        --input_ref_path ${ions_crd}
+        --output_traj_path ${min_traj}
+        --output_rst_path ${min_rst}
+        --output_log_path ${min_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: process_min
+    name: Extract system minimization energy (process_minout)
+    inputs:
+      - id: process_energy_config
+        kind: file
+        path: configs/process_energy.yaml
+      - id: min_log
+        kind: file
+        path: results/sander.min.log
+    outputs:
+      - id: min_dat
+        kind: file
+        path: results/sander.min.energy.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        process_minout
+        --config ${process_energy_config}
+        --input_log_path ${min_log}
+        --output_dat_path ${min_dat}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: sander_heat
+    name: Heat the system 0 to 300 K (sander)
+    inputs:
+      - id: sander_heat_config
+        kind: file
+        path: configs/sander_heat.yaml
+      - id: ions_top
+        kind: file
+        path: results/structure.ions.parmtop
+      - id: min_rst
+        kind: file
+        path: results/sander.min.rst
+    outputs:
+      - id: heat_traj
+        kind: file
+        path: results/sander.heat.netcdf
+      - id: heat_rst
+        kind: file
+        path: results/sander.heat.rst
+      - id: heat_log
+        kind: file
+        path: results/sander.heat.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_heat_config}
+        --input_top_path ${ions_top}
+        --input_crd_path ${min_rst}
+        --input_ref_path ${min_rst}
+        --output_traj_path ${heat_traj}
+        --output_rst_path ${heat_rst}
+        --output_log_path ${heat_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: process_heat
+    name: Extract heating temperature (process_mdout)
+    inputs:
+      - id: process_temp_config
+        kind: file
+        path: configs/process_temp.yaml
+      - id: heat_log
+        kind: file
+        path: results/sander.heat.log
+    outputs:
+      - id: heat_dat
+        kind: file
+        path: results/sander.md.temp.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        process_mdout
+        --config ${process_temp_config}
+        --input_log_path ${heat_log}
+        --output_dat_path ${heat_dat}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: sander_nvt
+    name: Equilibrate the system NVT (sander)
+    inputs:
+      - id: sander_nvt_config
+        kind: file
+        path: configs/sander_nvt.yaml
+      - id: ions_top
+        kind: file
+        path: results/structure.ions.parmtop
+      - id: heat_rst
+        kind: file
+        path: results/sander.heat.rst
+    outputs:
+      - id: nvt_traj
+        kind: file
+        path: results/sander.nvt.netcdf
+      - id: nvt_rst
+        kind: file
+        path: results/sander.nvt.rst
+      - id: nvt_log
+        kind: file
+        path: results/sander.nvt.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_nvt_config}
+        --input_top_path ${ions_top}
+        --input_crd_path ${heat_rst}
+        --input_ref_path ${heat_rst}
+        --output_traj_path ${nvt_traj}
+        --output_rst_path ${nvt_rst}
+        --output_log_path ${nvt_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: process_nvt
+    name: Extract NVT temperature (process_mdout)
+    inputs:
+      - id: process_temp_config
+        kind: file
+        path: configs/process_temp.yaml
+      - id: nvt_log
+        kind: file
+        path: results/sander.nvt.log
+    outputs:
+      - id: nvt_dat
+        kind: file
+        path: results/sander.md.nvt.temp.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        process_mdout
+        --config ${process_temp_config}
+        --input_log_path ${nvt_log}
+        --output_dat_path ${nvt_dat}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: sander_npt
+    name: Equilibrate the system NPT (sander)
+    inputs:
+      - id: sander_npt_config
+        kind: file
+        path: configs/sander_npt.yaml
+      - id: ions_top
+        kind: file
+        path: results/structure.ions.parmtop
+      - id: nvt_rst
+        kind: file
+        path: results/sander.nvt.rst
+    outputs:
+      - id: npt_traj
+        kind: file
+        path: results/sander.npt.netcdf
+      - id: npt_rst
+        kind: file
+        path: results/sander.npt.rst
+      - id: npt_log
+        kind: file
+        path: results/sander.npt.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_npt_config}
+        --input_top_path ${ions_top}
+        --input_crd_path ${nvt_rst}
+        --input_ref_path ${nvt_rst}
+        --output_traj_path ${npt_traj}
+        --output_rst_path ${npt_rst}
+        --output_log_path ${npt_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: process_npt
+    name: Extract NPT pressure and density (process_mdout)
+    inputs:
+      - id: process_npt_config
+        kind: file
+        path: configs/process_npt.yaml
+      - id: npt_log
+        kind: file
+        path: results/sander.npt.log
+    outputs:
+      - id: npt_dat
+        kind: file
+        path: results/sander.md.npt.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        process_mdout
+        --config ${process_npt_config}
+        --input_log_path ${npt_log}
+        --output_dat_path ${npt_dat}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: sander_free
+    name: Free MD simulation (sander)
+    inputs:
+      - id: sander_free_config
+        kind: file
+        path: configs/sander_free.yaml
+      - id: ions_top
+        kind: file
+        path: results/structure.ions.parmtop
+      - id: npt_rst
+        kind: file
+        path: results/sander.npt.rst
+    outputs:
+      - id: free_traj
+        kind: file
+        path: results/sander.free.netcdf
+      - id: free_rst
+        kind: file
+        path: results/sander.free.rst
+      - id: free_log
+        kind: file
+        path: results/sander.free.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_free_config}
+        --input_top_path ${ions_top}
+        --input_crd_path ${npt_rst}
+        --output_traj_path ${free_traj}
+        --output_rst_path ${free_rst}
+        --output_log_path ${free_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_first
+    name: RMSd vs first snapshot (cpptraj)
+    inputs:
+      - id: cpptraj_rms_first_config
+        kind: file
+        path: configs/cpptraj_rms_first.yaml
+      - id: ions_top
+        kind: file
+        path: results/structure.ions.parmtop
+      - id: free_traj
+        kind: file
+        path: results/sander.free.netcdf
+    outputs:
+      - id: rms_first_dat
+        kind: file
+        path: results/1aki_rms_first.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_first_config}
+        --input_top_path ${ions_top}
+        --input_traj_path ${free_traj}
+        --output_cpptraj_path ${rms_first_dat}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_exp
+    name: RMSd vs experimental structure (cpptraj)
+    inputs:
+      - id: cpptraj_rms_exp_config
+        kind: file
+        path: configs/cpptraj_rms_exp.yaml
+      - id: ions_top
+        kind: file
+        path: results/structure.ions.parmtop
+      - id: free_traj
+        kind: file
+        path: results/sander.free.netcdf
+      - id: downloaded_pdb
+        kind: file
+        path: results/downloaded.pdb
+    outputs:
+      - id: rms_exp_dat
+        kind: file
+        path: results/1aki_rms_exp.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_exp_config}
+        --input_top_path ${ions_top}
+        --input_traj_path ${free_traj}
+        --input_exp_path ${downloaded_pdb}
+        --output_cpptraj_path ${rms_exp_dat}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rgyr
+    name: Radius of gyration (cpptraj)
+    inputs:
+      - id: cpptraj_rgyr_config
+        kind: file
+        path: configs/cpptraj_rgyr.yaml
+      - id: ions_top
+        kind: file
+        path: results/structure.ions.parmtop
+      - id: free_traj
+        kind: file
+        path: results/sander.free.netcdf
+    outputs:
+      - id: rgyr_dat
+        kind: file
+        path: results/1aki_rgyr.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rgyr
+        --config ${cpptraj_rgyr_config}
+        --input_top_path ${ions_top}
+        --input_traj_path ${free_traj}
+        --output_cpptraj_path ${rgyr_dat}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_image
+    name: Image trajectory and strip solvent (cpptraj)
+    inputs:
+      - id: cpptraj_image_config
+        kind: file
+        path: configs/cpptraj_image.yaml
+      - id: ions_top
+        kind: file
+        path: results/structure.ions.parmtop
+      - id: free_traj
+        kind: file
+        path: results/sander.free.netcdf
+    outputs:
+      - id: imaged_traj
+        kind: file
+        path: results/1aki_imaged_traj.trr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_image
+        --config ${cpptraj_image_config}
+        --input_top_path ${ions_top}
+        --input_traj_path ${free_traj}
+        --output_cpptraj_path ${imaged_traj}
+    target:
+      kind: local
+
+edges:
+  - source: fetch_pdb
+    source_output: downloaded_pdb
+    target: pdb4amber
+    target_input: downloaded_pdb
+
+  - source: pdb4amber
+    source_output: pdb4amber_pdb
+    target: gen_top
+    target_input: pdb4amber_pdb
+
+  - source: gen_top
+    source_output: top_top
+    target: sander_h_min
+    target_input: top_top
+
+  - source: gen_top
+    source_output: top_crd
+    target: sander_h_min
+    target_input: top_crd
+
+  - source: sander_h_min
+    source_output: h_min_log
+    target: process_h_min
+    target_input: h_min_log
+
+  - source: gen_top
+    source_output: top_top
+    target: sander_n_min
+    target_input: top_top
+
+  - source: sander_h_min
+    source_output: h_min_rst
+    target: sander_n_min
+    target_input: h_min_rst
+
+  - source: sander_n_min
+    source_output: n_min_log
+    target: process_n_min
+    target_input: n_min_log
+
+  - source: gen_top
+    source_output: top_top
+    target: amber_to_pdb
+    target_input: top_top
+
+  - source: sander_n_min
+    source_output: n_min_rst
+    target: amber_to_pdb
+    target_input: n_min_rst
+
+  - source: amber_to_pdb
+    source_output: ambpdb_pdb
+    target: leap_solvate
+    target_input: ambpdb_pdb
+
+  - source: leap_solvate
+    source_output: solv_pdb
+    target: leap_add_ions
+    target_input: solv_pdb
+
+  - source: leap_add_ions
+    source_output: ions_top
+    target: sander_min
+    target_input: ions_top
+
+  - source: leap_add_ions
+    source_output: ions_crd
+    target: sander_min
+    target_input: ions_crd
+
+  - source: sander_min
+    source_output: min_log
+    target: process_min
+    target_input: min_log
+
+  - source: leap_add_ions
+    source_output: ions_top
+    target: sander_heat
+    target_input: ions_top
+
+  - source: sander_min
+    source_output: min_rst
+    target: sander_heat
+    target_input: min_rst
+
+  - source: sander_heat
+    source_output: heat_log
+    target: process_heat
+    target_input: heat_log
+
+  - source: leap_add_ions
+    source_output: ions_top
+    target: sander_nvt
+    target_input: ions_top
+
+  - source: sander_heat
+    source_output: heat_rst
+    target: sander_nvt
+    target_input: heat_rst
+
+  - source: sander_nvt
+    source_output: nvt_log
+    target: process_nvt
+    target_input: nvt_log
+
+  - source: leap_add_ions
+    source_output: ions_top
+    target: sander_npt
+    target_input: ions_top
+
+  - source: sander_nvt
+    source_output: nvt_rst
+    target: sander_npt
+    target_input: nvt_rst
+
+  - source: sander_npt
+    source_output: npt_log
+    target: process_npt
+    target_input: npt_log
+
+  - source: leap_add_ions
+    source_output: ions_top
+    target: sander_free
+    target_input: ions_top
+
+  - source: sander_npt
+    source_output: npt_rst
+    target: sander_free
+    target_input: npt_rst
+
+  - source: leap_add_ions
+    source_output: ions_top
+    target: cpptraj_rms_first
+    target_input: ions_top
+
+  - source: sander_free
+    source_output: free_traj
+    target: cpptraj_rms_first
+    target_input: free_traj
+
+  - source: leap_add_ions
+    source_output: ions_top
+    target: cpptraj_rms_exp
+    target_input: ions_top
+
+  - source: sander_free
+    source_output: free_traj
+    target: cpptraj_rms_exp
+    target_input: free_traj
+
+  - source: fetch_pdb
+    source_output: downloaded_pdb
+    target: cpptraj_rms_exp
+    target_input: downloaded_pdb
+
+  - source: leap_add_ions
+    source_output: ions_top
+    target: cpptraj_rgyr
+    target_input: ions_top
+
+  - source: sander_free
+    source_output: free_traj
+    target: cpptraj_rgyr
+    target_input: free_traj
+
+  - source: leap_add_ions
+    source_output: ions_top
+    target: cpptraj_image
+    target_input: ions_top
+
+  - source: sander_free
+    source_output: free_traj
+    target: cpptraj_image
+    target_input: free_traj
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"
