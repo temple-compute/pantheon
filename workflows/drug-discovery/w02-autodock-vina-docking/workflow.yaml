@@ -21,14 +21,14 @@ tasks:
         kind: file
     executor:
       kind: conda_python_environment
-      conda: conda            # set to mamba/micromamba if that's what's on PATH
+      conda: micromamba # set to mamba/micromamba if that's what's on PATH
       python_version: "3.11"
       channels:
         - conda-forge
       conda_requirements:
-        - openbabel           # receptor -> rigid PDBQT (obabel)
-        - meeko               # ligand -> PDBQT (mk_prepare_ligand.py)
-        - rdkit               # 3D embedding of SMILES + Meeko's typing
+        - openbabel # receptor -> rigid PDBQT (obabel)
+        - meeko # ligand -> PDBQT (mk_prepare_ligand.py)
+        - rdkit # 3D embedding of SMILES + Meeko's typing
         - numpy
         - scipy
         - gemmi
@@ -39,8 +39,7 @@ tasks:
       # derive it from a --ref-ligand, or omit both for blind (whole-receptor)
       # docking (then use a large --size). Default here is the 1iep ATP pocket.
       args: >-
-        --receptor ${receptor} --ligands ${ligands} --out ${vina_inputs}
-        --center 15.190 53.903 16.917 --size 20 20 20
+        --receptor ${receptor} --ligands ${ligands} --out ${vina_inputs} --center 15.190 53.903 16.917 --size 20 20 20
     target:
       kind: local
   - kind: horus_task
@@ -58,19 +57,18 @@ tasks:
         kind: file
     executor:
       kind: conda_python_environment
-      conda: conda            # set to mamba/micromamba if that's what's on PATH
+      conda: micromamba # set to mamba/micromamba if that's what's on PATH
       python_version: "3.11"
       channels:
         - conda-forge
       conda_requirements:
-        - vina                # AutoDock Vina + Python bindings (conda-forge)
+        - vina # AutoDock Vina + Python bindings (conda-forge)
         - numpy
     runtime:
       kind: python_script
       script: scripts/dock.py
       args: >-
-        --inputs ${vina_inputs} --out ${docking_out}
-        --exhaustiveness 16 --n-poses 9 --cpu 0
+        --inputs ${vina_inputs} --out ${docking_out} --exhaustiveness 16 --n-poses 9 --cpu 0
     target:
       kind: local
   - kind: horus_task
@@ -95,7 +93,7 @@ tasks:
     runtime:
       kind: python_script
       script: scripts/summary.py
-      python: python3        # summary is stdlib-only; use the target's python3
+      python: python3 # summary is stdlib-only; use the target's python3
       args: --docking ${docking_out} --summary ${summary} --poses ${poses}
     target:
       kind: local
