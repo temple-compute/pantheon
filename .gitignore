@@ -4,16 +4,10 @@
 **/logs/
 *.sif
 
-# Workflows not yet published
-workflows/drug-discovery/w02-de-novo-protein-design/
-workflows/drug-discovery/w03-abfe-pipeline/
-workflows/genomics/
-workflows/language-models/
-workflows/medical-imaging/
-workflows/reinforcement-learning/
-workflows/scientific-computing/
-
 # Python
 __pycache__/
 *.pyc
 .venv/
+
+# Other
+.DS_Store
