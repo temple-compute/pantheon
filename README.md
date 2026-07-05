@@ -11,13 +11,13 @@ Each workflow directory contains:
 
 ```bash
 # Clone this repo
-git clone https://github.com/temple-compute/horus-workflows
-cd horus-workflows
+git clone https://github.com/temple-compute/pantheon
+cd pantheon
 
 # Browse a workflow
-cat workflows/drug-discovery/w01-boltz2-virtual-screening/README.md
+cat workflows/drug-discovery/w01-boltz2-virtual-screening/
 
-# Submit a workflow to Horus (once workflow.yaml exists)
+# Submit a workflow using the horus-runtime
 horus run workflow.yaml
 ```
 
