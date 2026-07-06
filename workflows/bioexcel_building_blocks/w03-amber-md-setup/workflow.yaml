@@ -8,10 +8,7 @@ _executor: &executor
   environment_file: conda_env.yaml
 
 _target: &target
-  kind: ssh
-  host: awow
-  port: 22
-  username: cdominguez
+  kind: local
 
 tasks:
   - kind: horus_task
