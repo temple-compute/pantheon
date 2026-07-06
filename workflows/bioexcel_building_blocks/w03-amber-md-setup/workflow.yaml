@@ -7,6 +7,12 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+_target: &target
+  kind: ssh
+  host: awow
+  port: 22
+  username: cdominguez
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
@@ -26,8 +32,7 @@ tasks:
         pdb
         --config ${fetch_pdb_config}
         --output_pdb_path ${downloaded_pdb}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: pdb4amber
@@ -47,8 +52,7 @@ tasks:
         pdb4amber_run
         --input_pdb_path ${downloaded_pdb}
         --output_pdb_path ${pdb4amber_pdb}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: gen_top
@@ -80,8 +84,7 @@ tasks:
         --output_pdb_path ${top_pdb}
         --output_top_path ${top_top}
         --output_crd_path ${top_crd}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: sander_h_min
@@ -118,8 +121,7 @@ tasks:
         --output_traj_path ${h_min_traj}
         --output_rst_path ${h_min_rst}
         --output_log_path ${h_min_log}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: process_h_min
@@ -143,8 +145,7 @@ tasks:
         --config ${process_energy_config}
         --input_log_path ${h_min_log}
         --output_dat_path ${h_min_dat}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: sander_n_min
@@ -181,8 +182,7 @@ tasks:
         --output_traj_path ${n_min_traj}
         --output_rst_path ${n_min_rst}
         --output_log_path ${n_min_log}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: process_n_min
@@ -206,8 +206,7 @@ tasks:
         --config ${process_energy_config}
         --input_log_path ${n_min_log}
         --output_dat_path ${n_min_dat}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: amber_to_pdb
@@ -231,8 +230,7 @@ tasks:
         --input_top_path ${top_top}
         --input_crd_path ${n_min_rst}
         --output_pdb_path ${ambpdb_pdb}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: leap_solvate
@@ -264,8 +262,7 @@ tasks:
         --output_pdb_path ${solv_pdb}
         --output_top_path ${solv_top}
         --output_crd_path ${solv_crd}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: leap_add_ions
@@ -297,8 +294,7 @@ tasks:
         --output_pdb_path ${ions_pdb}
         --output_top_path ${ions_top}
         --output_crd_path ${ions_crd}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: sander_min
@@ -335,8 +331,7 @@ tasks:
         --output_traj_path ${min_traj}
         --output_rst_path ${min_rst}
         --output_log_path ${min_log}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: process_min
@@ -360,8 +355,7 @@ tasks:
         --config ${process_energy_config}
         --input_log_path ${min_log}
         --output_dat_path ${min_dat}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: sander_heat
@@ -398,8 +392,7 @@ tasks:
         --output_traj_path ${heat_traj}
         --output_rst_path ${heat_rst}
         --output_log_path ${heat_log}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: process_heat
@@ -423,8 +416,7 @@ tasks:
         --config ${process_temp_config}
         --input_log_path ${heat_log}
         --output_dat_path ${heat_dat}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: sander_nvt
@@ -461,8 +453,7 @@ tasks:
         --output_traj_path ${nvt_traj}
         --output_rst_path ${nvt_rst}
         --output_log_path ${nvt_log}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: process_nvt
@@ -486,8 +477,7 @@ tasks:
         --config ${process_temp_config}
         --input_log_path ${nvt_log}
         --output_dat_path ${nvt_dat}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: sander_npt
@@ -524,8 +514,7 @@ tasks:
         --output_traj_path ${npt_traj}
         --output_rst_path ${npt_rst}
         --output_log_path ${npt_log}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: process_npt
@@ -549,8 +538,7 @@ tasks:
         --config ${process_npt_config}
         --input_log_path ${npt_log}
         --output_dat_path ${npt_dat}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: sander_free
@@ -586,8 +574,7 @@ tasks:
         --output_traj_path ${free_traj}
         --output_rst_path ${free_rst}
         --output_log_path ${free_log}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: cpptraj_rms_first
@@ -615,8 +602,7 @@ tasks:
         --input_top_path ${ions_top}
         --input_traj_path ${free_traj}
         --output_cpptraj_path ${rms_first_dat}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: cpptraj_rms_exp
@@ -648,8 +634,7 @@ tasks:
         --input_traj_path ${free_traj}
         --input_exp_path ${downloaded_pdb}
         --output_cpptraj_path ${rms_exp_dat}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: cpptraj_rgyr
@@ -677,8 +662,7 @@ tasks:
         --input_top_path ${ions_top}
         --input_traj_path ${free_traj}
         --output_cpptraj_path ${rgyr_dat}
-    target:
-      kind: local
+    target: *target
 
   - kind: horus_task
     id: cpptraj_image
@@ -706,8 +690,7 @@ tasks:
         --input_top_path ${ions_top}
         --input_traj_path ${free_traj}
         --output_cpptraj_path ${imaged_traj}
-    target:
-      kind: local
+    target: *target
 
 edges:
   - source: fetch_pdb
