@@ -14,3 +14,7 @@ __pycache__/
 
 
 **/workflow_results/
+
+
+# uv-lock
+**/uv.lock
