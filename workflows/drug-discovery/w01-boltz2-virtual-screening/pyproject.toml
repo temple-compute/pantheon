@@ -3,6 +3,6 @@ name = "w01-boltz2-virtual-screening"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-  "horus-environments>=0.1.0",
-  "horus-runtime>=0.1.4",
+  "horus-environments>=0.1.2",
+  "horus-runtime>=0.1.6",
 ]

@@ -1,5 +1,5 @@
 [project]
-name = "w04-autodock-vina-docking"
+name = "w03-amber-md-setup"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [

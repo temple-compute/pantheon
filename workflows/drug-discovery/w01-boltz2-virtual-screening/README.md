@@ -35,10 +35,10 @@ uv sync
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Otherwise, you can install the horus-runtime and plugins with pip:
-pip install horus-runtime horus-environments
+# pip install horus-runtime horus-environments
 
 # Run the workflow
-horus run workflow.yaml
+uv run horus run workflow.yaml
 ```
 
 Outputs land in `out_dir/`: `boltz_inputs.tar.gz`, `predictions.tar.gz`, and
