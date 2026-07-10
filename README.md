@@ -46,6 +46,18 @@ uv run horus run workflow.yaml
 | W-04 | [Ligand Parameterization](workflows/bioexcel_building_blocks/w02-ligand-parameterization/README.md) | Generate GROMACS force-field parameters for a small-molecule ligand via OpenBabel and ACPype/GAFF |
 | W-05 | [AMBER MD Setup](workflows/bioexcel_building_blocks/w03-amber-md-setup/README.md) | Full MD setup for lysozyme 1AKI using AMBER: LEaP topology → solvation → equilibration → production MD + analysis |
 
+### Engine Showcases
+
+Small, self-contained workflows that demonstrate horus-runtime engine
+features rather than a science domain. Requires horus-runtime ≥ the
+Dynamic-workflows features (milestone: fan-out/map/loops).
+
+| ID | Workflow | Description |
+|---|---|---|
+| W-06 | [Fan-out / Map / Gather](workflows/engine-showcases/w01-fanout-map-gather/README.md) | Split a collection into batches, map a stage over them concurrently, gather N results into one folder |
+| W-07 | [Programmatic Dynamic DAG](workflows/engine-showcases/w02-programmatic-dynamic-dag/README.md) | A task generates downstream tasks at runtime from the data it reads, via `add_task`/`expand` |
+| W-08 | [Bounded Loop (Range Map)](workflows/engine-showcases/w03-loop-map/README.md) | Run a fixed number of deterministic iterations with `map: {range: N}` and gather the results |
+
 ## Contributing
 
 See [CONTRIBUTING.md](./CONTRIBUTING.md) for how to add new workflows or improve existing ones.

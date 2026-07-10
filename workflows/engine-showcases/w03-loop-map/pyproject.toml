@@ -1,0 +1,11 @@
+[project]
+name = "w03-loop-map"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  # Needs the bounded range `map:` (range: N, no upstream collection) from
+  # horus-runtime's "Dynamic workflows: fan-out / map / loops" milestone.
+  # Until that ships in a release, install horus-runtime from the milestone
+  # branch instead of a tagged version.
+  "horus-runtime>=0.1.6",
+]
