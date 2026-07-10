@@ -1,0 +1,104 @@
+kind: horus_workflow
+name: Fan-out Map Gather Showcase
+tasks:
+  - kind: horus_task
+    id: split
+    name: Split items into batches
+    skip_if_complete: false
+    inputs:
+      - id: items
+        name: items
+        kind: file
+        path: examples/items.json
+    outputs:
+      - id: batches
+        name: batches
+        kind: folder
+        path: batches/
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/split.py
+      python: python3 # stdlib-only; use the target's python3
+      args: --items ${items} --out ${batches} --batch-size 2
+    target:
+      kind: local
+
+  # `score` has no static inputs/outputs of its own: everything about it is
+  # driven by the `map:` block below.
+  #
+  #   over     — which upstream collection to fan out over. `source_task` +
+  #              `source_output` name the producer task/output (here,
+  #              `split`'s `batches` folder); `item_input` is the artifact id
+  #              each clone's template receives its slice under.
+  #   template — the task spec that is cloned once per item in the collection
+  #              (`split`'s output folder has one file per batch, so 4 items
+  #              here -> 4 concurrent clones, `score[00]`..`score[03]`).
+  #   gather   — the downstream task + input artifact id that collects every
+  #              clone's output into one folder for fan-in.
+  #
+  # No explicit `edges:` entry is needed for `split -> score -> gather`: the
+  # `map:` block fully describes both the fan-out and fan-in dependencies and
+  # the loader synthesizes the edges (including the clone -> gather edges,
+  # which are ordering-only / non-transferring since fan-in is via one shared
+  # folder, not per-edge file copies).
+  - kind: horus_task
+    id: score
+    name: Score each batch concurrently
+    map:
+      over:
+        source_task: split
+        source_output: batches
+        item_input: batch
+      template:
+        inputs:
+          - id: batch
+            kind: file
+            path: batch.txt # overwritten per-clone with its slice of `batches/`
+        outputs:
+          - id: scored
+            kind: folder
+            path: scored/
+        runtime:
+          kind: command
+          command: >-
+            mkdir -p $scored &&
+            wc -w < $batch > $scored/count.txt &&
+            tr '[:lower:]' '[:upper:]' < $batch > $scored/upper.txt
+        executor:
+          kind: shell
+        target:
+          kind: local
+      gather:
+        task: gather
+        input: results
+
+  - kind: horus_task
+    id: gather
+    name: Aggregate batch scores into one folder
+    inputs:
+      # Fed by the map's fan-in: one FolderArtifact containing every clone's
+      # `scored/` output under `score.gathered/<i>/`.
+      - id: results
+        name: results
+        kind: folder
+        path: score.gathered/
+    outputs:
+      - id: summary
+        name: summary
+        kind: folder
+        path: results/summary/
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/gather_summary.py
+      python: python3 # stdlib-only; use the target's python3
+      args: --results ${results} --out ${summary}
+    target:
+      kind: local
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
