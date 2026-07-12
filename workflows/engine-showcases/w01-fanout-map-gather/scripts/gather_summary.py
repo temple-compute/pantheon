@@ -2,11 +2,11 @@
 """
 Stage 3 (gather) — aggregate the mapped stage's per-batch folders into one.
 
-The ``score`` task's ``map:`` block runs one clone per batch and writes each
-clone's output under ``score.gathered/<i>/scored/`` (``count.txt`` +
-``upper.txt``). This stage walks that gathered folder, sums the per-batch word
-counts, concatenates the uppercased text, and writes a single combined
-``summary.json`` + ``combined_upper.txt``.
+The ``score`` task's ``map:`` block runs one clone per batch; the fan-in sets
+each clone's output path to ``score.gathered/<i>/``, so each clone's ``count.txt``
++ ``upper.txt`` land directly there. This stage walks that gathered folder, sums
+the per-batch word counts, concatenates the uppercased text, and writes a single
+combined ``summary.json`` + ``combined_upper.txt``.
 
 stdlib only.
 
@@ -24,15 +24,19 @@ from pathlib import Path
 
 
 def collect(results: Path) -> list[dict]:
-    """Read one record per ``<i>/scored/{count,upper}.txt`` under *results*."""
+    """Read one record per ``<i>/{count,upper}.txt`` under *results*.
+
+    The ``map:`` fan-in sets each clone's output path directly to
+    ``score.gathered/<i>/``, so the clone's ``scored/`` folder contents land at
+    ``<i>/count.txt`` and ``<i>/upper.txt`` — there is no ``scored/`` sub-level.
+    """
     batches: list[dict] = []
     for batch_dir in sorted(
         (p for p in results.iterdir() if p.is_dir()),
         key=lambda p: int(p.name) if p.name.isdigit() else p.name,
     ):
-        scored = batch_dir / "scored"
-        count = int((scored / "count.txt").read_text().split()[0])
-        upper = (scored / "upper.txt").read_text()
+        count = int((batch_dir / "count.txt").read_text().split()[0])
+        upper = (batch_dir / "upper.txt").read_text()
         batches.append({"index": batch_dir.name, "words": count, "upper": upper})
     return batches
 
@@ -69,10 +73,10 @@ def _selftest() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         results = Path(tmp) / "score.gathered"
         for i, (word, count) in enumerate([("apple", 1), ("banana", 1), ("cherry pie", 2)]):
-            scored = results / str(i) / "scored"
-            scored.mkdir(parents=True)
-            (scored / "count.txt").write_text(f"{count}\n")
-            (scored / "upper.txt").write_text(word.upper() + "\n")
+            batch_dir = results / str(i)
+            batch_dir.mkdir(parents=True)
+            (batch_dir / "count.txt").write_text(f"{count}\n")
+            (batch_dir / "upper.txt").write_text(word.upper() + "\n")
 
         out = Path(tmp) / "summary"
         total = run(argparse.Namespace(results=results, out=out))
