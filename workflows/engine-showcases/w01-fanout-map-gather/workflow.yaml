@@ -54,8 +54,8 @@ tasks:
       template:
         inputs:
           - id: batch
-            kind: file
-            path: batch.txt # overwritten per-clone with its slice of `batches/`
+            kind: folder
+            path: batch/ # overwritten per-clone with its slice of `batches/`
         outputs:
           - id: scored
             kind: folder
@@ -64,8 +64,9 @@ tasks:
           kind: command
           command: >-
             mkdir -p $scored &&
-            wc -w < $batch > $scored/count.txt &&
-            tr '[:lower:]' '[:upper:]' < $batch > $scored/upper.txt
+            wc -w < $batch/data.txt > $scored/count.txt &&
+            tr '[:lower:]' '[:upper:]' < $batch/data.txt > $scored/upper.txt &&
+            sleep $$(basename $batch)
         executor:
           kind: shell
         target:

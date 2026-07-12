@@ -2,10 +2,11 @@
 """
 Stage 1 (split) — chunk a small JSON list into batch files.
 
-Reads a JSON array of items and writes one text file per batch (``batch_0.txt``,
-``batch_1.txt``, ...) into the output folder, one item per line. The output
-folder is what the ``score`` task's declarative ``map:`` block fans out over —
-each batch file becomes one item handed to a concurrent clone.
+Reads a JSON array of items and writes one sub-directory per batch
+(``batch_0/data.txt``, ``batch_1/data.txt``, ...) into the output folder, one
+item per line. The output folder is what the ``score`` task's declarative
+``map:`` block fans out over — each batch sub-directory becomes one item, copied
+whole into a concurrent clone as its folder input.
 
 stdlib only.
 
@@ -30,10 +31,17 @@ def split_batches(items: list[str], batch_size: int) -> list[list[str]]:
 
 
 def write_batches(batches: list[list[str]], out: Path) -> None:
-    """Write each batch as ``batch_<i>.txt``, one item per line, into *out*."""
+    """Write each batch as ``batch_<i>/data.txt``, one item per line, into *out*.
+
+    Each batch is its own sub-directory so the ``score`` task's ``map:`` block
+    can fan out over ``out``'s children — the engine hands each clone a *copy of
+    the i-th child directory* as its folder input.
+    """
     out.mkdir(parents=True, exist_ok=True)
     for i, batch in enumerate(batches):
-        (out / f"batch_{i}.txt").write_text("\n".join(batch) + "\n")
+        child = out / f"batch_{i}"
+        child.mkdir(parents=True, exist_ok=True)
+        (child / "data.txt").write_text("\n".join(batch) + "\n")
 
 
 def run(args: argparse.Namespace) -> int:
@@ -58,10 +66,10 @@ def _selftest() -> None:
     with tempfile.TemporaryDirectory() as tmp:
         out = Path(tmp) / "batches"
         write_batches(batches, out)
-        files = sorted(p.name for p in out.glob("batch_*.txt"))
-        assert files == ["batch_0.txt", "batch_1.txt", "batch_2.txt"], files
-        assert out.joinpath("batch_0.txt").read_text() == "a\nb\n"
-        assert out.joinpath("batch_2.txt").read_text() == "e\n"
+        dirs = sorted(p.name for p in out.glob("batch_*") if p.is_dir())
+        assert dirs == ["batch_0", "batch_1", "batch_2"], dirs
+        assert out.joinpath("batch_0", "data.txt").read_text() == "a\nb\n"
+        assert out.joinpath("batch_2", "data.txt").read_text() == "e\n"
     print("split.py selftest: OK")
 
 
