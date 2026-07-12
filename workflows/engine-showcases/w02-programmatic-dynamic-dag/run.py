@@ -27,6 +27,9 @@ Run:
 
 from __future__ import annotations
 
+import asyncio
+import random
+import time
 from collections.abc import Callable
 from pathlib import Path
 from typing import Any
@@ -61,7 +64,11 @@ def _make_process_fn(group: str, records: list[dict[str, Any]]) -> Callable[...,
 
     def process(result: JSONArtifact) -> None:
         """Summarize this group's values into its own result artifact."""
-        result.write({"group": group, "count": len(values), "sum": sum(values), "values": values})
+        random_time = random.randint(0, 5)
+        time.sleep(random_time)
+        result.write(
+            {"group": group, "count": len(values), "sum": sum(values), "values": values}
+        )
 
     return process
 
@@ -83,13 +90,23 @@ def combine(combined: JSONArtifact, **kwargs: JSONArtifact) -> None:
         per_group[key[len("in_") :]] = {"count": data["count"], "sum": data["sum"]}
         total_count += data["count"]
         total_sum += data["sum"]
-    combined.write({"total_count": total_count, "total_sum": total_sum, "per_group": per_group})
+    combined.write(
+        {"total_count": total_count, "total_sum": total_sum, "per_group": per_group}
+    )
 
 
-@FunctionTask.task(wf, id="plan", inputs=[JSONArtifact(id="dataset", path=str(DATASET))])
-def plan(dataset: JSONArtifact) -> None:
+@FunctionTask.task(
+    wf,
+    id="plan",
+    inputs=[JSONArtifact(id="dataset", path=DATASET)],
+    skip_if_complete=False,
+)
+async def plan(dataset: JSONArtifact) -> None:
     """Read the dataset and expand the DAG: one process_<group> task per
     distinct group, plus a combine task fanning them all back in."""
+
+    await asyncio.sleep(3)
+
     records = dataset.read()
     groups = sorted({r["group"] for r in records})
     horus_logger.log.info(f"plan: found {len(groups)} group(s): {groups}")
@@ -104,11 +121,14 @@ def plan(dataset: JSONArtifact) -> None:
             name=f"process_{group}",
             runtime=PythonFunctionRuntime(func=_make_process_fn(group, records)),
             executor=PythonFunctionExecutor(),
-            outputs=[JSONArtifact(id="result", path=str(RESULTS / f"{group}.json"))],
+            outputs=[JSONArtifact(id="result", path=RESULTS / f"{group}.json")],
             target=LocalTarget(),
+            skip_if_complete=False,
         )
         workflow.add_task(process_task)  # no edge needed: created *during*
         # plan's own execution, so it can only run after plan completes.
+
+        await asyncio.sleep(2)
 
     # --- one combine task, added together with all of its fan-in edges ---
     combine_task = FunctionTask(
@@ -116,14 +136,20 @@ def plan(dataset: JSONArtifact) -> None:
         name="combine",
         runtime=PythonFunctionRuntime(func=combine),
         executor=PythonFunctionExecutor(),
-        inputs=[JSONArtifact(id=f"in_{g}", path=str(RESULTS / f"{g}.json")) for g in groups],
-        outputs=[JSONArtifact(id="combined", path=str(RESULTS / "combined.json"))],
+        inputs=[JSONArtifact(id=f"in_{g}", path=RESULTS / f"{g}.json") for g in groups],
+        outputs=[JSONArtifact(id="combined", path=RESULTS / "combined.json")],
         target=LocalTarget(),
+        skip_if_complete=False,
     )
     workflow.expand(
         tasks=[combine_task],
         edges=[
-            WorkflowEdge(source=f"process_{g}", source_output="result", target="combine", target_input=f"in_{g}")
+            WorkflowEdge(
+                source=f"process_{g}",
+                source_output="result",
+                target="combine",
+                target_input=f"in_{g}",
+            )
             for g in groups
         ],
     )
