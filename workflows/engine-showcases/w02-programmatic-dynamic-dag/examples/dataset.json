@@ -1,0 +1,8 @@
+[
+  {"group": "alpha", "n": 3},
+  {"group": "alpha", "n": 5},
+  {"group": "beta", "n": 2},
+  {"group": "beta", "n": 4},
+  {"group": "beta", "n": 6},
+  {"group": "gamma", "n": 10}
+]
