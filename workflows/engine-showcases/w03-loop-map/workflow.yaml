@@ -1,0 +1,62 @@
+kind: horus_workflow
+name: Bounded Loop Map Showcase
+tasks:
+  # `iterate` has no `over:` — a bounded loop is just `map:` with `range:`
+  # instead of an upstream collection: N clones (`iterate[00]`..`iterate[04]`),
+  # no producer task required. `index_input` names the template input artifact
+  # that receives each clone's 0-based iteration index (here written into a
+  # one-line `idx.txt` the clone's command reads).
+  - kind: horus_task
+    id: iterate
+    name: Square each iteration index (bounded range map)
+    map:
+      range: 5
+      index_input: idx
+      template:
+        inputs:
+          - id: idx
+            kind: file
+            path: idx.txt # populated per-clone with its iteration index
+        outputs:
+          - id: square
+            kind: file
+            path: square.txt
+        runtime:
+          kind: command
+          command: 'n=$(cat $idx); echo $((n * n)) > $square'
+        executor:
+          kind: shell
+        target:
+          kind: local
+      gather:
+        task: gather
+        input: results
+
+  - kind: horus_task
+    id: gather
+    name: Sum the squares
+    inputs:
+      # Fed by the map's fan-in: one FolderArtifact with every clone's
+      # square.txt under iterate.gathered/<i>/.
+      - id: results
+        name: results
+        kind: folder
+        path: iterate.gathered/
+    outputs:
+      - id: total
+        name: total
+        kind: file
+        path: results/total.txt
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/sum_squares.py
+      python: python3 # stdlib-only; use the target's python3
+      args: --results ${results} --out ${total}
+    target:
+      kind: local
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
