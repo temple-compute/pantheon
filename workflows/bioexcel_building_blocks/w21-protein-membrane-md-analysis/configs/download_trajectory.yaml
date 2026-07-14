@@ -1,0 +1,7 @@
+node_id: irb-dev
+project_id: A023K
+trj_format: xtc
+frames: "1:-1:1000"
+extra_files:
+  - - topology.tpr
+    - results/A023K.tpr

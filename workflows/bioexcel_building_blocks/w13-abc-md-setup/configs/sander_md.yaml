@@ -1,0 +1,6 @@
+binary_path: sander.MPI
+mpi_np: 4
+mpi_bin: mpirun
+mdin:
+  nstlim: 500
+  ntpr: 50

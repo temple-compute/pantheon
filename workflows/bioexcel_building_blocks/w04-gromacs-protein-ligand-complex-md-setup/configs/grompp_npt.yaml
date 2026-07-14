@@ -1,0 +1,6 @@
+properties:
+  simulation_type: npt
+  mdp:
+    nsteps: '5000'
+    tc-grps: Protein_Other Water_and_ions
+    Define: '-DPOSRES -DPOSRES_JZ4'

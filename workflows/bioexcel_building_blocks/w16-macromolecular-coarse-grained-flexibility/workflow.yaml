@@ -1,0 +1,1666 @@
+kind: horus_workflow
+name: BioExcel FlexServ - Protein Conformational Dynamics (1A32)
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+tasks:
+  - kind: horus_task
+    id: fetch_pdb
+    name: Download 1A32 structure from PDB
+    inputs:
+      - id: fetch_pdb_config
+        kind: file
+        path: configs/fetch_pdb.yaml
+    outputs:
+      - id: downloaded_pdb
+        kind: file
+        path: results/1a32.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_pdb_config}
+        --output_pdb_path ${downloaded_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_atoms_ca
+    name: Extract C-alpha atoms from structure
+    inputs:
+      - id: extract_atoms_ca_config
+        kind: file
+        path: configs/extract_atoms_ca.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/1a32.pdb
+    outputs:
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        extract_atoms
+        --config ${extract_atoms_ca_config}
+        --input_structure_path ${downloaded_pdb}
+        --output_structure_path ${ca_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: bd_run
+    name: Run Brownian Dynamics (BD) conformational ensemble
+    inputs:
+      - id: bd_run_config
+        kind: file
+        path: configs/bd_run.yaml
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+    outputs:
+      - id: bd_crd
+        kind: file
+        path: results/bd_ensemble.mdcrd
+      - id: bd_log
+        kind: file
+        path: results/bd_ensemble.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        bd_run
+        --config ${bd_run_config}
+        --input_pdb_path ${ca_pdb}
+        --output_crd_path ${bd_crd}
+        --output_log_path ${bd_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_bd
+    name: Compute RMSD for BD ensemble trajectory
+    inputs:
+      - id: cpptraj_rms_bd_config
+        kind: file
+        path: configs/cpptraj_rms.yaml
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+      - id: bd_crd
+        kind: file
+        path: results/bd_ensemble.mdcrd
+    outputs:
+      - id: bd_rmsd
+        kind: file
+        path: results/bd_ensemble_rmsd.dat
+      - id: bd_xtc
+        kind: file
+        path: results/bd_ensemble.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_bd_config}
+        --input_top_path ${ca_pdb}
+        --input_traj_path ${bd_crd}
+        --output_cpptraj_path ${bd_rmsd}
+        --output_traj_path ${bd_xtc}
+        --input_exp_path ${ca_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: dmd_run
+    name: Run Discrete Molecular Dynamics (DMD) conformational ensemble
+    inputs:
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+    outputs:
+      - id: dmd_crd
+        kind: file
+        path: results/dmd_ensemble.mdcrd
+      - id: dmd_log
+        kind: file
+        path: results/dmd_ensemble.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        dmd_run
+        --input_pdb_path ${ca_pdb}
+        --output_crd_path ${dmd_crd}
+        --output_log_path ${dmd_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_dmd
+    name: Compute RMSD for DMD ensemble trajectory
+    inputs:
+      - id: cpptraj_rms_dmd_config
+        kind: file
+        path: configs/cpptraj_rms.yaml
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+      - id: dmd_crd
+        kind: file
+        path: results/dmd_ensemble.mdcrd
+    outputs:
+      - id: dmd_rmsd
+        kind: file
+        path: results/dmd_ensemble_rmsd.dat
+      - id: dmd_xtc
+        kind: file
+        path: results/dmd_ensemble.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_dmd_config}
+        --input_top_path ${ca_pdb}
+        --input_traj_path ${dmd_crd}
+        --output_cpptraj_path ${dmd_rmsd}
+        --output_traj_path ${dmd_xtc}
+        --input_exp_path ${ca_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: nma_run
+    name: Run Normal Mode Analysis (NMA) conformational ensemble
+    inputs:
+      - id: nma_run_config
+        kind: file
+        path: configs/nma_run.yaml
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+    outputs:
+      - id: nma_crd
+        kind: file
+        path: results/nma_ensemble.mdcrd
+      - id: nma_log
+        kind: file
+        path: results/nma_ensemble.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        nma_run
+        --config ${nma_run_config}
+        --input_pdb_path ${ca_pdb}
+        --output_crd_path ${nma_crd}
+        --output_log_path ${nma_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_nma
+    name: Compute RMSD for NMA ensemble trajectory
+    inputs:
+      - id: cpptraj_rms_nma_config
+        kind: file
+        path: configs/cpptraj_rms.yaml
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+      - id: nma_crd
+        kind: file
+        path: results/nma_ensemble.mdcrd
+    outputs:
+      - id: nma_rmsd
+        kind: file
+        path: results/nma_ensemble_rmsd.dat
+      - id: nma_xtc
+        kind: file
+        path: results/nma_ensemble.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_nma_config}
+        --input_top_path ${ca_pdb}
+        --input_traj_path ${nma_crd}
+        --output_cpptraj_path ${nma_rmsd}
+        --output_traj_path ${nma_xtc}
+        --input_exp_path ${ca_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_zip_bd
+    name: Compress BD trajectory with PCA (PCZ format)
+    inputs:
+      - id: pcz_zip_bd_config
+        kind: file
+        path: configs/pcz_zip.yaml
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+      - id: bd_crd
+        kind: file
+        path: results/bd_ensemble.mdcrd
+    outputs:
+      - id: bd_pcz
+        kind: file
+        path: results/bd_ensemble.pcz
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_zip
+        --config ${pcz_zip_bd_config}
+        --input_pdb_path ${ca_pdb}
+        --input_crd_path ${bd_crd}
+        --output_pcz_path ${bd_pcz}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_zip_dmd
+    name: Compress DMD trajectory with PCA (PCZ format)
+    inputs:
+      - id: pcz_zip_dmd_config
+        kind: file
+        path: configs/pcz_zip.yaml
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+      - id: dmd_crd
+        kind: file
+        path: results/dmd_ensemble.mdcrd
+    outputs:
+      - id: dmd_pcz
+        kind: file
+        path: results/dmd_ensemble.pcz
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_zip
+        --config ${pcz_zip_dmd_config}
+        --input_pdb_path ${ca_pdb}
+        --input_crd_path ${dmd_crd}
+        --output_pcz_path ${dmd_pcz}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_zip_nma
+    name: Compress NMA trajectory with PCA (PCZ format)
+    inputs:
+      - id: pcz_zip_nma_config
+        kind: file
+        path: configs/pcz_zip.yaml
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+      - id: nma_crd
+        kind: file
+        path: results/nma_ensemble.mdcrd
+    outputs:
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_zip
+        --config ${pcz_zip_nma_config}
+        --input_pdb_path ${ca_pdb}
+        --input_crd_path ${nma_crd}
+        --output_pcz_path ${nma_pcz}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_unzip_bd
+    name: Decompress BD PCZ trajectory back to CRD
+    inputs:
+      - id: bd_pcz
+        kind: file
+        path: results/bd_ensemble.pcz
+    outputs:
+      - id: bd_crd_uncompressed
+        kind: file
+        path: results/bd_ensemble_uncompressed.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_unzip
+        --input_pcz_path ${bd_pcz}
+        --output_crd_path ${bd_crd_uncompressed}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_unzip_dmd
+    name: Decompress DMD PCZ trajectory back to CRD
+    inputs:
+      - id: dmd_pcz
+        kind: file
+        path: results/dmd_ensemble.pcz
+    outputs:
+      - id: dmd_crd_uncompressed
+        kind: file
+        path: results/dmd_ensemble_uncompressed.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_unzip
+        --input_pcz_path ${dmd_pcz}
+        --output_crd_path ${dmd_crd_uncompressed}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_unzip_nma
+    name: Decompress NMA PCZ trajectory back to CRD
+    inputs:
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: nma_crd_uncompressed
+        kind: file
+        path: results/nma_ensemble_uncompressed.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_unzip
+        --input_pcz_path ${nma_pcz}
+        --output_crd_path ${nma_crd_uncompressed}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_bd_uncompressed
+    name: Compute RMSD for decompressed BD trajectory
+    inputs:
+      - id: cpptraj_rms_bd_unc_config
+        kind: file
+        path: configs/cpptraj_rms.yaml
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+      - id: bd_crd_uncompressed
+        kind: file
+        path: results/bd_ensemble_uncompressed.crd
+    outputs:
+      - id: bd_uncompressed_rmsd
+        kind: file
+        path: results/bd_ensemble_uncompressed.rmsd.dat
+      - id: bd_xtc_uncompressed
+        kind: file
+        path: results/bd_ensemble_uncompressed.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_bd_unc_config}
+        --input_top_path ${ca_pdb}
+        --input_traj_path ${bd_crd_uncompressed}
+        --output_cpptraj_path ${bd_uncompressed_rmsd}
+        --output_traj_path ${bd_xtc_uncompressed}
+        --input_exp_path ${ca_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_dmd_uncompressed
+    name: Compute RMSD for decompressed DMD trajectory
+    inputs:
+      - id: cpptraj_rms_dmd_unc_config
+        kind: file
+        path: configs/cpptraj_rms.yaml
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+      - id: dmd_crd_uncompressed
+        kind: file
+        path: results/dmd_ensemble_uncompressed.crd
+    outputs:
+      - id: dmd_uncompressed_rmsd
+        kind: file
+        path: results/dmd_ensemble_uncompressed.rmsd.dat
+      - id: dmd_xtc_uncompressed
+        kind: file
+        path: results/dmd_ensemble_uncompressed.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_dmd_unc_config}
+        --input_top_path ${ca_pdb}
+        --input_traj_path ${dmd_crd_uncompressed}
+        --output_cpptraj_path ${dmd_uncompressed_rmsd}
+        --output_traj_path ${dmd_xtc_uncompressed}
+        --input_exp_path ${ca_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_nma_uncompressed
+    name: Compute RMSD for decompressed NMA trajectory
+    inputs:
+      - id: cpptraj_rms_nma_unc_config
+        kind: file
+        path: configs/cpptraj_rms.yaml
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+      - id: nma_crd_uncompressed
+        kind: file
+        path: results/nma_ensemble_uncompressed.crd
+    outputs:
+      - id: nma_uncompressed_rmsd
+        kind: file
+        path: results/nma_ensemble_uncompressed.rmsd.dat
+      - id: nma_xtc_uncompressed
+        kind: file
+        path: results/nma_ensemble_uncompressed.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_nma_unc_config}
+        --input_top_path ${ca_pdb}
+        --input_traj_path ${nma_crd_uncompressed}
+        --output_cpptraj_path ${nma_uncompressed_rmsd}
+        --output_traj_path ${nma_xtc_uncompressed}
+        --input_exp_path ${ca_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_info
+    name: Extract PCA information from NMA PCZ file
+    inputs:
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: pcz_report
+        kind: file
+        path: results/pcz_report.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_info
+        --input_pcz_path ${nma_pcz}
+        --output_json_path ${pcz_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_evecs
+    name: Extract eigenvectors from NMA PCZ file
+    inputs:
+      - id: pcz_evecs_config
+        kind: file
+        path: configs/pcz_evecs.yaml
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: pcz_evecs_report
+        kind: file
+        path: results/pcz_evecs.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_evecs
+        --config ${pcz_evecs_config}
+        --input_pcz_path ${nma_pcz}
+        --output_json_path ${pcz_evecs_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_animate
+    name: Animate NMA principal component eigenvector 1
+    inputs:
+      - id: pcz_animate_config
+        kind: file
+        path: configs/pcz_animate.yaml
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: proj1_crd
+        kind: file
+        path: results/pcz_proj1.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_animate
+        --config ${pcz_animate_config}
+        --input_pcz_path ${nma_pcz}
+        --output_crd_path ${proj1_crd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_convert_proj1
+    name: Convert PC1 animation trajectory to XTC format
+    inputs:
+      - id: cpptraj_convert_proj1_config
+        kind: file
+        path: configs/cpptraj_convert_proj1.yaml
+      - id: ca_pdb
+        kind: file
+        path: results/1a32_ca.pdb
+      - id: proj1_crd
+        kind: file
+        path: results/pcz_proj1.crd
+    outputs:
+      - id: proj1_xtc
+        kind: file
+        path: results/pcz_proj1.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_convert
+        --config ${cpptraj_convert_proj1_config}
+        --input_top_path ${ca_pdb}
+        --input_traj_path ${proj1_crd}
+        --output_cpptraj_path ${proj1_xtc}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_bfactor_all
+    name: Compute B-factors from all NMA principal components
+    inputs:
+      - id: pcz_bfactor_all_config
+        kind: file
+        path: configs/pcz_bfactor_all.yaml
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: bfactor_all_dat
+        kind: file
+        path: results/bfactor_all.dat
+      - id: bfactor_all_pdb
+        kind: file
+        path: results/bfactor_all.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_bfactor
+        --config ${pcz_bfactor_all_config}
+        --input_pcz_path ${nma_pcz}
+        --output_dat_path ${bfactor_all_dat}
+        --output_pdb_path ${bfactor_all_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_bfactor_mode1
+    name: Compute B-factors from NMA principal component 1
+    inputs:
+      - id: pcz_bfactor_mode1_config
+        kind: file
+        path: configs/pcz_bfactor_mode1.yaml
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: bfactor_mode1_dat
+        kind: file
+        path: results/bfactor_mode1.dat
+      - id: bfactor_mode1_pdb
+        kind: file
+        path: results/bfactor_mode1.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_bfactor
+        --config ${pcz_bfactor_mode1_config}
+        --input_pcz_path ${nma_pcz}
+        --output_dat_path ${bfactor_mode1_dat}
+        --output_pdb_path ${bfactor_mode1_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_bfactor_mode2
+    name: Compute B-factors from NMA principal component 2
+    inputs:
+      - id: pcz_bfactor_mode2_config
+        kind: file
+        path: configs/pcz_bfactor_mode2.yaml
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: bfactor_mode2_dat
+        kind: file
+        path: results/bfactor_mode2.dat
+      - id: bfactor_mode2_pdb
+        kind: file
+        path: results/bfactor_mode2.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_bfactor
+        --config ${pcz_bfactor_mode2_config}
+        --input_pcz_path ${nma_pcz}
+        --output_dat_path ${bfactor_mode2_dat}
+        --output_pdb_path ${bfactor_mode2_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_bfactor_mode3
+    name: Compute B-factors from NMA principal component 3
+    inputs:
+      - id: pcz_bfactor_mode3_config
+        kind: file
+        path: configs/pcz_bfactor_mode3.yaml
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: bfactor_mode3_dat
+        kind: file
+        path: results/bfactor_mode3.dat
+      - id: bfactor_mode3_pdb
+        kind: file
+        path: results/bfactor_mode3.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_bfactor
+        --config ${pcz_bfactor_mode3_config}
+        --input_pcz_path ${nma_pcz}
+        --output_dat_path ${bfactor_mode3_dat}
+        --output_pdb_path ${bfactor_mode3_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_bfactor_mode4
+    name: Compute B-factors from NMA principal component 4
+    inputs:
+      - id: pcz_bfactor_mode4_config
+        kind: file
+        path: configs/pcz_bfactor_mode4.yaml
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: bfactor_mode4_dat
+        kind: file
+        path: results/bfactor_mode4.dat
+      - id: bfactor_mode4_pdb
+        kind: file
+        path: results/bfactor_mode4.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_bfactor
+        --config ${pcz_bfactor_mode4_config}
+        --input_pcz_path ${nma_pcz}
+        --output_dat_path ${bfactor_mode4_dat}
+        --output_pdb_path ${bfactor_mode4_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_bfactor_mode5
+    name: Compute B-factors from NMA principal component 5
+    inputs:
+      - id: pcz_bfactor_mode5_config
+        kind: file
+        path: configs/pcz_bfactor_mode5.yaml
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: bfactor_mode5_dat
+        kind: file
+        path: results/bfactor_mode5.dat
+      - id: bfactor_mode5_pdb
+        kind: file
+        path: results/bfactor_mode5.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_bfactor
+        --config ${pcz_bfactor_mode5_config}
+        --input_pcz_path ${nma_pcz}
+        --output_dat_path ${bfactor_mode5_dat}
+        --output_pdb_path ${bfactor_mode5_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_hinges_bfactor
+    name: Detect hinge regions in BD trajectory (B-factor slope method)
+    inputs:
+      - id: pcz_hinges_bfactor_config
+        kind: file
+        path: configs/pcz_hinges_bfactor.yaml
+      - id: bd_pcz
+        kind: file
+        path: results/bd_ensemble.pcz
+    outputs:
+      - id: hinges_bfactor_report
+        kind: file
+        path: results/hinges_bfactor_report.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_hinges
+        --config ${pcz_hinges_bfactor_config}
+        --input_pcz_path ${bd_pcz}
+        --output_json_path ${hinges_bfactor_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_hinges_dyndom
+    name: Detect hinge regions in BD trajectory (dynamic domain method)
+    inputs:
+      - id: pcz_hinges_dyndom_config
+        kind: file
+        path: configs/pcz_hinges_dyndom.yaml
+      - id: bd_pcz
+        kind: file
+        path: results/bd_ensemble.pcz
+    outputs:
+      - id: hinges_dyndom_report
+        kind: file
+        path: results/hinges_dyndom_report.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_hinges
+        --config ${pcz_hinges_dyndom_config}
+        --input_pcz_path ${bd_pcz}
+        --output_json_path ${hinges_dyndom_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_hinges_fcte
+    name: Detect hinge regions in BD trajectory (force constant method)
+    inputs:
+      - id: pcz_hinges_fcte_config
+        kind: file
+        path: configs/pcz_hinges_fcte.yaml
+      - id: bd_pcz
+        kind: file
+        path: results/bd_ensemble.pcz
+    outputs:
+      - id: hinges_fcte_report
+        kind: file
+        path: results/hinges_fcte_report.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_hinges
+        --config ${pcz_hinges_fcte_config}
+        --input_pcz_path ${bd_pcz}
+        --output_json_path ${hinges_fcte_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_stiffness
+    name: Compute apparent stiffness from NMA PCZ trajectory
+    inputs:
+      - id: pcz_stiffness_config
+        kind: file
+        path: configs/pcz_stiffness.yaml
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: stiffness_report
+        kind: file
+        path: results/pcz_stiffness.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_stiffness
+        --config ${pcz_stiffness_config}
+        --input_pcz_path ${nma_pcz}
+        --output_json_path ${stiffness_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_collectivity
+    name: Compute collectivity index from NMA PCZ trajectory
+    inputs:
+      - id: pcz_collectivity_config
+        kind: file
+        path: configs/pcz_collectivity.yaml
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: pcz_collectivity_report
+        kind: file
+        path: results/pcz_collectivity.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_collectivity
+        --config ${pcz_collectivity_config}
+        --input_pcz_path ${nma_pcz}
+        --output_json_path ${pcz_collectivity_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_bd_bd
+    name: Compare PCZ similarity BD vs BD
+    inputs:
+      - id: bd_pcz_1
+        kind: file
+        path: results/bd_ensemble.pcz
+      - id: bd_pcz_2
+        kind: file
+        path: results/bd_ensemble.pcz
+    outputs:
+      - id: similarity_bd_bd
+        kind: file
+        path: results/pcz_similarity_bd_bd.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${bd_pcz_1}
+        --input_pcz_path2 ${bd_pcz_2}
+        --output_json_path ${similarity_bd_bd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_bd_dmd
+    name: Compare PCZ similarity BD vs DMD
+    inputs:
+      - id: bd_pcz
+        kind: file
+        path: results/bd_ensemble.pcz
+      - id: dmd_pcz
+        kind: file
+        path: results/dmd_ensemble.pcz
+    outputs:
+      - id: similarity_bd_dmd
+        kind: file
+        path: results/pcz_similarity_bd_dmd.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${bd_pcz}
+        --input_pcz_path2 ${dmd_pcz}
+        --output_json_path ${similarity_bd_dmd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_bd_nma
+    name: Compare PCZ similarity BD vs NMA
+    inputs:
+      - id: bd_pcz
+        kind: file
+        path: results/bd_ensemble.pcz
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: similarity_bd_nma
+        kind: file
+        path: results/pcz_similarity_bd_nma.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${bd_pcz}
+        --input_pcz_path2 ${nma_pcz}
+        --output_json_path ${similarity_bd_nma}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_bd_md
+    name: Compare PCZ similarity BD vs MD (MoDEL)
+    inputs:
+      - id: bd_pcz
+        kind: file
+        path: results/bd_ensemble.pcz
+      - id: md_pcz
+        kind: file
+        path: Files/1a32.MoDEL.pcz
+    outputs:
+      - id: similarity_bd_md
+        kind: file
+        path: results/pcz_similarity_bd_md.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${bd_pcz}
+        --input_pcz_path2 ${md_pcz}
+        --output_json_path ${similarity_bd_md}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_dmd_bd
+    name: Compare PCZ similarity DMD vs BD
+    inputs:
+      - id: dmd_pcz
+        kind: file
+        path: results/dmd_ensemble.pcz
+      - id: bd_pcz
+        kind: file
+        path: results/bd_ensemble.pcz
+    outputs:
+      - id: similarity_dmd_bd
+        kind: file
+        path: results/pcz_similarity_dmd_bd.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${dmd_pcz}
+        --input_pcz_path2 ${bd_pcz}
+        --output_json_path ${similarity_dmd_bd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_dmd_dmd
+    name: Compare PCZ similarity DMD vs DMD
+    inputs:
+      - id: dmd_pcz_1
+        kind: file
+        path: results/dmd_ensemble.pcz
+      - id: dmd_pcz_2
+        kind: file
+        path: results/dmd_ensemble.pcz
+    outputs:
+      - id: similarity_dmd_dmd
+        kind: file
+        path: results/pcz_similarity_dmd_dmd.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${dmd_pcz_1}
+        --input_pcz_path2 ${dmd_pcz_2}
+        --output_json_path ${similarity_dmd_dmd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_dmd_nma
+    name: Compare PCZ similarity DMD vs NMA
+    inputs:
+      - id: dmd_pcz
+        kind: file
+        path: results/dmd_ensemble.pcz
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: similarity_dmd_nma
+        kind: file
+        path: results/pcz_similarity_dmd_nma.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${dmd_pcz}
+        --input_pcz_path2 ${nma_pcz}
+        --output_json_path ${similarity_dmd_nma}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_dmd_md
+    name: Compare PCZ similarity DMD vs MD (MoDEL)
+    inputs:
+      - id: dmd_pcz
+        kind: file
+        path: results/dmd_ensemble.pcz
+      - id: md_pcz
+        kind: file
+        path: Files/1a32.MoDEL.pcz
+    outputs:
+      - id: similarity_dmd_md
+        kind: file
+        path: results/pcz_similarity_dmd_md.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${dmd_pcz}
+        --input_pcz_path2 ${md_pcz}
+        --output_json_path ${similarity_dmd_md}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_nma_bd
+    name: Compare PCZ similarity NMA vs BD
+    inputs:
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+      - id: bd_pcz
+        kind: file
+        path: results/bd_ensemble.pcz
+    outputs:
+      - id: similarity_nma_bd
+        kind: file
+        path: results/pcz_similarity_nma_bd.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${nma_pcz}
+        --input_pcz_path2 ${bd_pcz}
+        --output_json_path ${similarity_nma_bd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_nma_dmd
+    name: Compare PCZ similarity NMA vs DMD
+    inputs:
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+      - id: dmd_pcz
+        kind: file
+        path: results/dmd_ensemble.pcz
+    outputs:
+      - id: similarity_nma_dmd
+        kind: file
+        path: results/pcz_similarity_nma_dmd.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${nma_pcz}
+        --input_pcz_path2 ${dmd_pcz}
+        --output_json_path ${similarity_nma_dmd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_nma_nma
+    name: Compare PCZ similarity NMA vs NMA
+    inputs:
+      - id: nma_pcz_1
+        kind: file
+        path: results/nma_ensemble.pcz
+      - id: nma_pcz_2
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: similarity_nma_nma
+        kind: file
+        path: results/pcz_similarity_nma_nma.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${nma_pcz_1}
+        --input_pcz_path2 ${nma_pcz_2}
+        --output_json_path ${similarity_nma_nma}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_nma_md
+    name: Compare PCZ similarity NMA vs MD (MoDEL)
+    inputs:
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+      - id: md_pcz
+        kind: file
+        path: Files/1a32.MoDEL.pcz
+    outputs:
+      - id: similarity_nma_md
+        kind: file
+        path: results/pcz_similarity_nma_md.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${nma_pcz}
+        --input_pcz_path2 ${md_pcz}
+        --output_json_path ${similarity_nma_md}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_md_bd
+    name: Compare PCZ similarity MD (MoDEL) vs BD
+    inputs:
+      - id: md_pcz
+        kind: file
+        path: Files/1a32.MoDEL.pcz
+      - id: bd_pcz
+        kind: file
+        path: results/bd_ensemble.pcz
+    outputs:
+      - id: similarity_md_bd
+        kind: file
+        path: results/pcz_similarity_md_bd.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${md_pcz}
+        --input_pcz_path2 ${bd_pcz}
+        --output_json_path ${similarity_md_bd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_md_dmd
+    name: Compare PCZ similarity MD (MoDEL) vs DMD
+    inputs:
+      - id: md_pcz
+        kind: file
+        path: Files/1a32.MoDEL.pcz
+      - id: dmd_pcz
+        kind: file
+        path: results/dmd_ensemble.pcz
+    outputs:
+      - id: similarity_md_dmd
+        kind: file
+        path: results/pcz_similarity_md_dmd.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${md_pcz}
+        --input_pcz_path2 ${dmd_pcz}
+        --output_json_path ${similarity_md_dmd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_md_nma
+    name: Compare PCZ similarity MD (MoDEL) vs NMA
+    inputs:
+      - id: md_pcz
+        kind: file
+        path: Files/1a32.MoDEL.pcz
+      - id: nma_pcz
+        kind: file
+        path: results/nma_ensemble.pcz
+    outputs:
+      - id: similarity_md_nma
+        kind: file
+        path: results/pcz_similarity_md_nma.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${md_pcz}
+        --input_pcz_path2 ${nma_pcz}
+        --output_json_path ${similarity_md_nma}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_similarity_md_md
+    name: Compare PCZ similarity MD (MoDEL) vs MD (MoDEL)
+    inputs:
+      - id: md_pcz_1
+        kind: file
+        path: Files/1a32.MoDEL.pcz
+      - id: md_pcz_2
+        kind: file
+        path: Files/1a32.MoDEL.pcz
+    outputs:
+      - id: similarity_md_md
+        kind: file
+        path: results/pcz_similarity_md_md.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_similarity
+        --input_pcz_path1 ${md_pcz_1}
+        --input_pcz_path2 ${md_pcz_2}
+        --output_json_path ${similarity_md_md}
+    target:
+      kind: local
+
+edges:
+  # fetch_pdb → extract_atoms_ca
+  - source: fetch_pdb
+    source_output: downloaded_pdb
+    target: extract_atoms_ca
+    target_input: downloaded_pdb
+
+  # extract_atoms_ca → bd_run
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: bd_run
+    target_input: ca_pdb
+
+  # extract_atoms_ca → cpptraj_rms_bd
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: cpptraj_rms_bd
+    target_input: ca_pdb
+
+  # bd_run → cpptraj_rms_bd
+  - source: bd_run
+    source_output: bd_crd
+    target: cpptraj_rms_bd
+    target_input: bd_crd
+
+  # extract_atoms_ca → dmd_run
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: dmd_run
+    target_input: ca_pdb
+
+  # extract_atoms_ca → cpptraj_rms_dmd
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: cpptraj_rms_dmd
+    target_input: ca_pdb
+
+  # dmd_run → cpptraj_rms_dmd
+  - source: dmd_run
+    source_output: dmd_crd
+    target: cpptraj_rms_dmd
+    target_input: dmd_crd
+
+  # extract_atoms_ca → nma_run
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: nma_run
+    target_input: ca_pdb
+
+  # extract_atoms_ca → cpptraj_rms_nma
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: cpptraj_rms_nma
+    target_input: ca_pdb
+
+  # nma_run → cpptraj_rms_nma
+  - source: nma_run
+    source_output: nma_crd
+    target: cpptraj_rms_nma
+    target_input: nma_crd
+
+  # extract_atoms_ca → pcz_zip_bd
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: pcz_zip_bd
+    target_input: ca_pdb
+
+  # bd_run → pcz_zip_bd
+  - source: bd_run
+    source_output: bd_crd
+    target: pcz_zip_bd
+    target_input: bd_crd
+
+  # extract_atoms_ca → pcz_zip_dmd
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: pcz_zip_dmd
+    target_input: ca_pdb
+
+  # dmd_run → pcz_zip_dmd
+  - source: dmd_run
+    source_output: dmd_crd
+    target: pcz_zip_dmd
+    target_input: dmd_crd
+
+  # extract_atoms_ca → pcz_zip_nma
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: pcz_zip_nma
+    target_input: ca_pdb
+
+  # nma_run → pcz_zip_nma
+  - source: nma_run
+    source_output: nma_crd
+    target: pcz_zip_nma
+    target_input: nma_crd
+
+  # pcz_zip_bd → pcz_unzip_bd
+  - source: pcz_zip_bd
+    source_output: bd_pcz
+    target: pcz_unzip_bd
+    target_input: bd_pcz
+
+  # pcz_zip_dmd → pcz_unzip_dmd
+  - source: pcz_zip_dmd
+    source_output: dmd_pcz
+    target: pcz_unzip_dmd
+    target_input: dmd_pcz
+
+  # pcz_zip_nma → pcz_unzip_nma
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_unzip_nma
+    target_input: nma_pcz
+
+  # extract_atoms_ca → cpptraj_rms_bd_uncompressed
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: cpptraj_rms_bd_uncompressed
+    target_input: ca_pdb
+
+  # pcz_unzip_bd → cpptraj_rms_bd_uncompressed
+  - source: pcz_unzip_bd
+    source_output: bd_crd_uncompressed
+    target: cpptraj_rms_bd_uncompressed
+    target_input: bd_crd_uncompressed
+
+  # extract_atoms_ca → cpptraj_rms_dmd_uncompressed
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: cpptraj_rms_dmd_uncompressed
+    target_input: ca_pdb
+
+  # pcz_unzip_dmd → cpptraj_rms_dmd_uncompressed
+  - source: pcz_unzip_dmd
+    source_output: dmd_crd_uncompressed
+    target: cpptraj_rms_dmd_uncompressed
+    target_input: dmd_crd_uncompressed
+
+  # extract_atoms_ca → cpptraj_rms_nma_uncompressed
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: cpptraj_rms_nma_uncompressed
+    target_input: ca_pdb
+
+  # pcz_unzip_nma → cpptraj_rms_nma_uncompressed
+  - source: pcz_unzip_nma
+    source_output: nma_crd_uncompressed
+    target: cpptraj_rms_nma_uncompressed
+    target_input: nma_crd_uncompressed
+
+  # pcz_zip_nma → pcz_info
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_info
+    target_input: nma_pcz
+
+  # pcz_zip_nma → pcz_evecs
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_evecs
+    target_input: nma_pcz
+
+  # pcz_zip_nma → pcz_animate
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_animate
+    target_input: nma_pcz
+
+  # extract_atoms_ca → cpptraj_convert_proj1
+  - source: extract_atoms_ca
+    source_output: ca_pdb
+    target: cpptraj_convert_proj1
+    target_input: ca_pdb
+
+  # pcz_animate → cpptraj_convert_proj1
+  - source: pcz_animate
+    source_output: proj1_crd
+    target: cpptraj_convert_proj1
+    target_input: proj1_crd
+
+  # pcz_zip_nma → pcz_bfactor_all
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_bfactor_all
+    target_input: nma_pcz
+
+  # pcz_zip_nma → pcz_bfactor_mode1
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_bfactor_mode1
+    target_input: nma_pcz
+
+  # pcz_zip_nma → pcz_bfactor_mode2
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_bfactor_mode2
+    target_input: nma_pcz
+
+  # pcz_zip_nma → pcz_bfactor_mode3
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_bfactor_mode3
+    target_input: nma_pcz
+
+  # pcz_zip_nma → pcz_bfactor_mode4
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_bfactor_mode4
+    target_input: nma_pcz
+
+  # pcz_zip_nma → pcz_bfactor_mode5
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_bfactor_mode5
+    target_input: nma_pcz
+
+  # pcz_zip_bd → pcz_hinges_bfactor
+  - source: pcz_zip_bd
+    source_output: bd_pcz
+    target: pcz_hinges_bfactor
+    target_input: bd_pcz
+
+  # pcz_zip_bd → pcz_hinges_dyndom
+  - source: pcz_zip_bd
+    source_output: bd_pcz
+    target: pcz_hinges_dyndom
+    target_input: bd_pcz
+
+  # pcz_zip_bd → pcz_hinges_fcte
+  - source: pcz_zip_bd
+    source_output: bd_pcz
+    target: pcz_hinges_fcte
+    target_input: bd_pcz
+
+  # pcz_zip_nma → pcz_stiffness
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_stiffness
+    target_input: nma_pcz
+
+  # pcz_zip_nma → pcz_collectivity
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_collectivity
+    target_input: nma_pcz
+
+  # Similarity edges - BD outputs
+  - source: pcz_zip_bd
+    source_output: bd_pcz
+    target: pcz_similarity_bd_bd
+    target_input: bd_pcz_1
+
+  - source: pcz_zip_bd
+    source_output: bd_pcz
+    target: pcz_similarity_bd_bd
+    target_input: bd_pcz_2
+
+  - source: pcz_zip_bd
+    source_output: bd_pcz
+    target: pcz_similarity_bd_dmd
+    target_input: bd_pcz
+
+  - source: pcz_zip_dmd
+    source_output: dmd_pcz
+    target: pcz_similarity_bd_dmd
+    target_input: dmd_pcz
+
+  - source: pcz_zip_bd
+    source_output: bd_pcz
+    target: pcz_similarity_bd_nma
+    target_input: bd_pcz
+
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_similarity_bd_nma
+    target_input: nma_pcz
+
+  - source: pcz_zip_bd
+    source_output: bd_pcz
+    target: pcz_similarity_bd_md
+    target_input: bd_pcz
+
+  # Similarity edges - DMD outputs
+  - source: pcz_zip_dmd
+    source_output: dmd_pcz
+    target: pcz_similarity_dmd_bd
+    target_input: dmd_pcz
+
+  - source: pcz_zip_bd
+    source_output: bd_pcz
+    target: pcz_similarity_dmd_bd
+    target_input: bd_pcz
+
+  - source: pcz_zip_dmd
+    source_output: dmd_pcz
+    target: pcz_similarity_dmd_dmd
+    target_input: dmd_pcz_1
+
+  - source: pcz_zip_dmd
+    source_output: dmd_pcz
+    target: pcz_similarity_dmd_dmd
+    target_input: dmd_pcz_2
+
+  - source: pcz_zip_dmd
+    source_output: dmd_pcz
+    target: pcz_similarity_dmd_nma
+    target_input: dmd_pcz
+
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_similarity_dmd_nma
+    target_input: nma_pcz
+
+  - source: pcz_zip_dmd
+    source_output: dmd_pcz
+    target: pcz_similarity_dmd_md
+    target_input: dmd_pcz
+
+  # Similarity edges - NMA outputs
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_similarity_nma_bd
+    target_input: nma_pcz
+
+  - source: pcz_zip_bd
+    source_output: bd_pcz
+    target: pcz_similarity_nma_bd
+    target_input: bd_pcz
+
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_similarity_nma_dmd
+    target_input: nma_pcz
+
+  - source: pcz_zip_dmd
+    source_output: dmd_pcz
+    target: pcz_similarity_nma_dmd
+    target_input: dmd_pcz
+
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_similarity_nma_nma
+    target_input: nma_pcz_1
+
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_similarity_nma_nma
+    target_input: nma_pcz_2
+
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_similarity_nma_md
+    target_input: nma_pcz
+
+  # Similarity edges - MD vs computed trajectories
+  - source: pcz_zip_bd
+    source_output: bd_pcz
+    target: pcz_similarity_md_bd
+    target_input: bd_pcz
+
+  - source: pcz_zip_dmd
+    source_output: dmd_pcz
+    target: pcz_similarity_md_dmd
+    target_input: dmd_pcz
+
+  - source: pcz_zip_nma
+    source_output: nma_pcz
+    target: pcz_similarity_md_nma
+    target_input: nma_pcz
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

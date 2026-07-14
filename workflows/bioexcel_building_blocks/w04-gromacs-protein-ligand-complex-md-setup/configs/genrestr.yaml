@@ -1,0 +1,3 @@
+properties:
+  force_constants: "1000 1000 1000"
+  restrained_group: "System_&_!H*"

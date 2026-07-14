@@ -1,0 +1,15 @@
+name: biobb_wf_autoencoder
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - biobb_pytorch==5.2.3
+  - biobb_analysis==5.2.1
+  - biobb_gromacs==5.2.1
+  - biobb_io==5.2.3
+  - numpy
+  - nglview<=4.0
+  - ipywidgets
+  - requests
+  - matplotlib

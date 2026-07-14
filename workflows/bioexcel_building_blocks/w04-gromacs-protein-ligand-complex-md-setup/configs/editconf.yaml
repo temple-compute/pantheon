@@ -1,0 +1,3 @@
+properties:
+  box_type: octahedron
+  distance_to_molecule: 0.8

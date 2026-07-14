@@ -1,0 +1,1047 @@
+kind: horus_workflow
+name: BioExcel CMIP - Classical Molecular Interaction Potentials
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+tasks:
+  # ── Section 1: Lysozyme MIPs ──────────────────────────────────────────────
+
+  - kind: horus_task
+    id: fetch_pdb_lysozyme
+    name: Download 1AKI Lysozyme structure from PDB
+    inputs:
+      - id: fetch_pdb_lysozyme_config
+        kind: file
+        path: configs/fetch_pdb_lysozyme.yaml
+    outputs:
+      - id: downloaded_pdb_lysozyme
+        kind: file
+        path: results/1aki.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_pdb_lysozyme_config}
+        --output_pdb_path ${downloaded_pdb_lysozyme}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_prepare_pdb_lysozyme
+    name: Prepare Lysozyme PDB for CMIP (add charges and elements)
+    inputs:
+      - id: downloaded_pdb_lysozyme
+        kind: file
+        path: results/1aki.pdb
+    outputs:
+      - id: cmip_pdb_lysozyme
+        kind: file
+        path: results/1aki.cmip.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_prepare_pdb
+        --input_pdb_path ${downloaded_pdb_lysozyme}
+        --output_cmip_pdb_path ${cmip_pdb_lysozyme}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_titration_lysozyme
+    name: Compute structural water molecules and ion positions (titration)
+    inputs:
+      - id: cmip_titration_lysozyme_config
+        kind: file
+        path: configs/cmip_titration_lysozyme.yaml
+      - id: cmip_pdb_lysozyme
+        kind: file
+        path: results/1aki.cmip.pdb
+    outputs:
+      - id: wat_ions_pdb
+        kind: file
+        path: results/1aki.wat_ions.pdb
+      - id: wat_ions_log
+        kind: file
+        path: results/1aki.wat_ions.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_titration
+        --config ${cmip_titration_lysozyme_config}
+        --input_pdb_path ${cmip_pdb_lysozyme}
+        --output_pdb_path ${wat_ions_pdb}
+        --output_log_path ${wat_ions_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cat_pdb_titration
+    name: Add structural water molecules and ions to Lysozyme PDB
+    inputs:
+      - id: cmip_pdb_lysozyme
+        kind: file
+        path: results/1aki.cmip.pdb
+      - id: wat_ions_pdb
+        kind: file
+        path: results/1aki.wat_ions.pdb
+    outputs:
+      - id: tit_pdb
+        kind: file
+        path: results/1aki.tit.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cat_pdb
+        --input_structure1 ${cmip_pdb_lysozyme}
+        --input_structure2 ${wat_ions_pdb}
+        --output_structure_path ${tit_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_run_mip_pos
+    name: Compute positive Molecular Interaction Potential (MIP+)
+    inputs:
+      - id: cmip_run_mip_pos_config
+        kind: file
+        path: configs/cmip_run_mip_pos.yaml
+      - id: cmip_pdb_lysozyme
+        kind: file
+        path: results/1aki.cmip.pdb
+    outputs:
+      - id: mip_pos_log
+        kind: file
+        path: results/1aki.mip_pos.log
+      - id: mip_pos_cube
+        kind: file
+        path: results/1aki.mip_pos.cube
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_run
+        --config ${cmip_run_mip_pos_config}
+        --input_pdb_path ${cmip_pdb_lysozyme}
+        --output_log_path ${mip_pos_log}
+        --output_cube_path ${mip_pos_cube}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_run_mip_neg
+    name: Compute negative Molecular Interaction Potential (MIP-)
+    inputs:
+      - id: cmip_run_mip_neg_config
+        kind: file
+        path: configs/cmip_run_mip_neg.yaml
+      - id: cmip_pdb_lysozyme
+        kind: file
+        path: results/1aki.cmip.pdb
+    outputs:
+      - id: mip_neg_log
+        kind: file
+        path: results/1aki.mip_neg.log
+      - id: mip_neg_cube
+        kind: file
+        path: results/1aki.mip_neg.cube
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_run
+        --config ${cmip_run_mip_neg_config}
+        --input_pdb_path ${cmip_pdb_lysozyme}
+        --output_log_path ${mip_neg_log}
+        --output_cube_path ${mip_neg_cube}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_run_mip_neutral
+    name: Compute neutral Molecular Interaction Potential (MIPn)
+    inputs:
+      - id: cmip_run_mip_neutral_config
+        kind: file
+        path: configs/cmip_run_mip_neutral.yaml
+      - id: cmip_pdb_lysozyme
+        kind: file
+        path: results/1aki.cmip.pdb
+    outputs:
+      - id: mip_neutral_log
+        kind: file
+        path: results/1aki.mip_neutral.log
+      - id: mip_neutral_cube
+        kind: file
+        path: results/1aki.mip_neutral.cube
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_run
+        --config ${cmip_run_mip_neutral_config}
+        --input_pdb_path ${cmip_pdb_lysozyme}
+        --output_log_path ${mip_neutral_log}
+        --output_cube_path ${mip_neutral_cube}
+    target:
+      kind: local
+
+  # ── Section 2: Protein-Ligand Interaction Energies (EGFR + Erlotinib) ────
+
+  - kind: horus_task
+    id: fetch_pdb_complex
+    name: Download 4HJO EGFR-Erlotinib complex structure from PDB
+    inputs:
+      - id: fetch_pdb_complex_config
+        kind: file
+        path: configs/fetch_pdb_complex.yaml
+    outputs:
+      - id: complex_pdb
+        kind: file
+        path: results/4hjo.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_pdb_complex_config}
+        --output_pdb_path ${complex_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: remove_pdb_water
+    name: Remove water molecules from EGFR complex structure
+    inputs:
+      - id: complex_pdb
+        kind: file
+        path: results/4hjo.pdb
+    outputs:
+      - id: nohoh_pdb
+        kind: file
+        path: results/4hjo.noHOH.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        remove_pdb_water
+        --input_pdb_path ${complex_pdb}
+        --output_pdb_path ${nohoh_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_heteroatoms
+    name: Extract Erlotinib (AQ4) ligand from complex
+    inputs:
+      - id: extract_heteroatoms_config
+        kind: file
+        path: configs/extract_heteroatoms.yaml
+      - id: nohoh_pdb
+        kind: file
+        path: results/4hjo.noHOH.pdb
+    outputs:
+      - id: ligand_pdb
+        kind: file
+        path: results/AQ4.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        extract_heteroatoms
+        --config ${extract_heteroatoms_config}
+        --input_structure_path ${nohoh_pdb}
+        --output_heteroatom_path ${ligand_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: reduce_add_hydrogens
+    name: Add hydrogen atoms to Erlotinib ligand
+    inputs:
+      - id: ligand_pdb
+        kind: file
+        path: results/AQ4.pdb
+    outputs:
+      - id: ligand_h_pdb
+        kind: file
+        path: results/AQ4.reduce.H.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        reduce_add_hydrogens
+        --input_path ${ligand_pdb}
+        --output_path ${ligand_h_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: acpype_params_ac
+    name: Generate AMBER topology parameters for Erlotinib ligand (ACPype)
+    inputs:
+      - id: acpype_params_ac_config
+        kind: file
+        path: configs/acpype_params_ac.yaml
+      - id: ligand_h_pdb
+        kind: file
+        path: results/AQ4.reduce.H.pdb
+    outputs:
+      - id: acpype_inpcrd
+        kind: file
+        path: results/AQ4params.inpcrd
+      - id: acpype_frcmod
+        kind: file
+        path: results/AQ4params.frcmod
+      - id: acpype_lib
+        kind: file
+        path: results/AQ4params.lib
+      - id: acpype_prmtop
+        kind: file
+        path: results/AQ4params.prmtop
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        acpype_params_ac
+        --config ${acpype_params_ac_config}
+        --input_path ${ligand_h_pdb}
+        --output_path_inpcrd ${acpype_inpcrd}
+        --output_path_frcmod ${acpype_frcmod}
+        --output_path_lib ${acpype_lib}
+        --output_path_prmtop ${acpype_prmtop}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: leap_gen_top
+    name: Generate AMBER system topology for EGFR-Erlotinib complex (tleap)
+    inputs:
+      - id: leap_gen_top_config
+        kind: file
+        path: configs/leap_gen_top.yaml
+      - id: nohoh_pdb
+        kind: file
+        path: results/4hjo.noHOH.pdb
+      - id: acpype_lib
+        kind: file
+        path: results/AQ4params.lib
+      - id: acpype_frcmod
+        kind: file
+        path: results/AQ4params.frcmod
+    outputs:
+      - id: system_pdb
+        kind: file
+        path: results/structure.leap.pdb
+      - id: system_top
+        kind: file
+        path: results/structure.leap.prmtop
+      - id: system_crd
+        kind: file
+        path: results/structure.leap.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        leap_gen_top
+        --config ${leap_gen_top_config}
+        --input_pdb_path ${nohoh_pdb}
+        --input_lib_path ${acpype_lib}
+        --input_frcmod_path ${acpype_frcmod}
+        --output_pdb_path ${system_pdb}
+        --output_top_path ${system_top}
+        --output_crd_path ${system_crd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: sander_mdrun
+    name: Energy minimization of EGFR-Erlotinib complex (AMBER sander)
+    inputs:
+      - id: sander_mdrun_config
+        kind: file
+        path: configs/sander_mdrun.yaml
+      - id: system_top
+        kind: file
+        path: results/structure.leap.prmtop
+      - id: system_crd
+        kind: file
+        path: results/structure.leap.crd
+    outputs:
+      - id: amber_traj
+        kind: file
+        path: results/structure.amber.crd
+      - id: amber_rst
+        kind: file
+        path: results/structure.amber.rst
+      - id: amber_log
+        kind: file
+        path: results/structure.amber.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_mdrun_config}
+        --input_top_path ${system_top}
+        --input_crd_path ${system_crd}
+        --output_traj_path ${amber_traj}
+        --output_rst_path ${amber_rst}
+        --output_log_path ${amber_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: amber_to_pdb
+    name: Convert minimized AMBER restart to PDB
+    inputs:
+      - id: system_top
+        kind: file
+        path: results/structure.leap.prmtop
+      - id: amber_rst
+        kind: file
+        path: results/structure.amber.rst
+    outputs:
+      - id: min_pdb
+        kind: file
+        path: results/structure.amber-min.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        amber_to_pdb
+        --input_top_path ${system_top}
+        --input_crd_path ${amber_rst}
+        --output_pdb_path ${min_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_prepare_structure_complex
+    name: Prepare EGFR-Erlotinib complex for CMIP using AMBER topology charges
+    inputs:
+      - id: min_pdb
+        kind: file
+        path: results/structure.amber-min.pdb
+      - id: system_top
+        kind: file
+        path: results/structure.leap.prmtop
+    outputs:
+      - id: cmip_complex_pdb
+        kind: file
+        path: results/4hjo.cmip.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_prepare_structure
+        --input_pdb_path ${min_pdb}
+        --input_topology_path ${system_top}
+        --output_cmip_pdb_path ${cmip_complex_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: remove_ligand
+    name: Extract isolated EGFR protein structure (remove Erlotinib)
+    inputs:
+      - id: remove_ligand_config
+        kind: file
+        path: configs/remove_ligand.yaml
+      - id: cmip_complex_pdb
+        kind: file
+        path: results/4hjo.cmip.pdb
+    outputs:
+      - id: no_lig_pdb
+        kind: file
+        path: results/4hjo.noLIG.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        remove_ligand
+        --config ${remove_ligand_config}
+        --input_structure_path ${cmip_complex_pdb}
+        --output_structure_path ${no_lig_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_ignore_residues_protein
+    name: Mark EGFR protein residues as dielectric for CMIP interaction
+    inputs:
+      - id: cmip_ignore_residues_protein_config
+        kind: file
+        path: configs/cmip_ignore_residues_protein.yaml
+      - id: cmip_complex_pdb
+        kind: file
+        path: results/4hjo.cmip.pdb
+    outputs:
+      - id: prot_ignored_pdb
+        kind: file
+        path: results/4hjo.Prot_ignored.cmip.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_ignore_residues
+        --config ${cmip_ignore_residues_protein_config}
+        --input_cmip_pdb_path ${cmip_complex_pdb}
+        --output_cmip_pdb_path ${prot_ignored_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_run_egfr_interaction
+    name: Compute EGFR-Erlotinib protein-ligand interaction energies
+    inputs:
+      - id: cmip_run_egfr_interaction_config
+        kind: file
+        path: configs/cmip_run_egfr_interaction.yaml
+      - id: prot_ignored_pdb
+        kind: file
+        path: results/4hjo.Prot_ignored.cmip.pdb
+      - id: no_lig_pdb
+        kind: file
+        path: results/4hjo.noLIG.pdb
+    outputs:
+      - id: egfr_energies_log
+        kind: file
+        path: results/4hjo.EGFR.energies.log
+      - id: egfr_byat_out
+        kind: file
+        path: results/4hjo.EGFR.ener.byat.out
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_run
+        --config ${cmip_run_egfr_interaction_config}
+        --input_pdb_path ${prot_ignored_pdb}
+        --input_probe_pdb_path ${no_lig_pdb}
+        --output_log_path ${egfr_energies_log}
+        --output_byat_path ${egfr_byat_out}
+    target:
+      kind: local
+
+  # ── Section 3: Protein-Protein Interaction Energies (RBD + hACE2) ─────────
+
+  - kind: horus_task
+    id: cmip_prepare_structure_md
+    name: Prepare RBD-hACE2 MD structure for CMIP using MD topology charges
+    inputs:
+      - id: md_pdb
+        kind: file
+        path: Files/RBD-hACE2-ZN.pdb
+      - id: md_top
+        kind: file
+        path: Files/RBD-hACE2-ZN.top
+    outputs:
+      - id: md_cmip_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.cmip.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_prepare_structure
+        --input_pdb_path ${md_pdb}
+        --input_topology_path ${md_top}
+        --output_cmip_pdb_path ${md_cmip_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_chain_hace2
+    name: Extract hACE2 chain A from RBD-hACE2 complex
+    inputs:
+      - id: extract_chain_hace2_config
+        kind: file
+        path: configs/extract_chain_hace2.yaml
+      - id: md_cmip_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.cmip.pdb
+    outputs:
+      - id: hace2_cmip_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.hACE2.cmip.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        extract_chain
+        --config ${extract_chain_hace2_config}
+        --input_structure_path ${md_cmip_pdb}
+        --output_structure_path ${hace2_cmip_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_chain_rbd
+    name: Extract RBD chain B from RBD-hACE2 complex
+    inputs:
+      - id: extract_chain_rbd_config
+        kind: file
+        path: configs/extract_chain_rbd.yaml
+      - id: md_cmip_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.cmip.pdb
+    outputs:
+      - id: rbd_cmip_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.RBD.cmip.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        extract_chain
+        --config ${extract_chain_rbd_config}
+        --input_structure_path ${md_cmip_pdb}
+        --output_structure_path ${rbd_cmip_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_run_rbd_box
+    name: Compute 3D grid box enclosing the RBD monomer
+    inputs:
+      - id: cmip_run_rbd_box_config
+        kind: file
+        path: configs/cmip_run_rbd_box.yaml
+      - id: rbd_cmip_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.RBD.cmip.pdb
+    outputs:
+      - id: rbd_box_log
+        kind: file
+        path: results/RBD.box.log
+      - id: rbd_box_json
+        kind: file
+        path: results/RBD.box.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_run
+        --config ${cmip_run_rbd_box_config}
+        --input_pdb_path ${rbd_cmip_pdb}
+        --output_log_path ${rbd_box_log}
+        --output_json_box_path ${rbd_box_json}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_run_hace2_box
+    name: Compute 3D grid box enclosing the hACE2 monomer
+    inputs:
+      - id: cmip_run_hace2_box_config
+        kind: file
+        path: configs/cmip_run_hace2_box.yaml
+      - id: hace2_cmip_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.hACE2.cmip.pdb
+    outputs:
+      - id: hace2_box_log
+        kind: file
+        path: results/hACE2.box.log
+      - id: hace2_box_json
+        kind: file
+        path: results/hACE2.box.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_run
+        --config ${cmip_run_hace2_box_config}
+        --input_pdb_path ${hace2_cmip_pdb}
+        --output_log_path ${hace2_box_log}
+        --output_json_box_path ${hace2_box_json}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_run_complex_box
+    name: Compute 3D grid box enclosing the RBD-hACE2 complex
+    inputs:
+      - id: cmip_run_complex_box_config
+        kind: file
+        path: configs/cmip_run_complex_box.yaml
+      - id: md_cmip_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.cmip.pdb
+    outputs:
+      - id: complex_box_log
+        kind: file
+        path: results/COMPLEX.box.log
+      - id: complex_box_json
+        kind: file
+        path: results/COMPLEX.box.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_run
+        --config ${cmip_run_complex_box_config}
+        --input_pdb_path ${md_cmip_pdb}
+        --output_log_path ${complex_box_log}
+        --output_json_box_path ${complex_box_json}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_ignore_residues_rbd
+    name: Mark RBD residues (chain B) as dielectric for CMIP
+    inputs:
+      - id: cmip_ignore_residues_rbd_config
+        kind: file
+        path: configs/cmip_ignore_residues_rbd.yaml
+      - id: md_cmip_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.cmip.pdb
+    outputs:
+      - id: rbd_ignored_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.RBD_ignored.cmip.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_ignore_residues
+        --config ${cmip_ignore_residues_rbd_config}
+        --input_cmip_pdb_path ${md_cmip_pdb}
+        --output_cmip_pdb_path ${rbd_ignored_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_run_rbd_interaction
+    name: Compute RBD protein-protein interaction energies with hACE2
+    inputs:
+      - id: cmip_run_rbd_interaction_config
+        kind: file
+        path: configs/cmip_run_rbd_interaction.yaml
+      - id: rbd_ignored_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.RBD_ignored.cmip.pdb
+      - id: rbd_cmip_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.RBD.cmip.pdb
+      - id: rbd_box_json
+        kind: file
+        path: results/RBD.box.json
+      - id: complex_box_json
+        kind: file
+        path: results/COMPLEX.box.json
+    outputs:
+      - id: rbd_energies_log
+        kind: file
+        path: results/RBD.energies.log
+      - id: rbd_byat_out
+        kind: file
+        path: results/RBD.energies.byat.out
+      - id: rbd_energies_box_json
+        kind: file
+        path: results/RBD.energies.box.output.json
+      - id: complex_energies_box_json
+        kind: file
+        path: results/COMPLEX.energies.box.output.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_run
+        --config ${cmip_run_rbd_interaction_config}
+        --input_pdb_path ${rbd_ignored_pdb}
+        --input_probe_pdb_path ${rbd_cmip_pdb}
+        --input_json_box_path ${rbd_box_json}
+        --input_json_external_box_path ${complex_box_json}
+        --output_log_path ${rbd_energies_log}
+        --output_byat_path ${rbd_byat_out}
+        --output_json_box_path ${rbd_energies_box_json}
+        --output_json_external_box_path ${complex_energies_box_json}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_ignore_residues_hace2
+    name: Mark hACE2 residues (chain A) as dielectric for CMIP
+    inputs:
+      - id: cmip_ignore_residues_hace2_config
+        kind: file
+        path: configs/cmip_ignore_residues_hace2.yaml
+      - id: md_cmip_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.cmip.pdb
+    outputs:
+      - id: hace2_ignored_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.hACE2_ign.cmip.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_ignore_residues
+        --config ${cmip_ignore_residues_hace2_config}
+        --input_cmip_pdb_path ${md_cmip_pdb}
+        --output_cmip_pdb_path ${hace2_ignored_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cmip_run_hace2_interaction
+    name: Compute hACE2 protein-protein interaction energies with RBD
+    inputs:
+      - id: cmip_run_hace2_interaction_config
+        kind: file
+        path: configs/cmip_run_hace2_interaction.yaml
+      - id: hace2_ignored_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.hACE2_ign.cmip.pdb
+      - id: hace2_cmip_pdb
+        kind: file
+        path: results/RBD-hACE2-ZN.hACE2.cmip.pdb
+      - id: hace2_box_json
+        kind: file
+        path: results/hACE2.box.json
+      - id: complex_box_json
+        kind: file
+        path: results/COMPLEX.box.json
+    outputs:
+      - id: hace2_energies_log
+        kind: file
+        path: results/hACE2.energies.log
+      - id: hace2_byat_out
+        kind: file
+        path: results/hACE2.energies.byat.out
+      - id: hace2_energies_box_json
+        kind: file
+        path: results/hACE2.energies.box.output.json
+      - id: complex_2_energies_box_json
+        kind: file
+        path: results/COMPLEX_2.energies.box.output.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cmip_run
+        --config ${cmip_run_hace2_interaction_config}
+        --input_pdb_path ${hace2_ignored_pdb}
+        --input_probe_pdb_path ${hace2_cmip_pdb}
+        --input_json_box_path ${hace2_box_json}
+        --input_json_external_box_path ${complex_box_json}
+        --output_log_path ${hace2_energies_log}
+        --output_byat_path ${hace2_byat_out}
+        --output_json_box_path ${hace2_energies_box_json}
+        --output_json_external_box_path ${complex_2_energies_box_json}
+    target:
+      kind: local
+
+edges:
+  # Lysozyme MIP pipeline
+  - source: fetch_pdb_lysozyme
+    source_output: downloaded_pdb_lysozyme
+    target: cmip_prepare_pdb_lysozyme
+    target_input: downloaded_pdb_lysozyme
+
+  - source: cmip_prepare_pdb_lysozyme
+    source_output: cmip_pdb_lysozyme
+    target: cmip_titration_lysozyme
+    target_input: cmip_pdb_lysozyme
+
+  - source: cmip_prepare_pdb_lysozyme
+    source_output: cmip_pdb_lysozyme
+    target: cat_pdb_titration
+    target_input: cmip_pdb_lysozyme
+
+  - source: cmip_prepare_pdb_lysozyme
+    source_output: cmip_pdb_lysozyme
+    target: cmip_run_mip_pos
+    target_input: cmip_pdb_lysozyme
+
+  - source: cmip_prepare_pdb_lysozyme
+    source_output: cmip_pdb_lysozyme
+    target: cmip_run_mip_neg
+    target_input: cmip_pdb_lysozyme
+
+  - source: cmip_prepare_pdb_lysozyme
+    source_output: cmip_pdb_lysozyme
+    target: cmip_run_mip_neutral
+    target_input: cmip_pdb_lysozyme
+
+  - source: cmip_titration_lysozyme
+    source_output: wat_ions_pdb
+    target: cat_pdb_titration
+    target_input: wat_ions_pdb
+
+  # Protein-Ligand pipeline (EGFR + Erlotinib)
+  - source: fetch_pdb_complex
+    source_output: complex_pdb
+    target: remove_pdb_water
+    target_input: complex_pdb
+
+  - source: remove_pdb_water
+    source_output: nohoh_pdb
+    target: extract_heteroatoms
+    target_input: nohoh_pdb
+
+  - source: remove_pdb_water
+    source_output: nohoh_pdb
+    target: leap_gen_top
+    target_input: nohoh_pdb
+
+  - source: extract_heteroatoms
+    source_output: ligand_pdb
+    target: reduce_add_hydrogens
+    target_input: ligand_pdb
+
+  - source: reduce_add_hydrogens
+    source_output: ligand_h_pdb
+    target: acpype_params_ac
+    target_input: ligand_h_pdb
+
+  - source: acpype_params_ac
+    source_output: acpype_lib
+    target: leap_gen_top
+    target_input: acpype_lib
+
+  - source: acpype_params_ac
+    source_output: acpype_frcmod
+    target: leap_gen_top
+    target_input: acpype_frcmod
+
+  - source: leap_gen_top
+    source_output: system_top
+    target: sander_mdrun
+    target_input: system_top
+
+  - source: leap_gen_top
+    source_output: system_crd
+    target: sander_mdrun
+    target_input: system_crd
+
+  - source: leap_gen_top
+    source_output: system_top
+    target: amber_to_pdb
+    target_input: system_top
+
+  - source: sander_mdrun
+    source_output: amber_rst
+    target: amber_to_pdb
+    target_input: amber_rst
+
+  - source: amber_to_pdb
+    source_output: min_pdb
+    target: cmip_prepare_structure_complex
+    target_input: min_pdb
+
+  - source: leap_gen_top
+    source_output: system_top
+    target: cmip_prepare_structure_complex
+    target_input: system_top
+
+  - source: cmip_prepare_structure_complex
+    source_output: cmip_complex_pdb
+    target: remove_ligand
+    target_input: cmip_complex_pdb
+
+  - source: cmip_prepare_structure_complex
+    source_output: cmip_complex_pdb
+    target: cmip_ignore_residues_protein
+    target_input: cmip_complex_pdb
+
+  - source: remove_ligand
+    source_output: no_lig_pdb
+    target: cmip_run_egfr_interaction
+    target_input: no_lig_pdb
+
+  - source: cmip_ignore_residues_protein
+    source_output: prot_ignored_pdb
+    target: cmip_run_egfr_interaction
+    target_input: prot_ignored_pdb
+
+  # Protein-Protein pipeline (RBD + hACE2)
+  - source: cmip_prepare_structure_md
+    source_output: md_cmip_pdb
+    target: extract_chain_hace2
+    target_input: md_cmip_pdb
+
+  - source: cmip_prepare_structure_md
+    source_output: md_cmip_pdb
+    target: extract_chain_rbd
+    target_input: md_cmip_pdb
+
+  - source: cmip_prepare_structure_md
+    source_output: md_cmip_pdb
+    target: cmip_run_complex_box
+    target_input: md_cmip_pdb
+
+  - source: cmip_prepare_structure_md
+    source_output: md_cmip_pdb
+    target: cmip_ignore_residues_rbd
+    target_input: md_cmip_pdb
+
+  - source: cmip_prepare_structure_md
+    source_output: md_cmip_pdb
+    target: cmip_ignore_residues_hace2
+    target_input: md_cmip_pdb
+
+  - source: extract_chain_hace2
+    source_output: hace2_cmip_pdb
+    target: cmip_run_hace2_box
+    target_input: hace2_cmip_pdb
+
+  - source: extract_chain_hace2
+    source_output: hace2_cmip_pdb
+    target: cmip_run_hace2_interaction
+    target_input: hace2_cmip_pdb
+
+  - source: extract_chain_rbd
+    source_output: rbd_cmip_pdb
+    target: cmip_run_rbd_box
+    target_input: rbd_cmip_pdb
+
+  - source: extract_chain_rbd
+    source_output: rbd_cmip_pdb
+    target: cmip_run_rbd_interaction
+    target_input: rbd_cmip_pdb
+
+  - source: cmip_run_rbd_box
+    source_output: rbd_box_json
+    target: cmip_run_rbd_interaction
+    target_input: rbd_box_json
+
+  - source: cmip_run_hace2_box
+    source_output: hace2_box_json
+    target: cmip_run_hace2_interaction
+    target_input: hace2_box_json
+
+  - source: cmip_run_complex_box
+    source_output: complex_box_json
+    target: cmip_run_rbd_interaction
+    target_input: complex_box_json
+
+  - source: cmip_run_complex_box
+    source_output: complex_box_json
+    target: cmip_run_hace2_interaction
+    target_input: complex_box_json
+
+  - source: cmip_ignore_residues_rbd
+    source_output: rbd_ignored_pdb
+    target: cmip_run_rbd_interaction
+    target_input: rbd_ignored_pdb
+
+  - source: cmip_ignore_residues_hace2
+    source_output: hace2_ignored_pdb
+    target: cmip_run_hace2_interaction
+    target_input: hace2_ignored_pdb
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

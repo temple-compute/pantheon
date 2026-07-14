@@ -1,0 +1,14 @@
+# Ion library
+# Each line gives the ion/atom name (in signle quotes) and its formal charge
+# Up to 40 ion type are allowed in this library file
+'Na+' 1
+'K+' 1
+'K' 1
+'Cl' -1
+'Cl-' -1
+'CL' -1
+'P' -1
+'C1*' 0
+'NH1' 1
+'NH2' 1
+'NZ' 1

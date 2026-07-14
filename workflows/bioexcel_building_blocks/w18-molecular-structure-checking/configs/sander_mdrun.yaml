@@ -1,0 +1,7 @@
+simulation_type: minimization
+mdin:
+  ntb: 0
+  cut: 12
+  maxcyc: 500
+  ntwx: 50
+  ncyc: 50

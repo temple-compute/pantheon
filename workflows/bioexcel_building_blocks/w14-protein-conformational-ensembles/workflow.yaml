@@ -1,0 +1,1584 @@
+kind: horus_workflow
+name: BioExcel FlexDyn - Protein Flexibility and Dynamics Analysis
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+tasks:
+  - kind: horus_task
+    id: fetch_pdb
+    name: Download 1AKE structure from PDB
+    inputs:
+      - id: fetch_pdb_config
+        kind: file
+        path: configs/fetch_pdb.yaml
+    outputs:
+      - id: downloaded_pdb
+        kind: file
+        path: results/1ake.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_pdb_config}
+        --output_pdb_path ${downloaded_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_model
+    name: Extract first model from PDB
+    inputs:
+      - id: extract_model_config
+        kind: file
+        path: configs/extract_model.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/1ake.pdb
+    outputs:
+      - id: pdb_model
+        kind: file
+        path: results/1ake_model.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        extract_model
+        --config ${extract_model_config}
+        --input_structure_path ${downloaded_pdb}
+        --output_structure_path ${pdb_model}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_chain
+    name: Extract chain A monomer
+    inputs:
+      - id: extract_chain_config
+        kind: file
+        path: configs/extract_chain.yaml
+      - id: pdb_model
+        kind: file
+        path: results/1ake_model.pdb
+    outputs:
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        extract_chain
+        --config ${extract_chain_config}
+        --input_structure_path ${pdb_model}
+        --output_structure_path ${monomer}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_mask_backbone
+    name: Extract backbone atoms from monomer
+    inputs:
+      - id: cpptraj_mask_backbone_config
+        kind: file
+        path: configs/cpptraj_mask_backbone.yaml
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    outputs:
+      - id: prot_backbone
+        kind: file
+        path: results/1ake_backbone.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_mask
+        --config ${cpptraj_mask_backbone_config}
+        --input_top_path ${monomer}
+        --input_traj_path ${monomer}
+        --output_cpptraj_path ${prot_backbone}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_mask_ca
+    name: Extract Cα atoms from monomer
+    inputs:
+      - id: cpptraj_mask_ca_config
+        kind: file
+        path: configs/cpptraj_mask_ca.yaml
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    outputs:
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_mask
+        --config ${cpptraj_mask_ca_config}
+        --input_top_path ${monomer}
+        --input_traj_path ${monomer}
+        --output_cpptraj_path ${prot_ca}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: concoord_dist
+    name: CONCOORD distance restraints calculation
+    inputs:
+      - id: concoord_dist_config
+        kind: file
+        path: configs/concoord_dist.yaml
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    outputs:
+      - id: concoord_dist_pdb
+        kind: file
+        path: results/1ake_dist.pdb
+      - id: concoord_dist_gro
+        kind: file
+        path: results/1ake_dist.gro
+      - id: concoord_dist_dat
+        kind: file
+        path: results/1ake_dist.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        concoord_dist
+        --config ${concoord_dist_config}
+        --input_structure_path ${monomer}
+        --output_pdb_path ${concoord_dist_pdb}
+        --output_gro_path ${concoord_dist_gro}
+        --output_dat_path ${concoord_dist_dat}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: concoord_disco
+    name: CONCOORD structure ensemble generation
+    inputs:
+      - id: concoord_disco_config
+        kind: file
+        path: configs/concoord_disco.yaml
+      - id: concoord_dist_pdb
+        kind: file
+        path: results/1ake_dist.pdb
+      - id: concoord_dist_dat
+        kind: file
+        path: results/1ake_dist.dat
+    outputs:
+      - id: concoord_disco_pdb
+        kind: file
+        path: results/1ake_disco_traj.pdb
+      - id: concoord_disco_rmsd
+        kind: file
+        path: results/1ake_disco_rmsd.dat
+      - id: concoord_disco_bfactor
+        kind: file
+        path: results/1ake_disco_bfactor.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        concoord_disco
+        --config ${concoord_disco_config}
+        --input_pdb_path ${concoord_dist_pdb}
+        --input_dat_path ${concoord_dist_dat}
+        --output_traj_path ${concoord_disco_pdb}
+        --output_rmsd_path ${concoord_disco_rmsd}
+        --output_bfactor_path ${concoord_disco_bfactor}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_concoord
+    name: RMSD analysis of CONCOORD ensemble
+    inputs:
+      - id: cpptraj_rms_concoord_config
+        kind: file
+        path: configs/cpptraj_rms_concoord.yaml
+      - id: concoord_dist_pdb
+        kind: file
+        path: results/1ake_dist.pdb
+      - id: concoord_disco_pdb
+        kind: file
+        path: results/1ake_disco_traj.pdb
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    outputs:
+      - id: concoord_rmsd
+        kind: file
+        path: results/1ake_concoord_rmsd.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_concoord_config}
+        --input_top_path ${concoord_dist_pdb}
+        --input_traj_path ${concoord_disco_pdb}
+        --output_cpptraj_path ${concoord_rmsd}
+        --input_exp_path ${monomer}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_convert_concoord
+    name: Convert CONCOORD trajectory to TRR
+    inputs:
+      - id: cpptraj_convert_concoord_config
+        kind: file
+        path: configs/cpptraj_convert_concoord.yaml
+      - id: concoord_dist_pdb
+        kind: file
+        path: results/1ake_dist.pdb
+      - id: concoord_disco_pdb
+        kind: file
+        path: results/1ake_disco_traj.pdb
+    outputs:
+      - id: concoord_trr
+        kind: file
+        path: results/1ake_disco_traj.trr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_convert
+        --config ${cpptraj_convert_concoord_config}
+        --input_top_path ${concoord_dist_pdb}
+        --input_traj_path ${concoord_disco_pdb}
+        --output_cpptraj_path ${concoord_trr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: prody_anm
+    name: ProDy Anisotropic Network Model ensemble
+    inputs:
+      - id: prody_anm_config
+        kind: file
+        path: configs/prody_anm.yaml
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    outputs:
+      - id: prody_ensemble
+        kind: file
+        path: results/1ake_prody_anm_traj.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        prody_anm
+        --config ${prody_anm_config}
+        --input_pdb_path ${monomer}
+        --output_pdb_path ${prody_ensemble}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_prody
+    name: RMSD analysis of ProDy ANM ensemble
+    inputs:
+      - id: cpptraj_rms_prody_config
+        kind: file
+        path: configs/cpptraj_rms_prody.yaml
+      - id: prody_ensemble
+        kind: file
+        path: results/1ake_prody_anm_traj.pdb
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    outputs:
+      - id: prody_rmsd
+        kind: file
+        path: results/1ake_prody_rmsd.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_prody_config}
+        --input_top_path ${prody_ensemble}
+        --input_traj_path ${prody_ensemble}
+        --output_cpptraj_path ${prody_rmsd}
+        --input_exp_path ${monomer}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_convert_prody
+    name: Convert ProDy ANM trajectory to TRR
+    inputs:
+      - id: cpptraj_convert_prody_config
+        kind: file
+        path: configs/cpptraj_convert_prody.yaml
+      - id: prot_backbone
+        kind: file
+        path: results/1ake_backbone.pdb
+      - id: prody_ensemble
+        kind: file
+        path: results/1ake_prody_anm_traj.pdb
+    outputs:
+      - id: prody_trr
+        kind: file
+        path: results/1ake_prody_anm_traj.trr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_convert
+        --config ${cpptraj_convert_prody_config}
+        --input_top_path ${prot_backbone}
+        --input_traj_path ${prody_ensemble}
+        --output_cpptraj_path ${prody_trr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: bd_run
+    name: FlexServ Brownian Dynamics simulation
+    inputs:
+      - id: bd_run_config
+        kind: file
+        path: configs/bd_run.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+    outputs:
+      - id: bd_crd
+        kind: file
+        path: results/1ake_flexserv_bd_ensemble.mdcrd
+      - id: bd_log
+        kind: file
+        path: results/1ake_flexserv_bd_ensemble.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        bd_run
+        --config ${bd_run_config}
+        --input_pdb_path ${prot_ca}
+        --output_crd_path ${bd_crd}
+        --output_log_path ${bd_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_bd
+    name: RMSD analysis and fitting of BD trajectory
+    inputs:
+      - id: cpptraj_rms_bd_config
+        kind: file
+        path: configs/cpptraj_rms_bd.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+      - id: bd_crd
+        kind: file
+        path: results/1ake_flexserv_bd_ensemble.mdcrd
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    outputs:
+      - id: flexserv_bd_rmsd
+        kind: file
+        path: results/1ake_flexserv_bd_rmsd.dat
+      - id: flexserv_bd_traj_fitted
+        kind: file
+        path: results/1ake_flexserv_bd_traj_fitted.trr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_bd_config}
+        --input_top_path ${prot_ca}
+        --input_traj_path ${bd_crd}
+        --output_cpptraj_path ${flexserv_bd_rmsd}
+        --output_traj_path ${flexserv_bd_traj_fitted}
+        --input_exp_path ${monomer}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: dmd_run
+    name: FlexServ Discrete Molecular Dynamics simulation
+    inputs:
+      - id: dmd_run_config
+        kind: file
+        path: configs/dmd_run.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+    outputs:
+      - id: dmd_crd
+        kind: file
+        path: results/1ake_flexserv_dmd_ensemble.mdcrd
+      - id: dmd_log
+        kind: file
+        path: results/1ake_flexserv_dmd_ensemble.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        dmd_run
+        --config ${dmd_run_config}
+        --input_pdb_path ${prot_ca}
+        --output_crd_path ${dmd_crd}
+        --output_log_path ${dmd_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_dmd
+    name: RMSD analysis and fitting of DMD trajectory
+    inputs:
+      - id: cpptraj_rms_dmd_config
+        kind: file
+        path: configs/cpptraj_rms_dmd.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+      - id: dmd_crd
+        kind: file
+        path: results/1ake_flexserv_dmd_ensemble.mdcrd
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    outputs:
+      - id: flexserv_dmd_rmsd
+        kind: file
+        path: results/1ake_flexserv_dmd_rmsd.dat
+      - id: flexserv_dmd_traj_fitted
+        kind: file
+        path: results/1ake_flexserv_dmd_traj_fitted.trr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_dmd_config}
+        --input_top_path ${prot_ca}
+        --input_traj_path ${dmd_crd}
+        --output_cpptraj_path ${flexserv_dmd_rmsd}
+        --output_traj_path ${flexserv_dmd_traj_fitted}
+        --input_exp_path ${monomer}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: nma_run
+    name: FlexServ Normal Mode Analysis simulation
+    inputs:
+      - id: nma_run_config
+        kind: file
+        path: configs/nma_run.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+    outputs:
+      - id: nma_crd
+        kind: file
+        path: results/1ake_flexserv_nma_ensemble.mdcrd
+      - id: nma_log
+        kind: file
+        path: results/1ake_flexserv_nma_ensemble.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        nma_run
+        --config ${nma_run_config}
+        --input_pdb_path ${prot_ca}
+        --output_crd_path ${nma_crd}
+        --output_log_path ${nma_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_nma
+    name: RMSD analysis of FlexServ NMA trajectory
+    inputs:
+      - id: cpptraj_rms_nma_config
+        kind: file
+        path: configs/cpptraj_rms_nma.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+      - id: nma_crd
+        kind: file
+        path: results/1ake_flexserv_nma_ensemble.mdcrd
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    outputs:
+      - id: flexserv_nma_rmsd
+        kind: file
+        path: results/1ake_flexserv_nma_rmsd.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_nma_config}
+        --input_top_path ${prot_ca}
+        --input_traj_path ${nma_crd}
+        --output_cpptraj_path ${flexserv_nma_rmsd}
+        --input_exp_path ${monomer}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_convert_nma
+    name: Convert FlexServ NMA trajectory to TRR
+    inputs:
+      - id: cpptraj_convert_nma_config
+        kind: file
+        path: configs/cpptraj_convert_nma.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+      - id: nma_crd
+        kind: file
+        path: results/1ake_flexserv_nma_ensemble.mdcrd
+    outputs:
+      - id: nma_trr
+        kind: file
+        path: results/1ake_flexserv_nma_ensemble.trr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_convert
+        --config ${cpptraj_convert_nma_config}
+        --input_top_path ${prot_ca}
+        --input_traj_path ${nma_crd}
+        --output_cpptraj_path ${nma_trr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: nolb_nma
+    name: NOLB Non-Linear Rigid Block NMA ensemble
+    inputs:
+      - id: nolb_nma_config
+        kind: file
+        path: configs/nolb_nma.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+    outputs:
+      - id: nolb_pdb
+        kind: file
+        path: results/1ake_nolb_ensemble.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        nolb_nma
+        --config ${nolb_nma_config}
+        --input_pdb_path ${prot_ca}
+        --output_pdb_path ${nolb_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_nolb
+    name: RMSD analysis of NOLB ensemble
+    inputs:
+      - id: cpptraj_rms_nolb_config
+        kind: file
+        path: configs/cpptraj_rms_nolb.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+      - id: nolb_pdb
+        kind: file
+        path: results/1ake_nolb_ensemble.pdb
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    outputs:
+      - id: nolb_rmsd
+        kind: file
+        path: results/1ake_nolb_rmsd.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_nolb_config}
+        --input_top_path ${prot_ca}
+        --input_traj_path ${nolb_pdb}
+        --output_cpptraj_path ${nolb_rmsd}
+        --input_exp_path ${monomer}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_convert_nolb
+    name: Convert NOLB ensemble to TRR
+    inputs:
+      - id: cpptraj_convert_nolb_config
+        kind: file
+        path: configs/cpptraj_convert_nolb.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+      - id: nolb_pdb
+        kind: file
+        path: results/1ake_nolb_ensemble.pdb
+    outputs:
+      - id: nolb_trr
+        kind: file
+        path: results/1ake_nolb_ensemble.trr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_convert
+        --config ${cpptraj_convert_nolb_config}
+        --input_top_path ${prot_ca}
+        --input_traj_path ${nolb_pdb}
+        --output_cpptraj_path ${nolb_trr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: imod_imode
+    name: iMODS internal coordinates normal mode analysis
+    inputs:
+      - id: imod_imode_config
+        kind: file
+        path: configs/imod_imode.yaml
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    outputs:
+      - id: imode_evecs
+        kind: file
+        path: results/1ake_imode_evecs.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        imod_imode
+        --config ${imod_imode_config}
+        --input_pdb_path ${monomer}
+        --output_dat_path ${imode_evecs}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: imod_imc
+    name: iMODS internal coordinates Monte Carlo sampling
+    inputs:
+      - id: imod_imc_config
+        kind: file
+        path: configs/imod_imc.yaml
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+      - id: imode_evecs
+        kind: file
+        path: results/1ake_imode_evecs.dat
+    outputs:
+      - id: imc_pdb
+        kind: file
+        path: results/1ake_imc.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        imod_imc
+        --config ${imod_imc_config}
+        --input_pdb_path ${monomer}
+        --input_dat_path ${imode_evecs}
+        --output_traj_path ${imc_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_imods
+    name: RMSD analysis of iMODS ensemble
+    inputs:
+      - id: cpptraj_rms_imods_config
+        kind: file
+        path: configs/cpptraj_rms_imods.yaml
+      - id: imc_pdb
+        kind: file
+        path: results/1ake_imc.pdb
+      - id: monomer
+        kind: file
+        path: results/1ake_monomer.pdb
+    outputs:
+      - id: imods_rmsd
+        kind: file
+        path: results/1ake_imods_rmsd.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_imods_config}
+        --input_top_path ${imc_pdb}
+        --input_traj_path ${imc_pdb}
+        --output_cpptraj_path ${imods_rmsd}
+        --input_exp_path ${monomer}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_convert_imods
+    name: Convert iMODS trajectory to TRR
+    inputs:
+      - id: cpptraj_convert_imods_config
+        kind: file
+        path: configs/cpptraj_convert_imods.yaml
+      - id: imc_pdb
+        kind: file
+        path: results/1ake_imc.pdb
+    outputs:
+      - id: imods_trr
+        kind: file
+        path: results/1ake_imods_ensemble.trr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_convert
+        --config ${cpptraj_convert_imods_config}
+        --input_top_path ${imc_pdb}
+        --input_traj_path ${imc_pdb}
+        --output_cpptraj_path ${imods_trr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: zip_trajectories
+    name: Zip ensemble trajectories for concatenation
+    inputs:
+      - id: concoord_trr
+        kind: file
+        path: results/1ake_disco_traj.trr
+      - id: prody_trr
+        kind: file
+        path: results/1ake_prody_anm_traj.trr
+      - id: imods_trr
+        kind: file
+        path: results/1ake_imods_ensemble.trr
+      - id: flexserv_dmd_traj_fitted
+        kind: file
+        path: results/1ake_flexserv_dmd_traj_fitted.trr
+      - id: nma_trr
+        kind: file
+        path: results/1ake_flexserv_nma_ensemble.trr
+    outputs:
+      - id: concat_traj_zip
+        kind: file
+        path: results/1ake_concat_traj.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        zip -j ${concat_traj_zip}
+        ${concoord_trr}
+        ${prody_trr}
+        ${imods_trr}
+        ${flexserv_dmd_traj_fitted}
+        ${nma_trr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: trjcat
+    name: Concatenate all ensemble trajectories
+    inputs:
+      - id: concat_traj_zip
+        kind: file
+        path: results/1ake_concat_traj.zip
+    outputs:
+      - id: concat_trr
+        kind: file
+        path: results/1ake_concat_traj.trr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        trjcat
+        --input_trj_zip_path ${concat_traj_zip}
+        --output_trj_path ${concat_trr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: make_ndx
+    name: Create GROMACS index file for Cα atoms
+    inputs:
+      - id: make_ndx_config
+        kind: file
+        path: configs/make_ndx.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+    outputs:
+      - id: gmx_index_file
+        kind: file
+        path: results/1ake_gmx_ndx.ndx
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        make_ndx
+        --config ${make_ndx_config}
+        --input_structure_path ${prot_ca}
+        --output_ndx_path ${gmx_index_file}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: gmx_cluster
+    name: Cluster analysis of concatenated trajectory
+    inputs:
+      - id: gmx_cluster_config
+        kind: file
+        path: configs/gmx_cluster.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+      - id: concat_trr
+        kind: file
+        path: results/1ake_concat_traj.trr
+      - id: gmx_index_file
+        kind: file
+        path: results/1ake_gmx_ndx.ndx
+    outputs:
+      - id: cluster_concat_pdb
+        kind: file
+        path: results/1ake_concat_cluster.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_cluster
+        --config ${gmx_cluster_config}
+        --input_structure_path ${prot_ca}
+        --input_traj_path ${concat_trr}
+        --input_index_path ${gmx_index_file}
+        --output_pdb_path ${cluster_concat_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_rms_meta
+    name: RMSD fitting of meta-trajectory cluster representatives
+    inputs:
+      - id: cpptraj_rms_meta_config
+        kind: file
+        path: configs/cpptraj_rms_meta.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+      - id: cluster_concat_pdb
+        kind: file
+        path: results/1ake_concat_cluster.pdb
+    outputs:
+      - id: meta_traj_rmsd
+        kind: file
+        path: results/1ake_meta_traj_rmsd.dat
+      - id: meta_traj_fitted
+        kind: file
+        path: results/1ake_meta_traj_fitted.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_rms
+        --config ${cpptraj_rms_meta_config}
+        --input_top_path ${prot_ca}
+        --input_traj_path ${cluster_concat_pdb}
+        --output_cpptraj_path ${meta_traj_rmsd}
+        --output_traj_path ${meta_traj_fitted}
+        --input_exp_path ${prot_ca}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_zip_classic
+    name: PCA compression of meta-trajectory (classical RMSd fitting)
+    inputs:
+      - id: pcz_zip_classic_config
+        kind: file
+        path: configs/pcz_zip_classic.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+      - id: meta_traj_fitted
+        kind: file
+        path: results/1ake_meta_traj_fitted.crd
+    outputs:
+      - id: concat_pcz
+        kind: file
+        path: results/1ake_concat_ensemble.pcz
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_zip
+        --config ${pcz_zip_classic_config}
+        --input_pdb_path ${prot_ca}
+        --input_crd_path ${meta_traj_fitted}
+        --output_pcz_path ${concat_pcz}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_zip_gaussian
+    name: PCA compression of meta-trajectory (Gaussian weighted RMSd fitting)
+    inputs:
+      - id: pcz_zip_gaussian_config
+        kind: file
+        path: configs/pcz_zip_gaussian.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+      - id: meta_traj_fitted
+        kind: file
+        path: results/1ake_meta_traj_fitted.crd
+    outputs:
+      - id: concat_pcz_gaussian
+        kind: file
+        path: results/1ake_concat_ensemble_gaussian.pcz
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_zip
+        --config ${pcz_zip_gaussian_config}
+        --input_pdb_path ${prot_ca}
+        --input_crd_path ${meta_traj_fitted}
+        --output_pcz_path ${concat_pcz_gaussian}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_info
+    name: Extract PCA statistics and variance profile
+    inputs:
+      - id: concat_pcz
+        kind: file
+        path: results/1ake_concat_ensemble.pcz
+    outputs:
+      - id: pcz_report
+        kind: file
+        path: results/1ake_pcz_report.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_info
+        --input_pcz_path ${concat_pcz}
+        --output_json_path ${pcz_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_evecs
+    name: Extract PCA eigenvectors
+    inputs:
+      - id: pcz_evecs_config
+        kind: file
+        path: configs/pcz_evecs.yaml
+      - id: concat_pcz
+        kind: file
+        path: results/1ake_concat_ensemble.pcz
+    outputs:
+      - id: pcz_evecs_report
+        kind: file
+        path: results/1ake_pcz_evecs.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_evecs
+        --config ${pcz_evecs_config}
+        --input_pcz_path ${concat_pcz}
+        --output_json_path ${pcz_evecs_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_animate
+    name: Generate animation along first principal component
+    inputs:
+      - id: pcz_animate_config
+        kind: file
+        path: configs/pcz_animate.yaml
+      - id: concat_pcz
+        kind: file
+        path: results/1ake_concat_ensemble.pcz
+    outputs:
+      - id: proj1_crd
+        kind: file
+        path: results/1ake_pcz_proj1.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_animate
+        --config ${pcz_animate_config}
+        --input_pcz_path ${concat_pcz}
+        --output_crd_path ${proj1_crd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_convert_proj
+    name: Convert PC1 projection trajectory to XTC
+    inputs:
+      - id: cpptraj_convert_proj_config
+        kind: file
+        path: configs/cpptraj_convert_proj.yaml
+      - id: prot_ca
+        kind: file
+        path: results/1ake_ca.pdb
+      - id: proj1_crd
+        kind: file
+        path: results/1ake_pcz_proj1.crd
+    outputs:
+      - id: proj1_xtc
+        kind: file
+        path: results/1ake_pcz_proj1.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_convert
+        --config ${cpptraj_convert_proj_config}
+        --input_top_path ${prot_ca}
+        --input_traj_path ${proj1_crd}
+        --output_cpptraj_path ${proj1_xtc}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_bfactor
+    name: B-factor analysis from PCA modes
+    inputs:
+      - id: pcz_bfactor_config
+        kind: file
+        path: configs/pcz_bfactor.yaml
+      - id: concat_pcz
+        kind: file
+        path: results/1ake_concat_ensemble.pcz
+    outputs:
+      - id: bfactor_all_dat
+        kind: file
+        path: results/1ake_bfactor_all.dat
+      - id: bfactor_all_pdb
+        kind: file
+        path: results/1ake_bfactor_all.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_bfactor
+        --config ${pcz_bfactor_config}
+        --input_pcz_path ${concat_pcz}
+        --output_dat_path ${bfactor_all_dat}
+        --output_pdb_path ${bfactor_all_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_hinges_bfactor
+    name: Hinge detection using B-factor slope method
+    inputs:
+      - id: pcz_hinges_bfactor_config
+        kind: file
+        path: configs/pcz_hinges_bfactor.yaml
+      - id: concat_pcz_gaussian
+        kind: file
+        path: results/1ake_concat_ensemble_gaussian.pcz
+    outputs:
+      - id: hinges_bfactor_report
+        kind: file
+        path: results/1ake_hinges_bfactor_report.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_hinges
+        --config ${pcz_hinges_bfactor_config}
+        --input_pcz_path ${concat_pcz_gaussian}
+        --output_json_path ${hinges_bfactor_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_hinges_dyndom
+    name: Hinge detection using Dynamic Domain decomposition method
+    inputs:
+      - id: pcz_hinges_dyndom_config
+        kind: file
+        path: configs/pcz_hinges_dyndom.yaml
+      - id: concat_pcz_gaussian
+        kind: file
+        path: results/1ake_concat_ensemble_gaussian.pcz
+    outputs:
+      - id: hinges_dyndom_report
+        kind: file
+        path: results/1ake_hinges_dyndom_report.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_hinges
+        --config ${pcz_hinges_dyndom_config}
+        --input_pcz_path ${concat_pcz_gaussian}
+        --output_json_path ${hinges_dyndom_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_hinges_fcte
+    name: Hinge detection using Force Constant method
+    inputs:
+      - id: pcz_hinges_fcte_config
+        kind: file
+        path: configs/pcz_hinges_fcte.yaml
+      - id: concat_pcz_gaussian
+        kind: file
+        path: results/1ake_concat_ensemble_gaussian.pcz
+    outputs:
+      - id: hinges_fcte_report
+        kind: file
+        path: results/1ake_hinges_fcte_report.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_hinges
+        --config ${pcz_hinges_fcte_config}
+        --input_pcz_path ${concat_pcz_gaussian}
+        --output_json_path ${hinges_fcte_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_stiffness
+    name: Apparent stiffness analysis from PCA
+    inputs:
+      - id: pcz_stiffness_config
+        kind: file
+        path: configs/pcz_stiffness.yaml
+      - id: concat_pcz
+        kind: file
+        path: results/1ake_concat_ensemble.pcz
+    outputs:
+      - id: stiffness_report
+        kind: file
+        path: results/1ake_pcz_stiffness.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_stiffness
+        --config ${pcz_stiffness_config}
+        --input_pcz_path ${concat_pcz}
+        --output_json_path ${stiffness_report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pcz_collectivity
+    name: Collectivity index analysis from PCA
+    inputs:
+      - id: pcz_collectivity_config
+        kind: file
+        path: configs/pcz_collectivity.yaml
+      - id: concat_pcz
+        kind: file
+        path: results/1ake_concat_ensemble.pcz
+    outputs:
+      - id: pcz_collectivity_report
+        kind: file
+        path: results/1ake_pcz_collectivity.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pcz_collectivity
+        --config ${pcz_collectivity_config}
+        --input_pcz_path ${concat_pcz}
+        --output_json_path ${pcz_collectivity_report}
+    target:
+      kind: local
+
+edges:
+  - source: fetch_pdb
+    source_output: downloaded_pdb
+    target: extract_model
+    target_input: downloaded_pdb
+
+  - source: extract_model
+    source_output: pdb_model
+    target: extract_chain
+    target_input: pdb_model
+
+  - source: extract_chain
+    source_output: monomer
+    target: cpptraj_mask_backbone
+    target_input: monomer
+
+  - source: extract_chain
+    source_output: monomer
+    target: cpptraj_mask_ca
+    target_input: monomer
+
+  - source: extract_chain
+    source_output: monomer
+    target: concoord_dist
+    target_input: monomer
+
+  - source: extract_chain
+    source_output: monomer
+    target: cpptraj_rms_concoord
+    target_input: monomer
+
+  - source: extract_chain
+    source_output: monomer
+    target: prody_anm
+    target_input: monomer
+
+  - source: extract_chain
+    source_output: monomer
+    target: cpptraj_rms_prody
+    target_input: monomer
+
+  - source: extract_chain
+    source_output: monomer
+    target: cpptraj_rms_bd
+    target_input: monomer
+
+  - source: extract_chain
+    source_output: monomer
+    target: cpptraj_rms_dmd
+    target_input: monomer
+
+  - source: extract_chain
+    source_output: monomer
+    target: cpptraj_rms_nma
+    target_input: monomer
+
+  - source: extract_chain
+    source_output: monomer
+    target: cpptraj_rms_nolb
+    target_input: monomer
+
+  - source: extract_chain
+    source_output: monomer
+    target: imod_imode
+    target_input: monomer
+
+  - source: extract_chain
+    source_output: monomer
+    target: imod_imc
+    target_input: monomer
+
+  - source: extract_chain
+    source_output: monomer
+    target: cpptraj_rms_imods
+    target_input: monomer
+
+  - source: cpptraj_mask_backbone
+    source_output: prot_backbone
+    target: cpptraj_convert_prody
+    target_input: prot_backbone
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: bd_run
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: cpptraj_rms_bd
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: dmd_run
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: cpptraj_rms_dmd
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: nma_run
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: cpptraj_rms_nma
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: cpptraj_convert_nma
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: nolb_nma
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: cpptraj_rms_nolb
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: cpptraj_convert_nolb
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: make_ndx
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: gmx_cluster
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: cpptraj_rms_meta
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: pcz_zip_classic
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: pcz_zip_gaussian
+    target_input: prot_ca
+
+  - source: cpptraj_mask_ca
+    source_output: prot_ca
+    target: cpptraj_convert_proj
+    target_input: prot_ca
+
+  - source: concoord_dist
+    source_output: concoord_dist_pdb
+    target: concoord_disco
+    target_input: concoord_dist_pdb
+
+  - source: concoord_dist
+    source_output: concoord_dist_dat
+    target: concoord_disco
+    target_input: concoord_dist_dat
+
+  - source: concoord_dist
+    source_output: concoord_dist_pdb
+    target: cpptraj_rms_concoord
+    target_input: concoord_dist_pdb
+
+  - source: concoord_dist
+    source_output: concoord_dist_pdb
+    target: cpptraj_convert_concoord
+    target_input: concoord_dist_pdb
+
+  - source: concoord_disco
+    source_output: concoord_disco_pdb
+    target: cpptraj_rms_concoord
+    target_input: concoord_disco_pdb
+
+  - source: concoord_disco
+    source_output: concoord_disco_pdb
+    target: cpptraj_convert_concoord
+    target_input: concoord_disco_pdb
+
+  - source: cpptraj_convert_concoord
+    source_output: concoord_trr
+    target: zip_trajectories
+    target_input: concoord_trr
+
+  - source: prody_anm
+    source_output: prody_ensemble
+    target: cpptraj_rms_prody
+    target_input: prody_ensemble
+
+  - source: prody_anm
+    source_output: prody_ensemble
+    target: cpptraj_convert_prody
+    target_input: prody_ensemble
+
+  - source: cpptraj_convert_prody
+    source_output: prody_trr
+    target: zip_trajectories
+    target_input: prody_trr
+
+  - source: bd_run
+    source_output: bd_crd
+    target: cpptraj_rms_bd
+    target_input: bd_crd
+
+  - source: dmd_run
+    source_output: dmd_crd
+    target: cpptraj_rms_dmd
+    target_input: dmd_crd
+
+  - source: cpptraj_rms_dmd
+    source_output: flexserv_dmd_traj_fitted
+    target: zip_trajectories
+    target_input: flexserv_dmd_traj_fitted
+
+  - source: nma_run
+    source_output: nma_crd
+    target: cpptraj_rms_nma
+    target_input: nma_crd
+
+  - source: nma_run
+    source_output: nma_crd
+    target: cpptraj_convert_nma
+    target_input: nma_crd
+
+  - source: cpptraj_convert_nma
+    source_output: nma_trr
+    target: zip_trajectories
+    target_input: nma_trr
+
+  - source: nolb_nma
+    source_output: nolb_pdb
+    target: cpptraj_rms_nolb
+    target_input: nolb_pdb
+
+  - source: nolb_nma
+    source_output: nolb_pdb
+    target: cpptraj_convert_nolb
+    target_input: nolb_pdb
+
+  - source: imod_imode
+    source_output: imode_evecs
+    target: imod_imc
+    target_input: imode_evecs
+
+  - source: imod_imc
+    source_output: imc_pdb
+    target: cpptraj_rms_imods
+    target_input: imc_pdb
+
+  - source: imod_imc
+    source_output: imc_pdb
+    target: cpptraj_convert_imods
+    target_input: imc_pdb
+
+  - source: cpptraj_convert_imods
+    source_output: imods_trr
+    target: zip_trajectories
+    target_input: imods_trr
+
+  - source: zip_trajectories
+    source_output: concat_traj_zip
+    target: trjcat
+    target_input: concat_traj_zip
+
+  - source: trjcat
+    source_output: concat_trr
+    target: gmx_cluster
+    target_input: concat_trr
+
+  - source: make_ndx
+    source_output: gmx_index_file
+    target: gmx_cluster
+    target_input: gmx_index_file
+
+  - source: gmx_cluster
+    source_output: cluster_concat_pdb
+    target: cpptraj_rms_meta
+    target_input: cluster_concat_pdb
+
+  - source: cpptraj_rms_meta
+    source_output: meta_traj_fitted
+    target: pcz_zip_classic
+    target_input: meta_traj_fitted
+
+  - source: cpptraj_rms_meta
+    source_output: meta_traj_fitted
+    target: pcz_zip_gaussian
+    target_input: meta_traj_fitted
+
+  - source: pcz_zip_classic
+    source_output: concat_pcz
+    target: pcz_info
+    target_input: concat_pcz
+
+  - source: pcz_zip_classic
+    source_output: concat_pcz
+    target: pcz_evecs
+    target_input: concat_pcz
+
+  - source: pcz_zip_classic
+    source_output: concat_pcz
+    target: pcz_animate
+    target_input: concat_pcz
+
+  - source: pcz_zip_classic
+    source_output: concat_pcz
+    target: pcz_bfactor
+    target_input: concat_pcz
+
+  - source: pcz_zip_classic
+    source_output: concat_pcz
+    target: pcz_stiffness
+    target_input: concat_pcz
+
+  - source: pcz_zip_classic
+    source_output: concat_pcz
+    target: pcz_collectivity
+    target_input: concat_pcz
+
+  - source: pcz_zip_gaussian
+    source_output: concat_pcz_gaussian
+    target: pcz_hinges_bfactor
+    target_input: concat_pcz_gaussian
+
+  - source: pcz_zip_gaussian
+    source_output: concat_pcz_gaussian
+    target: pcz_hinges_dyndom
+    target_input: concat_pcz_gaussian
+
+  - source: pcz_zip_gaussian
+    source_output: concat_pcz_gaussian
+    target: pcz_hinges_fcte
+    target_input: concat_pcz_gaussian
+
+  - source: pcz_animate
+    source_output: proj1_crd
+    target: cpptraj_convert_proj
+    target_input: proj1_crd
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

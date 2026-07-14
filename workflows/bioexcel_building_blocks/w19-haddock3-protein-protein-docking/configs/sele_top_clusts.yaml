@@ -1,0 +1,3 @@
+cfg:
+  top_models: 4
+  clean: false

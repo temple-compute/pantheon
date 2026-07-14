@@ -1,0 +1,11 @@
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.12
+  - biobb_io
+  - biobb_model
+  - biobb_chemistry
+  - biobb_gromacs
+  - biobb_analysis
+  - biobb_structure_utils
