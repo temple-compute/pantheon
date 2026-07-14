@@ -1,0 +1,9 @@
+simulation_type: minimization
+binary_path: sander.MPI
+mpi_np: 4
+mpi_bin: mpirun
+mdin:
+  maxcyc: 300
+  ntr: 1
+  restraintmask: '"!:WAT,Cl-,Na+"'
+  restraint_wt: 15.0

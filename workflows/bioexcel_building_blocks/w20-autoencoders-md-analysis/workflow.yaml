@@ -1,0 +1,666 @@
+kind: horus_workflow
+name: BioExcel Autoencoder - MD Trajectory Analysis with Machine Learning
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+tasks:
+  - kind: horus_task
+    id: fetch_train_trajectory
+    name: Download apo training trajectory (6W9C_apo) from MDDB
+    inputs:
+      - id: fetch_train_trajectory_config
+        kind: file
+        path: configs/fetch_train_trajectory.yaml
+    outputs:
+      - id: train_structure
+        kind: file
+        path: results/6W9C_apo.pdb
+      - id: train_trajectory
+        kind: file
+        path: results/6W9C_apo.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mddb
+        --config ${fetch_train_trajectory_config}
+        --output_top_path ${train_structure}
+        --output_trj_path ${train_trajectory}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fit_train_trajectory
+    name: Fit and align apo training trajectory (rot+trans)
+    inputs:
+      - id: fit_train_trajectory_config
+        kind: file
+        path: configs/fit_train_trajectory.yaml
+      - id: train_trajectory
+        kind: file
+        path: results/6W9C_apo.xtc
+      - id: train_structure
+        kind: file
+        path: results/6W9C_apo.pdb
+    outputs:
+      - id: train_trajectory_fit
+        kind: file
+        path: results/6W9C_apo_fit.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_image
+        --config ${fit_train_trajectory_config}
+        --input_traj_path ${train_trajectory}
+        --input_top_path ${train_structure}
+        --output_traj_path ${train_trajectory_fit}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: featurize_train_trajectory
+    name: Featurize apo training trajectory (CA Cartesian coordinates)
+    inputs:
+      - id: featurize_train_trajectory_config
+        kind: file
+        path: configs/featurize_train_trajectory.yaml
+      - id: train_trajectory_fit
+        kind: file
+        path: results/6W9C_apo_fit.xtc
+      - id: train_structure
+        kind: file
+        path: results/6W9C_apo.pdb
+    outputs:
+      - id: train_dataset
+        kind: file
+        path: results/6W9C_apo.pt
+      - id: train_stats
+        kind: file
+        path: results/6W9C_apo_stats.pt
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mdfeaturizer
+        --config ${featurize_train_trajectory_config}
+        --input_trajectory_path ${train_trajectory_fit}
+        --input_topology_path ${train_structure}
+        --output_dataset_pt_path ${train_dataset}
+        --output_stats_pt_path ${train_stats}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: build_model
+    name: Build autoencoder model architecture
+    inputs:
+      - id: build_model_config
+        kind: file
+        path: configs/build_model.yaml
+      - id: train_stats
+        kind: file
+        path: results/6W9C_apo_stats.pt
+    outputs:
+      - id: initial_model
+        kind: file
+        path: results/model.pth
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        build_model
+        --config ${build_model_config}
+        --input_stats_pt_path ${train_stats}
+        --output_model_pth_path ${initial_model}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: train_model
+    name: Train autoencoder model on apo trajectory dataset
+    inputs:
+      - id: train_model_config
+        kind: file
+        path: configs/train_model.yaml
+      - id: initial_model
+        kind: file
+        path: results/model.pth
+      - id: train_dataset
+        kind: file
+        path: results/6W9C_apo.pt
+    outputs:
+      - id: trained_model
+        kind: file
+        path: results/apo_trained_model.pth
+      - id: training_metrics
+        kind: file
+        path: results/model_training_metrics.npz
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        train_model
+        --config ${train_model_config}
+        --input_model_pth_path ${initial_model}
+        --input_dataset_pt_path ${train_dataset}
+        --output_model_pth_path ${trained_model}
+        --output_metrics_npz_path ${training_metrics}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fetch_test_trajectory
+    name: Download holo test trajectory (6W9C_holo) from MDDB
+    inputs:
+      - id: fetch_test_trajectory_config
+        kind: file
+        path: configs/fetch_test_trajectory.yaml
+    outputs:
+      - id: test_structure
+        kind: file
+        path: results/6W9C_holo.pdb
+      - id: test_trajectory
+        kind: file
+        path: results/6W9C_holo.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mddb
+        --config ${fetch_test_trajectory_config}
+        --output_top_path ${test_structure}
+        --output_trj_path ${test_trajectory}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fit_test_trajectory
+    name: Fit and align holo test trajectory to apo reference (rot+trans)
+    inputs:
+      - id: fit_test_trajectory_config
+        kind: file
+        path: configs/fit_test_trajectory.yaml
+      - id: test_trajectory
+        kind: file
+        path: results/6W9C_holo.xtc
+      - id: train_structure
+        kind: file
+        path: results/6W9C_apo.pdb
+    outputs:
+      - id: test_trajectory_fit
+        kind: file
+        path: results/6W9C_holo_fit.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_image
+        --config ${fit_test_trajectory_config}
+        --input_traj_path ${test_trajectory}
+        --input_top_path ${train_structure}
+        --output_traj_path ${test_trajectory_fit}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: featurize_test_trajectory
+    name: Featurize holo test trajectory (CA Cartesian coordinates)
+    inputs:
+      - id: featurize_test_trajectory_config
+        kind: file
+        path: configs/featurize_test_trajectory.yaml
+      - id: test_trajectory_fit
+        kind: file
+        path: results/6W9C_holo_fit.xtc
+      - id: test_structure
+        kind: file
+        path: results/6W9C_holo.pdb
+    outputs:
+      - id: test_dataset
+        kind: file
+        path: results/6W9C_holo.pt
+      - id: test_stats
+        kind: file
+        path: results/6W9C_holo_stats.pt
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mdfeaturizer
+        --config ${featurize_test_trajectory_config}
+        --input_trajectory_path ${test_trajectory_fit}
+        --input_topology_path ${test_structure}
+        --output_dataset_pt_path ${test_dataset}
+        --output_stats_pt_path ${test_stats}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: evaluate_model
+    name: Evaluate trained autoencoder on apo dataset
+    inputs:
+      - id: evaluate_model_config
+        kind: file
+        path: configs/evaluate_model.yaml
+      - id: trained_model
+        kind: file
+        path: results/apo_trained_model.pth
+      - id: train_dataset
+        kind: file
+        path: results/6W9C_apo.pt
+    outputs:
+      - id: eval_results
+        kind: file
+        path: results/apo_eval_results.npz
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        evaluate_model
+        --config ${evaluate_model_config}
+        --input_model_pth_path ${trained_model}
+        --input_dataset_pt_path ${train_dataset}
+        --output_results_npz_path ${eval_results}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: make_ndx_apo
+    name: Create GROMACS index file for apo CA atoms
+    inputs:
+      - id: make_ndx_apo_config
+        kind: file
+        path: configs/make_ndx_apo.yaml
+      - id: train_structure
+        kind: file
+        path: results/6W9C_apo.pdb
+    outputs:
+      - id: train_index
+        kind: file
+        path: results/6W9C_apo.ndx
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        make_ndx
+        --config ${make_ndx_apo_config}
+        --input_structure_path ${train_structure}
+        --output_ndx_path ${train_index}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: make_ndx_holo
+    name: Create GROMACS index file for holo CA atoms
+    inputs:
+      - id: make_ndx_holo_config
+        kind: file
+        path: configs/make_ndx_holo.yaml
+      - id: test_structure
+        kind: file
+        path: results/6W9C_holo.pdb
+    outputs:
+      - id: test_index
+        kind: file
+        path: results/6W9C_holo.ndx
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        make_ndx
+        --config ${make_ndx_holo_config}
+        --input_structure_path ${test_structure}
+        --output_ndx_path ${test_index}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: gmx_rmsf_apo
+    name: Compute RMSF of apo trajectory
+    inputs:
+      - id: gmx_rmsf_apo_config
+        kind: file
+        path: configs/gmx_rmsf_apo.yaml
+      - id: train_structure
+        kind: file
+        path: results/6W9C_apo.pdb
+      - id: train_trajectory
+        kind: file
+        path: results/6W9C_apo.xtc
+      - id: train_index
+        kind: file
+        path: results/6W9C_apo.ndx
+    outputs:
+      - id: rmsf_apo
+        kind: file
+        path: results/6W9C_apo_rmsf.xvg
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_rmsf
+        --config ${gmx_rmsf_apo_config}
+        --input_structure_path ${train_structure}
+        --input_traj_path ${train_trajectory}
+        --input_index_path ${train_index}
+        --output_xvg_path ${rmsf_apo}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: gmx_rmsf_holo
+    name: Compute RMSF of holo trajectory
+    inputs:
+      - id: gmx_rmsf_holo_config
+        kind: file
+        path: configs/gmx_rmsf_holo.yaml
+      - id: test_structure
+        kind: file
+        path: results/6W9C_holo.pdb
+      - id: test_trajectory
+        kind: file
+        path: results/6W9C_holo.xtc
+      - id: test_index
+        kind: file
+        path: results/6W9C_holo.ndx
+    outputs:
+      - id: rmsf_holo
+        kind: file
+        path: results/6W9C_holo_rmsf.xvg
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_rmsf
+        --config ${gmx_rmsf_holo_config}
+        --input_structure_path ${test_structure}
+        --input_traj_path ${test_trajectory}
+        --input_index_path ${test_index}
+        --output_xvg_path ${rmsf_holo}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: reconstruct_trajectory
+    name: Reconstruct holo trajectory from autoencoder latent space
+    inputs:
+      - id: eval_results
+        kind: file
+        path: results/apo_eval_results.npz
+      - id: test_stats
+        kind: file
+        path: results/6W9C_holo_stats.pt
+    outputs:
+      - id: recon_trajectory
+        kind: file
+        path: results/6W9C_holo_recon.xtc
+      - id: recon_structure
+        kind: file
+        path: results/6W9C_holo_recon.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        feat2traj
+        --input_results_npz_path ${eval_results}
+        --input_stats_pt_path ${test_stats}
+        --output_traj_path ${recon_trajectory}
+        --output_top_path ${recon_structure}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: gmx_rmsf_holo_recon
+    name: Compute RMSF of reconstructed holo trajectory
+    inputs:
+      - id: gmx_rmsf_holo_recon_config
+        kind: file
+        path: configs/gmx_rmsf_holo_recon.yaml
+      - id: recon_structure
+        kind: file
+        path: results/6W9C_holo_recon.pdb
+      - id: recon_trajectory
+        kind: file
+        path: results/6W9C_holo_recon.xtc
+      - id: test_index
+        kind: file
+        path: results/6W9C_holo.ndx
+    outputs:
+      - id: rmsf_holo_recon
+        kind: file
+        path: results/6W9C_holo_recon_rmsf.xvg
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_rmsf
+        --config ${gmx_rmsf_holo_recon_config}
+        --input_structure_path ${recon_structure}
+        --input_traj_path ${recon_trajectory}
+        --input_index_path ${test_index}
+        --output_xvg_path ${rmsf_holo_recon}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: make_plumed
+    name: Generate PLUMED input files for enhanced sampling with autoencoder CVs
+    inputs:
+      - id: make_plumed_config
+        kind: file
+        path: configs/make_plumed.yaml
+      - id: trained_model
+        kind: file
+        path: results/apo_trained_model.pth
+      - id: train_index
+        kind: file
+        path: results/6W9C_apo.ndx
+      - id: train_structure
+        kind: file
+        path: results/6W9C_apo.pdb
+      - id: train_stats
+        kind: file
+        path: results/6W9C_apo_stats.pt
+    outputs:
+      - id: plumed_model
+        kind: file
+        path: results/plumed_model.ptc
+      - id: plumed_dat
+        kind: file
+        path: results/plumed.dat
+      - id: plumed_features_dat
+        kind: file
+        path: results/features.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        make_plumed
+        --config ${make_plumed_config}
+        --input_model_pth_path ${trained_model}
+        --input_ndx_path ${train_index}
+        --input_reference_pdb_path ${train_structure}
+        --input_stats_pt_path ${train_stats}
+        --output_model_ptc_path ${plumed_model}
+        --output_plumed_dat_path ${plumed_dat}
+        --output_features_dat_path ${plumed_features_dat}
+    target:
+      kind: local
+
+edges:
+  # fetch_train_trajectory → fit_train_trajectory
+  - source: fetch_train_trajectory
+    source_output: train_trajectory
+    target: fit_train_trajectory
+    target_input: train_trajectory
+
+  - source: fetch_train_trajectory
+    source_output: train_structure
+    target: fit_train_trajectory
+    target_input: train_structure
+
+  # fit_train_trajectory → featurize_train_trajectory
+  - source: fit_train_trajectory
+    source_output: train_trajectory_fit
+    target: featurize_train_trajectory
+    target_input: train_trajectory_fit
+
+  - source: fetch_train_trajectory
+    source_output: train_structure
+    target: featurize_train_trajectory
+    target_input: train_structure
+
+  # featurize_train_trajectory → build_model
+  - source: featurize_train_trajectory
+    source_output: train_stats
+    target: build_model
+    target_input: train_stats
+
+  # build_model → train_model
+  - source: build_model
+    source_output: initial_model
+    target: train_model
+    target_input: initial_model
+
+  # featurize_train_trajectory → train_model
+  - source: featurize_train_trajectory
+    source_output: train_dataset
+    target: train_model
+    target_input: train_dataset
+
+  # fetch_test_trajectory → fit_test_trajectory
+  - source: fetch_test_trajectory
+    source_output: test_trajectory
+    target: fit_test_trajectory
+    target_input: test_trajectory
+
+  # fetch_train_trajectory → fit_test_trajectory (holo is aligned to apo reference)
+  - source: fetch_train_trajectory
+    source_output: train_structure
+    target: fit_test_trajectory
+    target_input: train_structure
+
+  # fit_test_trajectory → featurize_test_trajectory
+  - source: fit_test_trajectory
+    source_output: test_trajectory_fit
+    target: featurize_test_trajectory
+    target_input: test_trajectory_fit
+
+  - source: fetch_test_trajectory
+    source_output: test_structure
+    target: featurize_test_trajectory
+    target_input: test_structure
+
+  # train_model → evaluate_model
+  - source: train_model
+    source_output: trained_model
+    target: evaluate_model
+    target_input: trained_model
+
+  # featurize_train_trajectory → evaluate_model (evaluate on apo data)
+  - source: featurize_train_trajectory
+    source_output: train_dataset
+    target: evaluate_model
+    target_input: train_dataset
+
+  # fetch_train_trajectory → make_ndx_apo
+  - source: fetch_train_trajectory
+    source_output: train_structure
+    target: make_ndx_apo
+    target_input: train_structure
+
+  # fetch_test_trajectory → make_ndx_holo
+  - source: fetch_test_trajectory
+    source_output: test_structure
+    target: make_ndx_holo
+    target_input: test_structure
+
+  # gmx_rmsf_apo
+  - source: fetch_train_trajectory
+    source_output: train_structure
+    target: gmx_rmsf_apo
+    target_input: train_structure
+
+  - source: fetch_train_trajectory
+    source_output: train_trajectory
+    target: gmx_rmsf_apo
+    target_input: train_trajectory
+
+  - source: make_ndx_apo
+    source_output: train_index
+    target: gmx_rmsf_apo
+    target_input: train_index
+
+  # gmx_rmsf_holo
+  - source: fetch_test_trajectory
+    source_output: test_structure
+    target: gmx_rmsf_holo
+    target_input: test_structure
+
+  - source: fetch_test_trajectory
+    source_output: test_trajectory
+    target: gmx_rmsf_holo
+    target_input: test_trajectory
+
+  - source: make_ndx_holo
+    source_output: test_index
+    target: gmx_rmsf_holo
+    target_input: test_index
+
+  # evaluate_model → reconstruct_trajectory
+  - source: evaluate_model
+    source_output: eval_results
+    target: reconstruct_trajectory
+    target_input: eval_results
+
+  # featurize_test_trajectory → reconstruct_trajectory
+  - source: featurize_test_trajectory
+    source_output: test_stats
+    target: reconstruct_trajectory
+    target_input: test_stats
+
+  # reconstruct_trajectory → gmx_rmsf_holo_recon
+  - source: reconstruct_trajectory
+    source_output: recon_structure
+    target: gmx_rmsf_holo_recon
+    target_input: recon_structure
+
+  - source: reconstruct_trajectory
+    source_output: recon_trajectory
+    target: gmx_rmsf_holo_recon
+    target_input: recon_trajectory
+
+  - source: make_ndx_holo
+    source_output: test_index
+    target: gmx_rmsf_holo_recon
+    target_input: test_index
+
+  # make_plumed
+  - source: train_model
+    source_output: trained_model
+    target: make_plumed
+    target_input: trained_model
+
+  - source: make_ndx_apo
+    source_output: train_index
+    target: make_plumed
+    target_input: train_index
+
+  - source: fetch_train_trajectory
+    source_output: train_structure
+    target: make_plumed
+    target_input: train_structure
+
+  - source: featurize_train_trajectory
+    source_output: train_stats
+    target: make_plumed
+    target_input: train_stats
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

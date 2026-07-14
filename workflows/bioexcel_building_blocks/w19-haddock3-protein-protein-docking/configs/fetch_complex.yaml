@@ -1,0 +1,5 @@
+pdb_code: 4G6M
+filter:
+  - ATOM
+  - TER
+  - END

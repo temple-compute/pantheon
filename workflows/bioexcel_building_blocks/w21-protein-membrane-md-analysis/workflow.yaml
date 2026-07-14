@@ -1,0 +1,475 @@
+kind: horus_workflow
+name: BioExcel Membrane MD Analysis - GABA-gated Chloride Channel (A023K)
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+_target: &target
+  kind: local
+
+tasks:
+  - kind: horus_task
+    id: download_trajectory
+    name: Download structure and trajectory from MDDB (A023K)
+    inputs:
+      - id: download_trajectory_config
+        kind: file
+        path: configs/download_trajectory.yaml
+    outputs:
+      - id: downloaded_pdb
+        kind: file
+        path: results/A023K_10.pdb
+      - id: downloaded_xtc
+        kind: file
+        path: results/A023K_10.xtc
+      - id: downloaded_tpr
+        kind: file
+        path: results/A023K.tpr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mddb
+        --config ${download_trajectory_config}
+        --output_top_path ${downloaded_pdb}
+        --output_trj_path ${downloaded_xtc}
+    target: *target
+
+  - kind: horus_task
+    id: fit_membrane
+    name: Fit trajectory to membrane normal (rot+trans, gmx_image)
+    inputs:
+      - id: fit_membrane_config
+        kind: file
+        path: configs/fit_membrane.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/A023K_10.pdb
+      - id: downloaded_xtc
+        kind: file
+        path: results/A023K_10.xtc
+    outputs:
+      - id: memb_fit_xtc
+        kind: file
+        path: results/A023K_fit.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_image
+        --config ${fit_membrane_config}
+        --input_top_path ${downloaded_pdb}
+        --input_traj_path ${downloaded_xtc}
+        --output_traj_path ${memb_fit_xtc}
+    target: *target
+
+  - kind: horus_task
+    id: fit_protein
+    name: Fit trajectory to protein XY translation (transxy, gmx_image)
+    inputs:
+      - id: fit_protein_config
+        kind: file
+        path: configs/fit_protein.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/A023K_10.pdb
+      - id: memb_fit_xtc
+        kind: file
+        path: results/A023K_fit.xtc
+    outputs:
+      - id: memb_fit_xy_xtc
+        kind: file
+        path: results/A023K_fit2.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_image
+        --config ${fit_protein_config}
+        --input_top_path ${downloaded_pdb}
+        --input_traj_path ${memb_fit_xtc}
+        --output_traj_path ${memb_fit_xy_xtc}
+    target: *target
+
+  - kind: horus_task
+    id: identify_leaflets_fatslim
+    name: Identify membrane leaflets with FATSLiM
+    inputs:
+      - id: identify_leaflets_fatslim_config
+        kind: file
+        path: configs/identify_leaflets_fatslim.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/A023K_10.pdb
+      - id: downloaded_xtc
+        kind: file
+        path: results/A023K_10.xtc
+    outputs:
+      - id: leaflets_ndx
+        kind: file
+        path: results/leaflets.ndx
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        fatslim_membranes
+        --config ${identify_leaflets_fatslim_config}
+        --input_top_path ${downloaded_pdb}
+        --input_traj_path ${downloaded_xtc}
+        --output_ndx_path ${leaflets_ndx}
+    target: *target
+
+  - kind: horus_task
+    id: assign_leaflets
+    name: Assign leaflets per frame with Lipyphilic (lpp_assign_leaflets)
+    inputs:
+      - id: assign_leaflets_config
+        kind: file
+        path: configs/assign_leaflets.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/A023K_10.pdb
+      - id: memb_fit_xy_xtc
+        kind: file
+        path: results/A023K_fit2.xtc
+    outputs:
+      - id: leaflets_data_csv
+        kind: file
+        path: results/leaflets_data.csv
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        lpp_assign_leaflets
+        --config ${assign_leaflets_config}
+        --input_top_path ${downloaded_pdb}
+        --input_traj_path ${memb_fit_xy_xtc}
+        --output_leaflets_path ${leaflets_data_csv}
+    target: *target
+
+  - kind: horus_task
+    id: compute_zpositions
+    name: Compute lipid z-positions for whole membrane (lpp_zpositions)
+    inputs:
+      - id: compute_zpositions_config
+        kind: file
+        path: configs/compute_zpositions.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/A023K_10.pdb
+      - id: memb_fit_xy_xtc
+        kind: file
+        path: results/A023K_fit2.xtc
+    outputs:
+      - id: zpositions_csv
+        kind: file
+        path: results/zpositions.csv
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        lpp_zpositions
+        --config ${compute_zpositions_config}
+        --input_top_path ${downloaded_pdb}
+        --input_traj_path ${memb_fit_xy_xtc}
+        --output_positions_path ${zpositions_csv}
+    target: *target
+
+  - kind: horus_task
+    id: compute_zpositions_around
+    name: Compute lipid z-positions around protein region (lpp_zpositions)
+    inputs:
+      - id: compute_zpositions_around_config
+        kind: file
+        path: configs/compute_zpositions_around.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/A023K_10.pdb
+      - id: memb_fit_xy_xtc
+        kind: file
+        path: results/A023K_fit2.xtc
+    outputs:
+      - id: zpositions_around_csv
+        kind: file
+        path: results/zpositions_around.csv
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        lpp_zpositions
+        --config ${compute_zpositions_around_config}
+        --input_top_path ${downloaded_pdb}
+        --input_traj_path ${memb_fit_xy_xtc}
+        --output_positions_path ${zpositions_around_csv}
+    target: *target
+
+  - kind: horus_task
+    id: compute_order_parameters
+    name: Compute deuterium order parameters of acyl tails (gorder_aa)
+    inputs:
+      - id: compute_order_parameters_config
+        kind: file
+        path: configs/compute_order_parameters.yaml
+      - id: downloaded_tpr
+        kind: file
+        path: results/A023K.tpr
+      - id: downloaded_xtc
+        kind: file
+        path: results/A023K_10.xtc
+    outputs:
+      - id: order_csv
+        kind: file
+        path: results/order.csv
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gorder_aa
+        --config ${compute_order_parameters_config}
+        --input_top_path ${downloaded_tpr}
+        --input_traj_path ${downloaded_xtc}
+        --output_order_path ${order_csv}
+    target: *target
+
+  - kind: horus_task
+    id: compute_area_per_lipid
+    name: Compute area per lipid via 2D Voronoi tessellation (fatslim_apl)
+    inputs:
+      - id: compute_area_per_lipid_config
+        kind: file
+        path: configs/compute_area_per_lipid.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/A023K_10.pdb
+      - id: memb_fit_xtc
+        kind: file
+        path: results/A023K_fit.xtc
+    outputs:
+      - id: apl_csv
+        kind: file
+        path: results/apl.csv
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        fatslim_apl
+        --config ${compute_area_per_lipid_config}
+        --input_top_path ${downloaded_pdb}
+        --input_traj_path ${memb_fit_xtc}
+        --output_csv_path ${apl_csv}
+    target: *target
+
+  - kind: horus_task
+    id: compute_density_profile
+    name: Compute membrane density profile along z-axis (cpptraj_density)
+    inputs:
+      - id: compute_density_profile_config
+        kind: file
+        path: configs/compute_density_profile.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/A023K_10.pdb
+      - id: memb_fit_xy_xtc
+        kind: file
+        path: results/A023K_fit2.xtc
+    outputs:
+      - id: density_dat
+        kind: file
+        path: results/density.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_density
+        --config ${compute_density_profile_config}
+        --input_top_path ${downloaded_pdb}
+        --input_traj_path ${memb_fit_xy_xtc}
+        --output_cpptraj_path ${density_dat}
+    target: *target
+
+  - kind: horus_task
+    id: compute_pore_dimensions
+    name: Compute channel pore radius profile (mda_hole)
+    inputs:
+      - id: compute_pore_dimensions_config
+        kind: file
+        path: configs/compute_pore_dimensions.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/A023K_10.pdb
+      - id: memb_fit_xy_xtc
+        kind: file
+        path: results/A023K_fit2.xtc
+    outputs:
+      - id: hole_vmd
+        kind: file
+        path: results/hole.vmd
+      - id: hole_profile_csv
+        kind: file
+        path: results/hole_profile.csv
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mda_hole
+        --config ${compute_pore_dimensions_config}
+        --input_top_path ${downloaded_pdb}
+        --input_traj_path ${memb_fit_xy_xtc}
+        --output_hole_path ${hole_vmd}
+        --output_csv_path ${hole_profile_csv}
+    target: *target
+
+  - kind: horus_task
+    id: compute_flip_flop
+    name: Detect lipid flip-flop events across leaflets (lpp_flip_flop)
+    inputs:
+      - id: compute_flip_flop_config
+        kind: file
+        path: configs/compute_flip_flop.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/A023K_10.pdb
+      - id: memb_fit_xy_xtc
+        kind: file
+        path: results/A023K_fit2.xtc
+      - id: leaflets_data_csv
+        kind: file
+        path: results/leaflets_data.csv
+    outputs:
+      - id: flip_flop_csv
+        kind: file
+        path: results/flip_flop.csv
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        lpp_flip_flop
+        --config ${compute_flip_flop_config}
+        --input_top_path ${downloaded_pdb}
+        --input_traj_path ${memb_fit_xy_xtc}
+        --input_leaflets_path ${leaflets_data_csv}
+        --output_flip_flop_path ${flip_flop_csv}
+    target: *target
+
+edges:
+  - source: download_trajectory
+    source_output: downloaded_pdb
+    target: fit_membrane
+    target_input: downloaded_pdb
+
+  - source: download_trajectory
+    source_output: downloaded_xtc
+    target: fit_membrane
+    target_input: downloaded_xtc
+
+  - source: download_trajectory
+    source_output: downloaded_pdb
+    target: fit_protein
+    target_input: downloaded_pdb
+
+  - source: fit_membrane
+    source_output: memb_fit_xtc
+    target: fit_protein
+    target_input: memb_fit_xtc
+
+  - source: download_trajectory
+    source_output: downloaded_pdb
+    target: identify_leaflets_fatslim
+    target_input: downloaded_pdb
+
+  - source: download_trajectory
+    source_output: downloaded_xtc
+    target: identify_leaflets_fatslim
+    target_input: downloaded_xtc
+
+  - source: download_trajectory
+    source_output: downloaded_pdb
+    target: assign_leaflets
+    target_input: downloaded_pdb
+
+  - source: fit_protein
+    source_output: memb_fit_xy_xtc
+    target: assign_leaflets
+    target_input: memb_fit_xy_xtc
+
+  - source: download_trajectory
+    source_output: downloaded_pdb
+    target: compute_zpositions
+    target_input: downloaded_pdb
+
+  - source: fit_protein
+    source_output: memb_fit_xy_xtc
+    target: compute_zpositions
+    target_input: memb_fit_xy_xtc
+
+  - source: download_trajectory
+    source_output: downloaded_pdb
+    target: compute_zpositions_around
+    target_input: downloaded_pdb
+
+  - source: fit_protein
+    source_output: memb_fit_xy_xtc
+    target: compute_zpositions_around
+    target_input: memb_fit_xy_xtc
+
+  - source: download_trajectory
+    source_output: downloaded_tpr
+    target: compute_order_parameters
+    target_input: downloaded_tpr
+
+  - source: download_trajectory
+    source_output: downloaded_xtc
+    target: compute_order_parameters
+    target_input: downloaded_xtc
+
+  - source: download_trajectory
+    source_output: downloaded_pdb
+    target: compute_area_per_lipid
+    target_input: downloaded_pdb
+
+  - source: fit_membrane
+    source_output: memb_fit_xtc
+    target: compute_area_per_lipid
+    target_input: memb_fit_xtc
+
+  - source: download_trajectory
+    source_output: downloaded_pdb
+    target: compute_density_profile
+    target_input: downloaded_pdb
+
+  - source: fit_protein
+    source_output: memb_fit_xy_xtc
+    target: compute_density_profile
+    target_input: memb_fit_xy_xtc
+
+  - source: download_trajectory
+    source_output: downloaded_pdb
+    target: compute_pore_dimensions
+    target_input: downloaded_pdb
+
+  - source: fit_protein
+    source_output: memb_fit_xy_xtc
+    target: compute_pore_dimensions
+    target_input: memb_fit_xy_xtc
+
+  - source: download_trajectory
+    source_output: downloaded_pdb
+    target: compute_flip_flop
+    target_input: downloaded_pdb
+
+  - source: fit_protein
+    source_output: memb_fit_xy_xtc
+    target: compute_flip_flop
+    target_input: memb_fit_xy_xtc
+
+  - source: assign_leaflets
+    source_output: leaflets_data_csv
+    target: compute_flip_flop
+    target_input: leaflets_data_csv
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

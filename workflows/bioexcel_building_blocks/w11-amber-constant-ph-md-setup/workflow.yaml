@@ -1,0 +1,623 @@
+kind: horus_workflow
+name: BioExcel AMBER Constant pH MD Setup - BPTI 6PTI
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+_target: &target
+  kind: local
+
+tasks:
+  - kind: horus_task
+    id: fetch_pdb
+    name: Download 6PTI structure from PDB
+    inputs:
+      - id: fetch_pdb_config
+        kind: file
+        path: configs/fetch_pdb.yaml
+    outputs:
+      - id: downloaded_pdb
+        kind: file
+        path: results/6PTI.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_pdb_config}
+        --output_pdb_path ${downloaded_pdb}
+    target: *target
+
+  - kind: horus_task
+    id: pdb4amber
+    name: Prepare PDB for constant pH AMBER (pdb4amber)
+    inputs:
+      - id: pdb4amber_config
+        kind: file
+        path: configs/pdb4amber.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/6PTI.pdb
+    outputs:
+      - id: pdb4amber_pdb
+        kind: file
+        path: results/structure.pdb4amber.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb4amber_run
+        --config ${pdb4amber_config}
+        --input_pdb_path ${downloaded_pdb}
+        --output_pdb_path ${pdb4amber_pdb}
+    target: *target
+
+  - kind: horus_task
+    id: leap_gen_top
+    name: Create protein system topology with ff14SB and constph (leap)
+    inputs:
+      - id: leap_gen_top_config
+        kind: file
+        path: configs/leap_gen_top.yaml
+      - id: pdb4amber_pdb
+        kind: file
+        path: results/structure.pdb4amber.pdb
+    outputs:
+      - id: top_pdb
+        kind: file
+        path: results/structure.leap.pdb
+      - id: top_top
+        kind: file
+        path: results/structure.leap.top
+      - id: top_crd
+        kind: file
+        path: results/structure.leap.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        leap_gen_top
+        --config ${leap_gen_top_config}
+        --input_pdb_path ${pdb4amber_pdb}
+        --output_pdb_path ${top_pdb}
+        --output_top_path ${top_top}
+        --output_crd_path ${top_crd}
+    target: *target
+
+  - kind: horus_task
+    id: leap_solvate
+    name: Create truncated octahedron solvent box (leap)
+    inputs:
+      - id: leap_solvate_config
+        kind: file
+        path: configs/leap_solvate.yaml
+      - id: top_pdb
+        kind: file
+        path: results/structure.leap.pdb
+    outputs:
+      - id: solv_pdb
+        kind: file
+        path: results/structure.solv.pdb
+      - id: solv_top
+        kind: file
+        path: results/structure.solv.parmtop
+      - id: solv_crd
+        kind: file
+        path: results/structure.solv.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        leap_solvate
+        --config ${leap_solvate_config}
+        --input_pdb_path ${top_pdb}
+        --output_pdb_path ${solv_pdb}
+        --output_top_path ${solv_top}
+        --output_crd_path ${solv_crd}
+    target: *target
+
+  - kind: horus_task
+    id: leap_add_ions
+    name: Neutralize and add ions (leap)
+    inputs:
+      - id: leap_add_ions_config
+        kind: file
+        path: configs/leap_add_ions.yaml
+      - id: solv_pdb
+        kind: file
+        path: results/structure.solv.pdb
+    outputs:
+      - id: ions_pdb
+        kind: file
+        path: results/structure.ions.pdb
+      - id: ions_top
+        kind: file
+        path: results/structure.ions.parmtop
+      - id: ions_crd
+        kind: file
+        path: results/structure.ions.crd
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        leap_add_ions
+        --config ${leap_add_ions_config}
+        --input_pdb_path ${solv_pdb}
+        --output_pdb_path ${ions_pdb}
+        --output_top_path ${ions_top}
+        --output_crd_path ${ions_crd}
+    target: *target
+
+  - kind: horus_task
+    id: parmed_cpinutil
+    name: Generate constant pH input file (cpinutil)
+    inputs:
+      - id: parmed_cpinutil_config
+        kind: file
+        path: configs/parmed_cpinutil.yaml
+      - id: ions_top
+        kind: file
+        path: results/structure.ions.parmtop
+    outputs:
+      - id: cpin_path
+        kind: file
+        path: results/structure.cpin
+      - id: cph_top
+        kind: file
+        path: results/structure.cpH.parmtop
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        parmed_cpinutil
+        --config ${parmed_cpinutil_config}
+        --input_top_path ${ions_top}
+        --output_cpin_path ${cpin_path}
+        --output_top_path ${cph_top}
+    target: *target
+
+  - kind: horus_task
+    id: sander_min
+    name: Energy minimize the system with backbone restraints (sander)
+    inputs:
+      - id: sander_min_config
+        kind: file
+        path: configs/sander_min.yaml
+      - id: cph_top
+        kind: file
+        path: results/structure.cpH.parmtop
+      - id: ions_crd
+        kind: file
+        path: results/structure.ions.crd
+    outputs:
+      - id: min_traj
+        kind: file
+        path: results/sander.cpH.x
+      - id: min_rst
+        kind: file
+        path: results/sander.cpH.rst
+      - id: min_log
+        kind: file
+        path: results/sander.cpH.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_min_config}
+        --input_top_path ${cph_top}
+        --input_crd_path ${ions_crd}
+        --input_ref_path ${ions_crd}
+        --output_traj_path ${min_traj}
+        --output_rst_path ${min_rst}
+        --output_log_path ${min_log}
+    target: *target
+
+  - kind: horus_task
+    id: process_min
+    name: Extract minimization energy (process_minout)
+    inputs:
+      - id: process_min_config
+        kind: file
+        path: configs/process_min.yaml
+      - id: min_log
+        kind: file
+        path: results/sander.cpH.log
+    outputs:
+      - id: min_dat
+        kind: file
+        path: results/sander.min.energy.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        process_minout
+        --config ${process_min_config}
+        --input_log_path ${min_log}
+        --output_dat_path ${min_dat}
+    target: *target
+
+  - kind: horus_task
+    id: sander_heat
+    name: Heat the system from 0 to 300 K (sander)
+    inputs:
+      - id: sander_heat_config
+        kind: file
+        path: configs/sander_heat.yaml
+      - id: cph_top
+        kind: file
+        path: results/structure.cpH.parmtop
+      - id: min_rst
+        kind: file
+        path: results/sander.cpH.rst
+    outputs:
+      - id: heat_traj
+        kind: file
+        path: results/sander.heat.netcdf
+      - id: heat_rst
+        kind: file
+        path: results/sander.heat.rst
+      - id: heat_log
+        kind: file
+        path: results/sander.heat.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_heat_config}
+        --input_top_path ${cph_top}
+        --input_crd_path ${min_rst}
+        --input_ref_path ${min_rst}
+        --output_traj_path ${heat_traj}
+        --output_rst_path ${heat_rst}
+        --output_log_path ${heat_log}
+    target: *target
+
+  - kind: horus_task
+    id: process_heat
+    name: Extract heating temperature (process_mdout)
+    inputs:
+      - id: process_heat_config
+        kind: file
+        path: configs/process_heat.yaml
+      - id: heat_log
+        kind: file
+        path: results/sander.heat.log
+    outputs:
+      - id: heat_dat
+        kind: file
+        path: results/sander.md.temp.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        process_mdout
+        --config ${process_heat_config}
+        --input_log_path ${heat_log}
+        --output_dat_path ${heat_dat}
+    target: *target
+
+  - kind: horus_task
+    id: sander_nvt
+    name: Equilibrate the system NVT (sander)
+    inputs:
+      - id: sander_nvt_config
+        kind: file
+        path: configs/sander_nvt.yaml
+      - id: cph_top
+        kind: file
+        path: results/structure.cpH.parmtop
+      - id: heat_rst
+        kind: file
+        path: results/sander.heat.rst
+    outputs:
+      - id: nvt_traj
+        kind: file
+        path: results/sander.nvt.netcdf
+      - id: nvt_rst
+        kind: file
+        path: results/sander.nvt.rst
+      - id: nvt_log
+        kind: file
+        path: results/sander.nvt.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_nvt_config}
+        --input_top_path ${cph_top}
+        --input_crd_path ${heat_rst}
+        --input_ref_path ${heat_rst}
+        --output_traj_path ${nvt_traj}
+        --output_rst_path ${nvt_rst}
+        --output_log_path ${nvt_log}
+    target: *target
+
+  - kind: horus_task
+    id: process_nvt
+    name: Extract NVT equilibration temperature (process_mdout)
+    inputs:
+      - id: process_nvt_config
+        kind: file
+        path: configs/process_nvt.yaml
+      - id: nvt_log
+        kind: file
+        path: results/sander.nvt.log
+    outputs:
+      - id: nvt_dat
+        kind: file
+        path: results/sander.md.nvt.temp.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        process_mdout
+        --config ${process_nvt_config}
+        --input_log_path ${nvt_log}
+        --output_dat_path ${nvt_dat}
+    target: *target
+
+  - kind: horus_task
+    id: sander_npt
+    name: Equilibrate the system NPT (sander)
+    inputs:
+      - id: sander_npt_config
+        kind: file
+        path: configs/sander_npt.yaml
+      - id: cph_top
+        kind: file
+        path: results/structure.cpH.parmtop
+      - id: nvt_rst
+        kind: file
+        path: results/sander.nvt.rst
+    outputs:
+      - id: npt_traj
+        kind: file
+        path: results/sander.npt.netcdf
+      - id: npt_rst
+        kind: file
+        path: results/sander.npt.rst
+      - id: npt_log
+        kind: file
+        path: results/sander.npt.log
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_npt_config}
+        --input_top_path ${cph_top}
+        --input_crd_path ${nvt_rst}
+        --input_ref_path ${nvt_rst}
+        --output_traj_path ${npt_traj}
+        --output_rst_path ${npt_rst}
+        --output_log_path ${npt_log}
+    target: *target
+
+  - kind: horus_task
+    id: process_npt
+    name: Extract NPT pressure and density (process_mdout)
+    inputs:
+      - id: process_npt_config
+        kind: file
+        path: configs/process_npt.yaml
+      - id: npt_log
+        kind: file
+        path: results/sander.npt.log
+    outputs:
+      - id: npt_dat
+        kind: file
+        path: results/sander.md.npt.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        process_mdout
+        --config ${process_npt_config}
+        --input_log_path ${npt_log}
+        --output_dat_path ${npt_dat}
+    target: *target
+
+  - kind: horus_task
+    id: sander_cph_free
+    name: Constant pH MD simulation (sander)
+    inputs:
+      - id: sander_cph_free_config
+        kind: file
+        path: configs/sander_cph_free.yaml
+      - id: cph_top
+        kind: file
+        path: results/structure.cpH.parmtop
+      - id: npt_rst
+        kind: file
+        path: results/sander.npt.rst
+      - id: cpin_path
+        kind: file
+        path: results/structure.cpin
+    outputs:
+      - id: ph_traj
+        kind: file
+        path: results/sander.pH.netcdf
+      - id: ph_rst
+        kind: file
+        path: results/sander.pH.rst
+      - id: ph_cpout
+        kind: file
+        path: results/sander.pH.cpout
+      - id: ph_cprst
+        kind: file
+        path: results/sander.pH.cprst
+      - id: ph_log
+        kind: file
+        path: results/sander.pH.log
+      - id: ph_mdinfo
+        kind: file
+        path: results/sander.pH.mdinfo
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_cph_free_config}
+        --input_top_path ${cph_top}
+        --input_crd_path ${npt_rst}
+        --input_cpin_path ${cpin_path}
+        --output_traj_path ${ph_traj}
+        --output_rst_path ${ph_rst}
+        --output_cpout_path ${ph_cpout}
+        --output_cprst_path ${ph_cprst}
+        --output_log_path ${ph_log}
+        --output_mdinfo_path ${ph_mdinfo}
+    target: *target
+
+  - kind: horus_task
+    id: cphstats
+    name: Analyse protonation states and predict pKa values (cphstats)
+    inputs:
+      - id: cphstats_config
+        kind: file
+        path: configs/cphstats.yaml
+      - id: cpin_path
+        kind: file
+        path: results/structure.cpin
+      - id: ph_cpout
+        kind: file
+        path: results/sander.pH.cpout
+    outputs:
+      - id: ph_dat
+        kind: file
+        path: results/cphstats.pH.dat
+      - id: ph_pop
+        kind: file
+        path: results/cphstats.pH.pop.dat
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cphstats_run
+        --config ${cphstats_config}
+        --input_cpin_path ${cpin_path}
+        --input_cpout_path ${ph_cpout}
+        --output_dat_path ${ph_dat}
+        --output_population_path ${ph_pop}
+    target: *target
+
+edges:
+  - source: fetch_pdb
+    source_output: downloaded_pdb
+    target: pdb4amber
+    target_input: downloaded_pdb
+
+  - source: pdb4amber
+    source_output: pdb4amber_pdb
+    target: leap_gen_top
+    target_input: pdb4amber_pdb
+
+  - source: leap_gen_top
+    source_output: top_pdb
+    target: leap_solvate
+    target_input: top_pdb
+
+  - source: leap_solvate
+    source_output: solv_pdb
+    target: leap_add_ions
+    target_input: solv_pdb
+
+  - source: leap_add_ions
+    source_output: ions_top
+    target: parmed_cpinutil
+    target_input: ions_top
+
+  - source: leap_add_ions
+    source_output: ions_crd
+    target: sander_min
+    target_input: ions_crd
+
+  - source: parmed_cpinutil
+    source_output: cph_top
+    target: sander_min
+    target_input: cph_top
+
+  - source: sander_min
+    source_output: min_log
+    target: process_min
+    target_input: min_log
+
+  - source: parmed_cpinutil
+    source_output: cph_top
+    target: sander_heat
+    target_input: cph_top
+
+  - source: sander_min
+    source_output: min_rst
+    target: sander_heat
+    target_input: min_rst
+
+  - source: sander_heat
+    source_output: heat_log
+    target: process_heat
+    target_input: heat_log
+
+  - source: parmed_cpinutil
+    source_output: cph_top
+    target: sander_nvt
+    target_input: cph_top
+
+  - source: sander_heat
+    source_output: heat_rst
+    target: sander_nvt
+    target_input: heat_rst
+
+  - source: sander_nvt
+    source_output: nvt_log
+    target: process_nvt
+    target_input: nvt_log
+
+  - source: parmed_cpinutil
+    source_output: cph_top
+    target: sander_npt
+    target_input: cph_top
+
+  - source: sander_nvt
+    source_output: nvt_rst
+    target: sander_npt
+    target_input: nvt_rst
+
+  - source: sander_npt
+    source_output: npt_log
+    target: process_npt
+    target_input: npt_log
+
+  - source: parmed_cpinutil
+    source_output: cph_top
+    target: sander_cph_free
+    target_input: cph_top
+
+  - source: parmed_cpinutil
+    source_output: cpin_path
+    target: sander_cph_free
+    target_input: cpin_path
+
+  - source: sander_npt
+    source_output: npt_rst
+    target: sander_cph_free
+    target_input: npt_rst
+
+  - source: parmed_cpinutil
+    source_output: cpin_path
+    target: cphstats
+    target_input: cpin_path
+
+  - source: sander_cph_free
+    source_output: ph_cpout
+    target: cphstats
+    target_input: ph_cpout
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

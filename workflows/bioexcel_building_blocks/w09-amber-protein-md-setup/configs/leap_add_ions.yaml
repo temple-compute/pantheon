@@ -1,0 +1,7 @@
+forcefield:
+  - protein.ff14SB
+neutralise: true
+positive_ions_type: Na+
+negative_ions_type: Cl-
+ionic_concentration: 150
+box_type: truncated_octahedron

@@ -1,0 +1,6 @@
+# resid_list: Residue indices for the selected binding site from residues.json.
+# Run the get_binding_sites task first, inspect results/residues.json, then
+# populate this list with the residue indices for your chosen binding site.
+resid_list: []
+offset: 12
+box_coordinates: true

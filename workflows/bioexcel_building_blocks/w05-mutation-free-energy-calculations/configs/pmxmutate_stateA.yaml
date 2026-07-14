@@ -1,0 +1,3 @@
+force_field: amber99sb-star-ildn-mut
+mutation_list: 10Ala
+binary_path: pmx

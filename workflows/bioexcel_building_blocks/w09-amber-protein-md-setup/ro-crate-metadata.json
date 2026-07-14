@@ -1,0 +1,184 @@
+{
+  "@context": "https://w3id.org/ro/crate/1.2/context",
+  "@graph": [
+    {
+      "@id": "ro-crate-metadata.json",
+      "@type": "CreativeWork",
+      "about": {
+        "@id": "./"
+      },
+      "conformsTo": [
+        {
+          "@id": "https://w3id.org/ro/crate/1.2"
+        },
+        {
+          "@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
+        }
+      ]
+    },
+    {
+      "@id": "ro-crate-preview.html",
+      "@type": "CreativeWork",
+      "about": {
+        "@id": "./"
+      }
+    },
+    {
+      "@id": "./",
+      "@type": "Dataset",
+      "mainEntity": {
+        "@id": "biobb_wf_amber_md_setup.ipynb"
+      },
+      "datePublished": "2026-03-26 10:01:04 +0000",
+      "author": [
+        {
+          "@id": "https://orcid.org/0000-0002-8291-8071"
+        },
+        {
+          "@id": "https://orcid.org/0000-0003-0513-0288"
+        }
+      ],
+      "license": "https://spdx.org/licenses/Apache-2.0",
+      "identifier": "https://doi.org/10.48546/workflowhub.workflow.130.7",
+      "url": "https://workflowhub.eu/workflows/130/ro_crate?version=7",
+      "name": "Research Object Crate for Jupyter Notebook Amber Protein MD Setup tutorial",
+      "description": "# AMBER Protein MD Setup tutorials using BioExcel Building Blocks (biobb)\n\n**Based on the official [GROMACS tutorial](http://www.mdtutorials.com/gmx/lysozyme/index.html).**\n\n***\n\nThis tutorial aims to illustrate the process of **setting up a simulation** system containing a **protein**, step by step, using the **BioExcel Building Blocks library (biobb)** wrapping the **Ambertools MD package**.\n\n***\n\n## Copyright &amp; Licensing\nThis software has been developed in the [MMB group](http://mmb.irbbarcelona.org) at the [BSC](http://www.bsc.es/) &amp; [IRB](https://www.irbbarcelona.org/) for the [European BioExcel](http://bioexcel.eu/), funded by the European Commission (EU H2020 [823830](http://cordis.europa.eu/projects/823830), EU H2020 [675728](http://cordis.europa.eu/projects/675728)).\n\n* (c) 2015-2026 [Barcelona Supercomputing Center](https://www.bsc.es/)\n* (c) 2015-2026 [Institute for Research in Biomedicine](https://www.irbbarcelona.org/)\n\nLicensed under the\n[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), see the file LICENSE for details.\n\n![](https://bioexcel.eu/wp-content/uploads/2019/04/Bioexcell_logo_1080px_transp.png \"Bioexcel\")",
+      "isBasedOn": "https://github.com/bioexcel/biobb_wf_amber_md_setup",
+      "sdDatePublished": "2026-07-13 10:47:17 +0100",
+      "creativeWorkStatus": "Stable",
+      "hasPart": [
+        {
+          "@id": "biobb_wf_amber_md_setup.ipynb"
+        },
+        {
+          "@id": "https://github.com/bioexcel/biobb_wf_amber/blob/main/conda_env/environment.yml"
+        }
+      ]
+    },
+    {
+      "@id": "biobb_wf_amber_md_setup.ipynb",
+      "@type": [
+        "File",
+        "SoftwareSourceCode",
+        "ComputationalWorkflow"
+      ],
+      "url": "https://github.com/bioexcel/biobb_wf_amber/blob/main/biobb_wf_amber/notebooks/md_setup/biobb_wf_amber_md_setup.ipynb",
+      "contentSize": 67291,
+      "programmingLanguage": {
+        "@id": "#jupyter"
+      },
+      "dct:conformsTo": {
+        "@id": "https://bioschemas.org/profiles/ComputationalWorkflow/1.0-RELEASE/"
+      },
+      "description": "# AMBER Protein MD Setup tutorials using BioExcel Building Blocks (biobb)\n\n**Based on the official [GROMACS tutorial](http://www.mdtutorials.com/gmx/lysozyme/index.html).**\n\n***\n\nThis tutorial aims to illustrate the process of **setting up a simulation** system containing a **protein**, step by step, using the **BioExcel Building Blocks library (biobb)** wrapping the **Ambertools MD package**.\n\n***\n\n## Copyright &amp; Licensing\nThis software has been developed in the [MMB group](http://mmb.irbbarcelona.org) at the [BSC](http://www.bsc.es/) &amp; [IRB](https://www.irbbarcelona.org/) for the [European BioExcel](http://bioexcel.eu/), funded by the European Commission (EU H2020 [823830](http://cordis.europa.eu/projects/823830), EU H2020 [675728](http://cordis.europa.eu/projects/675728)).\n\n* (c) 2015-2026 [Barcelona Supercomputing Center](https://www.bsc.es/)\n* (c) 2015-2026 [Institute for Research in Biomedicine](https://www.irbbarcelona.org/)\n\nLicensed under the\n[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), see the file LICENSE for details.\n\n![](https://bioexcel.eu/wp-content/uploads/2019/04/Bioexcell_logo_1080px_transp.png \"Bioexcel\")",
+      "name": "Jupyter Notebook Amber Protein MD Setup tutorial",
+      "keywords": "",
+      "version": 7,
+      "license": "https://spdx.org/licenses/Apache-2.0",
+      "creator": [
+        {
+          "@id": "https://workflowhub.eu/people/57"
+        },
+        {
+          "@id": "https://workflowhub.eu/people/47"
+        }
+      ],
+      "contributor": {
+        "@id": "https://workflowhub.eu/people/47"
+      },
+      "producer": {
+        "@id": "https://workflowhub.eu/projects/11"
+      },
+      "dateCreated": "2026-03-26T10:00:32Z",
+      "dateModified": "2026-05-13T13:04:24Z",
+      "isPartOf": [
+        {
+          "@id": "https://workflowhub.eu/collections/1"
+        },
+        {
+          "@id": "https://workflowhub.eu/collections/19"
+        }
+      ],
+      "identifier": "https://doi.org/10.48546/workflowhub.workflow.130.7",
+      "isBasedOn": "https://workflowhub.eu/workflows/130?version=6",
+      "datePublished": "2026-03-26T10:02:19Z",
+      "citation": [
+
+      ],
+      "input": [
+
+      ],
+      "output": [
+
+      ],
+      "sdPublisher": {
+        "@id": "https://about.workflowhub.eu/"
+      },
+      "creativeWorkStatus": "Stable",
+      "documentation": [
+
+      ]
+    },
+    {
+      "@id": "https://github.com/bioexcel/biobb_wf_amber/blob/main/conda_env/environment.yml",
+      "@type": "File"
+    },
+    {
+      "@id": "https://orcid.org/0000-0002-8291-8071",
+      "@type": "Person",
+      "name": "Adam Hospital",
+      "identifier": "https://orcid.org/0000-0002-8291-8071"
+    },
+    {
+      "@id": "https://orcid.org/0000-0003-0513-0288",
+      "@type": "Person",
+      "name": "Genís Bayarri",
+      "identifier": "https://orcid.org/0000-0003-0513-0288"
+    },
+    {
+      "@id": "https://workflowhub.eu/people/57",
+      "@type": "Person",
+      "name": "Adam Hospital"
+    },
+    {
+      "@id": "https://workflowhub.eu/people/47",
+      "@type": "Person",
+      "name": "Genís Bayarri"
+    },
+    {
+      "@id": "https://workflowhub.eu/projects/11",
+      "@type": [
+        "Project",
+        "Organization"
+      ],
+      "name": "BioBB Building Blocks"
+    },
+    {
+      "@id": "https://workflowhub.eu/collections/1",
+      "@type": "Collection",
+      "name": "Tutorials for BioExcel Building Blocks (BioBB)"
+    },
+    {
+      "@id": "https://workflowhub.eu/collections/19",
+      "@type": "Collection",
+      "name": "Interactive Jupyter Notebooks for FAIR and reproducible biomolecular simulation workflows"
+    },
+    {
+      "@id": "#jupyter",
+      "@type": "ComputerLanguage",
+      "name": "Jupyter",
+      "identifier": {
+        "@id": "https://jupyter.org/"
+      },
+      "url": {
+        "@id": "https://jupyter.org/"
+      }
+    },
+    {
+      "@id": "https://about.workflowhub.eu/",
+      "@type": "Organization",
+      "name": "WorkflowHub",
+      "url": "https://about.workflowhub.eu/"
+    }
+  ]
+}

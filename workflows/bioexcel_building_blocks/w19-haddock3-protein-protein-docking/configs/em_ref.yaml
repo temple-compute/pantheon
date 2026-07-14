@@ -1,0 +1,3 @@
+cfg:
+  tolerance: 5
+  clean: false

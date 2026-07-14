@@ -1,0 +1,19 @@
+# This file defines the backbone torsions to be calculated by Cur+
+#
+# Standard lines start with a blank and define a single torsion by
+# giving 4 atom names (<= 4 chars) followed by the torsion name (<= 6 chars)
+#
+# Lines starting with 'B' define torsions which depend on the type of base
+# Atoms 1-4 are used with purines and atoms 5-8 are used with pyrimidines
+#
+# Lines starting with 'S' define sugar rings and give the names of the 5 ring
+# atoms in the order used for pseudorotation calculations
+#
+  '-O3*' 'P'   'O5*' 'C5*'  'Alpha'
+  'P'    'O5*' 'C5*' 'C4*'  'Beta'
+  'O5*'  'C5*' 'C4*' 'C3*'  'Gamma'
+  'C5*'  'C4*' 'C3*' 'O3*'  'Delta'
+  'C4*'  'C3*' 'O3*' '+P'   'Epsil'
+  'C3*'  'O3*' '+P'  '+O5*' 'Zeta'
+B 'O4*'  'C1*' 'N9'  'C4'  'O4*'  'C1*' 'N1'  'C2'   'Chi'
+S 'C1*' 'C2*' 'C3*'  'C4*' 'O4*'

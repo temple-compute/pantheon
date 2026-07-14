@@ -1,0 +1,201 @@
+{
+  "@context": "https://w3id.org/ro/crate/1.2/context",
+  "@graph": [
+    {
+      "@id": "ro-crate-metadata.json",
+      "@type": "CreativeWork",
+      "about": {
+        "@id": "./"
+      },
+      "conformsTo": [
+        {
+          "@id": "https://w3id.org/ro/crate/1.2"
+        },
+        {
+          "@id": "https://w3id.org/workflowhub/workflow-ro-crate/1.0"
+        }
+      ]
+    },
+    {
+      "@id": "ro-crate-preview.html",
+      "@type": "CreativeWork",
+      "about": {
+        "@id": "./"
+      }
+    },
+    {
+      "@id": "./",
+      "@type": "Dataset",
+      "mainEntity": {
+        "@id": "biobb_wf_virtual-screening_ebi_api.ipynb"
+      },
+      "datePublished": "2026-03-24 15:19:38 +0000",
+      "author": [
+        {
+          "@id": "https://orcid.org/0000-0002-8291-8071"
+        },
+        {
+          "@id": "https://orcid.org/0000-0002-1248-3594"
+        },
+        {
+          "@id": "https://orcid.org/0000-0003-0513-0288"
+        }
+      ],
+      "license": "https://spdx.org/licenses/Apache-2.0",
+      "identifier": "https://doi.org/10.48546/workflowhub.workflow.128.7",
+      "url": "https://workflowhub.eu/workflows/128/ro_crate?version=7",
+      "name": "Research Object Crate for Jupyter Notebook Protein-ligand Docking tutorial (PDBe REST API)",
+      "description": "# Protein-ligand Docking tutorials using BioExcel Building Blocks (biobb)\n\nThis tutorials aim to illustrate the process of **protein-ligand docking**, step by step, using the **BioExcel Building Blocks library (biobb)**. The particular examples used are based on the **Mitogen-activated protein kinase 14** (p38-α) protein (PDB code [3HEC](https://www.rcsb.org/structure/3HEC)), a well-known **Protein Kinase enzyme**,\n in complex with the FDA-approved **Imatinib** (PDB Ligand code [STI](https://www.rcsb.org/ligand/STI), DrugBank Ligand Code [DB00619](https://go.drugbank.com/drugs/DB00619)) and **Dasatinib** (PDB Ligand code [1N1](https://www.rcsb.org/ligand/1N1), DrugBank Ligand Code [DB01254](https://go.drugbank.com/drugs/DB01254)), small **kinase inhibitors** molecules used to treat certain types of **cancer**.\n\nThe tutorials will guide you through the process of identifying the **active site cavity** (pocket) without previous knowledge, and the final prediction of the **protein-ligand complex**.\n\n***\n\n## Copyright &amp; Licensing\nThis software has been developed in the [MMB group](http://mmb.irbbarcelona.org) at the [BSC](http://www.bsc.es/) &amp; [IRB](https://www.irbbarcelona.org/) for the [European BioExcel](http://bioexcel.eu/), funded by the European Commission (EU H2020 [823830](http://cordis.europa.eu/projects/823830), EU H2020 [675728](http://cordis.europa.eu/projects/675728)).\n\n* (c) 2015-2026 [Barcelona Supercomputing Center](https://www.bsc.es/)\n* (c) 2015-2026 [Institute for Research in Biomedicine](https://www.irbbarcelona.org/)\n\nLicensed under the\n[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), see the file LICENSE for details.\n\n![](https://bioexcel.eu/wp-content/uploads/2019/04/Bioexcell_logo_1080px_transp.png \"Bioexcel\")",
+      "isBasedOn": "https://github.com/bioexcel/biobb_wf_virtual-screening",
+      "sdDatePublished": "2026-07-13 10:46:46 +0100",
+      "creativeWorkStatus": "Stable",
+      "hasPart": [
+        {
+          "@id": "biobb_wf_virtual-screening_ebi_api.ipynb"
+        },
+        {
+          "@id": "https://github.com/bioexcel/biobb_wf_virtual-screening/blob/main/conda_env/environment.yml"
+        }
+      ]
+    },
+    {
+      "@id": "biobb_wf_virtual-screening_ebi_api.ipynb",
+      "@type": [
+        "File",
+        "SoftwareSourceCode",
+        "ComputationalWorkflow"
+      ],
+      "url": "https://github.com/bioexcel/biobb_wf_virtual-screening/blob/main/biobb_wf_virtual-screening/notebooks/ebi_api/biobb_wf_virtual-screening_ebi_api.ipynb",
+      "contentSize": 38581,
+      "programmingLanguage": {
+        "@id": "#jupyter"
+      },
+      "dct:conformsTo": {
+        "@id": "https://bioschemas.org/profiles/ComputationalWorkflow/1.0-RELEASE/"
+      },
+      "description": "# Protein-ligand Docking tutorials using BioExcel Building Blocks (biobb)\n\nThis tutorials aim to illustrate the process of **protein-ligand docking**, step by step, using the **BioExcel Building Blocks library (biobb)**. The particular examples used are based on the **Mitogen-activated protein kinase 14** (p38-α) protein (PDB code [3HEC](https://www.rcsb.org/structure/3HEC)), a well-known **Protein Kinase enzyme**,\n in complex with the FDA-approved **Imatinib** (PDB Ligand code [STI](https://www.rcsb.org/ligand/STI), DrugBank Ligand Code [DB00619](https://go.drugbank.com/drugs/DB00619)) and **Dasatinib** (PDB Ligand code [1N1](https://www.rcsb.org/ligand/1N1), DrugBank Ligand Code [DB01254](https://go.drugbank.com/drugs/DB01254)), small **kinase inhibitors** molecules used to treat certain types of **cancer**.\n\nThe tutorials will guide you through the process of identifying the **active site cavity** (pocket) without previous knowledge, and the final prediction of the **protein-ligand complex**.\n\n***\n\n## Copyright &amp; Licensing\nThis software has been developed in the [MMB group](http://mmb.irbbarcelona.org) at the [BSC](http://www.bsc.es/) &amp; [IRB](https://www.irbbarcelona.org/) for the [European BioExcel](http://bioexcel.eu/), funded by the European Commission (EU H2020 [823830](http://cordis.europa.eu/projects/823830), EU H2020 [675728](http://cordis.europa.eu/projects/675728)).\n\n* (c) 2015-2026 [Barcelona Supercomputing Center](https://www.bsc.es/)\n* (c) 2015-2026 [Institute for Research in Biomedicine](https://www.irbbarcelona.org/)\n\nLicensed under the\n[Apache License 2.0](https://www.apache.org/licenses/LICENSE-2.0), see the file LICENSE for details.\n\n![](https://bioexcel.eu/wp-content/uploads/2019/04/Bioexcell_logo_1080px_transp.png \"Bioexcel\")",
+      "name": "Jupyter Notebook Protein-ligand Docking tutorial (PDBe REST API)",
+      "keywords": "",
+      "version": 7,
+      "license": "https://spdx.org/licenses/Apache-2.0",
+      "creator": [
+        {
+          "@id": "https://workflowhub.eu/people/57"
+        },
+        {
+          "@id": "https://workflowhub.eu/people/37"
+        },
+        {
+          "@id": "https://workflowhub.eu/people/47"
+        }
+      ],
+      "contributor": {
+        "@id": "https://workflowhub.eu/people/47"
+      },
+      "producer": {
+        "@id": "https://workflowhub.eu/projects/11"
+      },
+      "dateCreated": "2026-03-24T15:18:40Z",
+      "dateModified": "2026-05-13T13:04:24Z",
+      "isPartOf": [
+        {
+          "@id": "https://workflowhub.eu/collections/1"
+        },
+        {
+          "@id": "https://workflowhub.eu/collections/19"
+        }
+      ],
+      "identifier": "https://doi.org/10.48546/workflowhub.workflow.128.7",
+      "isBasedOn": "https://workflowhub.eu/workflows/128?version=6",
+      "datePublished": "2026-03-24T15:20:24Z",
+      "citation": [
+
+      ],
+      "input": [
+
+      ],
+      "output": [
+
+      ],
+      "sdPublisher": {
+        "@id": "https://about.workflowhub.eu/"
+      },
+      "creativeWorkStatus": "Stable",
+      "documentation": [
+
+      ]
+    },
+    {
+      "@id": "https://github.com/bioexcel/biobb_wf_virtual-screening/blob/main/conda_env/environment.yml",
+      "@type": "File"
+    },
+    {
+      "@id": "https://orcid.org/0000-0002-8291-8071",
+      "@type": "Person",
+      "name": "Adam Hospital",
+      "identifier": "https://orcid.org/0000-0002-8291-8071"
+    },
+    {
+      "@id": "https://orcid.org/0000-0002-1248-3594",
+      "@type": "Person",
+      "name": "Douglas Lowe",
+      "identifier": "https://orcid.org/0000-0002-1248-3594"
+    },
+    {
+      "@id": "https://orcid.org/0000-0003-0513-0288",
+      "@type": "Person",
+      "name": "Genís Bayarri",
+      "identifier": "https://orcid.org/0000-0003-0513-0288"
+    },
+    {
+      "@id": "https://workflowhub.eu/people/57",
+      "@type": "Person",
+      "name": "Adam Hospital"
+    },
+    {
+      "@id": "https://workflowhub.eu/people/37",
+      "@type": "Person",
+      "name": "Douglas Lowe"
+    },
+    {
+      "@id": "https://workflowhub.eu/people/47",
+      "@type": "Person",
+      "name": "Genís Bayarri"
+    },
+    {
+      "@id": "https://workflowhub.eu/projects/11",
+      "@type": [
+        "Project",
+        "Organization"
+      ],
+      "name": "BioBB Building Blocks"
+    },
+    {
+      "@id": "https://workflowhub.eu/collections/1",
+      "@type": "Collection",
+      "name": "Tutorials for BioExcel Building Blocks (BioBB)"
+    },
+    {
+      "@id": "https://workflowhub.eu/collections/19",
+      "@type": "Collection",
+      "name": "Interactive Jupyter Notebooks for FAIR and reproducible biomolecular simulation workflows"
+    },
+    {
+      "@id": "#jupyter",
+      "@type": "ComputerLanguage",
+      "name": "Jupyter",
+      "identifier": {
+        "@id": "https://jupyter.org/"
+      },
+      "url": {
+        "@id": "https://jupyter.org/"
+      }
+    },
+    {
+      "@id": "https://about.workflowhub.eu/",
+      "@type": "Organization",
+      "name": "WorkflowHub",
+      "url": "https://about.workflowhub.eu/"
+    }
+  ]
+}

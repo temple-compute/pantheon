@@ -1,0 +1,14 @@
+name: biobb_wf_godmd
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - biobb_io==5.2.3
+  - biobb_structure_utils==5.2.1
+  - biobb_analysis==5.2.1
+  - biobb_godmd==5.2.1
+  - emboss
+  - jupyter
+  - nglview<=4.0
+  - simpletraj

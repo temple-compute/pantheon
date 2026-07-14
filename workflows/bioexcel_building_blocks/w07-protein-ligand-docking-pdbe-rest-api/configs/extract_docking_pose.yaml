@@ -1,0 +1,3 @@
+# model: 1-based index of the docking pose to extract from the Vina output.
+# Pose 1 is the top-ranked (highest affinity) result.
+model: 1

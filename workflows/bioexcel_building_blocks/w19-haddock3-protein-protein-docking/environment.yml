@@ -1,0 +1,13 @@
+name: biobb_wf_haddock
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - biobb_haddock==5.2.1
+  - biobb_pdb_tools==5.2.1
+  - biobb_io==5.2.3
+  - nglview<=4.0
+  - ipywidgets
+  - jupyter
+  - ambertools # For pytraj

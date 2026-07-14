@@ -1,0 +1,6 @@
+forcefield:
+  - protein.ff14SB
+  - constph
+water_type: TIP3PBOX
+distance_to_molecule: "9.0"
+box_type: truncated_octahedron
