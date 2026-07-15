@@ -1,0 +1,6 @@
+properties:
+  vdw: 4
+  num_structs: 300
+  env_vars_dict:
+    CONCOORD_OVERWRITE: "1"
+    CONCOORDLIB: "${CONDA_PREFIX}/share/concoord/lib"

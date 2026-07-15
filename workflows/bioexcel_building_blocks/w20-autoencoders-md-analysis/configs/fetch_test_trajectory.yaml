@@ -1,0 +1,6 @@
+properties:
+  node_id: irb-dev
+  project_id: MCV1900212
+  trj_format: xtc
+  frames: 1-10000
+  selection: backbone and .CA

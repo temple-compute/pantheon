@@ -1,0 +1,3 @@
+properties:
+  force_field: amber99sb-star-ildn-mut
+  binary_path: pmx

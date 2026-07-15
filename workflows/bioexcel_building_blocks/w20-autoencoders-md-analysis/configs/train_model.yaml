@@ -1,0 +1,12 @@
+properties:
+  Dataset:
+    batch_size: 128
+    shuffle: true
+    split:
+      random_split: true
+      train_prop: 0.9
+      val_prop: 0.1
+  Trainer:
+    max_epochs: 100
+    enable_checkpointing: false
+    callbacks: {}

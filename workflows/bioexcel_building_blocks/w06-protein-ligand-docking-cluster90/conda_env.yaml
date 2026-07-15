@@ -1,0 +1,9 @@
+name: biobb_wf_virtual-screening
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - biobb_io
+  - biobb_structure_utils
+  - biobb_chemistry

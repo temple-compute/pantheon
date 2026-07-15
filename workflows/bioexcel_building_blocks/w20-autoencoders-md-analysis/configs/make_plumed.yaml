@@ -1,0 +1,24 @@
+properties:
+  additional_actions:
+    - name: ENERGY
+      label: ene
+  fit_to_template:
+    STRIDE: 1
+    TYPE: OPTIMAL
+  group:
+    label: backbone
+    selection: backbone
+  bias:
+    - name: METAD
+      label: bias
+      params:
+        ARG: cv.*
+        PACE: 500
+        HEIGHT: 1.2
+        SIGMA: 0.35
+        FILE: HILLS
+        BIASFACTOR: 8
+  prints:
+    ARG: cv.*,bias.*
+    STRIDE: 1
+    FILE: COLVAR

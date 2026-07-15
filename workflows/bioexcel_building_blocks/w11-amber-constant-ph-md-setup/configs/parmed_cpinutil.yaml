@@ -1,0 +1,4 @@
+properties:
+  igb: 2
+  resnames: AS4 GL4 CYS LYS TYR
+  system: BPTI

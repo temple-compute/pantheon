@@ -1,0 +1,5 @@
+properties:
+  fit_selection: DPPC
+  output_selection: System
+  center: false
+  fit: rot+trans

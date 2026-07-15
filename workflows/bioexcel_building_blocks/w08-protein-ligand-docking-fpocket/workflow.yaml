@@ -1,0 +1,453 @@
+kind: horus_workflow
+name: BioExcel Virtual Screening - Protein-Ligand Docking with fpocket (p38α / Imatinib)
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+_docker_executor: &docker_executor
+  kind: docker
+  image: quay.io/biocontainers/biobb_vs:5.2.1--pyhdfd78af_0
+
+tasks:
+  - kind: horus_task
+    id: fetch_pdb
+    name: Download 3HEC structure from PDB
+    inputs:
+      - id: fetch_pdb_config
+        kind: file
+        path: configs/fetch_pdb.yaml
+    outputs:
+      - id: download_pdb
+        kind: file
+        path: results/download.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_pdb_config}
+        --output_pdb_path ${download_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_protein
+    name: Extract protein structure (remove ligands, ions, water)
+    inputs:
+      - id: download_pdb
+        kind: file
+        path: results/download.pdb
+    outputs:
+      - id: pdb_protein
+        kind: file
+        path: results/pdb_protein.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        extract_molecule
+        --input_structure_path ${download_pdb}
+        --output_molecule_path ${pdb_protein}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fpocket_run
+    name: Compute protein cavities with fpocket
+    inputs:
+      - id: fpocket_run_config
+        kind: file
+        path: configs/fpocket_run.yaml
+      - id: pdb_protein
+        kind: file
+        path: results/pdb_protein.pdb
+    outputs:
+      - id: fpocket_all_pockets
+        kind: file
+        path: results/fpocket_all_pockets.zip
+      - id: fpocket_summary
+        kind: file
+        path: results/fpocket_summary.json
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        fpocket_run
+        --config ${fpocket_run_config}
+        --input_pdb_path ${pdb_protein}
+        --output_pockets_zip ${fpocket_all_pockets}
+        --output_summary ${fpocket_summary}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fpocket_filter
+    name: Filter protein cavities by volume (800-2000 Å³)
+    inputs:
+      - id: fpocket_filter_config
+        kind: file
+        path: configs/fpocket_filter.yaml
+      - id: fpocket_all_pockets
+        kind: file
+        path: results/fpocket_all_pockets.zip
+      - id: fpocket_summary
+        kind: file
+        path: results/fpocket_summary.json
+    outputs:
+      - id: fpocket_filter_pockets
+        kind: file
+        path: results/fpocket_filter_pockets.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        fpocket_filter
+        --config ${fpocket_filter_config}
+        --input_pockets_zip ${fpocket_all_pockets}
+        --input_summary ${fpocket_summary}
+        --output_filter_pockets_zip ${fpocket_filter_pockets}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fpocket_select
+    name: Extract selected pocket cavity (pocket 6)
+    inputs:
+      - id: fpocket_select_config
+        kind: file
+        path: configs/fpocket_select.yaml
+      - id: fpocket_filter_pockets
+        kind: file
+        path: results/fpocket_filter_pockets.zip
+    outputs:
+      - id: fpocket_cavity
+        kind: file
+        path: results/fpocket_cavity.pdb
+      - id: fpocket_pocket
+        kind: file
+        path: results/fpocket_pocket.pqr
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        fpocket_select
+        --config ${fpocket_select_config}
+        --input_pockets_zip ${fpocket_filter_pockets}
+        --output_pocket_pdb ${fpocket_cavity}
+        --output_pocket_pqr ${fpocket_pocket}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: box
+    name: Generate docking box around selected cavity (offset 12 Å)
+    inputs:
+      - id: box_config
+        kind: file
+        path: configs/box.yaml
+      - id: fpocket_pocket
+        kind: file
+        path: results/fpocket_pocket.pqr
+    outputs:
+      - id: output_box
+        kind: file
+        path: results/box.pdb
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        box
+        --config ${box_config}
+        --input_pdb_path ${fpocket_pocket}
+        --output_pdb_path ${output_box}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ideal_sdf
+    name: Download Imatinib (STI) small molecule in SDF format
+    inputs:
+      - id: ideal_sdf_config
+        kind: file
+        path: configs/ideal_sdf.yaml
+    outputs:
+      - id: sdf_ideal
+        kind: file
+        path: results/ideal.sdf
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        ideal_sdf
+        --config ${ideal_sdf_config}
+        --output_sdf_path ${sdf_ideal}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: babel_convert_sdf_to_pdb
+    name: Convert small molecule from SDF to PDB format
+    inputs:
+      - id: babel_convert_sdf_to_pdb_config
+        kind: file
+        path: configs/babel_convert_sdf_to_pdb.yaml
+      - id: sdf_ideal
+        kind: file
+        path: results/ideal.sdf
+    outputs:
+      - id: ligand_pdb
+        kind: file
+        path: results/ligand.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        babel_convert
+        --config ${babel_convert_sdf_to_pdb_config}
+        --input_path ${sdf_ideal}
+        --output_path ${ligand_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: babel_convert_pdb_to_pdbqt
+    name: Prepare ligand for docking (PDB to PDBQT, add partial charges)
+    inputs:
+      - id: babel_convert_pdb_to_pdbqt_config
+        kind: file
+        path: configs/babel_convert_pdb_to_pdbqt.yaml
+      - id: ligand_pdb
+        kind: file
+        path: results/ligand.pdb
+    outputs:
+      - id: prep_ligand
+        kind: file
+        path: results/prep_ligand.pdbqt
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        babel_convert
+        --config ${babel_convert_pdb_to_pdbqt_config}
+        --input_path ${ligand_pdb}
+        --output_path ${prep_ligand}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: str_check_add_hydrogens
+    name: Prepare receptor protein for docking (PDB to PDBQT, add charges)
+    inputs:
+      - id: str_check_add_hydrogens_config
+        kind: file
+        path: configs/str_check_add_hydrogens.yaml
+      - id: pdb_protein
+        kind: file
+        path: results/pdb_protein.pdb
+    outputs:
+      - id: prep_receptor
+        kind: file
+        path: results/prep_receptor.pdbqt
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        str_check_add_hydrogens
+        --config ${str_check_add_hydrogens_config}
+        --input_structure_path ${pdb_protein}
+        --output_structure_path ${prep_receptor}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: autodock_vina_run
+    name: Run AutoDock Vina docking
+    inputs:
+      - id: prep_ligand
+        kind: file
+        path: results/prep_ligand.pdbqt
+      - id: prep_receptor
+        kind: file
+        path: results/prep_receptor.pdbqt
+      - id: output_box
+        kind: file
+        path: results/box.pdb
+    outputs:
+      - id: output_vina_pdbqt
+        kind: file
+        path: results/output_vina.pdbqt
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        autodock_vina_run
+        --input_ligand_pdbqt_path ${prep_ligand}
+        --input_receptor_pdbqt_path ${prep_receptor}
+        --input_box_path ${output_box}
+        --output_pdbqt_path ${output_vina_pdbqt}
+        --output_log_path output_vina.log
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_model_pdbqt
+    name: Extract docking pose (model 1) from Vina output
+    inputs:
+      - id: extract_model_pdbqt_config
+        kind: file
+        path: configs/extract_model_pdbqt.yaml
+      - id: output_vina_pdbqt
+        kind: file
+        path: results/output_vina.pdbqt
+    outputs:
+      - id: output_pdbqt_model
+        kind: file
+        path: results/output_model.pdbqt
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        extract_model_pdbqt
+        --config ${extract_model_pdbqt_config}
+        --input_pdbqt_path ${output_vina_pdbqt}
+        --output_pdbqt_path ${output_pdbqt_model}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: babel_convert_pdbqt_to_pdb
+    name: Convert docking pose from PDBQT to PDB format
+    inputs:
+      - id: babel_convert_pdbqt_to_pdb_config
+        kind: file
+        path: configs/babel_convert_pdbqt_to_pdb.yaml
+      - id: output_pdbqt_model
+        kind: file
+        path: results/output_model.pdbqt
+    outputs:
+      - id: output_pdb_model
+        kind: file
+        path: results/output_model.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        babel_convert
+        --config ${babel_convert_pdbqt_to_pdb_config}
+        --input_path ${output_pdbqt_model}
+        --output_path ${output_pdb_model}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cat_pdb
+    name: Superpose ligand docking pose onto target protein structure
+    inputs:
+      - id: pdb_protein
+        kind: file
+        path: results/pdb_protein.pdb
+      - id: output_pdb_model
+        kind: file
+        path: results/output_model.pdb
+    outputs:
+      - id: output_structure
+        kind: file
+        path: results/output_structure.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cat_pdb
+        --input_structure1 ${pdb_protein}
+        --input_structure2 ${output_pdb_model}
+        --output_structure_path ${output_structure}
+    target:
+      kind: local
+
+edges:
+  - source: fetch_pdb
+    source_output: download_pdb
+    target: extract_protein
+    target_input: download_pdb
+
+  - source: extract_protein
+    source_output: pdb_protein
+    target: fpocket_run
+    target_input: pdb_protein
+
+  - source: extract_protein
+    source_output: pdb_protein
+    target: str_check_add_hydrogens
+    target_input: pdb_protein
+
+  - source: extract_protein
+    source_output: pdb_protein
+    target: cat_pdb
+    target_input: pdb_protein
+
+  - source: fpocket_run
+    source_output: fpocket_all_pockets
+    target: fpocket_filter
+    target_input: fpocket_all_pockets
+
+  - source: fpocket_run
+    source_output: fpocket_summary
+    target: fpocket_filter
+    target_input: fpocket_summary
+
+  - source: fpocket_filter
+    source_output: fpocket_filter_pockets
+    target: fpocket_select
+    target_input: fpocket_filter_pockets
+
+  - source: fpocket_select
+    source_output: fpocket_pocket
+    target: box
+    target_input: fpocket_pocket
+
+  - source: box
+    source_output: output_box
+    target: autodock_vina_run
+    target_input: output_box
+
+  - source: ideal_sdf
+    source_output: sdf_ideal
+    target: babel_convert_sdf_to_pdb
+    target_input: sdf_ideal
+
+  - source: babel_convert_sdf_to_pdb
+    source_output: ligand_pdb
+    target: babel_convert_pdb_to_pdbqt
+    target_input: ligand_pdb
+
+  - source: babel_convert_pdb_to_pdbqt
+    source_output: prep_ligand
+    target: autodock_vina_run
+    target_input: prep_ligand
+
+  - source: str_check_add_hydrogens
+    source_output: prep_receptor
+    target: autodock_vina_run
+    target_input: prep_receptor
+
+  - source: autodock_vina_run
+    source_output: output_vina_pdbqt
+    target: extract_model_pdbqt
+    target_input: output_vina_pdbqt
+
+  - source: extract_model_pdbqt
+    source_output: output_pdbqt_model
+    target: babel_convert_pdbqt_to_pdb
+    target_input: output_pdbqt_model
+
+  - source: babel_convert_pdbqt_to_pdb
+    source_output: output_pdb_model
+    target: cat_pdb
+    target_input: output_pdb_model
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

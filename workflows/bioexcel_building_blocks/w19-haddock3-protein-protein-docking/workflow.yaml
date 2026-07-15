@@ -1,0 +1,2415 @@
+kind: horus_workflow
+name: BioExcel HADDOCK Antibody-Antigen Protein-Protein Docking
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+tasks:
+
+  # ── Structure download ────────────────────────────────────────────────────
+
+  - kind: horus_task
+    id: fetch_antibody
+    name: Download antibody structure 4G6K from PDB
+    inputs:
+      - id: fetch_antibody_config
+        kind: file
+        path: configs/fetch_antibody.yaml
+    outputs:
+      - id: ab_0_pdb
+        kind: file
+        path: results/4G6K_0.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_antibody_config}
+        --output_pdb_path ${ab_0_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fetch_antigen
+    name: Download antigen structure 4I1B from PDB
+    inputs:
+      - id: fetch_antigen_config
+        kind: file
+        path: configs/fetch_antigen.yaml
+    outputs:
+      - id: ag_0_pdb
+        kind: file
+        path: results/4I1B_0.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_antigen_config}
+        --output_pdb_path ${ag_0_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fetch_complex
+    name: Download reference complex structure 4G6M from PDB
+    inputs:
+      - id: fetch_complex_config
+        kind: file
+        path: configs/fetch_complex.yaml
+    outputs:
+      - id: cx_0_pdb
+        kind: file
+        path: results/4G6M_0.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_complex_config}
+        --output_pdb_path ${cx_0_pdb}
+    target:
+      kind: local
+
+  # ── Antibody H-chain preparation ─────────────────────────────────────────
+
+  - kind: horus_task
+    id: ab_H_tidy
+    name: Tidy antibody PDB (strict, pre H-chain extraction)
+    inputs:
+      - id: ab_H_tidy_config
+        kind: file
+        path: configs/pdb_tidy_strict.yaml
+      - id: ab_H_tidy_in
+        kind: file
+        path: results/4G6K_0.pdb
+    outputs:
+      - id: ab_H_tidy_out
+        kind: file
+        path: results/ab_H_tidy.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --config ${ab_H_tidy_config}
+        --input_file_path ${ab_H_tidy_in}
+        --output_file_path ${ab_H_tidy_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_H_selchain
+    name: Extract heavy chain H from antibody
+    inputs:
+      - id: ab_H_selchain_config
+        kind: file
+        path: configs/selchain_H.yaml
+      - id: ab_H_selchain_in
+        kind: file
+        path: results/ab_H_tidy.pdb
+    outputs:
+      - id: ab_H_selchain_out
+        kind: file
+        path: results/ab_H_selchain.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selchain
+        --config ${ab_H_selchain_config}
+        --input_file_path ${ab_H_selchain_in}
+        --output_file_path ${ab_H_selchain_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_H_delhetatm
+    name: Remove HETATM records from antibody H chain
+    inputs:
+      - id: ab_H_delhetatm_in
+        kind: file
+        path: results/ab_H_selchain.pdb
+    outputs:
+      - id: ab_H_delhetatm_out
+        kind: file
+        path: results/ab_H_delhetatm.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_delhetatm
+        --input_file_path ${ab_H_delhetatm_in}
+        --output_file_path ${ab_H_delhetatm_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_H_fixinsert
+    name: Fix insertion codes in antibody H chain
+    inputs:
+      - id: ab_H_fixinsert_in
+        kind: file
+        path: results/ab_H_delhetatm.pdb
+    outputs:
+      - id: ab_H_fixinsert_out
+        kind: file
+        path: results/ab_H_fixinsert.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_fixinsert
+        --input_file_path ${ab_H_fixinsert_in}
+        --output_file_path ${ab_H_fixinsert_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_H_selaltloc
+    name: Select highest-occupancy alt-locs in antibody H chain
+    inputs:
+      - id: ab_H_selaltloc_in
+        kind: file
+        path: results/ab_H_fixinsert.pdb
+    outputs:
+      - id: ab_H_selaltloc_out
+        kind: file
+        path: results/ab_H_selaltloc.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selaltloc
+        --input_file_path ${ab_H_selaltloc_in}
+        --output_file_path ${ab_H_selaltloc_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_H_keepcoord
+    name: Remove non-coordinate records from antibody H chain
+    inputs:
+      - id: ab_H_keepcoord_in
+        kind: file
+        path: results/ab_H_selaltloc.pdb
+    outputs:
+      - id: ab_H_keepcoord_out
+        kind: file
+        path: results/ab_H_keepcoord.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_keepcoord
+        --input_file_path ${ab_H_keepcoord_in}
+        --output_file_path ${ab_H_keepcoord_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_H_selres
+    name: Select VH domain residues 1-120 from antibody H chain
+    inputs:
+      - id: ab_H_selres_config
+        kind: file
+        path: configs/selres_1_120.yaml
+      - id: ab_H_selres_in
+        kind: file
+        path: results/ab_H_keepcoord.pdb
+    outputs:
+      - id: ab_H_selres_out
+        kind: file
+        path: results/ab_H_selres.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selres
+        --config ${ab_H_selres_config}
+        --input_file_path ${ab_H_selres_in}
+        --output_file_path ${ab_H_selres_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_H_tidy_final
+    name: Final tidy of antibody H-chain reduced structure
+    inputs:
+      - id: ab_H_tidy_final_in
+        kind: file
+        path: results/ab_H_selres.pdb
+    outputs:
+      - id: ab_H_reduced
+        kind: file
+        path: results/4G6K_H_reduced.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --input_file_path ${ab_H_tidy_final_in}
+        --output_file_path ${ab_H_reduced}
+    target:
+      kind: local
+
+  # ── Antibody L-chain preparation ─────────────────────────────────────────
+
+  - kind: horus_task
+    id: ab_L_tidy
+    name: Tidy antibody PDB (strict, pre L-chain extraction)
+    inputs:
+      - id: ab_L_tidy_config
+        kind: file
+        path: configs/pdb_tidy_strict.yaml
+      - id: ab_L_tidy_in
+        kind: file
+        path: results/4G6K_0.pdb
+    outputs:
+      - id: ab_L_tidy_out
+        kind: file
+        path: results/ab_L_tidy.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --config ${ab_L_tidy_config}
+        --input_file_path ${ab_L_tidy_in}
+        --output_file_path ${ab_L_tidy_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_L_selchain
+    name: Extract light chain L from antibody
+    inputs:
+      - id: ab_L_selchain_config
+        kind: file
+        path: configs/selchain_L.yaml
+      - id: ab_L_selchain_in
+        kind: file
+        path: results/ab_L_tidy.pdb
+    outputs:
+      - id: ab_L_selchain_out
+        kind: file
+        path: results/ab_L_selchain.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selchain
+        --config ${ab_L_selchain_config}
+        --input_file_path ${ab_L_selchain_in}
+        --output_file_path ${ab_L_selchain_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_L_delhetatm
+    name: Remove HETATM records from antibody L chain
+    inputs:
+      - id: ab_L_delhetatm_in
+        kind: file
+        path: results/ab_L_selchain.pdb
+    outputs:
+      - id: ab_L_delhetatm_out
+        kind: file
+        path: results/ab_L_delhetatm.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_delhetatm
+        --input_file_path ${ab_L_delhetatm_in}
+        --output_file_path ${ab_L_delhetatm_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_L_fixinsert
+    name: Fix insertion codes in antibody L chain
+    inputs:
+      - id: ab_L_fixinsert_in
+        kind: file
+        path: results/ab_L_delhetatm.pdb
+    outputs:
+      - id: ab_L_fixinsert_out
+        kind: file
+        path: results/ab_L_fixinsert.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_fixinsert
+        --input_file_path ${ab_L_fixinsert_in}
+        --output_file_path ${ab_L_fixinsert_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_L_selaltloc
+    name: Select highest-occupancy alt-locs in antibody L chain
+    inputs:
+      - id: ab_L_selaltloc_in
+        kind: file
+        path: results/ab_L_fixinsert.pdb
+    outputs:
+      - id: ab_L_selaltloc_out
+        kind: file
+        path: results/ab_L_selaltloc.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selaltloc
+        --input_file_path ${ab_L_selaltloc_in}
+        --output_file_path ${ab_L_selaltloc_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_L_keepcoord
+    name: Remove non-coordinate records from antibody L chain
+    inputs:
+      - id: ab_L_keepcoord_in
+        kind: file
+        path: results/ab_L_selaltloc.pdb
+    outputs:
+      - id: ab_L_keepcoord_out
+        kind: file
+        path: results/ab_L_keepcoord.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_keepcoord
+        --input_file_path ${ab_L_keepcoord_in}
+        --output_file_path ${ab_L_keepcoord_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_L_selres
+    name: Select VL domain residues 1-107 from antibody L chain
+    inputs:
+      - id: ab_L_selres_config
+        kind: file
+        path: configs/selres_1_107.yaml
+      - id: ab_L_selres_in
+        kind: file
+        path: results/ab_L_keepcoord.pdb
+    outputs:
+      - id: ab_L_selres_out
+        kind: file
+        path: results/ab_L_selres.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selres
+        --config ${ab_L_selres_config}
+        --input_file_path ${ab_L_selres_in}
+        --output_file_path ${ab_L_selres_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_L_tidy_final
+    name: Final tidy of antibody L-chain reduced structure
+    inputs:
+      - id: ab_L_tidy_final_in
+        kind: file
+        path: results/ab_L_selres.pdb
+    outputs:
+      - id: ab_L_reduced
+        kind: file
+        path: results/4G6K_L_reduced.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --input_file_path ${ab_L_tidy_final_in}
+        --output_file_path ${ab_L_reduced}
+    target:
+      kind: local
+
+  # ── Merge antibody H+L and rename chain ──────────────────────────────────
+
+  - kind: horus_task
+    id: ab_zip_HL
+    name: Zip antibody H and L chain PDBs for merge
+    inputs:
+      - id: ab_H_reduced
+        kind: file
+        path: results/4G6K_H_reduced.pdb
+      - id: ab_L_reduced
+        kind: file
+        path: results/4G6K_L_reduced.pdb
+    outputs:
+      - id: ab_HL_zip
+        kind: file
+        path: results/4G6K_HL.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        zip -j ${ab_HL_zip} ${ab_H_reduced} ${ab_L_reduced}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_merge
+    name: Merge antibody H and L chains into single PDB
+    inputs:
+      - id: ab_HL_zip
+        kind: file
+        path: results/4G6K_HL.zip
+    outputs:
+      - id: ab_clean_merge
+        kind: file
+        path: results/4G6K_clean_merge.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_merge
+        --input_file_path ${ab_HL_zip}
+        --output_file_path ${ab_clean_merge}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_reres
+    name: Renumber antibody residues starting from 1
+    inputs:
+      - id: ab_reres_config
+        kind: file
+        path: configs/reres_1.yaml
+      - id: ab_reres_in
+        kind: file
+        path: results/4G6K_clean_merge.pdb
+    outputs:
+      - id: ab_reres_out
+        kind: file
+        path: results/ab_reres.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_reres
+        --config ${ab_reres_config}
+        --input_file_path ${ab_reres_in}
+        --output_file_path ${ab_reres_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_chain
+    name: Set antibody chain identifier to A
+    inputs:
+      - id: ab_chain_config
+        kind: file
+        path: configs/chain_A.yaml
+      - id: ab_chain_in
+        kind: file
+        path: results/ab_reres.pdb
+    outputs:
+      - id: ab_chain_out
+        kind: file
+        path: results/ab_chain.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_chain
+        --config ${ab_chain_config}
+        --input_file_path ${ab_chain_in}
+        --output_file_path ${ab_chain_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_chainxseg
+    name: Swap segment identifier for chain identifier in antibody
+    inputs:
+      - id: ab_chainxseg_in
+        kind: file
+        path: results/ab_chain.pdb
+    outputs:
+      - id: ab_chainxseg_out
+        kind: file
+        path: results/ab_chainxseg.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_chainxseg
+        --input_file_path ${ab_chainxseg_in}
+        --output_file_path ${ab_chainxseg_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ab_tidy_final
+    name: Final strict tidy of prepared antibody structure
+    inputs:
+      - id: ab_tidy_final_config
+        kind: file
+        path: configs/pdb_tidy_strict.yaml
+      - id: ab_tidy_final_in
+        kind: file
+        path: results/ab_chainxseg.pdb
+    outputs:
+      - id: antibody_prep
+        kind: file
+        path: results/4G6K_clean.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --config ${ab_tidy_final_config}
+        --input_file_path ${ab_tidy_final_in}
+        --output_file_path ${antibody_prep}
+    target:
+      kind: local
+
+  # ── Antigen preparation ───────────────────────────────────────────────────
+
+  - kind: horus_task
+    id: ag_tidy
+    name: Tidy antigen PDB (strict)
+    inputs:
+      - id: ag_tidy_config
+        kind: file
+        path: configs/pdb_tidy_strict.yaml
+      - id: ag_tidy_in
+        kind: file
+        path: results/4I1B_0.pdb
+    outputs:
+      - id: ag_tidy_out
+        kind: file
+        path: results/ag_tidy.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --config ${ag_tidy_config}
+        --input_file_path ${ag_tidy_in}
+        --output_file_path ${ag_tidy_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ag_delhetatm
+    name: Remove HETATM records from antigen
+    inputs:
+      - id: ag_delhetatm_in
+        kind: file
+        path: results/ag_tidy.pdb
+    outputs:
+      - id: ag_delhetatm_out
+        kind: file
+        path: results/ag_delhetatm.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_delhetatm
+        --input_file_path ${ag_delhetatm_in}
+        --output_file_path ${ag_delhetatm_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ag_selaltloc
+    name: Select highest-occupancy alt-locs in antigen
+    inputs:
+      - id: ag_selaltloc_in
+        kind: file
+        path: results/ag_delhetatm.pdb
+    outputs:
+      - id: ag_selaltloc_out
+        kind: file
+        path: results/ag_selaltloc.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selaltloc
+        --input_file_path ${ag_selaltloc_in}
+        --output_file_path ${ag_selaltloc_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ag_keepcoord
+    name: Remove non-coordinate records from antigen
+    inputs:
+      - id: ag_keepcoord_in
+        kind: file
+        path: results/ag_selaltloc.pdb
+    outputs:
+      - id: ag_keepcoord_out
+        kind: file
+        path: results/ag_keepcoord.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_keepcoord
+        --input_file_path ${ag_keepcoord_in}
+        --output_file_path ${ag_keepcoord_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ag_chain
+    name: Set antigen chain identifier to B
+    inputs:
+      - id: ag_chain_config
+        kind: file
+        path: configs/chain_B.yaml
+      - id: ag_chain_in
+        kind: file
+        path: results/ag_keepcoord.pdb
+    outputs:
+      - id: ag_chain_out
+        kind: file
+        path: results/ag_chain.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_chain
+        --config ${ag_chain_config}
+        --input_file_path ${ag_chain_in}
+        --output_file_path ${ag_chain_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ag_chainxseg
+    name: Swap segment identifier for chain identifier in antigen
+    inputs:
+      - id: ag_chainxseg_in
+        kind: file
+        path: results/ag_chain.pdb
+    outputs:
+      - id: ag_chainxseg_out
+        kind: file
+        path: results/ag_chainxseg.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_chainxseg
+        --input_file_path ${ag_chainxseg_in}
+        --output_file_path ${ag_chainxseg_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ag_tidy_final
+    name: Final strict tidy of prepared antigen structure
+    inputs:
+      - id: ag_tidy_final_config
+        kind: file
+        path: configs/pdb_tidy_strict.yaml
+      - id: ag_tidy_final_in
+        kind: file
+        path: results/ag_chainxseg.pdb
+    outputs:
+      - id: antigen_prep
+        kind: file
+        path: results/4I1B_clean.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --config ${ag_tidy_final_config}
+        --input_file_path ${ag_tidy_final_in}
+        --output_file_path ${antigen_prep}
+    target:
+      kind: local
+
+  # ── Reference complex H-chain preparation ────────────────────────────────
+
+  - kind: horus_task
+    id: cx_H_selchain
+    name: Extract heavy chain H from reference complex
+    inputs:
+      - id: cx_H_selchain_config
+        kind: file
+        path: configs/selchain_H.yaml
+      - id: cx_H_selchain_in
+        kind: file
+        path: results/4G6M_0.pdb
+    outputs:
+      - id: cx_H_selchain_out
+        kind: file
+        path: results/cx_H_selchain.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selchain
+        --config ${cx_H_selchain_config}
+        --input_file_path ${cx_H_selchain_in}
+        --output_file_path ${cx_H_selchain_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_H_delhetatm
+    name: Remove HETATM from reference complex H chain
+    inputs:
+      - id: cx_H_delhetatm_in
+        kind: file
+        path: results/cx_H_selchain.pdb
+    outputs:
+      - id: cx_H_delhetatm_out
+        kind: file
+        path: results/cx_H_delhetatm.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_delhetatm
+        --input_file_path ${cx_H_delhetatm_in}
+        --output_file_path ${cx_H_delhetatm_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_H_fixinsert
+    name: Fix insertion codes in reference complex H chain
+    inputs:
+      - id: cx_H_fixinsert_in
+        kind: file
+        path: results/cx_H_delhetatm.pdb
+    outputs:
+      - id: cx_H_fixinsert_out
+        kind: file
+        path: results/cx_H_fixinsert.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_fixinsert
+        --input_file_path ${cx_H_fixinsert_in}
+        --output_file_path ${cx_H_fixinsert_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_H_selaltloc
+    name: Select alt-locs in reference complex H chain
+    inputs:
+      - id: cx_H_selaltloc_in
+        kind: file
+        path: results/cx_H_fixinsert.pdb
+    outputs:
+      - id: cx_H_selaltloc_out
+        kind: file
+        path: results/cx_H_selaltloc.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selaltloc
+        --input_file_path ${cx_H_selaltloc_in}
+        --output_file_path ${cx_H_selaltloc_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_H_keepcoord
+    name: Keep coordinates only in reference complex H chain
+    inputs:
+      - id: cx_H_keepcoord_in
+        kind: file
+        path: results/cx_H_selaltloc.pdb
+    outputs:
+      - id: cx_H_keepcoord_out
+        kind: file
+        path: results/cx_H_keepcoord.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_keepcoord
+        --input_file_path ${cx_H_keepcoord_in}
+        --output_file_path ${cx_H_keepcoord_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_H_selres
+    name: Select VH domain residues 1-120 from reference complex H chain
+    inputs:
+      - id: cx_H_selres_config
+        kind: file
+        path: configs/selres_1_120.yaml
+      - id: cx_H_selres_in
+        kind: file
+        path: results/cx_H_keepcoord.pdb
+    outputs:
+      - id: cx_H_selres_out
+        kind: file
+        path: results/cx_H_selres.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selres
+        --config ${cx_H_selres_config}
+        --input_file_path ${cx_H_selres_in}
+        --output_file_path ${cx_H_selres_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_H_tidy_final
+    name: Final tidy of reference complex H-chain reduced structure
+    inputs:
+      - id: cx_H_tidy_final_in
+        kind: file
+        path: results/cx_H_selres.pdb
+    outputs:
+      - id: cx_H_reduced
+        kind: file
+        path: results/4G6M_H_reduced.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --input_file_path ${cx_H_tidy_final_in}
+        --output_file_path ${cx_H_reduced}
+    target:
+      kind: local
+
+  # ── Reference complex L-chain preparation ────────────────────────────────
+
+  - kind: horus_task
+    id: cx_L_selchain
+    name: Extract light chain L from reference complex
+    inputs:
+      - id: cx_L_selchain_config
+        kind: file
+        path: configs/selchain_L.yaml
+      - id: cx_L_selchain_in
+        kind: file
+        path: results/4G6M_0.pdb
+    outputs:
+      - id: cx_L_selchain_out
+        kind: file
+        path: results/cx_L_selchain.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selchain
+        --config ${cx_L_selchain_config}
+        --input_file_path ${cx_L_selchain_in}
+        --output_file_path ${cx_L_selchain_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_L_delhetatm
+    name: Remove HETATM from reference complex L chain
+    inputs:
+      - id: cx_L_delhetatm_in
+        kind: file
+        path: results/cx_L_selchain.pdb
+    outputs:
+      - id: cx_L_delhetatm_out
+        kind: file
+        path: results/cx_L_delhetatm.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_delhetatm
+        --input_file_path ${cx_L_delhetatm_in}
+        --output_file_path ${cx_L_delhetatm_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_L_fixinsert
+    name: Fix insertion codes in reference complex L chain
+    inputs:
+      - id: cx_L_fixinsert_in
+        kind: file
+        path: results/cx_L_delhetatm.pdb
+    outputs:
+      - id: cx_L_fixinsert_out
+        kind: file
+        path: results/cx_L_fixinsert.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_fixinsert
+        --input_file_path ${cx_L_fixinsert_in}
+        --output_file_path ${cx_L_fixinsert_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_L_selaltloc
+    name: Select alt-locs in reference complex L chain
+    inputs:
+      - id: cx_L_selaltloc_in
+        kind: file
+        path: results/cx_L_fixinsert.pdb
+    outputs:
+      - id: cx_L_selaltloc_out
+        kind: file
+        path: results/cx_L_selaltloc.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selaltloc
+        --input_file_path ${cx_L_selaltloc_in}
+        --output_file_path ${cx_L_selaltloc_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_L_keepcoord
+    name: Keep coordinates only in reference complex L chain
+    inputs:
+      - id: cx_L_keepcoord_in
+        kind: file
+        path: results/cx_L_selaltloc.pdb
+    outputs:
+      - id: cx_L_keepcoord_out
+        kind: file
+        path: results/cx_L_keepcoord.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_keepcoord
+        --input_file_path ${cx_L_keepcoord_in}
+        --output_file_path ${cx_L_keepcoord_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_L_selres
+    name: Select VL domain residues 1-107 from reference complex L chain
+    inputs:
+      - id: cx_L_selres_config
+        kind: file
+        path: configs/selres_1_107.yaml
+      - id: cx_L_selres_in
+        kind: file
+        path: results/cx_L_keepcoord.pdb
+    outputs:
+      - id: cx_L_selres_out
+        kind: file
+        path: results/cx_L_selres.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selres
+        --config ${cx_L_selres_config}
+        --input_file_path ${cx_L_selres_in}
+        --output_file_path ${cx_L_selres_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_L_tidy_final
+    name: Final tidy of reference complex L-chain reduced structure
+    inputs:
+      - id: cx_L_tidy_final_in
+        kind: file
+        path: results/cx_L_selres.pdb
+    outputs:
+      - id: cx_L_reduced
+        kind: file
+        path: results/4G6M_L_reduced.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --input_file_path ${cx_L_tidy_final_in}
+        --output_file_path ${cx_L_reduced}
+    target:
+      kind: local
+
+  # ── Merge complex H+L antibody and rename chain ──────────────────────────
+
+  - kind: horus_task
+    id: cx_zip_HL
+    name: Zip reference complex H and L chain PDBs for merge
+    inputs:
+      - id: cx_H_reduced
+        kind: file
+        path: results/4G6M_H_reduced.pdb
+      - id: cx_L_reduced
+        kind: file
+        path: results/4G6M_L_reduced.pdb
+    outputs:
+      - id: cx_HL_zip
+        kind: file
+        path: results/4G6M_HL.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        zip -j ${cx_HL_zip} ${cx_H_reduced} ${cx_L_reduced}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ab_merge
+    name: Merge reference complex H and L chains
+    inputs:
+      - id: cx_HL_zip
+        kind: file
+        path: results/4G6M_HL.zip
+    outputs:
+      - id: cx_ab_clean_merge
+        kind: file
+        path: results/4G6M_antibody_clean_merge.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_merge
+        --input_file_path ${cx_HL_zip}
+        --output_file_path ${cx_ab_clean_merge}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ab_reres
+    name: Renumber reference complex antibody residues from 1
+    inputs:
+      - id: cx_ab_reres_config
+        kind: file
+        path: configs/reres_1.yaml
+      - id: cx_ab_reres_in
+        kind: file
+        path: results/4G6M_antibody_clean_merge.pdb
+    outputs:
+      - id: cx_ab_reres_out
+        kind: file
+        path: results/cx_ab_reres.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_reres
+        --config ${cx_ab_reres_config}
+        --input_file_path ${cx_ab_reres_in}
+        --output_file_path ${cx_ab_reres_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ab_chain
+    name: Set reference complex antibody chain to A
+    inputs:
+      - id: cx_ab_chain_config
+        kind: file
+        path: configs/chain_A.yaml
+      - id: cx_ab_chain_in
+        kind: file
+        path: results/cx_ab_reres.pdb
+    outputs:
+      - id: cx_ab_chain_out
+        kind: file
+        path: results/cx_ab_chain.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_chain
+        --config ${cx_ab_chain_config}
+        --input_file_path ${cx_ab_chain_in}
+        --output_file_path ${cx_ab_chain_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ab_chainxseg
+    name: Swap segment for chain identifier in reference complex antibody
+    inputs:
+      - id: cx_ab_chainxseg_in
+        kind: file
+        path: results/cx_ab_chain.pdb
+    outputs:
+      - id: cx_ab_chainxseg_out
+        kind: file
+        path: results/cx_ab_chainxseg.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_chainxseg
+        --input_file_path ${cx_ab_chainxseg_in}
+        --output_file_path ${cx_ab_chainxseg_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ab_tidy_final
+    name: Final strict tidy of reference complex antibody
+    inputs:
+      - id: cx_ab_tidy_final_config
+        kind: file
+        path: configs/pdb_tidy_strict.yaml
+      - id: cx_ab_tidy_final_in
+        kind: file
+        path: results/cx_ab_chainxseg.pdb
+    outputs:
+      - id: cx_antibody_final
+        kind: file
+        path: results/4G6M_clean_antibody_final.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --config ${cx_ab_tidy_final_config}
+        --input_file_path ${cx_ab_tidy_final_in}
+        --output_file_path ${cx_antibody_final}
+    target:
+      kind: local
+
+  # ── Reference complex antigen preparation ────────────────────────────────
+
+  - kind: horus_task
+    id: cx_ag_tidy
+    name: Tidy reference complex PDB for antigen extraction (strict)
+    inputs:
+      - id: cx_ag_tidy_config
+        kind: file
+        path: configs/pdb_tidy_strict.yaml
+      - id: cx_ag_tidy_in
+        kind: file
+        path: results/4G6M_0.pdb
+    outputs:
+      - id: cx_ag_tidy_out
+        kind: file
+        path: results/cx_ag_tidy.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --config ${cx_ag_tidy_config}
+        --input_file_path ${cx_ag_tidy_in}
+        --output_file_path ${cx_ag_tidy_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ag_selchain
+    name: Extract chain A (antigen) from reference complex
+    inputs:
+      - id: cx_ag_selchain_config
+        kind: file
+        path: configs/selchain_A.yaml
+      - id: cx_ag_selchain_in
+        kind: file
+        path: results/cx_ag_tidy.pdb
+    outputs:
+      - id: cx_ag_selchain_out
+        kind: file
+        path: results/cx_ag_selchain.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selchain
+        --config ${cx_ag_selchain_config}
+        --input_file_path ${cx_ag_selchain_in}
+        --output_file_path ${cx_ag_selchain_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ag_chain
+    name: Rename reference antigen chain to B
+    inputs:
+      - id: cx_ag_chain_config
+        kind: file
+        path: configs/chain_B.yaml
+      - id: cx_ag_chain_in
+        kind: file
+        path: results/cx_ag_selchain.pdb
+    outputs:
+      - id: cx_ag_chain_out
+        kind: file
+        path: results/cx_ag_chain.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_chain
+        --config ${cx_ag_chain_config}
+        --input_file_path ${cx_ag_chain_in}
+        --output_file_path ${cx_ag_chain_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ag_chainxseg
+    name: Swap segment for chain identifier in reference complex antigen
+    inputs:
+      - id: cx_ag_chainxseg_in
+        kind: file
+        path: results/cx_ag_chain.pdb
+    outputs:
+      - id: cx_ag_chainxseg_out
+        kind: file
+        path: results/cx_ag_chainxseg.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_chainxseg
+        --input_file_path ${cx_ag_chainxseg_in}
+        --output_file_path ${cx_ag_chainxseg_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ag_delhetatm
+    name: Remove HETATM from reference complex antigen
+    inputs:
+      - id: cx_ag_delhetatm_in
+        kind: file
+        path: results/cx_ag_chainxseg.pdb
+    outputs:
+      - id: cx_ag_delhetatm_out
+        kind: file
+        path: results/cx_ag_delhetatm.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_delhetatm
+        --input_file_path ${cx_ag_delhetatm_in}
+        --output_file_path ${cx_ag_delhetatm_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ag_fixinsert
+    name: Fix insertion codes in reference complex antigen
+    inputs:
+      - id: cx_ag_fixinsert_in
+        kind: file
+        path: results/cx_ag_delhetatm.pdb
+    outputs:
+      - id: cx_ag_fixinsert_out
+        kind: file
+        path: results/cx_ag_fixinsert.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_fixinsert
+        --input_file_path ${cx_ag_fixinsert_in}
+        --output_file_path ${cx_ag_fixinsert_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ag_selaltloc
+    name: Select alt-locs in reference complex antigen
+    inputs:
+      - id: cx_ag_selaltloc_in
+        kind: file
+        path: results/cx_ag_fixinsert.pdb
+    outputs:
+      - id: cx_ag_selaltloc_out
+        kind: file
+        path: results/cx_ag_selaltloc.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_selaltloc
+        --input_file_path ${cx_ag_selaltloc_in}
+        --output_file_path ${cx_ag_selaltloc_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ag_keepcoord
+    name: Keep coordinates only in reference complex antigen
+    inputs:
+      - id: cx_ag_keepcoord_in
+        kind: file
+        path: results/cx_ag_selaltloc.pdb
+    outputs:
+      - id: cx_ag_keepcoord_out
+        kind: file
+        path: results/cx_ag_keepcoord.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_keepcoord
+        --input_file_path ${cx_ag_keepcoord_in}
+        --output_file_path ${cx_ag_keepcoord_out}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_ag_tidy_final
+    name: Final strict tidy of reference complex antigen
+    inputs:
+      - id: cx_ag_tidy_final_config
+        kind: file
+        path: configs/pdb_tidy_strict.yaml
+      - id: cx_ag_tidy_final_in
+        kind: file
+        path: results/cx_ag_keepcoord.pdb
+    outputs:
+      - id: cx_antigen_final
+        kind: file
+        path: results/4G6M_clean_antigen_final.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --config ${cx_ag_tidy_final_config}
+        --input_file_path ${cx_ag_tidy_final_in}
+        --output_file_path ${cx_antigen_final}
+    target:
+      kind: local
+
+  # ── Merge complex antibody + antigen to form reference complex ───────────
+
+  - kind: horus_task
+    id: cx_zip_AB
+    name: Zip reference complex antibody and antigen PDBs for merge
+    inputs:
+      - id: cx_antibody_final
+        kind: file
+        path: results/4G6M_clean_antibody_final.pdb
+      - id: cx_antigen_final
+        kind: file
+        path: results/4G6M_clean_antigen_final.pdb
+    outputs:
+      - id: cx_HL_B_zip
+        kind: file
+        path: results/4G6M_HL_B.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        zip -j ${cx_HL_B_zip} ${cx_antibody_final} ${cx_antigen_final}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_merge
+    name: Merge reference complex antibody and antigen chains
+    inputs:
+      - id: cx_HL_B_zip
+        kind: file
+        path: results/4G6M_HL_B.zip
+    outputs:
+      - id: cx_clean_merge
+        kind: file
+        path: results/4G6M_clean_merge.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_merge
+        --input_file_path ${cx_HL_B_zip}
+        --output_file_path ${cx_clean_merge}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cx_tidy_final
+    name: Final strict tidy of reference complex structure
+    inputs:
+      - id: cx_tidy_final_config
+        kind: file
+        path: configs/pdb_tidy_strict.yaml
+      - id: cx_tidy_final_in
+        kind: file
+        path: results/4G6M_clean_merge.pdb
+    outputs:
+      - id: complex_prep
+        kind: file
+        path: results/4G6M_clean.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_pdb_tidy
+        --config ${cx_tidy_final_config}
+        --input_file_path ${cx_tidy_final_in}
+        --output_file_path ${complex_prep}
+    target:
+      kind: local
+
+  # ── Restraint generation ─────────────────────────────────────────────────
+
+  - kind: horus_task
+    id: write_ab_actpass
+    name: Write antibody paratope active residues file
+    outputs:
+      - id: ab_actpass
+        kind: file
+        path: results/4G6K_actpass.txt
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        printf "31 32 33 34 35 52 54 55 56 100 101 102 103 104 105 106 151 152 169 170 173 211 212 213 214 216\n\n"
+        > ${ab_actpass}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: passive_from_active
+    name: Compute passive residues around antigen epitope
+    inputs:
+      - id: passive_from_active_config
+        kind: file
+        path: configs/passive_from_active.yaml
+      - id: antigen_prep
+        kind: file
+        path: results/4I1B_clean.pdb
+    outputs:
+      - id: ag_actpass
+        kind: file
+        path: results/4I1B_actpass.txt
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        haddock3_passive_from_active
+        --config ${passive_from_active_config}
+        --input_pdb_path ${antigen_prep}
+        --output_actpass_path ${ag_actpass}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: actpass_to_ambig
+    name: Convert active/passive residues to ambiguous restraints (AIR)
+    inputs:
+      - id: actpass_to_ambig_config
+        kind: file
+        path: configs/actpass_to_ambig.yaml
+      - id: ab_actpass
+        kind: file
+        path: results/4G6K_actpass.txt
+      - id: ag_actpass
+        kind: file
+        path: results/4I1B_actpass.txt
+    outputs:
+      - id: complex_tbl
+        kind: file
+        path: results/ambig-paratope-NMR-epitope.tbl
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        haddock3_actpass_to_ambig
+        --config ${actpass_to_ambig_config}
+        --input_actpass1_path ${ab_actpass}
+        --input_actpass2_path ${ag_actpass}
+        --output_tbl_path ${complex_tbl}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: restrain_bodies
+    name: Generate multi-body restraints to tie antibody chains
+    inputs:
+      - id: antibody_prep
+        kind: file
+        path: results/4G6K_clean.pdb
+    outputs:
+      - id: body_tbl
+        kind: file
+        path: results/antibody-unambig.tbl
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        haddock3_restrain_bodies
+        --input_structure_path ${antibody_prep}
+        --output_tbl_path ${body_tbl}
+    target:
+      kind: local
+
+  # ── HADDOCK docking pipeline ─────────────────────────────────────────────
+
+  - kind: horus_task
+    id: topology
+    name: Build HADDOCK topology for both molecules
+    inputs:
+      - id: antibody_prep
+        kind: file
+        path: results/4G6K_clean.pdb
+      - id: antigen_prep
+        kind: file
+        path: results/4I1B_clean.pdb
+    outputs:
+      - id: mol1_top_zip
+        kind: file
+        path: results/1_top_mol1.zip
+      - id: mol2_top_zip
+        kind: file
+        path: results/1_top_mol2.zip
+      - id: haddock_wf_data
+        kind: file
+        path: results/haddock_wf_data
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        topology
+        --mol1_input_pdb_path ${antibody_prep}
+        --mol2_input_pdb_path ${antigen_prep}
+        --mol1_output_top_zip_path ${mol1_top_zip}
+        --mol2_output_top_zip_path ${mol2_top_zip}
+        --output_haddock_wf_data ${haddock_wf_data}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: rigid_body
+    name: Rigid-body docking (rigidbody, 10 models)
+    inputs:
+      - id: rigid_body_config
+        kind: file
+        path: configs/rigid_body.yaml
+      - id: haddock_wf_data_in
+        kind: file
+        path: results/haddock_wf_data
+      - id: complex_tbl
+        kind: file
+        path: results/ambig-paratope-NMR-epitope.tbl
+      - id: body_tbl
+        kind: file
+        path: results/antibody-unambig.tbl
+    outputs:
+      - id: haddock_wf_data_rigid
+        kind: file
+        path: results/haddock_wf_data
+      - id: docking_zip
+        kind: file
+        path: results/2_docking.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        rigid_body
+        --config ${rigid_body_config}
+        --input_haddock_wf_data ${haddock_wf_data_in}
+        --output_haddock_wf_data ${haddock_wf_data_rigid}
+        --docking_output_zip_path ${docking_zip}
+        --ambig_restraints_table_path ${complex_tbl}
+        --unambig_restraints_table_path ${body_tbl}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: capri_eval_1
+    name: CAPRI evaluation after rigid-body docking
+    inputs:
+      - id: haddock_wf_data_in
+        kind: file
+        path: results/haddock_wf_data
+      - id: complex_prep
+        kind: file
+        path: results/4G6M_clean.pdb
+    outputs:
+      - id: haddock_wf_data_capri1
+        kind: file
+        path: results/haddock_wf_data
+      - id: caprieval1_zip
+        kind: file
+        path: results/3_caprieval.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        capri_eval
+        --input_haddock_wf_data ${haddock_wf_data_in}
+        --output_haddock_wf_data ${haddock_wf_data_capri1}
+        --reference_pdb_path ${complex_prep}
+        --output_evaluation_zip_path ${caprieval1_zip}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: sele_top
+    name: Select top-8 scoring rigid-body models
+    inputs:
+      - id: sele_top_config
+        kind: file
+        path: configs/sele_top.yaml
+      - id: haddock_wf_data_in
+        kind: file
+        path: results/haddock_wf_data
+    outputs:
+      - id: haddock_wf_data_sele
+        kind: file
+        path: results/haddock_wf_data
+      - id: selection_zip
+        kind: file
+        path: results/4_selected.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sele_top
+        --config ${sele_top_config}
+        --input_haddock_wf_data ${haddock_wf_data_in}
+        --output_haddock_wf_data ${haddock_wf_data_sele}
+        --output_selection_zip_path ${selection_zip}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: flex_ref
+    name: Flexible refinement of selected models
+    inputs:
+      - id: flex_ref_config
+        kind: file
+        path: configs/flex_ref.yaml
+      - id: haddock_wf_data_in
+        kind: file
+        path: results/haddock_wf_data
+      - id: complex_tbl
+        kind: file
+        path: results/ambig-paratope-NMR-epitope.tbl
+      - id: body_tbl
+        kind: file
+        path: results/antibody-unambig.tbl
+    outputs:
+      - id: haddock_wf_data_flex
+        kind: file
+        path: results/haddock_wf_data
+      - id: flexref_zip
+        kind: file
+        path: results/5_flexref.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        flex_ref
+        --config ${flex_ref_config}
+        --input_haddock_wf_data ${haddock_wf_data_in}
+        --output_haddock_wf_data ${haddock_wf_data_flex}
+        --refinement_output_zip_path ${flexref_zip}
+        --ambig_restraints_table_path ${complex_tbl}
+        --unambig_restraints_table_path ${body_tbl}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: capri_eval_2
+    name: CAPRI evaluation after flexible refinement
+    inputs:
+      - id: haddock_wf_data_in
+        kind: file
+        path: results/haddock_wf_data
+      - id: complex_prep
+        kind: file
+        path: results/4G6M_clean.pdb
+    outputs:
+      - id: haddock_wf_data_capri2
+        kind: file
+        path: results/haddock_wf_data
+      - id: caprieval2_zip
+        kind: file
+        path: results/6_caprieval2.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        capri_eval
+        --input_haddock_wf_data ${haddock_wf_data_in}
+        --output_haddock_wf_data ${haddock_wf_data_capri2}
+        --reference_pdb_path ${complex_prep}
+        --output_evaluation_zip_path ${caprieval2_zip}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: em_ref
+    name: Energy minimisation refinement of selected models
+    inputs:
+      - id: em_ref_config
+        kind: file
+        path: configs/em_ref.yaml
+      - id: haddock_wf_data_in
+        kind: file
+        path: results/haddock_wf_data
+      - id: complex_tbl
+        kind: file
+        path: results/ambig-paratope-NMR-epitope.tbl
+      - id: body_tbl
+        kind: file
+        path: results/antibody-unambig.tbl
+    outputs:
+      - id: haddock_wf_data_em
+        kind: file
+        path: results/haddock_wf_data
+      - id: emref_zip
+        kind: file
+        path: results/7_emref.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        em_ref
+        --config ${em_ref_config}
+        --input_haddock_wf_data ${haddock_wf_data_in}
+        --output_haddock_wf_data ${haddock_wf_data_em}
+        --refinement_output_zip_path ${emref_zip}
+        --ambig_restraints_table_path ${complex_tbl}
+        --unambig_restraints_table_path ${body_tbl}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: capri_eval_3
+    name: CAPRI evaluation after energy minimisation
+    inputs:
+      - id: haddock_wf_data_in
+        kind: file
+        path: results/haddock_wf_data
+      - id: complex_prep
+        kind: file
+        path: results/4G6M_clean.pdb
+    outputs:
+      - id: haddock_wf_data_capri3
+        kind: file
+        path: results/haddock_wf_data
+      - id: caprieval3_zip
+        kind: file
+        path: results/8_caprieval3.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        capri_eval
+        --input_haddock_wf_data ${haddock_wf_data_in}
+        --output_haddock_wf_data ${haddock_wf_data_capri3}
+        --reference_pdb_path ${complex_prep}
+        --output_evaluation_zip_path ${caprieval3_zip}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: clust_fcc
+    name: Cluster refined models by FCC
+    inputs:
+      - id: clust_fcc_config
+        kind: file
+        path: configs/clust_fcc.yaml
+      - id: haddock_wf_data_in
+        kind: file
+        path: results/haddock_wf_data
+    outputs:
+      - id: haddock_wf_data_clust
+        kind: file
+        path: results/haddock_wf_data
+      - id: clustfcc_zip
+        kind: file
+        path: results/9_clustfcc.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        clust_fcc
+        --config ${clust_fcc_config}
+        --input_haddock_wf_data ${haddock_wf_data_in}
+        --output_haddock_wf_data ${haddock_wf_data_clust}
+        --output_cluster_zip_path ${clustfcc_zip}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: sele_top_clusts
+    name: Select top 4 models from each cluster
+    inputs:
+      - id: sele_top_clusts_config
+        kind: file
+        path: configs/sele_top_clusts.yaml
+      - id: haddock_wf_data_in
+        kind: file
+        path: results/haddock_wf_data
+    outputs:
+      - id: haddock_wf_data_seletop
+        kind: file
+        path: results/haddock_wf_data
+      - id: seletopclusts_zip
+        kind: file
+        path: results/10_seletopclusts.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        sele_top_clusts
+        --config ${sele_top_clusts_config}
+        --input_haddock_wf_data ${haddock_wf_data_in}
+        --output_haddock_wf_data ${haddock_wf_data_seletop}
+        --output_selection_zip_path ${seletopclusts_zip}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: capri_eval_4
+    name: Final CAPRI evaluation on cluster representatives
+    inputs:
+      - id: haddock_wf_data_in
+        kind: file
+        path: results/haddock_wf_data
+      - id: complex_prep
+        kind: file
+        path: results/4G6M_clean.pdb
+    outputs:
+      - id: haddock_wf_data_capri4
+        kind: file
+        path: results/haddock_wf_data
+      - id: caprieval4_zip
+        kind: file
+        path: results/11_caprieval4.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        capri_eval
+        --input_haddock_wf_data ${haddock_wf_data_in}
+        --output_haddock_wf_data ${haddock_wf_data_capri4}
+        --reference_pdb_path ${complex_prep}
+        --output_evaluation_zip_path ${caprieval4_zip}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: contact_map
+    name: Generate contact maps for cluster representatives
+    inputs:
+      - id: haddock_wf_data_in
+        kind: file
+        path: results/haddock_wf_data
+    outputs:
+      - id: haddock_wf_data_contact
+        kind: file
+        path: results/haddock_wf_data
+      - id: contactmap_zip
+        kind: file
+        path: results/12_contact_map.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        contact_map
+        --input_haddock_wf_data ${haddock_wf_data_in}
+        --output_haddock_wf_data ${haddock_wf_data_contact}
+        --output_contactmap_zip_path ${contactmap_zip}
+    target:
+      kind: local
+
+edges:
+
+  # Download → antibody H chain prep
+  - source: fetch_antibody
+    source_output: ab_0_pdb
+    target: ab_H_tidy
+    target_input: ab_H_tidy_in
+
+  - source: ab_H_tidy
+    source_output: ab_H_tidy_out
+    target: ab_H_selchain
+    target_input: ab_H_selchain_in
+
+  - source: ab_H_selchain
+    source_output: ab_H_selchain_out
+    target: ab_H_delhetatm
+    target_input: ab_H_delhetatm_in
+
+  - source: ab_H_delhetatm
+    source_output: ab_H_delhetatm_out
+    target: ab_H_fixinsert
+    target_input: ab_H_fixinsert_in
+
+  - source: ab_H_fixinsert
+    source_output: ab_H_fixinsert_out
+    target: ab_H_selaltloc
+    target_input: ab_H_selaltloc_in
+
+  - source: ab_H_selaltloc
+    source_output: ab_H_selaltloc_out
+    target: ab_H_keepcoord
+    target_input: ab_H_keepcoord_in
+
+  - source: ab_H_keepcoord
+    source_output: ab_H_keepcoord_out
+    target: ab_H_selres
+    target_input: ab_H_selres_in
+
+  - source: ab_H_selres
+    source_output: ab_H_selres_out
+    target: ab_H_tidy_final
+    target_input: ab_H_tidy_final_in
+
+  # Download → antibody L chain prep
+  - source: fetch_antibody
+    source_output: ab_0_pdb
+    target: ab_L_tidy
+    target_input: ab_L_tidy_in
+
+  - source: ab_L_tidy
+    source_output: ab_L_tidy_out
+    target: ab_L_selchain
+    target_input: ab_L_selchain_in
+
+  - source: ab_L_selchain
+    source_output: ab_L_selchain_out
+    target: ab_L_delhetatm
+    target_input: ab_L_delhetatm_in
+
+  - source: ab_L_delhetatm
+    source_output: ab_L_delhetatm_out
+    target: ab_L_fixinsert
+    target_input: ab_L_fixinsert_in
+
+  - source: ab_L_fixinsert
+    source_output: ab_L_fixinsert_out
+    target: ab_L_selaltloc
+    target_input: ab_L_selaltloc_in
+
+  - source: ab_L_selaltloc
+    source_output: ab_L_selaltloc_out
+    target: ab_L_keepcoord
+    target_input: ab_L_keepcoord_in
+
+  - source: ab_L_keepcoord
+    source_output: ab_L_keepcoord_out
+    target: ab_L_selres
+    target_input: ab_L_selres_in
+
+  - source: ab_L_selres
+    source_output: ab_L_selres_out
+    target: ab_L_tidy_final
+    target_input: ab_L_tidy_final_in
+
+  # Merge antibody H+L → rename chain
+  - source: ab_H_tidy_final
+    source_output: ab_H_reduced
+    target: ab_zip_HL
+    target_input: ab_H_reduced
+
+  - source: ab_L_tidy_final
+    source_output: ab_L_reduced
+    target: ab_zip_HL
+    target_input: ab_L_reduced
+
+  - source: ab_zip_HL
+    source_output: ab_HL_zip
+    target: ab_merge
+    target_input: ab_HL_zip
+
+  - source: ab_merge
+    source_output: ab_clean_merge
+    target: ab_reres
+    target_input: ab_reres_in
+
+  - source: ab_reres
+    source_output: ab_reres_out
+    target: ab_chain
+    target_input: ab_chain_in
+
+  - source: ab_chain
+    source_output: ab_chain_out
+    target: ab_chainxseg
+    target_input: ab_chainxseg_in
+
+  - source: ab_chainxseg
+    source_output: ab_chainxseg_out
+    target: ab_tidy_final
+    target_input: ab_tidy_final_in
+
+  # Antibody prep → downstream tasks
+  - source: ab_tidy_final
+    source_output: antibody_prep
+    target: restrain_bodies
+    target_input: antibody_prep
+
+  - source: ab_tidy_final
+    source_output: antibody_prep
+    target: topology
+    target_input: antibody_prep
+
+  # Download → antigen prep
+  - source: fetch_antigen
+    source_output: ag_0_pdb
+    target: ag_tidy
+    target_input: ag_tidy_in
+
+  - source: ag_tidy
+    source_output: ag_tidy_out
+    target: ag_delhetatm
+    target_input: ag_delhetatm_in
+
+  - source: ag_delhetatm
+    source_output: ag_delhetatm_out
+    target: ag_selaltloc
+    target_input: ag_selaltloc_in
+
+  - source: ag_selaltloc
+    source_output: ag_selaltloc_out
+    target: ag_keepcoord
+    target_input: ag_keepcoord_in
+
+  - source: ag_keepcoord
+    source_output: ag_keepcoord_out
+    target: ag_chain
+    target_input: ag_chain_in
+
+  - source: ag_chain
+    source_output: ag_chain_out
+    target: ag_chainxseg
+    target_input: ag_chainxseg_in
+
+  - source: ag_chainxseg
+    source_output: ag_chainxseg_out
+    target: ag_tidy_final
+    target_input: ag_tidy_final_in
+
+  # Antigen prep → downstream tasks
+  - source: ag_tidy_final
+    source_output: antigen_prep
+    target: passive_from_active
+    target_input: antigen_prep
+
+  - source: ag_tidy_final
+    source_output: antigen_prep
+    target: topology
+    target_input: antigen_prep
+
+  # Download → reference complex H chain prep
+  - source: fetch_complex
+    source_output: cx_0_pdb
+    target: cx_H_selchain
+    target_input: cx_H_selchain_in
+
+  - source: cx_H_selchain
+    source_output: cx_H_selchain_out
+    target: cx_H_delhetatm
+    target_input: cx_H_delhetatm_in
+
+  - source: cx_H_delhetatm
+    source_output: cx_H_delhetatm_out
+    target: cx_H_fixinsert
+    target_input: cx_H_fixinsert_in
+
+  - source: cx_H_fixinsert
+    source_output: cx_H_fixinsert_out
+    target: cx_H_selaltloc
+    target_input: cx_H_selaltloc_in
+
+  - source: cx_H_selaltloc
+    source_output: cx_H_selaltloc_out
+    target: cx_H_keepcoord
+    target_input: cx_H_keepcoord_in
+
+  - source: cx_H_keepcoord
+    source_output: cx_H_keepcoord_out
+    target: cx_H_selres
+    target_input: cx_H_selres_in
+
+  - source: cx_H_selres
+    source_output: cx_H_selres_out
+    target: cx_H_tidy_final
+    target_input: cx_H_tidy_final_in
+
+  # Download → reference complex L chain prep
+  - source: fetch_complex
+    source_output: cx_0_pdb
+    target: cx_L_selchain
+    target_input: cx_L_selchain_in
+
+  - source: cx_L_selchain
+    source_output: cx_L_selchain_out
+    target: cx_L_delhetatm
+    target_input: cx_L_delhetatm_in
+
+  - source: cx_L_delhetatm
+    source_output: cx_L_delhetatm_out
+    target: cx_L_fixinsert
+    target_input: cx_L_fixinsert_in
+
+  - source: cx_L_fixinsert
+    source_output: cx_L_fixinsert_out
+    target: cx_L_selaltloc
+    target_input: cx_L_selaltloc_in
+
+  - source: cx_L_selaltloc
+    source_output: cx_L_selaltloc_out
+    target: cx_L_keepcoord
+    target_input: cx_L_keepcoord_in
+
+  - source: cx_L_keepcoord
+    source_output: cx_L_keepcoord_out
+    target: cx_L_selres
+    target_input: cx_L_selres_in
+
+  - source: cx_L_selres
+    source_output: cx_L_selres_out
+    target: cx_L_tidy_final
+    target_input: cx_L_tidy_final_in
+
+  # Merge reference complex H+L → rename antibody chain
+  - source: cx_H_tidy_final
+    source_output: cx_H_reduced
+    target: cx_zip_HL
+    target_input: cx_H_reduced
+
+  - source: cx_L_tidy_final
+    source_output: cx_L_reduced
+    target: cx_zip_HL
+    target_input: cx_L_reduced
+
+  - source: cx_zip_HL
+    source_output: cx_HL_zip
+    target: cx_ab_merge
+    target_input: cx_HL_zip
+
+  - source: cx_ab_merge
+    source_output: cx_ab_clean_merge
+    target: cx_ab_reres
+    target_input: cx_ab_reres_in
+
+  - source: cx_ab_reres
+    source_output: cx_ab_reres_out
+    target: cx_ab_chain
+    target_input: cx_ab_chain_in
+
+  - source: cx_ab_chain
+    source_output: cx_ab_chain_out
+    target: cx_ab_chainxseg
+    target_input: cx_ab_chainxseg_in
+
+  - source: cx_ab_chainxseg
+    source_output: cx_ab_chainxseg_out
+    target: cx_ab_tidy_final
+    target_input: cx_ab_tidy_final_in
+
+  # Download → reference complex antigen prep
+  - source: fetch_complex
+    source_output: cx_0_pdb
+    target: cx_ag_tidy
+    target_input: cx_ag_tidy_in
+
+  - source: cx_ag_tidy
+    source_output: cx_ag_tidy_out
+    target: cx_ag_selchain
+    target_input: cx_ag_selchain_in
+
+  - source: cx_ag_selchain
+    source_output: cx_ag_selchain_out
+    target: cx_ag_chain
+    target_input: cx_ag_chain_in
+
+  - source: cx_ag_chain
+    source_output: cx_ag_chain_out
+    target: cx_ag_chainxseg
+    target_input: cx_ag_chainxseg_in
+
+  - source: cx_ag_chainxseg
+    source_output: cx_ag_chainxseg_out
+    target: cx_ag_delhetatm
+    target_input: cx_ag_delhetatm_in
+
+  - source: cx_ag_delhetatm
+    source_output: cx_ag_delhetatm_out
+    target: cx_ag_fixinsert
+    target_input: cx_ag_fixinsert_in
+
+  - source: cx_ag_fixinsert
+    source_output: cx_ag_fixinsert_out
+    target: cx_ag_selaltloc
+    target_input: cx_ag_selaltloc_in
+
+  - source: cx_ag_selaltloc
+    source_output: cx_ag_selaltloc_out
+    target: cx_ag_keepcoord
+    target_input: cx_ag_keepcoord_in
+
+  - source: cx_ag_keepcoord
+    source_output: cx_ag_keepcoord_out
+    target: cx_ag_tidy_final
+    target_input: cx_ag_tidy_final_in
+
+  # Merge reference complex antibody + antigen
+  - source: cx_ab_tidy_final
+    source_output: cx_antibody_final
+    target: cx_zip_AB
+    target_input: cx_antibody_final
+
+  - source: cx_ag_tidy_final
+    source_output: cx_antigen_final
+    target: cx_zip_AB
+    target_input: cx_antigen_final
+
+  - source: cx_zip_AB
+    source_output: cx_HL_B_zip
+    target: cx_merge
+    target_input: cx_HL_B_zip
+
+  - source: cx_merge
+    source_output: cx_clean_merge
+    target: cx_tidy_final
+    target_input: cx_tidy_final_in
+
+  # Reference complex → CAPRI evaluations
+  - source: cx_tidy_final
+    source_output: complex_prep
+    target: capri_eval_1
+    target_input: complex_prep
+
+  - source: cx_tidy_final
+    source_output: complex_prep
+    target: capri_eval_2
+    target_input: complex_prep
+
+  - source: cx_tidy_final
+    source_output: complex_prep
+    target: capri_eval_3
+    target_input: complex_prep
+
+  - source: cx_tidy_final
+    source_output: complex_prep
+    target: capri_eval_4
+    target_input: complex_prep
+
+  # Restraints
+  - source: write_ab_actpass
+    source_output: ab_actpass
+    target: actpass_to_ambig
+    target_input: ab_actpass
+
+  - source: passive_from_active
+    source_output: ag_actpass
+    target: actpass_to_ambig
+    target_input: ag_actpass
+
+  - source: actpass_to_ambig
+    source_output: complex_tbl
+    target: rigid_body
+    target_input: complex_tbl
+
+  - source: actpass_to_ambig
+    source_output: complex_tbl
+    target: flex_ref
+    target_input: complex_tbl
+
+  - source: actpass_to_ambig
+    source_output: complex_tbl
+    target: em_ref
+    target_input: complex_tbl
+
+  - source: restrain_bodies
+    source_output: body_tbl
+    target: rigid_body
+    target_input: body_tbl
+
+  - source: restrain_bodies
+    source_output: body_tbl
+    target: flex_ref
+    target_input: body_tbl
+
+  - source: restrain_bodies
+    source_output: body_tbl
+    target: em_ref
+    target_input: body_tbl
+
+  # HADDOCK pipeline chain (haddock_wf_data directory)
+  - source: topology
+    source_output: haddock_wf_data
+    target: rigid_body
+    target_input: haddock_wf_data_in
+
+  - source: rigid_body
+    source_output: haddock_wf_data_rigid
+    target: capri_eval_1
+    target_input: haddock_wf_data_in
+
+  - source: capri_eval_1
+    source_output: haddock_wf_data_capri1
+    target: sele_top
+    target_input: haddock_wf_data_in
+
+  - source: sele_top
+    source_output: haddock_wf_data_sele
+    target: flex_ref
+    target_input: haddock_wf_data_in
+
+  - source: flex_ref
+    source_output: haddock_wf_data_flex
+    target: capri_eval_2
+    target_input: haddock_wf_data_in
+
+  - source: capri_eval_2
+    source_output: haddock_wf_data_capri2
+    target: em_ref
+    target_input: haddock_wf_data_in
+
+  - source: em_ref
+    source_output: haddock_wf_data_em
+    target: capri_eval_3
+    target_input: haddock_wf_data_in
+
+  - source: capri_eval_3
+    source_output: haddock_wf_data_capri3
+    target: clust_fcc
+    target_input: haddock_wf_data_in
+
+  - source: clust_fcc
+    source_output: haddock_wf_data_clust
+    target: sele_top_clusts
+    target_input: haddock_wf_data_in
+
+  - source: sele_top_clusts
+    source_output: haddock_wf_data_seletop
+    target: capri_eval_4
+    target_input: haddock_wf_data_in
+
+  - source: capri_eval_4
+    source_output: haddock_wf_data_capri4
+    target: contact_map
+    target_input: haddock_wf_data_in
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

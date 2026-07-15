@@ -1,0 +1,4 @@
+properties:
+  mdin:
+    nstlim: 500
+    restraintmask: '":DA,DC,DG,DT,D=3,D=5&@P,O5'',C5'',C4'',C3'',O3''"'

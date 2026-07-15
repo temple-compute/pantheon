@@ -1,0 +1,3 @@
+properties:
+  verbose: true
+  running_avg_window: 1

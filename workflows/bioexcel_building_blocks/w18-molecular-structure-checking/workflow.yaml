@@ -1,0 +1,595 @@
+kind: horus_workflow
+name: BioExcel Structure Checking - 1Z83 (AK1A)
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+tasks:
+  - kind: horus_task
+    id: fetch_pdb
+    name: Download 1Z83 structure from PDB
+    inputs:
+      - id: fetch_pdb_config
+        kind: file
+        path: configs/fetch_pdb.yaml
+    outputs:
+      - id: downloaded_pdb
+        kind: file
+        path: results/downloaded.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_pdb_config}
+        --output_pdb_path ${downloaded_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: structure_check
+    name: Run initial structure quality report
+    inputs:
+      - id: downloaded_pdb
+        kind: file
+        path: results/downloaded.pdb
+    outputs:
+      - id: report
+        kind: file
+        path: results/report.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        structure_check
+        --input_structure_path ${downloaded_pdb}
+        --output_summary_path ${report}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_model
+    name: Select model 1 from multi-model structure
+    inputs:
+      - id: extract_model_config
+        kind: file
+        path: configs/extract_model.yaml
+      - id: downloaded_pdb
+        kind: file
+        path: results/downloaded.pdb
+    outputs:
+      - id: models_pdb
+        kind: file
+        path: results/models.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        extract_model
+        --config ${extract_model_config}
+        --input_structure_path ${downloaded_pdb}
+        --output_structure_path ${models_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_chain
+    name: Extract chain A from structure
+    inputs:
+      - id: extract_chain_config
+        kind: file
+        path: configs/extract_chain.yaml
+      - id: models_pdb
+        kind: file
+        path: results/models.pdb
+    outputs:
+      - id: chains_pdb
+        kind: file
+        path: results/chains.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        extract_chain
+        --config ${extract_chain_config}
+        --input_structure_path ${models_pdb}
+        --output_structure_path ${chains_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fix_altlocs
+    name: Resolve alternative locations (keep altloc A)
+    inputs:
+      - id: fix_altlocs_config
+        kind: file
+        path: configs/fix_altlocs.yaml
+      - id: chains_pdb
+        kind: file
+        path: results/chains.pdb
+    outputs:
+      - id: altloc_pdb
+        kind: file
+        path: results/altloc.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        fix_altlocs
+        --config ${fix_altlocs_config}
+        --input_pdb_path ${chains_pdb}
+        --output_pdb_path ${altloc_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fix_ssbonds
+    name: Identify and mark disulfide bridges (CYX)
+    inputs:
+      - id: altloc_pdb
+        kind: file
+        path: results/altloc.pdb
+    outputs:
+      - id: ssbonds_pdb
+        kind: file
+        path: results/ssbonds.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        fix_ssbonds
+        --input_pdb_path ${altloc_pdb}
+        --output_pdb_path ${ssbonds_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: remove_molecules_metals
+    name: Remove zinc metal ions from structure
+    inputs:
+      - id: remove_molecules_metals_config
+        kind: file
+        path: configs/remove_molecules_metals.yaml
+      - id: ssbonds_pdb
+        kind: file
+        path: results/ssbonds.pdb
+    outputs:
+      - id: metals_pdb
+        kind: file
+        path: results/metals.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        remove_molecules
+        --config ${remove_molecules_metals_config}
+        --input_structure_path ${ssbonds_pdb}
+        --output_molecules_path ${metals_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: remove_molecules_ligands
+    name: Remove SO4 and AP5 ligands from structure
+    inputs:
+      - id: remove_molecules_ligands_config
+        kind: file
+        path: configs/remove_molecules_ligands.yaml
+      - id: metals_pdb
+        kind: file
+        path: results/metals.pdb
+    outputs:
+      - id: ligands_pdb
+        kind: file
+        path: results/ligands.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        remove_molecules
+        --config ${remove_molecules_ligands_config}
+        --input_structure_path ${metals_pdb}
+        --output_molecules_path ${ligands_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: reduce_remove_hydrogens
+    name: Strip existing hydrogen atoms
+    inputs:
+      - id: ligands_pdb
+        kind: file
+        path: results/ligands.pdb
+    outputs:
+      - id: hydrogens_pdb
+        kind: file
+        path: results/hydrogens.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        reduce_remove_hydrogens
+        --input_path ${ligands_pdb}
+        --output_path ${hydrogens_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: remove_pdb_water
+    name: Remove crystallographic water molecules
+    inputs:
+      - id: hydrogens_pdb
+        kind: file
+        path: results/hydrogens.pdb
+    outputs:
+      - id: water_pdb
+        kind: file
+        path: results/water.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        remove_pdb_water
+        --input_pdb_path ${hydrogens_pdb}
+        --output_pdb_path ${water_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fix_amides
+    name: Fix incorrect amide group assignments (ASN/GLN)
+    inputs:
+      - id: water_pdb
+        kind: file
+        path: results/water.pdb
+    outputs:
+      - id: amides_pdb
+        kind: file
+        path: results/amides.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        fix_amides
+        --input_pdb_path ${water_pdb}
+        --output_pdb_path ${amides_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fix_chirality
+    name: Fix incorrect chirality (THR/ILE side chains)
+    inputs:
+      - id: amides_pdb
+        kind: file
+        path: results/amides.pdb
+    outputs:
+      - id: chiral_pdb
+        kind: file
+        path: results/chiral.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        fix_chirality
+        --input_pdb_path ${amides_pdb}
+        --output_pdb_path ${chiral_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fix_side_chain
+    name: Model missing side-chain atoms
+    inputs:
+      - id: chiral_pdb
+        kind: file
+        path: results/chiral.pdb
+    outputs:
+      - id: side_chains_pdb
+        kind: file
+        path: results/sidechains.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        fix_side_chain
+        --input_pdb_path ${chiral_pdb}
+        --output_pdb_path ${side_chains_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: canonical_fasta
+    name: Fetch canonical FASTA sequence for 1Z83
+    inputs:
+      - id: canonical_fasta_config
+        kind: file
+        path: configs/canonical_fasta.yaml
+    outputs:
+      - id: fasta
+        kind: file
+        path: results/canonical.fasta
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        canonical_fasta
+        --config ${canonical_fasta_config}
+        --output_fasta_path ${fasta}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fix_backbone
+    name: Model missing backbone atoms with Modeller
+    inputs:
+      - id: side_chains_pdb
+        kind: file
+        path: results/sidechains.pdb
+      - id: fasta
+        kind: file
+        path: results/canonical.fasta
+    outputs:
+      - id: backbone_pdb
+        kind: file
+        path: results/backbone.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        fix_backbone
+        --input_pdb_path ${side_chains_pdb}
+        --input_fasta_canonical_sequence_path ${fasta}
+        --output_pdb_path ${backbone_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: leap_gen_top
+    name: Generate AMBER topology and coordinates (LEaP)
+    inputs:
+      - id: leap_gen_top_config
+        kind: file
+        path: configs/leap_gen_top.yaml
+      - id: backbone_pdb
+        kind: file
+        path: results/backbone.pdb
+    outputs:
+      - id: amber_pdb
+        kind: file
+        path: results/amber.pdb
+      - id: amber_top
+        kind: file
+        path: results/amber.top
+      - id: amber_crd
+        kind: file
+        path: results/amber.crd
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        leap_gen_top
+        --config ${leap_gen_top_config}
+        --input_pdb_path ${backbone_pdb}
+        --output_pdb_path ${amber_pdb}
+        --output_top_path ${amber_top}
+        --output_crd_path ${amber_crd}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: sander_mdrun
+    name: Energy minimization to relieve atomic clashes (AMBER sander)
+    inputs:
+      - id: sander_mdrun_config
+        kind: file
+        path: configs/sander_mdrun.yaml
+      - id: amber_top
+        kind: file
+        path: results/amber.top
+      - id: amber_crd
+        kind: file
+        path: results/amber.crd
+    outputs:
+      - id: trj_crd
+        kind: file
+        path: results/trj.crd
+      - id: trj_rst
+        kind: file
+        path: results/trj.rst
+      - id: trj_log
+        kind: file
+        path: results/trj.log
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        sander_mdrun
+        --config ${sander_mdrun_config}
+        --input_top_path ${amber_top}
+        --input_crd_path ${amber_crd}
+        --output_traj_path ${trj_crd}
+        --output_rst_path ${trj_rst}
+        --output_log_path ${trj_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: amber_to_pdb
+    name: Convert minimized AMBER restart to PDB
+    inputs:
+      - id: amber_top
+        kind: file
+        path: results/amber.top
+      - id: trj_rst
+        kind: file
+        path: results/trj.rst
+    outputs:
+      - id: amber_min_pdb
+        kind: file
+        path: results/amber_min.pdb
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        amber_to_pdb
+        --input_top_path ${amber_top}
+        --input_crd_path ${trj_rst}
+        --output_pdb_path ${amber_min_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fix_pdb
+    name: Renumber residues and restore chain IDs
+    inputs:
+      - id: amber_min_pdb
+        kind: file
+        path: results/amber_min.pdb
+    outputs:
+      - id: final_pdb
+        kind: file
+        path: results/final.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        fix_pdb
+        --input_pdb_path ${amber_min_pdb}
+        --output_pdb_path ${final_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: structure_check_final
+    name: Run final structure quality report
+    inputs:
+      - id: final_pdb
+        kind: file
+        path: results/final.pdb
+    outputs:
+      - id: report_final
+        kind: file
+        path: results/report_final.json
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        structure_check
+        --input_structure_path ${final_pdb}
+        --output_summary_path ${report_final}
+    target:
+      kind: local
+
+edges:
+  - source: fetch_pdb
+    source_output: downloaded_pdb
+    target: structure_check
+    target_input: downloaded_pdb
+
+  - source: fetch_pdb
+    source_output: downloaded_pdb
+    target: extract_model
+    target_input: downloaded_pdb
+
+  - source: extract_model
+    source_output: models_pdb
+    target: extract_chain
+    target_input: models_pdb
+
+  - source: extract_chain
+    source_output: chains_pdb
+    target: fix_altlocs
+    target_input: chains_pdb
+
+  - source: fix_altlocs
+    source_output: altloc_pdb
+    target: fix_ssbonds
+    target_input: altloc_pdb
+
+  - source: fix_ssbonds
+    source_output: ssbonds_pdb
+    target: remove_molecules_metals
+    target_input: ssbonds_pdb
+
+  - source: remove_molecules_metals
+    source_output: metals_pdb
+    target: remove_molecules_ligands
+    target_input: metals_pdb
+
+  - source: remove_molecules_ligands
+    source_output: ligands_pdb
+    target: reduce_remove_hydrogens
+    target_input: ligands_pdb
+
+  - source: reduce_remove_hydrogens
+    source_output: hydrogens_pdb
+    target: remove_pdb_water
+    target_input: hydrogens_pdb
+
+  - source: remove_pdb_water
+    source_output: water_pdb
+    target: fix_amides
+    target_input: water_pdb
+
+  - source: fix_amides
+    source_output: amides_pdb
+    target: fix_chirality
+    target_input: amides_pdb
+
+  - source: fix_chirality
+    source_output: chiral_pdb
+    target: fix_side_chain
+    target_input: chiral_pdb
+
+  - source: fix_side_chain
+    source_output: side_chains_pdb
+    target: fix_backbone
+    target_input: side_chains_pdb
+
+  - source: canonical_fasta
+    source_output: fasta
+    target: fix_backbone
+    target_input: fasta
+
+  - source: fix_backbone
+    source_output: backbone_pdb
+    target: leap_gen_top
+    target_input: backbone_pdb
+
+  - source: leap_gen_top
+    source_output: amber_top
+    target: sander_mdrun
+    target_input: amber_top
+
+  - source: leap_gen_top
+    source_output: amber_crd
+    target: sander_mdrun
+    target_input: amber_crd
+
+  - source: leap_gen_top
+    source_output: amber_top
+    target: amber_to_pdb
+    target_input: amber_top
+
+  - source: sander_mdrun
+    source_output: trj_rst
+    target: amber_to_pdb
+    target_input: trj_rst
+
+  - source: amber_to_pdb
+    source_output: amber_min_pdb
+    target: fix_pdb
+    target_input: amber_min_pdb
+
+  - source: fix_pdb
+    source_output: final_pdb
+    target: structure_check_final
+    target_input: final_pdb
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

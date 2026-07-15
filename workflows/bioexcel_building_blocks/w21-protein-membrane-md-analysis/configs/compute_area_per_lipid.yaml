@@ -1,0 +1,4 @@
+properties:
+  lipid_selection: "(resname DPPC and element P)"
+  protein_selection: "protein and not element H"
+  ignore_no_box: true

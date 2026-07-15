@@ -1,0 +1,4 @@
+properties:
+  lipid_sel: "(resname DPPC and element P)"
+  steps: 1
+  frame_cutoff: 2

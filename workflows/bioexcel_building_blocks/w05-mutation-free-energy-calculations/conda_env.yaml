@@ -1,0 +1,11 @@
+name: biobb_wf_pmx_tutorial
+channels:
+  - conda-forge
+  - bioconda
+  - nodefaults
+dependencies:
+  - biobb_gromacs==5.2.1
+  - biobb_analysis==5.2.1
+  - scipy==1.13
+  - jupyter
+  - plotly

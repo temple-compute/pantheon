@@ -1,0 +1,7 @@
+properties:
+  simulation_type: minimization
+  mdin:
+    maxcyc: 300
+    ntr: 1
+    restraintmask: '"!:WAT,Cl-,Na+"'
+    restraint_wt: 15.0

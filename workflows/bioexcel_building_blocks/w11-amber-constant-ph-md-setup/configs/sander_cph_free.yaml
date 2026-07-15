@@ -1,0 +1,10 @@
+properties:
+  simulation_type: free
+  mdin:
+    nstlim: 2500
+    ntwx: 500
+    icnstph: 2
+    saltcon: 0.1
+    ntcnstph: 100
+    ntrelax: 100
+    solvph: 7.0

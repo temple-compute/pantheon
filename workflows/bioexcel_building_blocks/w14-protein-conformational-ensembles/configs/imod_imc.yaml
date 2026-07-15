@@ -1,0 +1,4 @@
+properties:
+  num_structs: 300
+  num_modes: 10
+  amplitude: 6.0

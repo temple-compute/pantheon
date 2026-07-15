@@ -1,0 +1,6 @@
+properties:
+  pdb_code: 4hjo
+  api_id: pdbe
+  filter:
+    - ATOM
+    - HETATM

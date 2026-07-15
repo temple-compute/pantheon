@@ -1,0 +1,14 @@
+name: biobb_wf_structure_checking
+channels:
+  - conda-forge
+  - bioconda
+  - salilab
+  - nodefaults
+dependencies:
+  - biobb_io==5.2.3
+  - biobb_structure_utils==5.2.1
+  - biobb_model==5.2.1
+  - biobb_chemistry==5.2.1
+  - modeller
+  - jupyter
+  - nglview<=4.0

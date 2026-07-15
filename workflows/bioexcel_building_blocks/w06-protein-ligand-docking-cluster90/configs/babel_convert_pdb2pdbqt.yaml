@@ -1,0 +1,4 @@
+properties:
+  input_format: "pdb"
+  output_format: "pdbqt"
+  binary_path: "obabel"

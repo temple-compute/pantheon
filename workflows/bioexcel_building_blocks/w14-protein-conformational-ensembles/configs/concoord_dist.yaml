@@ -1,0 +1,6 @@
+properties:
+  retain_hydrogens: false
+  cutoff: 4.0
+  env_vars_dict:
+    CONCOORD_OVERWRITE: "1"
+    CONCOORDLIB: "${CONDA_PREFIX}/share/concoord/lib"

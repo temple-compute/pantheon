@@ -1,0 +1,7 @@
+properties:
+  simulation_type: free
+  mdp:
+    nsteps: "10000"
+    dt: "0.001"
+    nstcomm: "1"
+    nstcalcenergy: "1"

@@ -1,0 +1,6 @@
+properties:
+  cartesian:
+    selection: name CA
+  remove_tmp: true
+  disable_sandbox: true
+  disable_logs: true

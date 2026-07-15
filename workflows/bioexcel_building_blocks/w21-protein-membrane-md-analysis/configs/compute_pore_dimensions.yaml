@@ -1,0 +1,4 @@
+properties:
+  select: protein
+  steps: 20
+  sample: 0.1

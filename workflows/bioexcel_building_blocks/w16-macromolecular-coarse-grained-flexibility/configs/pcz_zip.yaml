@@ -1,0 +1,4 @@
+properties:
+  variance: 90
+  neigenv: 10
+  gauss_rmsd: true

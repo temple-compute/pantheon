@@ -1,0 +1,7 @@
+properties:
+  selection: System
+  start: 1
+  end: 1000
+  dt: 200
+  output_name: frameA
+  output_type: pdb

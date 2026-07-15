@@ -1,0 +1,9 @@
+[project]
+name = "w06-protein-ligand-docking-cluster90"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "horus-docker",
+  "horus-environments>=0.1.2",
+  "horus-runtime>=0.1.6",
+]

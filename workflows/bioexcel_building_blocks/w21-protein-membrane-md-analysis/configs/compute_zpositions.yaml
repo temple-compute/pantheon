@@ -1,0 +1,5 @@
+properties:
+  lipid_sel: "(resname DPPC and element P)"
+  steps: 1
+  height_sel: "(resname DPPC and element P)"
+  ignore_no_box: true

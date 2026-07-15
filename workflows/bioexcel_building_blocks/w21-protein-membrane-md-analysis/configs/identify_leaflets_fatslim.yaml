@@ -1,0 +1,4 @@
+properties:
+  selection: "(resname DPPC and element P)"
+  cutoff: 2.2
+  ignore_no_box: true

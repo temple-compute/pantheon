@@ -1,0 +1,4 @@
+properties:
+  cfg:
+    sampling: 10
+    clean: false

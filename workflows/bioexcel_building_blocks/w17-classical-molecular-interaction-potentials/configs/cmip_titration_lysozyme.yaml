@@ -1,0 +1,4 @@
+properties:
+  num_positive_ions: 5
+  num_negative_ions: 5
+  num_wats: 20

@@ -1,0 +1,827 @@
+kind: horus_workflow
+name: PMX Mutation Free Energy Calculations - Staphylococcal nuclease I10A
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+_docker_executor_pmx: &docker_executor_pmx
+  kind: docker
+  image: quay.io/biocontainers/biobb_pmx:5.2.2--pyhdfd78af_0
+
+tasks:
+  # ── Extract snapshots from equilibrium trajectories ──────────────────────
+
+  - kind: horus_task
+    id: gmx_trjconv_str_ens_stateA
+    name: Extract snapshots from stateA (WT) equilibrium trajectory
+    inputs:
+      - id: gmx_trjconv_str_ens_stateA_config
+        kind: file
+        path: configs/gmx_trjconv_str_ens_stateA.yaml
+      - id: stateA_traj
+        kind: file
+        path: pmx_tutorial/stateA_1ns.xtc
+      - id: stateA_tpr
+        kind: file
+        path: pmx_tutorial/stateA.tpr
+    outputs:
+      - id: stateA_frames
+        kind: file
+        path: results/stateA_frames.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_trjconv_str_ens
+        --config ${gmx_trjconv_str_ens_stateA_config}
+        --input_traj_path ${stateA_traj}
+        --input_top_path ${stateA_tpr}
+        --output_str_ens_path ${stateA_frames}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: gmx_trjconv_str_ens_stateB
+    name: Extract snapshots from stateB (Mutant) equilibrium trajectory
+    inputs:
+      - id: gmx_trjconv_str_ens_stateB_config
+        kind: file
+        path: configs/gmx_trjconv_str_ens_stateB.yaml
+      - id: stateB_traj
+        kind: file
+        path: pmx_tutorial/stateB_1ns.xtc
+      - id: stateB_tpr
+        kind: file
+        path: pmx_tutorial/stateB.tpr
+    outputs:
+      - id: stateB_frames
+        kind: file
+        path: results/stateB_frames.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_trjconv_str_ens
+        --config ${gmx_trjconv_str_ens_stateB_config}
+        --input_traj_path ${stateB_traj}
+        --input_top_path ${stateB_tpr}
+        --output_str_ens_path ${stateB_frames}
+    target:
+      kind: local
+
+  # ── Model mutated structures ──────────────────────────────────────────────
+
+  - kind: horus_task
+    id: pmxmutate_stateA
+    name: Model stateA mutated structure (Ile10 -> Ala, WT->Mut)
+    inputs:
+      - id: pmxmutate_stateA_config
+        kind: file
+        path: configs/pmxmutate_stateA.yaml
+      - id: stateA_frames
+        kind: file
+        path: results/stateA_frames.zip
+    outputs:
+      - id: mutA_pdb
+        kind: file
+        path: results/mutA.pdb
+    executor: *docker_executor_pmx
+    runtime:
+      kind: command
+      command: >-
+        pmxmutate
+        --config ${pmxmutate_stateA_config}
+        --input_structure_path ${stateA_frames}
+        --output_structure_path ${mutA_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pmxmutate_stateB
+    name: Model stateB mutated structure (Ala10 -> Ile, Mut->WT)
+    inputs:
+      - id: pmxmutate_stateB_config
+        kind: file
+        path: configs/pmxmutate_stateB.yaml
+      - id: stateB_frames
+        kind: file
+        path: results/stateB_frames.zip
+    outputs:
+      - id: mutB_pdb
+        kind: file
+        path: results/mutB.pdb
+    executor: *docker_executor_pmx
+    runtime:
+      kind: command
+      command: >-
+        pmxmutate
+        --config ${pmxmutate_stateB_config}
+        --input_structure_path ${stateB_frames}
+        --output_structure_path ${mutB_pdb}
+    target:
+      kind: local
+
+  # ── Build GROMACS topologies ──────────────────────────────────────────────
+
+  - kind: horus_task
+    id: pdb2gmx_stateA
+    name: Build GROMACS topology for stateA (pdb2gmx)
+    inputs:
+      - id: pdb2gmx_stateA_config
+        kind: file
+        path: configs/pdb2gmx_stateA.yaml
+      - id: mutA_pdb
+        kind: file
+        path: results/mutA.pdb
+    outputs:
+      - id: pdb2gmxA_gro
+        kind: file
+        path: results/pdb2gmxA.gro
+      - id: pdb2gmxA_top_zip
+        kind: file
+        path: results/pdb2gmxA_top.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb2gmx
+        --config ${pdb2gmx_stateA_config}
+        --input_pdb_path ${mutA_pdb}
+        --output_gro_path ${pdb2gmxA_gro}
+        --output_top_zip_path ${pdb2gmxA_top_zip}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pdb2gmx_stateB
+    name: Build GROMACS topology for stateB (pdb2gmx)
+    inputs:
+      - id: pdb2gmx_stateB_config
+        kind: file
+        path: configs/pdb2gmx_stateB.yaml
+      - id: mutB_pdb
+        kind: file
+        path: results/mutB.pdb
+    outputs:
+      - id: pdb2gmxB_gro
+        kind: file
+        path: results/pdb2gmxB.gro
+      - id: pdb2gmxB_top_zip
+        kind: file
+        path: results/pdb2gmxB_top.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb2gmx
+        --config ${pdb2gmx_stateB_config}
+        --input_pdb_path ${mutB_pdb}
+        --output_gro_path ${pdb2gmxB_gro}
+        --output_top_zip_path ${pdb2gmxB_top_zip}
+    target:
+      kind: local
+
+  # ── Generate hybrid topologies ────────────────────────────────────────────
+
+  - kind: horus_task
+    id: pmxgentop_stateA
+    name: Generate hybrid topology for stateA (pmxgentop)
+    inputs:
+      - id: pmxgentop_stateA_config
+        kind: file
+        path: configs/pmxgentop_stateA.yaml
+      - id: pdb2gmxA_top_zip
+        kind: file
+        path: results/pdb2gmxA_top.zip
+    outputs:
+      - id: pmxA_top_zip
+        kind: file
+        path: results/pmxA_top.zip
+      - id: pmxA_top_log
+        kind: file
+        path: results/pmxA_top.log
+    executor: *docker_executor_pmx
+    runtime:
+      kind: command
+      command: >-
+        pmxgentop
+        --config ${pmxgentop_stateA_config}
+        --input_top_zip_path ${pdb2gmxA_top_zip}
+        --output_top_zip_path ${pmxA_top_zip}
+        --output_log_path ${pmxA_top_log}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pmxgentop_stateB
+    name: Generate hybrid topology for stateB (pmxgentop)
+    inputs:
+      - id: pmxgentop_stateB_config
+        kind: file
+        path: configs/pmxgentop_stateB.yaml
+      - id: pdb2gmxB_top_zip
+        kind: file
+        path: results/pdb2gmxB_top.zip
+    outputs:
+      - id: pmxB_top_zip
+        kind: file
+        path: results/pmxB_top.zip
+      - id: pmxB_top_log
+        kind: file
+        path: results/pmxB_top.log
+    executor: *docker_executor_pmx
+    runtime:
+      kind: command
+      command: >-
+        pmxgentop
+        --config ${pmxgentop_stateB_config}
+        --input_top_zip_path ${pdb2gmxB_top_zip}
+        --output_top_zip_path ${pmxB_top_zip}
+        --output_log_path ${pmxB_top_log}
+    target:
+      kind: local
+
+  # ── Index file for stateB dummy atoms ────────────────────────────────────
+
+  - kind: horus_task
+    id: make_ndx_stateB
+    name: Create FREEZE index for stateB dummy atoms (make_ndx)
+    inputs:
+      - id: make_ndx_stateB_config
+        kind: file
+        path: configs/make_ndx_stateB.yaml
+      - id: pdb2gmxB_gro
+        kind: file
+        path: results/pdb2gmxB.gro
+    outputs:
+      - id: indexB_ndx
+        kind: file
+        path: results/indexB.ndx
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        make_ndx
+        --config ${make_ndx_stateB_config}
+        --input_structure_path ${pdb2gmxB_gro}
+        --output_ndx_path ${indexB_ndx}
+    target:
+      kind: local
+
+  # ── Energy minimization of stateB dummy atoms ────────────────────────────
+
+  - kind: horus_task
+    id: grompp_min_stateB
+    name: Compile stateB dummy-atom minimization run file (grompp)
+    inputs:
+      - id: grompp_min_stateB_config
+        kind: file
+        path: configs/grompp_min_stateB.yaml
+      - id: pdb2gmxB_gro
+        kind: file
+        path: results/pdb2gmxB.gro
+      - id: pmxB_top_zip
+        kind: file
+        path: results/pmxB_top.zip
+      - id: indexB_ndx
+        kind: file
+        path: results/indexB.ndx
+    outputs:
+      - id: min_stateB_tpr
+        kind: file
+        path: results/em_stateB.tpr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        grompp
+        --config ${grompp_min_stateB_config}
+        --input_gro_path ${pdb2gmxB_gro}
+        --input_top_zip_path ${pmxB_top_zip}
+        --input_ndx_path ${indexB_ndx}
+        --output_tpr_path ${min_stateB_tpr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: mdrun_min_stateB
+    name: Energy minimization of stateB dummy atoms (mdrun)
+    inputs:
+      - id: min_stateB_tpr
+        kind: file
+        path: results/em_stateB.tpr
+    outputs:
+      - id: min_stateB_gro
+        kind: file
+        path: results/emout_stateB.gro
+      - id: min_stateB_edr
+        kind: file
+        path: results/emout_stateB.edr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mdrun
+        --input_tpr_path ${min_stateB_tpr}
+        --output_gro_path ${min_stateB_gro}
+        --output_trr_path emout_stateB.trr
+        --output_edr_path ${min_stateB_edr}
+        --output_log_path emout_stateB.log
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: gmx_energy_min_stateB
+    name: Extract potential energy from stateB minimization (gmx_energy)
+    inputs:
+      - id: gmx_energy_min_stateB_config
+        kind: file
+        path: configs/gmx_energy_min_stateB.yaml
+      - id: min_stateB_edr
+        kind: file
+        path: results/emout_stateB.edr
+    outputs:
+      - id: min_stateB_ene_xvg
+        kind: file
+        path: results/min_ene_stateB.xvg
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_energy
+        --config ${gmx_energy_min_stateB_config}
+        --input_energy_path ${min_stateB_edr}
+        --output_xvg_path ${min_stateB_ene_xvg}
+    target:
+      kind: local
+
+  # ── NPT equilibration ─────────────────────────────────────────────────────
+
+  - kind: horus_task
+    id: grompp_eq_stateA
+    name: Compile stateA equilibration run file (grompp)
+    inputs:
+      - id: grompp_eq_stateA_config
+        kind: file
+        path: configs/grompp_eq_stateA.yaml
+      - id: pdb2gmxA_gro
+        kind: file
+        path: results/pdb2gmxA.gro
+      - id: pmxA_top_zip
+        kind: file
+        path: results/pmxA_top.zip
+    outputs:
+      - id: eq_stateA_tpr
+        kind: file
+        path: results/eqA_20ps.tpr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        grompp
+        --config ${grompp_eq_stateA_config}
+        --input_gro_path ${pdb2gmxA_gro}
+        --input_top_zip_path ${pmxA_top_zip}
+        --output_tpr_path ${eq_stateA_tpr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: grompp_eq_stateB
+    name: Compile stateB equilibration run file (grompp)
+    inputs:
+      - id: grompp_eq_stateB_config
+        kind: file
+        path: configs/grompp_eq_stateB.yaml
+      - id: min_stateB_gro
+        kind: file
+        path: results/emout_stateB.gro
+      - id: pmxB_top_zip
+        kind: file
+        path: results/pmxB_top.zip
+    outputs:
+      - id: eq_stateB_tpr
+        kind: file
+        path: results/eqB_20ps.tpr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        grompp
+        --config ${grompp_eq_stateB_config}
+        --input_gro_path ${min_stateB_gro}
+        --input_top_zip_path ${pmxB_top_zip}
+        --output_tpr_path ${eq_stateB_tpr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: mdrun_eq_stateA
+    name: NPT equilibration for stateA (mdrun)
+    inputs:
+      - id: eq_stateA_tpr
+        kind: file
+        path: results/eqA_20ps.tpr
+    outputs:
+      - id: eq_stateA_gro
+        kind: file
+        path: results/eqoutA.gro
+      - id: eq_stateA_edr
+        kind: file
+        path: results/eqoutA.edr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mdrun
+        --input_tpr_path ${eq_stateA_tpr}
+        --output_gro_path ${eq_stateA_gro}
+        --output_trr_path eqoutA.trr
+        --output_edr_path ${eq_stateA_edr}
+        --output_log_path eqoutA.log
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: mdrun_eq_stateB
+    name: NPT equilibration for stateB (mdrun)
+    inputs:
+      - id: eq_stateB_tpr
+        kind: file
+        path: results/eqB_20ps.tpr
+    outputs:
+      - id: eq_stateB_gro
+        kind: file
+        path: results/eqoutB.gro
+      - id: eq_stateB_edr
+        kind: file
+        path: results/eqoutB.edr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mdrun
+        --input_tpr_path ${eq_stateB_tpr}
+        --output_gro_path ${eq_stateB_gro}
+        --output_trr_path eqoutB.trr
+        --output_edr_path ${eq_stateB_edr}
+        --output_log_path eqoutB.log
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: gmx_energy_eq_stateA
+    name: Extract pressure and density from stateA equilibration (gmx_energy)
+    inputs:
+      - id: gmx_energy_eq_stateA_config
+        kind: file
+        path: configs/gmx_energy_eq_stateA.yaml
+      - id: eq_stateA_edr
+        kind: file
+        path: results/eqoutA.edr
+    outputs:
+      - id: eq_stateA_pd_xvg
+        kind: file
+        path: results/eqA_PD.xvg
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_energy
+        --config ${gmx_energy_eq_stateA_config}
+        --input_energy_path ${eq_stateA_edr}
+        --output_xvg_path ${eq_stateA_pd_xvg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: gmx_energy_eq_stateB
+    name: Extract pressure and density from stateB equilibration (gmx_energy)
+    inputs:
+      - id: gmx_energy_eq_stateB_config
+        kind: file
+        path: configs/gmx_energy_eq_stateB.yaml
+      - id: eq_stateB_edr
+        kind: file
+        path: results/eqoutB.edr
+    outputs:
+      - id: eq_stateB_pd_xvg
+        kind: file
+        path: results/eqB_PD.xvg
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_energy
+        --config ${gmx_energy_eq_stateB_config}
+        --input_energy_path ${eq_stateB_edr}
+        --output_xvg_path ${eq_stateB_pd_xvg}
+    target:
+      kind: local
+
+  # ── Thermodynamic integration (free energy) simulations ──────────────────
+
+  - kind: horus_task
+    id: grompp_ti_stateA
+    name: Compile stateA thermodynamic integration run file (grompp)
+    inputs:
+      - id: grompp_ti_stateA_config
+        kind: file
+        path: configs/grompp_ti_stateA.yaml
+      - id: eq_stateA_gro
+        kind: file
+        path: results/eqoutA.gro
+      - id: pmxA_top_zip
+        kind: file
+        path: results/pmxA_top.zip
+    outputs:
+      - id: ti_stateA_tpr
+        kind: file
+        path: results/tiA.tpr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        grompp
+        --config ${grompp_ti_stateA_config}
+        --input_gro_path ${eq_stateA_gro}
+        --input_top_zip_path ${pmxA_top_zip}
+        --output_tpr_path ${ti_stateA_tpr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: grompp_ti_stateB
+    name: Compile stateB thermodynamic integration run file (grompp)
+    inputs:
+      - id: grompp_ti_stateB_config
+        kind: file
+        path: configs/grompp_ti_stateB.yaml
+      - id: eq_stateB_gro
+        kind: file
+        path: results/eqoutB.gro
+      - id: pmxB_top_zip
+        kind: file
+        path: results/pmxB_top.zip
+    outputs:
+      - id: ti_stateB_tpr
+        kind: file
+        path: results/tiB.tpr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        grompp
+        --config ${grompp_ti_stateB_config}
+        --input_gro_path ${eq_stateB_gro}
+        --input_top_zip_path ${pmxB_top_zip}
+        --output_tpr_path ${ti_stateB_tpr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: mdrun_ti_stateA
+    name: Thermodynamic integration simulation for stateA - WT->Mut (mdrun)
+    inputs:
+      - id: ti_stateA_tpr
+        kind: file
+        path: results/tiA.tpr
+    outputs:
+      - id: ti_stateA_gro
+        kind: file
+        path: results/tiA.gro
+      - id: ti_stateA_dhdl
+        kind: file
+        path: results/tiA_dhdl.xvg
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mdrun
+        --input_tpr_path ${ti_stateA_tpr}
+        --output_gro_path ${ti_stateA_gro}
+        --output_trr_path tiA.trr
+        --output_edr_path tiA.edr
+        --output_log_path tiA.log
+        --output_dhdl_path ${ti_stateA_dhdl}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: mdrun_ti_stateB
+    name: Thermodynamic integration simulation for stateB - Mut->WT (mdrun)
+    inputs:
+      - id: ti_stateB_tpr
+        kind: file
+        path: results/tiB.tpr
+    outputs:
+      - id: ti_stateB_gro
+        kind: file
+        path: results/tiB.gro
+      - id: ti_stateB_dhdl
+        kind: file
+        path: results/tiB_dhdl.xvg
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mdrun
+        --input_tpr_path ${ti_stateB_tpr}
+        --output_gro_path ${ti_stateB_gro}
+        --output_trr_path tiB.trr
+        --output_edr_path tiB.edr
+        --output_log_path tiB.log
+        --output_dhdl_path ${ti_stateB_dhdl}
+    target:
+      kind: local
+
+  # ── Free energy estimation ────────────────────────────────────────────────
+
+  - kind: horus_task
+    id: pmxanalyse
+    name: Compute free energy (CGI / BAR / Jarzynski) from dhdl work values (pmxanalyse)
+    inputs:
+      - id: pmxanalyse_config
+        kind: file
+        path: configs/pmxanalyse.yaml
+      - id: dhdlA_zip
+        kind: file
+        path: pmx_tutorial/dhdlA.zip
+      - id: dhdlB_zip
+        kind: file
+        path: pmx_tutorial/dhdlB.zip
+    outputs:
+      - id: pmx_result
+        kind: file
+        path: results/pmx.txt
+      - id: pmx_work_plot
+        kind: file
+        path: results/pmx.plots.png
+    executor: *docker_executor_pmx
+    runtime:
+      kind: command
+      command: >-
+        pmxanalyse
+        --config ${pmxanalyse_config}
+        --input_a_xvg_zip_path ${dhdlA_zip}
+        --input_b_xvg_zip_path ${dhdlB_zip}
+        --output_result_path ${pmx_result}
+        --output_work_plot_path ${pmx_work_plot}
+    target:
+      kind: local
+
+edges:
+  # gmx_trjconv_str_ens → pmxmutate
+  - source: gmx_trjconv_str_ens_stateA
+    source_output: stateA_frames
+    target: pmxmutate_stateA
+    target_input: stateA_frames
+
+  - source: gmx_trjconv_str_ens_stateB
+    source_output: stateB_frames
+    target: pmxmutate_stateB
+    target_input: stateB_frames
+
+  # pmxmutate → pdb2gmx
+  - source: pmxmutate_stateA
+    source_output: mutA_pdb
+    target: pdb2gmx_stateA
+    target_input: mutA_pdb
+
+  - source: pmxmutate_stateB
+    source_output: mutB_pdb
+    target: pdb2gmx_stateB
+    target_input: mutB_pdb
+
+  # pdb2gmx → pmxgentop
+  - source: pdb2gmx_stateA
+    source_output: pdb2gmxA_top_zip
+    target: pmxgentop_stateA
+    target_input: pdb2gmxA_top_zip
+
+  - source: pdb2gmx_stateB
+    source_output: pdb2gmxB_top_zip
+    target: pmxgentop_stateB
+    target_input: pdb2gmxB_top_zip
+
+  # pdb2gmxB → make_ndx_stateB
+  - source: pdb2gmx_stateB
+    source_output: pdb2gmxB_gro
+    target: make_ndx_stateB
+    target_input: pdb2gmxB_gro
+
+  # pdb2gmxB → grompp_min_stateB
+  - source: pdb2gmx_stateB
+    source_output: pdb2gmxB_gro
+    target: grompp_min_stateB
+    target_input: pdb2gmxB_gro
+
+  # pmxgentopB → grompp_min_stateB
+  - source: pmxgentop_stateB
+    source_output: pmxB_top_zip
+    target: grompp_min_stateB
+    target_input: pmxB_top_zip
+
+  # make_ndx_stateB → grompp_min_stateB
+  - source: make_ndx_stateB
+    source_output: indexB_ndx
+    target: grompp_min_stateB
+    target_input: indexB_ndx
+
+  # grompp_min_stateB → mdrun_min_stateB
+  - source: grompp_min_stateB
+    source_output: min_stateB_tpr
+    target: mdrun_min_stateB
+    target_input: min_stateB_tpr
+
+  # mdrun_min_stateB → gmx_energy_min_stateB
+  - source: mdrun_min_stateB
+    source_output: min_stateB_edr
+    target: gmx_energy_min_stateB
+    target_input: min_stateB_edr
+
+  # pdb2gmxA → grompp_eq_stateA
+  - source: pdb2gmx_stateA
+    source_output: pdb2gmxA_gro
+    target: grompp_eq_stateA
+    target_input: pdb2gmxA_gro
+
+  # pmxgentopA → grompp_eq_stateA
+  - source: pmxgentop_stateA
+    source_output: pmxA_top_zip
+    target: grompp_eq_stateA
+    target_input: pmxA_top_zip
+
+  # mdrun_min_stateB (gro) → grompp_eq_stateB
+  - source: mdrun_min_stateB
+    source_output: min_stateB_gro
+    target: grompp_eq_stateB
+    target_input: min_stateB_gro
+
+  # pmxgentopB → grompp_eq_stateB
+  - source: pmxgentop_stateB
+    source_output: pmxB_top_zip
+    target: grompp_eq_stateB
+    target_input: pmxB_top_zip
+
+  # grompp_eq → mdrun_eq
+  - source: grompp_eq_stateA
+    source_output: eq_stateA_tpr
+    target: mdrun_eq_stateA
+    target_input: eq_stateA_tpr
+
+  - source: grompp_eq_stateB
+    source_output: eq_stateB_tpr
+    target: mdrun_eq_stateB
+    target_input: eq_stateB_tpr
+
+  # mdrun_eq → gmx_energy_eq
+  - source: mdrun_eq_stateA
+    source_output: eq_stateA_edr
+    target: gmx_energy_eq_stateA
+    target_input: eq_stateA_edr
+
+  - source: mdrun_eq_stateB
+    source_output: eq_stateB_edr
+    target: gmx_energy_eq_stateB
+    target_input: eq_stateB_edr
+
+  # mdrun_eq (gro) → grompp_ti
+  - source: mdrun_eq_stateA
+    source_output: eq_stateA_gro
+    target: grompp_ti_stateA
+    target_input: eq_stateA_gro
+
+  - source: mdrun_eq_stateB
+    source_output: eq_stateB_gro
+    target: grompp_ti_stateB
+    target_input: eq_stateB_gro
+
+  # pmxgentop → grompp_ti
+  - source: pmxgentop_stateA
+    source_output: pmxA_top_zip
+    target: grompp_ti_stateA
+    target_input: pmxA_top_zip
+
+  - source: pmxgentop_stateB
+    source_output: pmxB_top_zip
+    target: grompp_ti_stateB
+    target_input: pmxB_top_zip
+
+  # grompp_ti → mdrun_ti
+  - source: grompp_ti_stateA
+    source_output: ti_stateA_tpr
+    target: mdrun_ti_stateA
+    target_input: ti_stateA_tpr
+
+  - source: grompp_ti_stateB
+    source_output: ti_stateB_tpr
+    target: mdrun_ti_stateB
+    target_input: ti_stateB_tpr
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

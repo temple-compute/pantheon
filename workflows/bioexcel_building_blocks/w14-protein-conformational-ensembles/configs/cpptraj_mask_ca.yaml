@@ -1,0 +1,3 @@
+properties:
+  mask: c-alpha
+  format: pdb

@@ -1,0 +1,5 @@
+properties:
+  simulation_type: ions
+  maxwarn: 1
+  mdp:
+    nsteps: '5000'

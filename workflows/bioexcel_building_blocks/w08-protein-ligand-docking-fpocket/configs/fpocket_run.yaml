@@ -1,0 +1,4 @@
+properties:
+  min_radius: 3
+  max_radius: 6
+  num_spheres: 35

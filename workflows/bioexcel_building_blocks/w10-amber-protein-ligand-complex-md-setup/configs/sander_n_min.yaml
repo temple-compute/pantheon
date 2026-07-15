@@ -1,0 +1,7 @@
+properties:
+  simulation_type: min_vacuo
+  mdin:
+    maxcyc: 500
+    ntpr: 5
+    restraintmask: '":JZ4"'
+    restraint_wt: 500.0

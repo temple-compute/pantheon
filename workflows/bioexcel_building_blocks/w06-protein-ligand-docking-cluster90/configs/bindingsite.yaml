@@ -1,0 +1,7 @@
+properties:
+  ligand: "STI"
+  matrix_name: "BLOSUM62"
+  gap_open: -10.0
+  gap_extend: -0.5
+  max_num_ligands: 15
+  radius: 5

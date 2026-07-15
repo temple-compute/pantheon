@@ -1,0 +1,3 @@
+properties:
+  force_field: amber99sb-ildn
+  water_type: spce
