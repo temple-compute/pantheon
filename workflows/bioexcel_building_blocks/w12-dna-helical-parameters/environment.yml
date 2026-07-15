@@ -1,9 +1,0 @@
-name: biobb_wf_dna_helparms
-channels:
-  - conda-forge
-  - bioconda
-  - nodefaults
-dependencies:
-  - biobb_dna==5.2.1
-  - matplotlib
-  - jupyter
