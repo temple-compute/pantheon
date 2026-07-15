@@ -1,2 +1,3 @@
-molecules:
-  - name: AP5
+properties:
+  molecules:
+    - name: AP5

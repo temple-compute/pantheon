@@ -9,7 +9,6 @@ dependencies:
   - biobb_structure_utils==5.2.1
   - biobb_model==5.2.1
   - biobb_chemistry==5.2.1
-  - biobb_amber==5.2.1
   - modeller
   - jupyter
   - nglview<=4.0

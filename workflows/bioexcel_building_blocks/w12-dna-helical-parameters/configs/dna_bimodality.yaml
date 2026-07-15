@@ -1,1 +1,2 @@
-max_iter: 500
+properties:
+  max_iter: 500

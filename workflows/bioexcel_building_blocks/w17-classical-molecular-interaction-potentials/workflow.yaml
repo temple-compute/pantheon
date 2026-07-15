@@ -7,6 +7,14 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+_docker_executor_amber: &docker_executor_amber
+  kind: docker
+  image: quay.io/biocontainers/biobb_amber:5.2.1--py312hc5e4ab4_0
+
+_docker_executor_cmip: &docker_executor_cmip
+  kind: docker
+  image: quay.io/biocontainers/biobb_cmip:5.2.3--pyhdfd78af_0
+
 tasks:
   # ── Section 1: Lysozyme MIPs ──────────────────────────────────────────────
 
@@ -42,7 +50,7 @@ tasks:
       - id: cmip_pdb_lysozyme
         kind: file
         path: results/1aki.cmip.pdb
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -69,7 +77,7 @@ tasks:
       - id: wat_ions_log
         kind: file
         path: results/1aki.wat_ions.log
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -123,7 +131,7 @@ tasks:
       - id: mip_pos_cube
         kind: file
         path: results/1aki.mip_pos.cube
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -152,7 +160,7 @@ tasks:
       - id: mip_neg_cube
         kind: file
         path: results/1aki.mip_neg.cube
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -181,7 +189,7 @@ tasks:
       - id: mip_neutral_cube
         kind: file
         path: results/1aki.mip_neutral.cube
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -346,7 +354,7 @@ tasks:
       - id: system_crd
         kind: file
         path: results/structure.leap.crd
-    executor: *executor
+    executor: *docker_executor_amber
     runtime:
       kind: command
       command: >-
@@ -384,7 +392,7 @@ tasks:
       - id: amber_log
         kind: file
         path: results/structure.amber.log
-    executor: *executor
+    executor: *docker_executor_amber
     runtime:
       kind: command
       command: >-
@@ -412,7 +420,7 @@ tasks:
       - id: min_pdb
         kind: file
         path: results/structure.amber-min.pdb
-    executor: *executor
+    executor: *docker_executor_amber
     runtime:
       kind: command
       command: >-
@@ -437,7 +445,7 @@ tasks:
       - id: cmip_complex_pdb
         kind: file
         path: results/4hjo.cmip.pdb
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -487,7 +495,7 @@ tasks:
       - id: prot_ignored_pdb
         kind: file
         path: results/4hjo.Prot_ignored.cmip.pdb
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -518,7 +526,7 @@ tasks:
       - id: egfr_byat_out
         kind: file
         path: results/4hjo.EGFR.ener.byat.out
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -547,7 +555,7 @@ tasks:
       - id: md_cmip_pdb
         kind: file
         path: results/RBD-hACE2-ZN.cmip.pdb
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -625,7 +633,7 @@ tasks:
       - id: rbd_box_json
         kind: file
         path: results/RBD.box.json
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -654,7 +662,7 @@ tasks:
       - id: hace2_box_json
         kind: file
         path: results/hACE2.box.json
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -683,7 +691,7 @@ tasks:
       - id: complex_box_json
         kind: file
         path: results/COMPLEX.box.json
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -709,7 +717,7 @@ tasks:
       - id: rbd_ignored_pdb
         kind: file
         path: results/RBD-hACE2-ZN.RBD_ignored.cmip.pdb
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -752,7 +760,7 @@ tasks:
       - id: complex_energies_box_json
         kind: file
         path: results/COMPLEX.energies.box.output.json
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -783,7 +791,7 @@ tasks:
       - id: hace2_ignored_pdb
         kind: file
         path: results/RBD-hACE2-ZN.hACE2_ign.cmip.pdb
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-
@@ -826,7 +834,7 @@ tasks:
       - id: complex_2_energies_box_json
         kind: file
         path: results/COMPLEX_2.energies.box.output.json
-    executor: *executor
+    executor: *docker_executor_cmip
     runtime:
       kind: command
       command: >-

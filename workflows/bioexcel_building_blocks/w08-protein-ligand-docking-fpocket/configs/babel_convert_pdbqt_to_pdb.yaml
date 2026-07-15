@@ -1,3 +1,4 @@
-input_format: pdbqt
-output_format: pdb
-binary_path: obabel
+properties:
+  input_format: pdbqt
+  output_format: pdb
+  binary_path: obabel

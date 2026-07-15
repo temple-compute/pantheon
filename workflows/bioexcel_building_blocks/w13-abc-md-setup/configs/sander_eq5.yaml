@@ -1,5 +1,3 @@
-binary_path: sander.MPI
-mpi_np: 4
-mpi_bin: mpirun
-mdin:
-  maxcyc: 500
+properties:
+  mdin:
+    maxcyc: 500

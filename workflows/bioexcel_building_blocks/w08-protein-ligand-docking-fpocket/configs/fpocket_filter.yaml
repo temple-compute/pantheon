@@ -1,3 +1,4 @@
-volume:
-  - 800
-  - 2000
+properties:
+  volume:
+    - 800
+    - 2000

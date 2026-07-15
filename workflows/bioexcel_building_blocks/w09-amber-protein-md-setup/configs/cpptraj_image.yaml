@@ -1,2 +1,3 @@
-mask: solute
-format: trr
+properties:
+  mask: solute
+  format: trr

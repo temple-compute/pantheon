@@ -1,29 +1,30 @@
-model_type: AutoEncoder
-n_cvs: 3
-encoder_layers:
-  - 933
-  - 747
-  - 561
-  - 375
-  - 189
-decoder_layers:
-  - 189
-  - 375
-  - 561
-  - 747
-  - 933
-options:
-  norm_in:
-    mode: min_max
-  encoder:
-    activation: relu
-    batchnorm: true
-    dropout: 0.0
-    last_layer_activation: false
-  decoder:
-    activation: relu
-    batchnorm: true
-    dropout: 0.0
-    last_layer_activation: sigmoid
-  optimizer:
-    lr: 1.0e-5
+properties:
+  model_type: AutoEncoder
+  n_cvs: 3
+  encoder_layers:
+    - 933
+    - 747
+    - 561
+    - 375
+    - 189
+  decoder_layers:
+    - 189
+    - 375
+    - 561
+    - 747
+    - 933
+  options:
+    norm_in:
+      mode: min_max
+    encoder:
+      activation: relu
+      batchnorm: true
+      dropout: 0.0
+      last_layer_activation: false
+    decoder:
+      activation: relu
+      batchnorm: true
+      dropout: 0.0
+      last_layer_activation: sigmoid
+    optimizer:
+      lr: 1.0e-5

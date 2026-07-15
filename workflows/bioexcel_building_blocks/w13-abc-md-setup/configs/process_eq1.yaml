@@ -1,3 +1,4 @@
-terms:
-  - ENERGY
-remove_tmp: true
+properties:
+  terms:
+    - ENERGY
+  remove_tmp: true

@@ -1,1 +1,2 @@
-regular_expression_pattern: '^CA'
+properties:
+  regular_expression_pattern: '^CA'

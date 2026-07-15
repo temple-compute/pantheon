@@ -1,3 +1,4 @@
-molecules:
-  - name: SO4
-  - name: AP5
+properties:
+  molecules:
+    - name: SO4
+    - name: AP5

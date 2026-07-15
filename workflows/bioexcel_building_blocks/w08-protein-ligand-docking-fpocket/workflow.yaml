@@ -7,6 +7,10 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+_docker_executor: &docker_executor
+  kind: docker
+  image: quay.io/biocontainers/biobb_vs:5.2.1--pyhdfd78af_0
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
@@ -67,7 +71,7 @@ tasks:
       - id: fpocket_summary
         kind: file
         path: results/fpocket_summary.json
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -96,7 +100,7 @@ tasks:
       - id: fpocket_filter_pockets
         kind: file
         path: results/fpocket_filter_pockets.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -125,7 +129,7 @@ tasks:
       - id: fpocket_pocket
         kind: file
         path: results/fpocket_pocket.pqr
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -151,7 +155,7 @@ tasks:
       - id: output_box
         kind: file
         path: results/box.pdb
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -275,7 +279,7 @@ tasks:
       - id: output_vina_pdbqt
         kind: file
         path: results/output_vina.pdbqt
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -302,7 +306,7 @@ tasks:
       - id: output_pdbqt_model
         kind: file
         path: results/output_model.pdbqt
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-

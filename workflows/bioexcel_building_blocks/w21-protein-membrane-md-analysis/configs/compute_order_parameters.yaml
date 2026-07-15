@@ -1,1 +1,2 @@
-handle_pbc: false
+properties:
+  handle_pbc: false

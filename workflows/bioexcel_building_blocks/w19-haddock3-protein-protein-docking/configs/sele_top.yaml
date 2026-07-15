@@ -1,2 +1,3 @@
-cfg:
-  select: 8
+properties:
+  cfg:
+    select: 8

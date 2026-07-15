@@ -1,3 +1,4 @@
-force_field: amber99sb-star-ildn-mut
-mutation_list: 10Ile
-binary_path: pmx
+properties:
+  force_field: amber99sb-star-ildn-mut
+  mutation_list: 10Ile
+  binary_path: pmx

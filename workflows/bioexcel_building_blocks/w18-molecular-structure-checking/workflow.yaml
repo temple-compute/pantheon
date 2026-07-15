@@ -367,7 +367,7 @@ tasks:
       - id: amber_crd
         kind: file
         path: results/amber.crd
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -403,7 +403,7 @@ tasks:
       - id: trj_log
         kind: file
         path: results/trj.log
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -431,7 +431,7 @@ tasks:
       - id: amber_min_pdb
         kind: file
         path: results/amber_min.pdb
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-

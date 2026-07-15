@@ -1,1 +1,2 @@
-residue_list: "B:"
+properties:
+  residue_list: "B:"

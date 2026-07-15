@@ -1,3 +1,4 @@
-execution_type: check_only
-params:
-  perfill: 0.6
+properties:
+  execution_type: check_only
+  params:
+    perfill: 0.6

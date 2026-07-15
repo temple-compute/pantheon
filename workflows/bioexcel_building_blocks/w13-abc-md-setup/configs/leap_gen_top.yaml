@@ -1,2 +1,3 @@
-forcefield:
-  - DNA.bsc1
+properties:
+  forcefield:
+    - DNA.bsc1

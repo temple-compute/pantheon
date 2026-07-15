@@ -1,2 +1,3 @@
-mask: backbone
-reference: experimental
+properties:
+  mask: backbone
+  reference: experimental

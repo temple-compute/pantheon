@@ -1,2 +1,3 @@
-models:
-  - 1
+properties:
+  models:
+    - 1

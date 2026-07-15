@@ -1,5 +1,6 @@
-forcefield:
-  - protein.ff14SB
-  - constph
-neutralise: true
-box_type: truncated_octahedron
+properties:
+  forcefield:
+    - protein.ff14SB
+    - constph
+  neutralise: true
+  box_type: truncated_octahedron

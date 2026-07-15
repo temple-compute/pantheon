@@ -1,2 +1,3 @@
-Dataset:
-  batch_size: 64
+properties:
+  Dataset:
+    batch_size: 64

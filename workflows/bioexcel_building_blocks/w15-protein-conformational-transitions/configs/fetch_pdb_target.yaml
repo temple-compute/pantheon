@@ -1,2 +1,3 @@
-pdb_code: 4ake
-filter: false
+properties:
+  pdb_code: 4ake
+  filter: false

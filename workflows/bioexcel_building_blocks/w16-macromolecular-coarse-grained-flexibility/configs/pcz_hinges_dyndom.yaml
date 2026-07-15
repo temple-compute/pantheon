@@ -1,2 +1,3 @@
-eigenvector: 0
-method: Dynamic_domain
+properties:
+  eigenvector: 0
+  method: Dynamic_domain

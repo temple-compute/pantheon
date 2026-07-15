@@ -1,3 +1,4 @@
-forcefield:
-  - protein.ff14SB
-  - constph
+properties:
+  forcefield:
+    - protein.ff14SB
+    - constph

@@ -1,3 +1,4 @@
-terms:
-  - PRES
-  - DENSITY
+properties:
+  terms:
+    - PRES
+    - DENSITY

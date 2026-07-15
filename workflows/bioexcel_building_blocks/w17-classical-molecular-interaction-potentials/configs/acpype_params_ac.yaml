@@ -1,2 +1,3 @@
-basename: AQ4params
-charge: 0
+properties:
+  basename: AQ4params
+  charge: 0

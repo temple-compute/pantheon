@@ -1,2 +1,3 @@
-time: 30000
-wfreq: 100
+properties:
+  time: 30000
+  wfreq: 100

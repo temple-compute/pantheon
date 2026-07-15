@@ -1,2 +1,3 @@
-eigenvector: 2
-pdb: true
+properties:
+  eigenvector: 2
+  pdb: true

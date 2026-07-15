@@ -7,6 +7,14 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+_docker_executor_flexdyn: &docker_executor_flexdyn
+  kind: docker
+  image: quay.io/biocontainers/biobb_flexdyn:5.2.2--py310ha6fa2df_0
+
+_docker_executor_flexserv: &docker_executor_flexserv
+  kind: docker
+  image: quay.io/biocontainers/biobb_flexserv:5.2.1--py310pl5321ha6fa2df_0
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
@@ -151,7 +159,7 @@ tasks:
       - id: concoord_dist_dat
         kind: file
         path: results/1ake_dist.dat
-    executor: *executor
+    executor: *docker_executor_flexdyn
     runtime:
       kind: command
       command: >-
@@ -187,7 +195,7 @@ tasks:
       - id: concoord_disco_bfactor
         kind: file
         path: results/1ake_disco_bfactor.pdb
-    executor: *executor
+    executor: *docker_executor_flexdyn
     runtime:
       kind: command
       command: >-
@@ -277,7 +285,7 @@ tasks:
       - id: prody_ensemble
         kind: file
         path: results/1ake_prody_anm_traj.pdb
-    executor: *executor
+    executor: *docker_executor_flexdyn
     runtime:
       kind: command
       command: >-
@@ -364,7 +372,7 @@ tasks:
       - id: bd_log
         kind: file
         path: results/1ake_flexserv_bd_ensemble.log
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -430,7 +438,7 @@ tasks:
       - id: dmd_log
         kind: file
         path: results/1ake_flexserv_dmd_ensemble.log
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -496,7 +504,7 @@ tasks:
       - id: nma_log
         kind: file
         path: results/1ake_flexserv_nma_ensemble.log
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -584,7 +592,7 @@ tasks:
       - id: nolb_pdb
         kind: file
         path: results/1ake_nolb_ensemble.pdb
-    executor: *executor
+    executor: *docker_executor_flexdyn
     runtime:
       kind: command
       command: >-
@@ -671,7 +679,7 @@ tasks:
       - id: imode_evecs
         kind: file
         path: results/1ake_imode_evecs.dat
-    executor: *executor
+    executor: *docker_executor_flexdyn
     runtime:
       kind: command
       command: >-
@@ -699,7 +707,7 @@ tasks:
       - id: imc_pdb
         kind: file
         path: results/1ake_imc.pdb
-    executor: *executor
+    executor: *docker_executor_flexdyn
     runtime:
       kind: command
       command: >-
@@ -933,7 +941,7 @@ tasks:
       - id: concat_pcz
         kind: file
         path: results/1ake_concat_ensemble.pcz
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -962,7 +970,7 @@ tasks:
       - id: concat_pcz_gaussian
         kind: file
         path: results/1ake_concat_ensemble_gaussian.pcz
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -985,7 +993,7 @@ tasks:
       - id: pcz_report
         kind: file
         path: results/1ake_pcz_report.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1009,7 +1017,7 @@ tasks:
       - id: pcz_evecs_report
         kind: file
         path: results/1ake_pcz_evecs.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1034,7 +1042,7 @@ tasks:
       - id: proj1_crd
         kind: file
         path: results/1ake_pcz_proj1.crd
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1091,7 +1099,7 @@ tasks:
       - id: bfactor_all_pdb
         kind: file
         path: results/1ake_bfactor_all.pdb
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1117,7 +1125,7 @@ tasks:
       - id: hinges_bfactor_report
         kind: file
         path: results/1ake_hinges_bfactor_report.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1142,7 +1150,7 @@ tasks:
       - id: hinges_dyndom_report
         kind: file
         path: results/1ake_hinges_dyndom_report.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1167,7 +1175,7 @@ tasks:
       - id: hinges_fcte_report
         kind: file
         path: results/1ake_hinges_fcte_report.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1192,7 +1200,7 @@ tasks:
       - id: stiffness_report
         kind: file
         path: results/1ake_pcz_stiffness.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1217,7 +1225,7 @@ tasks:
       - id: pcz_collectivity_report
         kind: file
         path: results/1ake_pcz_collectivity.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-

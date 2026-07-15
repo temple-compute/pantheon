@@ -1,2 +1,3 @@
-eigenvector: 0
-method: Force_constant
+properties:
+  eigenvector: 0
+  method: Force_constant

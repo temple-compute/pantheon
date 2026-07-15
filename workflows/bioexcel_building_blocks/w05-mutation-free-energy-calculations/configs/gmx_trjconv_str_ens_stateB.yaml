@@ -1,6 +1,7 @@
-selection: System
-start: 1
-end: 1000
-dt: 200
-output_name: frameB
-output_type: pdb
+properties:
+  selection: System
+  start: 1
+  end: 1000
+  dt: 200
+  output_name: frameB
+  output_type: pdb

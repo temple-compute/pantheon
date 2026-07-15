@@ -1,4 +1,5 @@
-fit_selection: System
-output_selection: System
-method: linkage
-cutoff: 0.12
+properties:
+  fit_selection: System
+  output_selection: System
+  method: linkage
+  cutoff: 0.12
