@@ -1,2 +1,3 @@
-helpar_name: twist
-sequence: CGCGAATTCGCG
+properties:
+  helpar_name: twist
+  sequence: CGCGAATTCGCG

@@ -1,5 +1,6 @@
-pdb_code: 4I1B
-filter:
-  - ATOM
-  - TER
-  - END
+properties:
+  pdb_code: 4I1B
+  filter:
+    - ATOM
+    - TER
+    - END

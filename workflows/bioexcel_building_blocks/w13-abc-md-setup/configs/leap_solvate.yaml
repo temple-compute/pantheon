@@ -1,10 +1,11 @@
-forcefield:
-  - DNA.bsc1
-water_type: OPCBOX
-ions_type: ionsjc_tip4pew
-box_type: truncated_octahedron
-distance_to_molecule: 15.0
-neutralise: true
-iso: true
-closeness: 0.97
-positive_ions_type: "K+"
+properties:
+  forcefield:
+    - DNA.bsc1
+  water_type: OPCBOX
+  ions_type: ionsjc_tip4pew
+  box_type: truncated_octahedron
+  distance_to_molecule: 15.0
+  neutralise: true
+  iso: true
+  closeness: 0.97
+  positive_ions_type: "K+"

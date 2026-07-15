@@ -1,9 +1,7 @@
-simulation_type: npt
-binary_path: sander.MPI
-mpi_np: 4
-mpi_bin: mpirun
-mdin:
-  nstlim: 500
-  ntr: 1
-  restraintmask: '"@CA,C,O,N"'
-  restraint_wt: 0.1
+properties:
+  simulation_type: npt
+  mdin:
+    nstlim: 500
+    ntr: 1
+    restraintmask: '"@CA,C,O,N"'
+    restraint_wt: 0.1

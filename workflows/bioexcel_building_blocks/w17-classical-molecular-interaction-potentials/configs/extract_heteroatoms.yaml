@@ -1,2 +1,3 @@
-heteroatoms:
-  - name: AQ4
+properties:
+  heteroatoms:
+    - name: AQ4

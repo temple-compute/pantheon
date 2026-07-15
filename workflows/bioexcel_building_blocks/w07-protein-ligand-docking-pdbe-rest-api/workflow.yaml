@@ -7,6 +7,10 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+_docker_executor: &docker_executor
+  kind: docker
+  image: quay.io/biocontainers/biobb_vs:5.2.1--pyhdfd78af_0
+
 tasks:
   - kind: horus_task
     id: download_pdb
@@ -61,7 +65,7 @@ tasks:
       - id: residues_json
         kind: file
         path: results/residues.json
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -85,7 +89,7 @@ tasks:
       - id: output_box
         kind: file
         path: results/box.pdb
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -212,7 +216,7 @@ tasks:
       - id: output_vina_log
         kind: file
         path: results/output_vina.log
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -239,7 +243,7 @@ tasks:
       - id: output_pdbqt_model
         kind: file
         path: results/output_model.pdbqt
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-

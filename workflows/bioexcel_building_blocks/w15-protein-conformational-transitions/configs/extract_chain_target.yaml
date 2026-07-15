@@ -1,2 +1,3 @@
-chains:
-  - A
+properties:
+  chains:
+    - A

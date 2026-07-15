@@ -7,6 +7,10 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+_docker_executor_pmx: &docker_executor_pmx
+  kind: docker
+  image: quay.io/biocontainers/biobb_pmx:5.2.2--pyhdfd78af_0
+
 tasks:
   # ── Extract snapshots from equilibrium trajectories ──────────────────────
 
@@ -84,7 +88,7 @@ tasks:
       - id: mutA_pdb
         kind: file
         path: results/mutA.pdb
-    executor: *executor
+    executor: *docker_executor_pmx
     runtime:
       kind: command
       command: >-
@@ -109,7 +113,7 @@ tasks:
       - id: mutB_pdb
         kind: file
         path: results/mutB.pdb
-    executor: *executor
+    executor: *docker_executor_pmx
     runtime:
       kind: command
       command: >-
@@ -199,7 +203,7 @@ tasks:
       - id: pmxA_top_log
         kind: file
         path: results/pmxA_top.log
-    executor: *executor
+    executor: *docker_executor_pmx
     runtime:
       kind: command
       command: >-
@@ -228,7 +232,7 @@ tasks:
       - id: pmxB_top_log
         kind: file
         path: results/pmxB_top.log
-    executor: *executor
+    executor: *docker_executor_pmx
     runtime:
       kind: command
       command: >-
@@ -656,7 +660,7 @@ tasks:
       - id: pmx_work_plot
         kind: file
         path: results/pmx.plots.png
-    executor: *executor
+    executor: *docker_executor_pmx
     runtime:
       kind: command
       command: >-

@@ -1,2 +1,3 @@
-gapopen: '12.0'
-gapextend: '2'
+properties:
+  gapopen: '12.0'
+  gapextend: '2'

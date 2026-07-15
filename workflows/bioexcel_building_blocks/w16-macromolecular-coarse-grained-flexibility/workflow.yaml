@@ -7,6 +7,10 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+_docker_executor_flexserv: &docker_executor_flexserv
+  kind: docker
+  image: quay.io/biocontainers/biobb_flexserv:5.2.1--py310pl5321ha6fa2df_0
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
@@ -19,7 +23,7 @@ tasks:
       - id: downloaded_pdb
         kind: file
         path: results/1a32.pdb
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -43,7 +47,7 @@ tasks:
       - id: ca_pdb
         kind: file
         path: results/1a32_ca.pdb
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -71,7 +75,7 @@ tasks:
       - id: bd_log
         kind: file
         path: results/bd_ensemble.log
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -103,7 +107,7 @@ tasks:
       - id: bd_xtc
         kind: file
         path: results/bd_ensemble.xtc
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -131,7 +135,7 @@ tasks:
       - id: dmd_log
         kind: file
         path: results/dmd_ensemble.log
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -162,7 +166,7 @@ tasks:
       - id: dmd_xtc
         kind: file
         path: results/dmd_ensemble.xtc
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -193,7 +197,7 @@ tasks:
       - id: nma_log
         kind: file
         path: results/nma_ensemble.log
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -225,7 +229,7 @@ tasks:
       - id: nma_xtc
         kind: file
         path: results/nma_ensemble.xtc
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -256,7 +260,7 @@ tasks:
       - id: bd_pcz
         kind: file
         path: results/bd_ensemble.pcz
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -285,7 +289,7 @@ tasks:
       - id: dmd_pcz
         kind: file
         path: results/dmd_ensemble.pcz
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -314,7 +318,7 @@ tasks:
       - id: nma_pcz
         kind: file
         path: results/nma_ensemble.pcz
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -337,7 +341,7 @@ tasks:
       - id: bd_crd_uncompressed
         kind: file
         path: results/bd_ensemble_uncompressed.crd
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -358,7 +362,7 @@ tasks:
       - id: dmd_crd_uncompressed
         kind: file
         path: results/dmd_ensemble_uncompressed.crd
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -379,7 +383,7 @@ tasks:
       - id: nma_crd_uncompressed
         kind: file
         path: results/nma_ensemble_uncompressed.crd
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -409,7 +413,7 @@ tasks:
       - id: bd_xtc_uncompressed
         kind: file
         path: results/bd_ensemble_uncompressed.xtc
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -443,7 +447,7 @@ tasks:
       - id: dmd_xtc_uncompressed
         kind: file
         path: results/dmd_ensemble_uncompressed.xtc
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -477,7 +481,7 @@ tasks:
       - id: nma_xtc_uncompressed
         kind: file
         path: results/nma_ensemble_uncompressed.xtc
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -502,7 +506,7 @@ tasks:
       - id: pcz_report
         kind: file
         path: results/pcz_report.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -526,7 +530,7 @@ tasks:
       - id: pcz_evecs_report
         kind: file
         path: results/pcz_evecs.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -551,7 +555,7 @@ tasks:
       - id: proj1_crd
         kind: file
         path: results/pcz_proj1.crd
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -579,7 +583,7 @@ tasks:
       - id: proj1_xtc
         kind: file
         path: results/pcz_proj1.xtc
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -608,7 +612,7 @@ tasks:
       - id: bfactor_all_pdb
         kind: file
         path: results/bfactor_all.pdb
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -637,7 +641,7 @@ tasks:
       - id: bfactor_mode1_pdb
         kind: file
         path: results/bfactor_mode1.pdb
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -666,7 +670,7 @@ tasks:
       - id: bfactor_mode2_pdb
         kind: file
         path: results/bfactor_mode2.pdb
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -695,7 +699,7 @@ tasks:
       - id: bfactor_mode3_pdb
         kind: file
         path: results/bfactor_mode3.pdb
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -724,7 +728,7 @@ tasks:
       - id: bfactor_mode4_pdb
         kind: file
         path: results/bfactor_mode4.pdb
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -753,7 +757,7 @@ tasks:
       - id: bfactor_mode5_pdb
         kind: file
         path: results/bfactor_mode5.pdb
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -779,7 +783,7 @@ tasks:
       - id: hinges_bfactor_report
         kind: file
         path: results/hinges_bfactor_report.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -804,7 +808,7 @@ tasks:
       - id: hinges_dyndom_report
         kind: file
         path: results/hinges_dyndom_report.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -829,7 +833,7 @@ tasks:
       - id: hinges_fcte_report
         kind: file
         path: results/hinges_fcte_report.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -854,7 +858,7 @@ tasks:
       - id: stiffness_report
         kind: file
         path: results/pcz_stiffness.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -879,7 +883,7 @@ tasks:
       - id: pcz_collectivity_report
         kind: file
         path: results/pcz_collectivity.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -904,7 +908,7 @@ tasks:
       - id: similarity_bd_bd
         kind: file
         path: results/pcz_similarity_bd_bd.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -929,7 +933,7 @@ tasks:
       - id: similarity_bd_dmd
         kind: file
         path: results/pcz_similarity_bd_dmd.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -954,7 +958,7 @@ tasks:
       - id: similarity_bd_nma
         kind: file
         path: results/pcz_similarity_bd_nma.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -979,7 +983,7 @@ tasks:
       - id: similarity_bd_md
         kind: file
         path: results/pcz_similarity_bd_md.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1004,7 +1008,7 @@ tasks:
       - id: similarity_dmd_bd
         kind: file
         path: results/pcz_similarity_dmd_bd.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1029,7 +1033,7 @@ tasks:
       - id: similarity_dmd_dmd
         kind: file
         path: results/pcz_similarity_dmd_dmd.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1054,7 +1058,7 @@ tasks:
       - id: similarity_dmd_nma
         kind: file
         path: results/pcz_similarity_dmd_nma.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1079,7 +1083,7 @@ tasks:
       - id: similarity_dmd_md
         kind: file
         path: results/pcz_similarity_dmd_md.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1104,7 +1108,7 @@ tasks:
       - id: similarity_nma_bd
         kind: file
         path: results/pcz_similarity_nma_bd.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1129,7 +1133,7 @@ tasks:
       - id: similarity_nma_dmd
         kind: file
         path: results/pcz_similarity_nma_dmd.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1154,7 +1158,7 @@ tasks:
       - id: similarity_nma_nma
         kind: file
         path: results/pcz_similarity_nma_nma.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1179,7 +1183,7 @@ tasks:
       - id: similarity_nma_md
         kind: file
         path: results/pcz_similarity_nma_md.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1204,7 +1208,7 @@ tasks:
       - id: similarity_md_bd
         kind: file
         path: results/pcz_similarity_md_bd.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1229,7 +1233,7 @@ tasks:
       - id: similarity_md_dmd
         kind: file
         path: results/pcz_similarity_md_dmd.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1254,7 +1258,7 @@ tasks:
       - id: similarity_md_nma
         kind: file
         path: results/pcz_similarity_md_nma.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-
@@ -1279,7 +1283,7 @@ tasks:
       - id: similarity_md_md
         kind: file
         path: results/pcz_similarity_md_md.json
-    executor: *executor
+    executor: *docker_executor_flexserv
     runtime:
       kind: command
       command: >-

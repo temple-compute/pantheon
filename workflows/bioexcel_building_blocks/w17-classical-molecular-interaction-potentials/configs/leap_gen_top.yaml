@@ -1,3 +1,4 @@
-forcefield:
-  - protein.ff14SB
-  - gaff2
+properties:
+  forcefield:
+    - protein.ff14SB
+    - gaff2

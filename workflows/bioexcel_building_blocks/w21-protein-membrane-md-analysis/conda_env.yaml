@@ -4,7 +4,6 @@ channels:
   - bioconda
   - nodefaults
 dependencies:
-  - biobb_mem==5.2.2
   - biobb_io==5.2.3
   - biobb_analysis==5.2.1
   - anywidget

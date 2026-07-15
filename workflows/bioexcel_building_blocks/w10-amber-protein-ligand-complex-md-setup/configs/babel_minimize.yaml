@@ -1,3 +1,4 @@
-method: sd
-criteria: 1e-10
-force_field: GAFF
+properties:
+  method: sd
+  criteria: 1e-10
+  force_field: GAFF

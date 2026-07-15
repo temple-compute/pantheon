@@ -1,2 +1,3 @@
-helpar_name: mind
-sequence: CGCGAATTCGCG
+properties:
+  helpar_name: mind
+  sequence: CGCGAATTCGCG

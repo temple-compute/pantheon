@@ -1,4 +1,5 @@
-pdb_code: 1z83
-filter:
-  - ATOM
-  - HETATM
+properties:
+  pdb_code: 1z83
+  filter:
+    - ATOM
+    - HETATM

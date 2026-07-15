@@ -1,1 +1,2 @@
-reverseB: true
+properties:
+  reverseB: true

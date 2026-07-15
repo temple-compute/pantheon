@@ -1,2 +1,3 @@
-mask: c-alpha
-format: trr
+properties:
+  mask: c-alpha
+  format: trr

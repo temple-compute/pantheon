@@ -1,2 +1,3 @@
-xvg: xmgr
-selection: Protein
+properties:
+  xvg: xmgr
+  selection: Protein

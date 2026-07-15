@@ -1,5 +1,6 @@
-pdb_code: 4G6K
-filter:
-  - ATOM
-  - TER
-  - END
+properties:
+  pdb_code: 4G6K
+  filter:
+    - ATOM
+    - TER
+    - END

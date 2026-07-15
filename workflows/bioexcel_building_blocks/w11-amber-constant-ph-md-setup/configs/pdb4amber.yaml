@@ -1,1 +1,2 @@
-constant_pH: true
+properties:
+  constant_pH: true

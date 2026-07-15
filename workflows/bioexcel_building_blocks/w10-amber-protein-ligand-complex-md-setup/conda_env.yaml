@@ -8,7 +8,6 @@ dependencies:
   - biobb_io==5.2.3
   - biobb_structure_utils==5.2.1
   - biobb_chemistry==5.2.1
-  - biobb_amber==5.2.1
   - jupyter
   - plotly
   - nglview<=4.0

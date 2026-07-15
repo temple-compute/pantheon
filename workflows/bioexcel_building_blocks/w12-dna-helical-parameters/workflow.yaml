@@ -7,6 +7,10 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+_docker_executor: &docker_executor
+  kind: docker
+  image: quay.io/biocontainers/biobb_dna:5.2.1--pyhdfd78af_0
+
 tasks:
   # ── Step 1: Curves+ ─────────────────────────────────────────────────────────
   - kind: horus_task
@@ -29,7 +33,7 @@ tasks:
       - id: curves_cda
         kind: file
         path: results/curves.out.cda
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -168,7 +172,7 @@ tasks:
       - id: canal_phaseW_ser
         kind: file
         path: results/canal_out/canal_output_phaseW.ser
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -199,7 +203,7 @@ tasks:
       - id: avg_rise_jpg
         kind: file
         path: results/rise.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -228,7 +232,7 @@ tasks:
       - id: avg_roll_jpg
         kind: file
         path: results/roll.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -257,7 +261,7 @@ tasks:
       - id: avg_twist_jpg
         kind: file
         path: results/twist.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -286,7 +290,7 @@ tasks:
       - id: avg_shift_jpg
         kind: file
         path: results/shift.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -315,7 +319,7 @@ tasks:
       - id: avg_slide_jpg
         kind: file
         path: results/slide.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -344,7 +348,7 @@ tasks:
       - id: avg_tilt_jpg
         kind: file
         path: results/tilt.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -374,7 +378,7 @@ tasks:
       - id: avg_shear_jpg
         kind: file
         path: results/shear.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -403,7 +407,7 @@ tasks:
       - id: avg_stretch_jpg
         kind: file
         path: results/stretch.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -432,7 +436,7 @@ tasks:
       - id: avg_stagger_jpg
         kind: file
         path: results/stagger.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -461,7 +465,7 @@ tasks:
       - id: avg_buckle_jpg
         kind: file
         path: results/buckle.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -490,7 +494,7 @@ tasks:
       - id: avg_propel_jpg
         kind: file
         path: results/propel.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -519,7 +523,7 @@ tasks:
       - id: avg_opening_jpg
         kind: file
         path: results/opening.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -549,7 +553,7 @@ tasks:
       - id: avg_inclin_jpg
         kind: file
         path: results/inclin.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -578,7 +582,7 @@ tasks:
       - id: avg_tip_jpg
         kind: file
         path: results/tip.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -607,7 +611,7 @@ tasks:
       - id: avg_xdisp_jpg
         kind: file
         path: results/xdisp.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -636,7 +640,7 @@ tasks:
       - id: avg_ydisp_jpg
         kind: file
         path: results/ydisp.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -666,7 +670,7 @@ tasks:
       - id: avg_majd_jpg
         kind: file
         path: results/majd.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -695,7 +699,7 @@ tasks:
       - id: avg_majw_jpg
         kind: file
         path: results/majw.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -724,7 +728,7 @@ tasks:
       - id: avg_mind_jpg
         kind: file
         path: results/mind.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -753,7 +757,7 @@ tasks:
       - id: avg_minw_jpg
         kind: file
         path: results/minw.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -786,7 +790,7 @@ tasks:
       - id: puckering_jpg
         kind: file
         path: results/puckering.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -826,7 +830,7 @@ tasks:
       - id: canonicalag_jpg
         kind: file
         path: results/alphagamma.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -868,7 +872,7 @@ tasks:
       - id: bipopulations_jpg
         kind: file
         path: results/bIbII.averages.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -901,7 +905,7 @@ tasks:
       - id: ts_rise_CG_csv
         kind: file
         path: results/timeseries/series_rise_CG.csv
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -930,7 +934,7 @@ tasks:
       - id: ts_roll_CG_csv
         kind: file
         path: results/timeseries/series_roll_CG.csv
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -959,7 +963,7 @@ tasks:
       - id: ts_twist_CG_csv
         kind: file
         path: results/timeseries/series_twist_CG.csv
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -988,7 +992,7 @@ tasks:
       - id: ts_shift_CG_csv
         kind: file
         path: results/timeseries/series_shift_CG.csv
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1017,7 +1021,7 @@ tasks:
       - id: ts_slide_CG_csv
         kind: file
         path: results/timeseries/series_slide_CG.csv
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1046,7 +1050,7 @@ tasks:
       - id: ts_tilt_CG_csv
         kind: file
         path: results/timeseries/series_tilt_CG.csv
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1076,7 +1080,7 @@ tasks:
       - id: ts_shear_C_csv
         kind: file
         path: results/timeseries/series_shear_C.csv
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1105,7 +1109,7 @@ tasks:
       - id: ts_stretch_C_csv
         kind: file
         path: results/timeseries/series_stretch_C.csv
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1134,7 +1138,7 @@ tasks:
       - id: ts_stagger_C_csv
         kind: file
         path: results/timeseries/series_stagger_C.csv
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1163,7 +1167,7 @@ tasks:
       - id: ts_buckle_C_csv
         kind: file
         path: results/timeseries/series_buckle_C.csv
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1192,7 +1196,7 @@ tasks:
       - id: ts_propel_C_csv
         kind: file
         path: results/timeseries/series_propel_C.csv
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1221,7 +1225,7 @@ tasks:
       - id: ts_opening_C_csv
         kind: file
         path: results/timeseries/series_opening_C.csv
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1248,7 +1252,7 @@ tasks:
       - id: ts_inclin_zip
         kind: file
         path: results/inclin.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1274,7 +1278,7 @@ tasks:
       - id: ts_tip_zip
         kind: file
         path: results/tip.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1300,7 +1304,7 @@ tasks:
       - id: ts_xdisp_zip
         kind: file
         path: results/xdisp.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1326,7 +1330,7 @@ tasks:
       - id: ts_ydisp_zip
         kind: file
         path: results/ydisp.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1353,7 +1357,7 @@ tasks:
       - id: ts_majd_zip
         kind: file
         path: results/majd.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1379,7 +1383,7 @@ tasks:
       - id: ts_majw_zip
         kind: file
         path: results/majw.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1405,7 +1409,7 @@ tasks:
       - id: ts_mind_zip
         kind: file
         path: results/mind.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1431,7 +1435,7 @@ tasks:
       - id: ts_minw_zip
         kind: file
         path: results/minw.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1458,7 +1462,7 @@ tasks:
       - id: ts_alphaC_zip
         kind: file
         path: results/alphaC.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1484,7 +1488,7 @@ tasks:
       - id: ts_alphaW_zip
         kind: file
         path: results/alphaW.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1510,7 +1514,7 @@ tasks:
       - id: ts_betaC_zip
         kind: file
         path: results/betaC.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1536,7 +1540,7 @@ tasks:
       - id: ts_betaW_zip
         kind: file
         path: results/betaW.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1562,7 +1566,7 @@ tasks:
       - id: ts_gammaC_zip
         kind: file
         path: results/gammaC.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1588,7 +1592,7 @@ tasks:
       - id: ts_gammaW_zip
         kind: file
         path: results/gammaW.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1614,7 +1618,7 @@ tasks:
       - id: ts_deltaC_zip
         kind: file
         path: results/deltaC.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1640,7 +1644,7 @@ tasks:
       - id: ts_deltaW_zip
         kind: file
         path: results/deltaW.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1666,7 +1670,7 @@ tasks:
       - id: ts_epsilC_zip
         kind: file
         path: results/epsilC.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1692,7 +1696,7 @@ tasks:
       - id: ts_epsilW_zip
         kind: file
         path: results/epsilW.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1718,7 +1722,7 @@ tasks:
       - id: ts_zetaC_zip
         kind: file
         path: results/zetaC.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1744,7 +1748,7 @@ tasks:
       - id: ts_zetaW_zip
         kind: file
         path: results/zetaW.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1770,7 +1774,7 @@ tasks:
       - id: ts_chiC_zip
         kind: file
         path: results/chiC.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1796,7 +1800,7 @@ tasks:
       - id: ts_chiW_zip
         kind: file
         path: results/chiW.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1822,7 +1826,7 @@ tasks:
       - id: ts_phaseC_zip
         kind: file
         path: results/phaseC.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1848,7 +1852,7 @@ tasks:
       - id: ts_phaseW_zip
         kind: file
         path: results/phaseW.timeseries.zip
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1878,7 +1882,7 @@ tasks:
       - id: average_stiffness_jpg
         kind: file
         path: results/twist.stiffness.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1919,7 +1923,7 @@ tasks:
       - id: basepair_stiffness_jpg
         kind: file
         path: results/stiffness_bps.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1953,7 +1957,7 @@ tasks:
       - id: bimodality_jpg
         kind: file
         path: results/twist.bimodality.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -1983,7 +1987,7 @@ tasks:
       - id: intraseqcorr_jpg
         kind: file
         path: results/twist.intrabp_correlation.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -2012,7 +2016,7 @@ tasks:
       - id: interseqcorr_jpg
         kind: file
         path: results/twist.interbp_correlation.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -2053,7 +2057,7 @@ tasks:
       - id: intrahpcorr_jpg
         kind: file
         path: results/helpar_bp_correlation.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -2098,7 +2102,7 @@ tasks:
       - id: interhpcorr_jpg
         kind: file
         path: results/helpar_bps_correlation.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -2146,7 +2150,7 @@ tasks:
       - id: intrabpcorr_jpg
         kind: file
         path: results/bp_correlation.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -2195,7 +2199,7 @@ tasks:
       - id: interbpcorr_jpg
         kind: file
         path: results/bps_correlation.jpg
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-

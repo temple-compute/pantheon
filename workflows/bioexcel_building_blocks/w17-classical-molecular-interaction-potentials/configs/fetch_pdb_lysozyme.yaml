@@ -1,2 +1,3 @@
-pdb_code: 1aki
-api_id: pdbe
+properties:
+  pdb_code: 1aki
+  api_id: pdbe

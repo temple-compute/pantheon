@@ -1,7 +1,5 @@
-simulation_type: free
-binary_path: sander.MPI
-mpi_np: 4
-mpi_bin: mpirun
-mdin:
-  nstlim: 2500
-  ntwx: 500
+properties:
+  simulation_type: free
+  mdin:
+    nstlim: 2500
+    ntwx: 500

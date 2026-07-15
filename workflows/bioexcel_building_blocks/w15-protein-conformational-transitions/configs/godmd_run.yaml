@@ -1,2 +1,3 @@
-godmdin:
-  temp: 400
+properties:
+  godmdin:
+    temp: 400

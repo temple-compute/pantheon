@@ -1,2 +1,3 @@
-mask: backbone
-reference: first
+properties:
+  mask: backbone
+  reference: first

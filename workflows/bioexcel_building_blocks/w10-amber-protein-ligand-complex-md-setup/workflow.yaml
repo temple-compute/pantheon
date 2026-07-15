@@ -7,6 +7,11 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+
+_docker_executor: &docker_executor
+  kind: docker
+  image: quay.io/biocontainers/biobb_amber:5.2.1--py312hc5e4ab4_0
+
 _target: &target
   kind: local
 
@@ -110,7 +115,7 @@ tasks:
       - id: pdb4amber_pdb
         kind: file
         path: results/structure.pdb4amber.pdb
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -253,7 +258,7 @@ tasks:
       - id: top_crd
         kind: file
         path: results/structure.leap.crd
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -290,7 +295,7 @@ tasks:
       - id: h_min_log
         kind: file
         path: results/sander.h_min.log
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -318,7 +323,7 @@ tasks:
       - id: h_min_dat
         kind: file
         path: results/sander.h_min.energy.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -351,7 +356,7 @@ tasks:
       - id: n_min_log
         kind: file
         path: results/sander.n_min.log
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -378,7 +383,7 @@ tasks:
       - id: n_min_dat
         kind: file
         path: results/sander.n_min.energy.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -402,7 +407,7 @@ tasks:
       - id: ambpdb_pdb
         kind: file
         path: results/structure.ambpdb.pdb
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -438,7 +443,7 @@ tasks:
       - id: solv_crd
         kind: file
         path: results/structure.solv.crd
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -478,7 +483,7 @@ tasks:
       - id: ions_crd
         kind: file
         path: results/structure.ions.crd
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -515,7 +520,7 @@ tasks:
       - id: min_log
         kind: file
         path: results/sander.min.log
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -543,7 +548,7 @@ tasks:
       - id: min_dat
         kind: file
         path: results/sander.min.energy.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -576,7 +581,7 @@ tasks:
       - id: heat_log
         kind: file
         path: results/sander.heat.log
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -604,7 +609,7 @@ tasks:
       - id: heat_dat
         kind: file
         path: results/sander.md.temp.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -637,7 +642,7 @@ tasks:
       - id: nvt_log
         kind: file
         path: results/sander.nvt.log
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -665,7 +670,7 @@ tasks:
       - id: nvt_dat
         kind: file
         path: results/sander.md.nvt.temp.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -698,7 +703,7 @@ tasks:
       - id: npt_log
         kind: file
         path: results/sander.npt.log
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -726,7 +731,7 @@ tasks:
       - id: npt_dat
         kind: file
         path: results/sander.md.npt.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -759,7 +764,7 @@ tasks:
       - id: free_log
         kind: file
         path: results/sander.free.log
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-

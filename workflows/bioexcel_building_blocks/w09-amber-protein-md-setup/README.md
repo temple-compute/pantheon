@@ -1,10 +1,10 @@
-# W-14 · AMBER Protein MD Setup
+# W-09 · AMBER Protein MD Setup
 
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel-green)
 
 ## Overview
 
-This workflow runs a complete molecular dynamics setup for hen egg-white lysozyme (PDB: 1AKI) using the **AMBER** package (via AmberTools/sander/cpptraj), mirroring the GROMACS MD-setup workflow but with the AMBER toolchain end to end. Starting from the raw PDB file, it prepares the structure for AMBER, builds a LEaP topology, minimizes hydrogens and then the whole system in vacuo, solvates and neutralizes the system, runs a further minimization, heats it from 0 to 300 K, equilibrates under NVT and NPT, and finishes with a free production MD simulation followed by trajectory analysis (RMSd, radius of gyration, imaging). Horus provisions the full AmberTools/biobb conda environment (biobb_io, biobb_amber, biobb_structure_utils, biobb_chemistry, biobb_analysis) automatically for each stage and routes every task to the local machine — swapping any stage to a remote cluster is a one-line `target:` change.
+This workflow runs a complete molecular dynamics setup for hen egg-white lysozyme (PDB: 1AKI) using the **AMBER** package (via AmberTools/sander/cpptraj), mirroring the GROMACS MD-setup workflow but with the AMBER toolchain end to end. Starting from the raw PDB file, it prepares the structure for AMBER, builds a LEaP topology, minimizes hydrogens and then the whole system in vacuo, solvates and neutralizes the system, runs a further minimization, heats it from 0 to 300 K, equilibrates under NVT and NPT, and finishes with a free production MD simulation followed by trajectory analysis (RMSd, radius of gyration, imaging). Horus provisions the biobb conda environment (biobb_io, biobb_structure_utils, biobb_chemistry, biobb_analysis) automatically for pure-Python tasks and routes AMBER-specific tasks to a Docker container — swapping any stage to a remote cluster is a one-line `target:` change.
 
 ## Pipeline
 
@@ -43,7 +43,8 @@ cpptraj_image            Image trajectory and strip solvent (cpptraj)
 ## Prerequisites
 
 - **uv** (recommended) or pip — to install horus-runtime
-- **micromamba**, **mamba**, or **conda** — the workflow executor builds a shared conda environment from `conda_env.yaml` to provision AmberTools and the biobb stack
+- **micromamba**, **mamba**, or **conda** — the workflow executor builds a shared conda environment from `conda_env.yaml` for pure-Python biobb tasks
+- **Docker** — required for AMBER-specific tasks on macOS ARM64; the `quay.io/biocontainers/biobb_amber` image is pulled automatically on first run
 
 ## Quick Start
 

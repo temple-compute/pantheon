@@ -1,3 +1,4 @@
-cfg:
-  top_models: 4
-  clean: false
+properties:
+  cfg:
+    top_models: 4
+    clean: false

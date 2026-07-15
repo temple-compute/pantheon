@@ -1,3 +1,4 @@
-chains:
-  - A
-permissive: true
+properties:
+  chains:
+    - A
+  permissive: true

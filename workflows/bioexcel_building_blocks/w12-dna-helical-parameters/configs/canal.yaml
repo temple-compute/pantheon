@@ -1,2 +1,3 @@
-series: true
-histo: true
+properties:
+  series: true
+  histo: true

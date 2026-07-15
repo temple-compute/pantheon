@@ -1,4 +1,5 @@
-pdb_code: "3HEC"
-filter:
-  - ATOM
-  - HETATM
+properties:
+  pdb_code: "3HEC"
+  filter:
+    - ATOM
+    - HETATM

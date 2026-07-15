@@ -7,6 +7,10 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+_docker_executor_mem: &docker_executor_mem
+  kind: docker
+  image: quay.io/biocontainers/biobb_mem:5.2.2--pyhdfd78af_0
+
 _target: &target
   kind: local
 
@@ -111,7 +115,7 @@ tasks:
       - id: leaflets_ndx
         kind: file
         path: results/leaflets.ndx
-    executor: *executor
+    executor: *docker_executor_mem
     runtime:
       kind: command
       command: >-
@@ -139,7 +143,7 @@ tasks:
       - id: leaflets_data_csv
         kind: file
         path: results/leaflets_data.csv
-    executor: *executor
+    executor: *docker_executor_mem
     runtime:
       kind: command
       command: >-
@@ -167,7 +171,7 @@ tasks:
       - id: zpositions_csv
         kind: file
         path: results/zpositions.csv
-    executor: *executor
+    executor: *docker_executor_mem
     runtime:
       kind: command
       command: >-
@@ -195,7 +199,7 @@ tasks:
       - id: zpositions_around_csv
         kind: file
         path: results/zpositions_around.csv
-    executor: *executor
+    executor: *docker_executor_mem
     runtime:
       kind: command
       command: >-
@@ -223,7 +227,7 @@ tasks:
       - id: order_csv
         kind: file
         path: results/order.csv
-    executor: *executor
+    executor: *docker_executor_mem
     runtime:
       kind: command
       command: >-
@@ -251,7 +255,7 @@ tasks:
       - id: apl_csv
         kind: file
         path: results/apl.csv
-    executor: *executor
+    executor: *docker_executor_mem
     runtime:
       kind: command
       command: >-
@@ -310,7 +314,7 @@ tasks:
       - id: hole_profile_csv
         kind: file
         path: results/hole_profile.csv
-    executor: *executor
+    executor: *docker_executor_mem
     runtime:
       kind: command
       command: >-
@@ -342,7 +346,7 @@ tasks:
       - id: flip_flop_csv
         kind: file
         path: results/flip_flop.csv
-    executor: *executor
+    executor: *docker_executor_mem
     runtime:
       kind: command
       command: >-

@@ -1,2 +1,3 @@
-lipid_sel: "(resname DPPC and element P)"
-steps: 1
+properties:
+  lipid_sel: "(resname DPPC and element P)"
+  steps: 1

@@ -1,4 +1,5 @@
-lipid_sel: "(resname DPPC and element P)"
-steps: 1
-height_sel: "(resname DPPC and element P) and (cyzone 50 70 -50 protein)"
-ignore_no_box: true
+properties:
+  lipid_sel: "(resname DPPC and element P)"
+  steps: 1
+  height_sel: "(resname DPPC and element P) and (cyzone 50 70 -50 protein)"
+  ignore_no_box: true

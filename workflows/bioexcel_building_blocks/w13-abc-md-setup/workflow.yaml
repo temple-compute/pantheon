@@ -7,6 +7,11 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+
+_docker_executor: &docker_executor
+  kind: docker
+  image: quay.io/biocontainers/biobb_amber:5.2.1--py312hc5e4ab4_0
+
 _target: &target
   kind: local
 
@@ -31,7 +36,7 @@ tasks:
       - id: leap_crd
         kind: file
         path: results/structure.leap.crd
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -63,7 +68,7 @@ tasks:
       - id: solv_crd
         kind: file
         path: results/structure.solv.crd
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -95,7 +100,7 @@ tasks:
       - id: ions_crd
         kind: file
         path: results/structure.ions.crd
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -127,7 +132,7 @@ tasks:
       - id: rand_ions_pdb
         kind: file
         path: results/structure.randIons.pdb
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -150,7 +155,7 @@ tasks:
       - id: top_4fs
         kind: file
         path: results/structure.leap.4fs.top
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -188,7 +193,7 @@ tasks:
       - id: eq1_mdinfo
         kind: file
         path: results/sander.eq1.mdinfo
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -218,7 +223,7 @@ tasks:
       - id: eq1_dat
         kind: file
         path: results/sander.eq1.energy.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -257,7 +262,7 @@ tasks:
       - id: eq2_mdinfo
         kind: file
         path: results/sander.eq2.mdinfo
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -287,7 +292,7 @@ tasks:
       - id: eq2_dat
         kind: file
         path: results/sander.eq2.energy.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -326,7 +331,7 @@ tasks:
       - id: eq3_mdinfo
         kind: file
         path: results/sander.eq3.mdinfo
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -356,7 +361,7 @@ tasks:
       - id: eq3_dat
         kind: file
         path: results/sander.eq3.energy.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -395,7 +400,7 @@ tasks:
       - id: eq4_mdinfo
         kind: file
         path: results/sander.eq4.mdinfo
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -425,7 +430,7 @@ tasks:
       - id: eq4_dat
         kind: file
         path: results/sander.eq4.energy.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -464,7 +469,7 @@ tasks:
       - id: eq5_mdinfo
         kind: file
         path: results/sander.eq5.mdinfo
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -494,7 +499,7 @@ tasks:
       - id: eq5_dat
         kind: file
         path: results/sander.eq5.energy.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -533,7 +538,7 @@ tasks:
       - id: eq6_mdinfo
         kind: file
         path: results/sander.eq6.mdinfo
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -563,7 +568,7 @@ tasks:
       - id: eq6_dat
         kind: file
         path: results/sander.eq6.pressure_and_density.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -602,7 +607,7 @@ tasks:
       - id: eq7_mdinfo
         kind: file
         path: results/sander.eq7.mdinfo
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -632,7 +637,7 @@ tasks:
       - id: eq7_dat
         kind: file
         path: results/sander.eq7.pressure_and_density.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -671,7 +676,7 @@ tasks:
       - id: eq8_mdinfo
         kind: file
         path: results/sander.eq8.mdinfo
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -701,7 +706,7 @@ tasks:
       - id: eq8_dat
         kind: file
         path: results/sander.eq8.pressure_and_density.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -740,7 +745,7 @@ tasks:
       - id: eq9_mdinfo
         kind: file
         path: results/sander.eq9.mdinfo
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -770,7 +775,7 @@ tasks:
       - id: eq9_dat
         kind: file
         path: results/sander.eq9.pressure_and_density.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -809,7 +814,7 @@ tasks:
       - id: eq10_mdinfo
         kind: file
         path: results/sander.eq10.mdinfo
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -839,7 +844,7 @@ tasks:
       - id: eq10_dat
         kind: file
         path: results/sander.eq10.pressure_and_density.dat
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-
@@ -878,7 +883,7 @@ tasks:
       - id: md_mdinfo
         kind: file
         path: results/sander.md.mdinfo
-    executor: *executor
+    executor: *docker_executor
     runtime:
       kind: command
       command: >-

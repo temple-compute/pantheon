@@ -1,2 +1,3 @@
-mask: c-alpha
-format: pdb
+properties:
+  mask: c-alpha
+  format: pdb

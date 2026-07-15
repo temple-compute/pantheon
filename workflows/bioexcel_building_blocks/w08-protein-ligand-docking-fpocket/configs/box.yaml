@@ -1,2 +1,3 @@
-offset: 12
-box_coordinates: true
+properties:
+  offset: 12
+  box_coordinates: true
