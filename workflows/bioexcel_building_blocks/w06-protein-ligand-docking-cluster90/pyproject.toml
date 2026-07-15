@@ -1,15 +1,9 @@
 [project]
 name = "w06-protein-ligand-docking-cluster90"
 version = "0.1.0"
-description = "Add your description here"
-readme = "README.md"
-requires-python = ">=3.14"
+requires-python = ">=3.13"
 dependencies = [
-    "horus-docker",
-    "horus-environments",
-    "horus-runtime",
+  "horus-docker",
+  "horus-environments>=0.1.2",
+  "horus-runtime>=0.1.6",
 ]
-
-[tool.uv.sources]
-horus-runtime = { path = "/Users/cdominguez/Developer/horus-runtime", editable = true }
-horus-docker = { path = "../../../../horus-docker" }
