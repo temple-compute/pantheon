@@ -67,8 +67,7 @@ uv run horus run workflow.yaml
 ### Engine Showcases
 
 Small, self-contained workflows that demonstrate horus-runtime engine
-features rather than a science domain. Requires horus-runtime ≥ the
-Dynamic-workflows features (milestone: fan-out/map/loops).
+features rather than a science domain.
 
 | ID | Workflow | Description |
 |---|---|---|

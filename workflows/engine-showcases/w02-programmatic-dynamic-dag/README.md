@@ -2,8 +2,6 @@
 
 ![Domain: Engine Showcases](https://img.shields.io/badge/domain-engine--showcases-orange)
 
-> Requires horus-runtime ≥ the Dynamic-workflows features (milestone: fan-out/map/loops).
-
 ## Overview
 
 A minimal demonstration of horus-runtime's runtime DAG-mutation API: a task
@@ -84,17 +82,3 @@ spanning 3 groups (`alpha`: 2 records, `beta`: 3, `gamma`: 1).
   until runtime, so its function signature uses `**kwargs` — the
   `python_function` runtime's parameter-name injection passes every declared
   input/output through when a function declares `**kwargs`.
-- Verified against the **current** (pre-milestone) horus-runtime: everything
-  up to and including `plan` reading the dataset and constructing the
-  generated `FunctionTask` objects runs correctly today; it fails exactly
-  (and only) at `workflow.add_task(...)`, since `BaseWorkflow` doesn't have
-  that method yet. That's expected — this showcase targets the milestone
-  branch, not a released version.
-- `add_task`/`add_edge`/`add_artifact`/`expand` signatures here are a best
-  effort based on horus-runtime issue #113 ("Runtime DAG-mutation API");
-  double-check argument names/order against the shipped API once merged.
-
-## References
-
-- horus-runtime milestone: [Dynamic workflows: fan-out / map / loops](https://github.com/temple-compute/horus-runtime/milestone/6)
-- horus-runtime #113 — Runtime DAG-mutation API (add_task/add_edge/expand)

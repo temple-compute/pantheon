@@ -3,9 +3,5 @@ name = "w02-programmatic-dynamic-dag"
 version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
-  # Needs the Layer-2 DAG-mutation API (add_task/add_edge/expand on a
-  # running BaseWorkflow) from horus-runtime's "Dynamic workflows: fan-out /
-  # map / loops" milestone. Until that ships in a release, install
-  # horus-runtime from the milestone branch instead of a tagged version.
   "horus-runtime>=0.1.6",
 ]

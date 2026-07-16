@@ -2,25 +2,6 @@
 """
 Programmatic dynamic-DAG showcase.
 
-`plan` is an ordinary `@FunctionTask.task` — but instead of just producing an
-output artifact, it *generates the rest of the DAG at runtime* from the data
-it reads: one `process_<group>` task per distinct group found in
-`examples/dataset.json`, plus a `combine` task that fans them all back in.
-
-This is horus-runtime's Layer-2 DAG-mutation API (milestone: "Dynamic
-workflows: fan-out / map / loops", horus-runtime#113):
-- `HorusContext.get_context().workflow` — the *running* workflow, reachable
-  from inside any task's own code.
-- `workflow.add_task(task)` — inject a new task into the running DAG (used
-  here per group, showing the granular "as tasks are generated" pattern).
-- `workflow.expand(tasks=[...], edges=[...])` — inject a batch of tasks *and*
-  their edges together in one call (used here once, for `combine` plus its
-  fan-in edges from every generated `process_<group>` task).
-
-Requires horus-runtime >= the Dynamic-workflows features (milestone:
-fan-out/map/loops) — `add_task`/`expand` on a running workflow don't exist on
-released horus-runtime yet.
-
 Run:
     uv run python run.py
 """
@@ -114,7 +95,7 @@ async def plan(dataset: JSONArtifact) -> None:
     workflow = HorusContext.get_context().workflow
     assert workflow is not None, "plan must run inside a live HorusContext"
 
-    # --- one process_<group> task per group, added one at a time ---------
+    # One process_<group> task per group, added one at a time.
     for group in groups:
         process_task = FunctionTask(
             id=f"process_{group}",
@@ -125,12 +106,13 @@ async def plan(dataset: JSONArtifact) -> None:
             target=LocalTarget(),
             skip_if_complete=False,
         )
-        workflow.add_task(process_task)  # no edge needed: created *during*
-        # plan's own execution, so it can only run after plan completes.
+        # No edge needed: created during plan's own execution,
+        # so it can only run after plan completes.
+        workflow.add_task(process_task)
 
         await asyncio.sleep(2)
 
-    # --- one combine task, added together with all of its fan-in edges ---
+    # One combine task, added together with all of its fan-in edges
     combine_task = FunctionTask(
         id="combine",
         name="combine",
