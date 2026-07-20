@@ -4,7 +4,7 @@ name: BioExcel Virtual Screening - Protein-Ligand Docking - Cluster90 Binding Si
 _executor: &executor
   kind: conda_python_environment
   environment_dir: "../.horus_conda_env"
-  conda: micromamba
+  conda: conda
   environment_file: conda_env.yaml
 
 _docker_executor: &docker_executor
@@ -425,7 +425,7 @@ edges:
     source_output: output_pdb_model
     target: cat_pdb
     target_input: output_pdb_model
-  
+
   - source: create_results_folder
     source_output: results_dir
     target: fetch_pdb

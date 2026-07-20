@@ -4,7 +4,7 @@ name: BioExcel FlexServ - Protein Conformational Dynamics (1A32)
 _executor: &executor
   kind: conda_python_environment
   environment_dir: "../.horus_conda_env"
-  conda: micromamba
+  conda: conda
   environment_file: conda_env.yaml
 
 _docker_executor_flexserv: &docker_executor_flexserv

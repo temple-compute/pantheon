@@ -4,7 +4,7 @@ name: BioExcel Membrane MD Analysis - GABA-gated Chloride Channel (A023K)
 _executor: &executor
   kind: conda_python_environment
   environment_dir: "../.horus_conda_env"
-  conda: micromamba
+  conda: conda
   environment_file: conda_env.yaml
 
 _docker_executor_mem: &docker_executor_mem

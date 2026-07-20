@@ -21,7 +21,7 @@ tasks:
         kind: file
     executor:
       kind: conda_python_environment
-      conda: micromamba # set to mamba/micromamba if that's what's on PATH
+      conda: conda # set to mamba/micromamba if that's what's on PATH
       python_version: "3.11"
       channels:
         - conda-forge
@@ -57,7 +57,7 @@ tasks:
         kind: file
     executor:
       kind: conda_python_environment
-      conda: micromamba # set to mamba/micromamba if that's what's on PATH
+      conda: conda # set to mamba/micromamba if that's what's on PATH
       python_version: "3.11"
       channels:
         - conda-forge

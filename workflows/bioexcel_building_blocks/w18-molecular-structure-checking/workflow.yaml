@@ -4,7 +4,7 @@ name: BioExcel Structure Checking - 1Z83 (AK1A)
 _executor: &executor
   kind: conda_python_environment
   environment_dir: "../.horus_conda_env"
-  conda: micromamba
+  conda: conda
   environment_file: conda_env.yaml
 
 # biobb_amber has no osx-arm64 conda build, so its tasks run in a container.

@@ -4,7 +4,7 @@ name: BioExcel MD Setup - Protein-Ligand Complex (3HTB + JZ4)
 _executor: &executor
   kind: conda_python_environment
   environment_dir: "../.horus_conda_env"
-  conda: micromamba
+  conda: conda
   environment_file: conda_env.yaml
 
 tasks:
