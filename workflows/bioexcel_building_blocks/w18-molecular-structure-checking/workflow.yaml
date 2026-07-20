@@ -7,6 +7,11 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+# biobb_amber has no osx-arm64 conda build, so its tasks run in a container.
+_docker_executor: &docker_executor
+  kind: docker
+  image: quay.io/biocontainers/biobb_amber:5.2.1--py312hc5e4ab4_0
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
