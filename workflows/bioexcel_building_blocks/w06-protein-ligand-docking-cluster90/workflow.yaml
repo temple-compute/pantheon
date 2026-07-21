@@ -8,7 +8,7 @@ _executor: &executor
   environment_file: conda_env.yaml
 
 _docker_executor: &docker_executor
-  kind: docker_executor
+  kind: docker
   image: quay.io/biocontainers/biobb_vs:5.2.1--pyhdfd78af_0
 
 tasks:
