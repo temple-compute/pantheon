@@ -19,5 +19,10 @@ __pycache__/
 # uv-lock
 **/uv.lock
 
-.horus_python_environment
-horus_workflow_results
+# Horus run output
+# Deliberately not ignoring *.zip: these workflows ship committed input data,
+# and a zip is legitimate input. Stray `horus package` output is caught in review.
+horus_workflow_results/
+results/
+horus_resource_report.json
+.horus_conda_env/
