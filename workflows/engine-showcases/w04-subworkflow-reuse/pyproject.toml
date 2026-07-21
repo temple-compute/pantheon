@@ -1,0 +1,7 @@
+[project]
+name = "w04-subworkflow-reuse"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "horus-runtime>=0.1.6",
+]
