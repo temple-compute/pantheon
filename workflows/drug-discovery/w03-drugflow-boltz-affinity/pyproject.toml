@@ -1,0 +1,9 @@
+[project]
+name = "w03-drugflow-boltz-affinity"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "horus-docker>=0.0.1",
+  "horus-environments>=0.1.2",
+  "horus-runtime>=0.1.6",
+]
