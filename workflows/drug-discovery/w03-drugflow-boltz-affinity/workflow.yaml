@@ -1,0 +1,166 @@
+kind: horus_workflow
+name: DrugFlow Generate + Boltz-2 Affinity
+
+tasks:
+  - kind: horus_task
+    id: generate
+    name: Generate pocket molecules with DrugFlow
+    skip_if_complete: false
+    inputs:
+      - id: protein
+        kind: file
+        path: examples/kras.pdb
+      - id: ref_ligand
+        kind: file
+        path: examples/kras_ref_ligand.sdf
+      - id: checkpoint
+        kind: file
+        path: examples/drugflow.ckpt      # ~170 MB, download once: see README
+    outputs:
+      # Written at the run-dir root on purpose: it's the parent dir we bind-mount
+      # (see below), and a not-yet-existing parent would be created as root.
+      - id: samples
+        kind: file
+        path: samples.sdf
+    executor:
+      # `horus_docker`'s docker_executor has no input/output auto-mounting (its
+      # `volumes:` map isn't placeholder-substituted, so it can't see per-task
+      # paths), so this task drives `docker run` itself from a shell executor:
+      # every ${...} placeholder is substituted to its absolute *host* path
+      # first, then each one is bind-mounted into the container at that exact
+      # same path, so the DrugFlow CLI args below need no path translation.
+      #
+      # igashov/drugflow:0.0.3 also only has the DrugFlow *dependencies* baked
+      # in (torch/rdkit/etc, see its /requirements.txt) — no repo, no
+      # src/generate.py. The command clones the actual code at a pinned commit
+      # before running it.
+      kind: shell
+    runtime:
+      kind: command
+      command: >-
+        docker run --rm
+        --platform linux/amd64
+        -v ${protein}:${protein}:ro
+        -v ${ref_ligand}:${ref_ligand}:ro
+        -v ${checkpoint}:${checkpoint}:ro
+        -v $(dirname ${samples}):$(dirname ${samples})
+        igashov/drugflow:0.0.3
+        sh -c "
+        git init -q /tmp/drugflow &&
+        git -C /tmp/drugflow fetch -q --depth 1 https://github.com/LPDI-EPFL/DrugFlow.git ed6841677ccf3590000624baa757b61ce0bb20aa &&
+        git -C /tmp/drugflow checkout -q FETCH_HEAD &&
+        python /tmp/drugflow/src/generate.py
+        --protein ${protein} --ref_ligand ${ref_ligand}
+        --checkpoint ${checkpoint} --output ${samples}
+        --n_samples 10 --batch_size 32 --pocket_distance_cutoff 8.0
+        --device cpu --seed 42
+        "
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: prepare_inputs
+    name: Build one Boltz affinity YAML per molecule
+    inputs:
+      - id: protein
+        kind: file
+        path: examples/kras.pdb
+      - id: samples
+        kind: file
+        path: samples.sdf
+    outputs:
+      # One child directory per molecule: that is what `predict`'s map fans out over.
+      - id: boltz_inputs
+        kind: folder
+        path: boltz_inputs/
+      - id: smiles
+        kind: file
+        path: smiles.json
+    executor:
+      kind: uv_python_environment
+      python: "3.11"
+      requirements:
+        - rdkit
+        - biopython
+    runtime:
+      kind: python_script
+      script: scripts/prepare_inputs.py
+      args: >-
+        --protein ${protein} --sdf ${samples}
+        --out ${boltz_inputs} --smiles-map ${smiles}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: predict
+    name: Boltz-2 affinity, one clone per molecule
+    map:
+      over:
+        source_task: prepare_inputs
+        source_output: boltz_inputs
+        item_input: mol
+      template:
+        inputs:
+          - id: mol
+            kind: folder
+            path: mol/          # overwritten per clone with its molecule dir
+        outputs:
+          - id: prediction
+            kind: folder
+            path: prediction/
+        executor:
+          kind: uv_python_environment
+          python: "3.11"
+          requirements:
+            - boltz
+          environment_dir: "../.horus_boltz_env"   # built once, shared by all clones
+        runtime:
+          kind: command
+          command: >-
+            boltz predict $mol --out_dir $prediction --use_msa_server
+            --accelerator cpu --devices 1 --diffusion_samples 1
+            --seed 42 --override
+        target:
+          kind: local
+      gather:
+        task: rank
+        input: predictions
+
+  - kind: horus_task
+    id: rank
+    name: Build the ΔG table
+    inputs:
+      # Fan-in: one folder holding every clone's prediction/ under predict.gathered/<i>/.
+      - id: predictions
+        kind: folder
+        path: predict.gathered/
+      - id: smiles
+        kind: file
+        path: smiles.json
+    outputs:
+      - id: deltag_table
+        kind: file
+        path: deltaG_table.csv
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/rank.py
+      python: python3           # stdlib-only; use the target's python3
+      args: --predictions ${predictions} --smiles ${smiles} --out ${deltag_table}
+    target:
+      kind: local
+
+edges:
+  - source: generate
+    source_output: samples
+    target: prepare_inputs
+    target_input: samples
+  - source: prepare_inputs
+    source_output: smiles
+    target: rank
+    target_input: smiles
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
