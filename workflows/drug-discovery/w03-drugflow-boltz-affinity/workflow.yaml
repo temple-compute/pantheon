@@ -1,0 +1,148 @@
+kind: horus_workflow
+name: DrugFlow Generate + Boltz-2 Affinity
+
+tasks:
+  - kind: horus_task
+    id: generate
+    name: Generate pocket molecules with DrugFlow
+    skip_if_complete: false
+    inputs:
+      - id: protein
+        kind: file
+        path: examples/kras.pdb
+      - id: ref_ligand
+        kind: file
+        path: examples/kras_ref_ligand.sdf
+      - id: checkpoint
+        kind: file
+        path: examples/drugflow.ckpt      # ~170 MB, download once: see README
+    outputs:
+      # Written at the run-dir root on purpose: the docker executor bind-mounts
+      # each artifact's parent dir, and a not-yet-existing parent would be
+      # created by the daemon as root.
+      - id: samples
+        kind: file
+        path: samples.sdf
+    executor:
+      # igashov/drugflow:0.0.3 bundles the DrugFlow code, so the image's own
+      # WORKDIR already contains src/generate.py — no repo checkout to mount.
+      kind: docker
+      image: igashov/drugflow:0.0.3
+      # gpus: all        # needs the NVIDIA Container Toolkit; drop --device cpu below
+    runtime:
+      kind: command
+      command: >-
+        python src/generate.py
+        --protein ${protein} --ref_ligand ${ref_ligand}
+        --checkpoint ${checkpoint} --output ${samples}
+        --n_samples 10 --batch_size 32 --pocket_distance_cutoff 8.0
+        --device cpu --seed 42
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: prepare_inputs
+    name: Build one Boltz affinity YAML per molecule
+    inputs:
+      - id: protein
+        kind: file
+        path: examples/kras.pdb
+      - id: samples
+        kind: file
+        path: samples.sdf
+    outputs:
+      # One child directory per molecule: that is what `predict`'s map fans out over.
+      - id: boltz_inputs
+        kind: folder
+        path: boltz_inputs/
+      - id: smiles
+        kind: file
+        path: smiles.json
+    executor:
+      kind: uv_python_environment
+      python: "3.11"
+      requirements:
+        - rdkit
+        - biopython
+    runtime:
+      kind: python_script
+      script: scripts/prepare_inputs.py
+      args: >-
+        --protein ${protein} --sdf ${samples}
+        --out ${boltz_inputs} --smiles-map ${smiles}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: predict
+    name: Boltz-2 affinity, one clone per molecule
+    map:
+      over:
+        source_task: prepare_inputs
+        source_output: boltz_inputs
+        item_input: mol
+      template:
+        inputs:
+          - id: mol
+            kind: folder
+            path: mol/          # overwritten per clone with its molecule dir
+        outputs:
+          - id: prediction
+            kind: folder
+            path: prediction/
+        executor:
+          kind: uv_python_environment
+          python: "3.11"
+          requirements:
+            - boltz
+          environment_dir: "../.horus_boltz_env"   # built once, shared by all clones
+        runtime:
+          kind: command
+          command: >-
+            boltz predict $mol --out_dir $prediction --use_msa_server
+            --accelerator cpu --devices 1 --diffusion_samples 1
+            --seed 42 --override
+        target:
+          kind: local
+      gather:
+        task: rank
+        input: predictions
+
+  - kind: horus_task
+    id: rank
+    name: Build the ΔG table
+    inputs:
+      # Fan-in: one folder holding every clone's prediction/ under predict.gathered/<i>/.
+      - id: predictions
+        kind: folder
+        path: predict.gathered/
+      - id: smiles
+        kind: file
+        path: smiles.json
+    outputs:
+      - id: deltag_table
+        kind: file
+        path: deltaG_table.csv
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/rank.py
+      python: python3           # stdlib-only; use the target's python3
+      args: --predictions ${predictions} --smiles ${smiles} --out ${deltag_table}
+    target:
+      kind: local
+
+edges:
+  - source: generate
+    source_output: samples
+    target: prepare_inputs
+    target_input: samples
+  - source: prepare_inputs
+    source_output: smiles
+    target: rank
+    target_input: smiles
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results

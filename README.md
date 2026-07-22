@@ -37,6 +37,7 @@ uv run horus run workflow.yaml
 |---|---|---|
 | W-01 | [Boltz-2 Virtual Screening](workflows/drug-discovery/w01-boltz2-virtual-screening/README.md) | Predict binding structure and affinity for a protein–ligand library using Boltz-2 |
 | W-02 | [AutoDock Vina Docking](workflows/drug-discovery/w02-autodock-vina-docking/README.md) | End-to-end molecular docking with AutoDock Vina: prep → dock → rank |
+| W-28 | [DrugFlow + Boltz-2 Affinity](workflows/drug-discovery/w03-drugflow-boltz-affinity/README.md) | Generate pocket-conditioned molecules with DrugFlow, then score each one for binding affinity (ΔG) with Boltz-2 |
 
 ### BioExcel Building Blocks
 
