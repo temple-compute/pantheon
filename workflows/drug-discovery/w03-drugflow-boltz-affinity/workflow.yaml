@@ -17,26 +17,44 @@ tasks:
         kind: file
         path: examples/drugflow.ckpt      # ~170 MB, download once: see README
     outputs:
-      # Written at the run-dir root on purpose: the docker executor bind-mounts
-      # each artifact's parent dir, and a not-yet-existing parent would be
-      # created by the daemon as root.
+      # Written at the run-dir root on purpose: it's the parent dir we bind-mount
+      # (see below), and a not-yet-existing parent would be created as root.
       - id: samples
         kind: file
         path: samples.sdf
     executor:
-      # igashov/drugflow:0.0.3 bundles the DrugFlow code, so the image's own
-      # WORKDIR already contains src/generate.py — no repo checkout to mount.
-      kind: docker
-      image: igashov/drugflow:0.0.3
-      # gpus: all        # needs the NVIDIA Container Toolkit; drop --device cpu below
+      # `horus_docker`'s docker_executor has no input/output auto-mounting (its
+      # `volumes:` map isn't placeholder-substituted, so it can't see per-task
+      # paths), so this task drives `docker run` itself from a shell executor:
+      # every ${...} placeholder is substituted to its absolute *host* path
+      # first, then each one is bind-mounted into the container at that exact
+      # same path, so the DrugFlow CLI args below need no path translation.
+      #
+      # igashov/drugflow:0.0.3 also only has the DrugFlow *dependencies* baked
+      # in (torch/rdkit/etc, see its /requirements.txt) — no repo, no
+      # src/generate.py. The command clones the actual code at a pinned commit
+      # before running it.
+      kind: shell
     runtime:
       kind: command
       command: >-
-        python src/generate.py
+        docker run --rm
+        --platform linux/amd64
+        -v ${protein}:${protein}:ro
+        -v ${ref_ligand}:${ref_ligand}:ro
+        -v ${checkpoint}:${checkpoint}:ro
+        -v $(dirname ${samples}):$(dirname ${samples})
+        igashov/drugflow:0.0.3
+        sh -c "
+        git init -q /tmp/drugflow &&
+        git -C /tmp/drugflow fetch -q --depth 1 https://github.com/LPDI-EPFL/DrugFlow.git ed6841677ccf3590000624baa757b61ce0bb20aa &&
+        git -C /tmp/drugflow checkout -q FETCH_HEAD &&
+        python /tmp/drugflow/src/generate.py
         --protein ${protein} --ref_ligand ${ref_ligand}
         --checkpoint ${checkpoint} --output ${samples}
         --n_samples 10 --batch_size 32 --pocket_distance_cutoff 8.0
         --device cpu --seed 42
+        "
     target:
       kind: local
 

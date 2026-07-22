@@ -21,7 +21,7 @@ Boltz clone per molecule, running concurrently and independently retryable.
 ## Pipeline
 
 ```
-generate       (docker: igashov/drugflow:0.0.3)   kras.pdb + ref_ligand.sdf + drugflow.ckpt
+generate       (shell: docker run igashov/drugflow:0.0.3) kras.pdb + ref_ligand.sdf + drugflow.ckpt
                                                     ──► samples.sdf
 prepare_inputs (uv env: rdkit + biopython)         one dir per molecule + smiles.json
                                                     ──► boltz_inputs/000_mol_1/mol_1.yaml, ...
@@ -84,12 +84,36 @@ before the first run.
 
 ## Implementation Notes
 
+**Why `generate` is a shell task that calls `docker run` itself, not a
+`docker_executor` task.** Two things about `igashov/drugflow:0.0.3` and
+`horus_docker` are easy to assume and both turn out to be wrong:
+
+1. The image is *just* the DrugFlow Python dependencies (CUDA base + the pip
+   packages in its own `/requirements.txt` — torch, rdkit, lightning, …). It
+   does **not** contain the DrugFlow git repo, so there's no `src/generate.py`
+   anywhere in the image to run.
+2. `horus_docker`'s `docker_executor` has no automatic input/output mounting.
+   Its `volumes:` map is a plain `dict[str, str]` that is never
+   placeholder-substituted, so there is no way to reference a task's
+   `${protein}`-style artifact paths in it — nothing bind-mounts a task's
+   inputs into the container for you.
+
+So `generate` uses `executor: {kind: shell}` and drives `docker run` from the
+command string instead. `${protein}`, `${ref_ligand}`, `${checkpoint}`, and
+`${samples}` are substituted by Horus to their **absolute host paths** before
+the shell ever sees the command (this substitution happens for any
+`CommandRuntime`, regardless of executor), so each one is bind-mounted at that
+same absolute path inside the container (`-v ${protein}:${protein}:ro`, …) —
+the path the DrugFlow CLI is given never needs translating between host and
+container. The command also `git init` + `git fetch --depth 1 <sha>` +
+`checkout`s the pinned DrugFlow commit into `/tmp/drugflow` inside the
+container before invoking `generate.py`, since the image doesn't ship it.
+
 **CPU vs GPU.** Both heavy stages default to CPU so the workflow runs anywhere;
-generation and Boltz prediction are *slow* this way. On a GPU host, uncomment
-`gpus: all` on the `generate` docker executor and drop `--device cpu` from its
-command; set `--accelerator gpu` on `predict`. The `gpus` field requires a
-`horus-docker` that has it (currently on branch `feat/gpus-flag`) plus the
-NVIDIA Container Toolkit.
+generation and Boltz prediction are *slow* this way. On a GPU host, add
+`--gpus all` to the `docker run` invocation in `generate`'s command and drop
+`--device cpu` from the `generate.py` args; set `--accelerator gpu` on
+`predict`. This needs the NVIDIA Container Toolkit on the host.
 
 **HPC / remote execution.** On a cluster without Docker, swap the `generate`
 executor for Singularity via the (new, private) `horus-singularity` plugin:
@@ -105,12 +129,12 @@ and route any stage off the login node with `target: {kind: ssh_target}` or
 `target: {kind: slurm_target}` instead of `target: {kind: local}`.
 
 **Docker root ownership.** The container runs as **root** by default, so
-`samples.sdf` and any directory the daemon creates end up root-owned on the
-host. Set `user: "1000:1000"` on the docker executor to run as your uid/gid.
-Relatedly, `generate`'s output is written at the run-dir root rather than in a
-subdirectory: the docker executor bind-mounts each artifact's *parent*
-directory, and a not-yet-existing parent would be created by the daemon as
-root.
+`samples.sdf` ends up root-owned on the host. Add `--user "$(id -u):$(id -g)"`
+to the `docker run` invocation to run as your uid/gid instead. Relatedly,
+`generate`'s output is written at the run-dir root rather than in a
+subdirectory: the task only bind-mounts `$(dirname ${samples})`, and a
+not-yet-existing parent would be created by the daemon (as root) the first
+time Docker sees it.
 
 **Boltz input naming.** Each molecule gets its own directory (that is what the
 map fans out over) and the YAML inside is named after the molecule, because the
