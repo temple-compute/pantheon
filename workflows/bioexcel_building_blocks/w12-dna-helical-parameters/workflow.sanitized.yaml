@@ -1,0 +1,3371 @@
+kind: horus_workflow
+name: BioExcel DNA Helical Parameters Analysis
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+_docker_executor: &docker_executor
+  kind: docker
+  image: quay.io/biocontainers/biobb_dna:5.2.1--pyhdfd78af_0
+
+artifacts:
+  - id: traj
+    kind: file
+    path: TRAJ/structure.stripped.nc
+
+  - id: top
+    kind: file
+    path: TRAJ/structure.stripped.top
+
+  - id: average_stiffness_config
+    kind: file
+    path: configs/average_stiffness.yaml
+
+  - id: avg_buckle_config
+    kind: file
+    path: configs/avg_buckle.yaml
+
+  - id: avg_inclin_config
+    kind: file
+    path: configs/avg_inclin.yaml
+
+  - id: avg_majd_config
+    kind: file
+    path: configs/avg_majd.yaml
+
+  - id: avg_majw_config
+    kind: file
+    path: configs/avg_majw.yaml
+
+  - id: avg_mind_config
+    kind: file
+    path: configs/avg_mind.yaml
+
+  - id: avg_minw_config
+    kind: file
+    path: configs/avg_minw.yaml
+
+  - id: avg_opening_config
+    kind: file
+    path: configs/avg_opening.yaml
+
+  - id: avg_propel_config
+    kind: file
+    path: configs/avg_propel.yaml
+
+  - id: avg_rise_config
+    kind: file
+    path: configs/avg_rise.yaml
+
+  - id: avg_roll_config
+    kind: file
+    path: configs/avg_roll.yaml
+
+  - id: avg_shear_config
+    kind: file
+    path: configs/avg_shear.yaml
+
+  - id: avg_shift_config
+    kind: file
+    path: configs/avg_shift.yaml
+
+  - id: avg_slide_config
+    kind: file
+    path: configs/avg_slide.yaml
+
+  - id: avg_stagger_config
+    kind: file
+    path: configs/avg_stagger.yaml
+
+  - id: avg_stretch_config
+    kind: file
+    path: configs/avg_stretch.yaml
+
+  - id: avg_tilt_config
+    kind: file
+    path: configs/avg_tilt.yaml
+
+  - id: avg_tip_config
+    kind: file
+    path: configs/avg_tip.yaml
+
+  - id: avg_twist_config
+    kind: file
+    path: configs/avg_twist.yaml
+
+  - id: avg_xdisp_config
+    kind: file
+    path: configs/avg_xdisp.yaml
+
+  - id: avg_ydisp_config
+    kind: file
+    path: configs/avg_ydisp.yaml
+
+  - id: bipopulations_config
+    kind: file
+    path: configs/bipopulations.yaml
+
+  - id: canal_config
+    kind: file
+    path: configs/canal.yaml
+
+  - id: canonicalag_config
+    kind: file
+    path: configs/canonicalag.yaml
+
+  - id: curves_config
+    kind: file
+    path: configs/curves.yaml
+
+  - id: dna_bimodality_config
+    kind: file
+    path: configs/dna_bimodality.yaml
+
+  - id: interbpcorr_config
+    kind: file
+    path: configs/interbpcorr.yaml
+
+  - id: interseqcorr_config
+    kind: file
+    path: configs/interseqcorr.yaml
+
+  - id: intrabpcorr_config
+    kind: file
+    path: configs/intrabpcorr.yaml
+
+  - id: intraseqcorr_config
+    kind: file
+    path: configs/intraseqcorr.yaml
+
+  - id: puckering_config
+    kind: file
+    path: configs/puckering.yaml
+
+  - id: ts_alphaC_config
+    kind: file
+    path: configs/ts_alphaC.yaml
+
+  - id: ts_alphaW_config
+    kind: file
+    path: configs/ts_alphaW.yaml
+
+  - id: ts_betaC_config
+    kind: file
+    path: configs/ts_betaC.yaml
+
+  - id: ts_betaW_config
+    kind: file
+    path: configs/ts_betaW.yaml
+
+  - id: ts_buckle_config
+    kind: file
+    path: configs/ts_buckle.yaml
+
+  - id: ts_chiC_config
+    kind: file
+    path: configs/ts_chiC.yaml
+
+  - id: ts_chiW_config
+    kind: file
+    path: configs/ts_chiW.yaml
+
+  - id: ts_deltaC_config
+    kind: file
+    path: configs/ts_deltaC.yaml
+
+  - id: ts_deltaW_config
+    kind: file
+    path: configs/ts_deltaW.yaml
+
+  - id: ts_epsilC_config
+    kind: file
+    path: configs/ts_epsilC.yaml
+
+  - id: ts_epsilW_config
+    kind: file
+    path: configs/ts_epsilW.yaml
+
+  - id: ts_gammaC_config
+    kind: file
+    path: configs/ts_gammaC.yaml
+
+  - id: ts_gammaW_config
+    kind: file
+    path: configs/ts_gammaW.yaml
+
+  - id: ts_inclin_config
+    kind: file
+    path: configs/ts_inclin.yaml
+
+  - id: ts_majd_config
+    kind: file
+    path: configs/ts_majd.yaml
+
+  - id: ts_majw_config
+    kind: file
+    path: configs/ts_majw.yaml
+
+  - id: ts_mind_config
+    kind: file
+    path: configs/ts_mind.yaml
+
+  - id: ts_minw_config
+    kind: file
+    path: configs/ts_minw.yaml
+
+  - id: ts_opening_config
+    kind: file
+    path: configs/ts_opening.yaml
+
+  - id: ts_phaseC_config
+    kind: file
+    path: configs/ts_phaseC.yaml
+
+  - id: ts_phaseW_config
+    kind: file
+    path: configs/ts_phaseW.yaml
+
+  - id: ts_propel_config
+    kind: file
+    path: configs/ts_propel.yaml
+
+  - id: ts_rise_config
+    kind: file
+    path: configs/ts_rise.yaml
+
+  - id: ts_roll_config
+    kind: file
+    path: configs/ts_roll.yaml
+
+  - id: ts_shear_config
+    kind: file
+    path: configs/ts_shear.yaml
+
+  - id: ts_shift_config
+    kind: file
+    path: configs/ts_shift.yaml
+
+  - id: ts_slide_config
+    kind: file
+    path: configs/ts_slide.yaml
+
+  - id: ts_stagger_config
+    kind: file
+    path: configs/ts_stagger.yaml
+
+  - id: ts_stretch_config
+    kind: file
+    path: configs/ts_stretch.yaml
+
+  - id: ts_tilt_config
+    kind: file
+    path: configs/ts_tilt.yaml
+
+  - id: ts_tip_config
+    kind: file
+    path: configs/ts_tip.yaml
+
+  - id: ts_twist_config
+    kind: file
+    path: configs/ts_twist.yaml
+
+  - id: ts_xdisp_config
+    kind: file
+    path: configs/ts_xdisp.yaml
+
+  - id: ts_ydisp_config
+    kind: file
+    path: configs/ts_ydisp.yaml
+
+  - id: ts_zetaC_config
+    kind: file
+    path: configs/ts_zetaC.yaml
+
+  - id: ts_zetaW_config
+    kind: file
+    path: configs/ts_zetaW.yaml
+
+tasks:
+  # ── Step 1: Curves+ ─────────────────────────────────────────────────────────
+  - kind: horus_task
+    id: curves
+    name: Run Curves+ helical parameter extraction
+    inputs:
+      - id: curves_config
+        kind: file
+        path: configs/curves.yaml
+      - id: traj
+        kind: file
+        path: TRAJ/structure.stripped.nc
+      - id: top
+        kind: file
+        path: TRAJ/structure.stripped.top
+    outputs:
+      - id: curves_lis
+        kind: file
+        path: results/curves.out.lis
+      - id: curves_cda
+        kind: file
+        path: results/curves.out.cda
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_curves
+        --config ${curves_config}
+        --input_struc_path ${traj}
+        --input_top_path ${top}
+        --output_lis_path ${curves_lis}
+        --output_cda_path ${curves_cda}
+    target:
+      kind: local
+
+  # ── Step 2: Canal ────────────────────────────────────────────────────────────
+  - kind: horus_task
+    id: canal
+    name: Run Canal to generate time series and histograms
+    inputs:
+      - id: canal_config
+        kind: file
+        path: configs/canal.yaml
+      - id: curves_cda
+        kind: file
+        path: results/curves.out.cda
+      - id: curves_lis
+        kind: file
+        path: results/curves.out.lis
+    outputs:
+      - id: canal_zip
+        kind: file
+        path: results/canal.out.zip
+      - id: canal_rise_ser
+        kind: file
+        path: results/canal_out/canal_output_rise.ser
+      - id: canal_roll_ser
+        kind: file
+        path: results/canal_out/canal_output_roll.ser
+      - id: canal_twist_ser
+        kind: file
+        path: results/canal_out/canal_output_twist.ser
+      - id: canal_shift_ser
+        kind: file
+        path: results/canal_out/canal_output_shift.ser
+      - id: canal_slide_ser
+        kind: file
+        path: results/canal_out/canal_output_slide.ser
+      - id: canal_tilt_ser
+        kind: file
+        path: results/canal_out/canal_output_tilt.ser
+      - id: canal_shear_ser
+        kind: file
+        path: results/canal_out/canal_output_shear.ser
+      - id: canal_stretch_ser
+        kind: file
+        path: results/canal_out/canal_output_stretch.ser
+      - id: canal_stagger_ser
+        kind: file
+        path: results/canal_out/canal_output_stagger.ser
+      - id: canal_buckle_ser
+        kind: file
+        path: results/canal_out/canal_output_buckle.ser
+      - id: canal_propel_ser
+        kind: file
+        path: results/canal_out/canal_output_propel.ser
+      - id: canal_opening_ser
+        kind: file
+        path: results/canal_out/canal_output_opening.ser
+      - id: canal_inclin_ser
+        kind: file
+        path: results/canal_out/canal_output_inclin.ser
+      - id: canal_tip_ser
+        kind: file
+        path: results/canal_out/canal_output_tip.ser
+      - id: canal_xdisp_ser
+        kind: file
+        path: results/canal_out/canal_output_xdisp.ser
+      - id: canal_ydisp_ser
+        kind: file
+        path: results/canal_out/canal_output_ydisp.ser
+      - id: canal_majd_ser
+        kind: file
+        path: results/canal_out/canal_output_majd.ser
+      - id: canal_majw_ser
+        kind: file
+        path: results/canal_out/canal_output_majw.ser
+      - id: canal_mind_ser
+        kind: file
+        path: results/canal_out/canal_output_mind.ser
+      - id: canal_minw_ser
+        kind: file
+        path: results/canal_out/canal_output_minw.ser
+      - id: canal_alphaC_ser
+        kind: file
+        path: results/canal_out/canal_output_alphaC.ser
+      - id: canal_alphaW_ser
+        kind: file
+        path: results/canal_out/canal_output_alphaW.ser
+      - id: canal_betaC_ser
+        kind: file
+        path: results/canal_out/canal_output_betaC.ser
+      - id: canal_betaW_ser
+        kind: file
+        path: results/canal_out/canal_output_betaW.ser
+      - id: canal_gammaC_ser
+        kind: file
+        path: results/canal_out/canal_output_gammaC.ser
+      - id: canal_gammaW_ser
+        kind: file
+        path: results/canal_out/canal_output_gammaW.ser
+      - id: canal_deltaC_ser
+        kind: file
+        path: results/canal_out/canal_output_deltaC.ser
+      - id: canal_deltaW_ser
+        kind: file
+        path: results/canal_out/canal_output_deltaW.ser
+      - id: canal_epsilC_ser
+        kind: file
+        path: results/canal_out/canal_output_epsilC.ser
+      - id: canal_epsilW_ser
+        kind: file
+        path: results/canal_out/canal_output_epsilW.ser
+      - id: canal_zetaC_ser
+        kind: file
+        path: results/canal_out/canal_output_zetaC.ser
+      - id: canal_zetaW_ser
+        kind: file
+        path: results/canal_out/canal_output_zetaW.ser
+      - id: canal_chiC_ser
+        kind: file
+        path: results/canal_out/canal_output_chiC.ser
+      - id: canal_chiW_ser
+        kind: file
+        path: results/canal_out/canal_output_chiW.ser
+      - id: canal_phaseC_ser
+        kind: file
+        path: results/canal_out/canal_output_phaseC.ser
+      - id: canal_phaseW_ser
+        kind: file
+        path: results/canal_out/canal_output_phaseW.ser
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        biobb_canal
+        --config ${canal_config}
+        --input_cda_file ${curves_cda}
+        --input_lis_file ${curves_lis}
+        --output_zip_path ${canal_zip}
+        && unzip -o ${canal_zip} -d results/canal_out
+    target:
+      kind: local
+
+  # ── Averages: Base Pair Step parameters ─────────────────────────────────────
+  - kind: horus_task
+    id: avg_rise
+    name: Average helical parameters - Rise
+    inputs:
+      - id: avg_rise_config
+        kind: file
+        path: configs/avg_rise.yaml
+      - id: canal_rise_ser
+        kind: file
+        path: results/canal_out/canal_output_rise.ser
+    outputs:
+      - id: avg_rise_csv
+        kind: file
+        path: results/rise.averages.csv
+      - id: avg_rise_jpg
+        kind: file
+        path: results/rise.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_rise_config}
+        --input_ser_path ${canal_rise_ser}
+        --output_csv_path ${avg_rise_csv}
+        --output_jpg_path ${avg_rise_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_roll
+    name: Average helical parameters - Roll
+    inputs:
+      - id: avg_roll_config
+        kind: file
+        path: configs/avg_roll.yaml
+      - id: canal_roll_ser
+        kind: file
+        path: results/canal_out/canal_output_roll.ser
+    outputs:
+      - id: avg_roll_csv
+        kind: file
+        path: results/roll.averages.csv
+      - id: avg_roll_jpg
+        kind: file
+        path: results/roll.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_roll_config}
+        --input_ser_path ${canal_roll_ser}
+        --output_csv_path ${avg_roll_csv}
+        --output_jpg_path ${avg_roll_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_twist
+    name: Average helical parameters - Twist
+    inputs:
+      - id: avg_twist_config
+        kind: file
+        path: configs/avg_twist.yaml
+      - id: canal_twist_ser
+        kind: file
+        path: results/canal_out/canal_output_twist.ser
+    outputs:
+      - id: avg_twist_csv
+        kind: file
+        path: results/twist.averages.csv
+      - id: avg_twist_jpg
+        kind: file
+        path: results/twist.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_twist_config}
+        --input_ser_path ${canal_twist_ser}
+        --output_csv_path ${avg_twist_csv}
+        --output_jpg_path ${avg_twist_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_shift
+    name: Average helical parameters - Shift
+    inputs:
+      - id: avg_shift_config
+        kind: file
+        path: configs/avg_shift.yaml
+      - id: canal_shift_ser
+        kind: file
+        path: results/canal_out/canal_output_shift.ser
+    outputs:
+      - id: avg_shift_csv
+        kind: file
+        path: results/shift.averages.csv
+      - id: avg_shift_jpg
+        kind: file
+        path: results/shift.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_shift_config}
+        --input_ser_path ${canal_shift_ser}
+        --output_csv_path ${avg_shift_csv}
+        --output_jpg_path ${avg_shift_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_slide
+    name: Average helical parameters - Slide
+    inputs:
+      - id: avg_slide_config
+        kind: file
+        path: configs/avg_slide.yaml
+      - id: canal_slide_ser
+        kind: file
+        path: results/canal_out/canal_output_slide.ser
+    outputs:
+      - id: avg_slide_csv
+        kind: file
+        path: results/slide.averages.csv
+      - id: avg_slide_jpg
+        kind: file
+        path: results/slide.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_slide_config}
+        --input_ser_path ${canal_slide_ser}
+        --output_csv_path ${avg_slide_csv}
+        --output_jpg_path ${avg_slide_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_tilt
+    name: Average helical parameters - Tilt
+    inputs:
+      - id: avg_tilt_config
+        kind: file
+        path: configs/avg_tilt.yaml
+      - id: canal_tilt_ser
+        kind: file
+        path: results/canal_out/canal_output_tilt.ser
+    outputs:
+      - id: avg_tilt_csv
+        kind: file
+        path: results/tilt.averages.csv
+      - id: avg_tilt_jpg
+        kind: file
+        path: results/tilt.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_tilt_config}
+        --input_ser_path ${canal_tilt_ser}
+        --output_csv_path ${avg_tilt_csv}
+        --output_jpg_path ${avg_tilt_jpg}
+    target:
+      kind: local
+
+  # ── Averages: Base Pair (Intra) parameters ───────────────────────────────────
+  - kind: horus_task
+    id: avg_shear
+    name: Average helical parameters - Shear
+    inputs:
+      - id: avg_shear_config
+        kind: file
+        path: configs/avg_shear.yaml
+      - id: canal_shear_ser
+        kind: file
+        path: results/canal_out/canal_output_shear.ser
+    outputs:
+      - id: avg_shear_csv
+        kind: file
+        path: results/shear.averages.csv
+      - id: avg_shear_jpg
+        kind: file
+        path: results/shear.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_shear_config}
+        --input_ser_path ${canal_shear_ser}
+        --output_csv_path ${avg_shear_csv}
+        --output_jpg_path ${avg_shear_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_stretch
+    name: Average helical parameters - Stretch
+    inputs:
+      - id: avg_stretch_config
+        kind: file
+        path: configs/avg_stretch.yaml
+      - id: canal_stretch_ser
+        kind: file
+        path: results/canal_out/canal_output_stretch.ser
+    outputs:
+      - id: avg_stretch_csv
+        kind: file
+        path: results/stretch.averages.csv
+      - id: avg_stretch_jpg
+        kind: file
+        path: results/stretch.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_stretch_config}
+        --input_ser_path ${canal_stretch_ser}
+        --output_csv_path ${avg_stretch_csv}
+        --output_jpg_path ${avg_stretch_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_stagger
+    name: Average helical parameters - Stagger
+    inputs:
+      - id: avg_stagger_config
+        kind: file
+        path: configs/avg_stagger.yaml
+      - id: canal_stagger_ser
+        kind: file
+        path: results/canal_out/canal_output_stagger.ser
+    outputs:
+      - id: avg_stagger_csv
+        kind: file
+        path: results/stagger.averages.csv
+      - id: avg_stagger_jpg
+        kind: file
+        path: results/stagger.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_stagger_config}
+        --input_ser_path ${canal_stagger_ser}
+        --output_csv_path ${avg_stagger_csv}
+        --output_jpg_path ${avg_stagger_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_buckle
+    name: Average helical parameters - Buckle
+    inputs:
+      - id: avg_buckle_config
+        kind: file
+        path: configs/avg_buckle.yaml
+      - id: canal_buckle_ser
+        kind: file
+        path: results/canal_out/canal_output_buckle.ser
+    outputs:
+      - id: avg_buckle_csv
+        kind: file
+        path: results/buckle.averages.csv
+      - id: avg_buckle_jpg
+        kind: file
+        path: results/buckle.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_buckle_config}
+        --input_ser_path ${canal_buckle_ser}
+        --output_csv_path ${avg_buckle_csv}
+        --output_jpg_path ${avg_buckle_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_propel
+    name: Average helical parameters - Propeller
+    inputs:
+      - id: avg_propel_config
+        kind: file
+        path: configs/avg_propel.yaml
+      - id: canal_propel_ser
+        kind: file
+        path: results/canal_out/canal_output_propel.ser
+    outputs:
+      - id: avg_propel_csv
+        kind: file
+        path: results/propel.averages.csv
+      - id: avg_propel_jpg
+        kind: file
+        path: results/propel.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_propel_config}
+        --input_ser_path ${canal_propel_ser}
+        --output_csv_path ${avg_propel_csv}
+        --output_jpg_path ${avg_propel_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_opening
+    name: Average helical parameters - Opening
+    inputs:
+      - id: avg_opening_config
+        kind: file
+        path: configs/avg_opening.yaml
+      - id: canal_opening_ser
+        kind: file
+        path: results/canal_out/canal_output_opening.ser
+    outputs:
+      - id: avg_opening_csv
+        kind: file
+        path: results/opening.averages.csv
+      - id: avg_opening_jpg
+        kind: file
+        path: results/opening.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_opening_config}
+        --input_ser_path ${canal_opening_ser}
+        --output_csv_path ${avg_opening_csv}
+        --output_jpg_path ${avg_opening_jpg}
+    target:
+      kind: local
+
+  # ── Averages: Axis Base Pair parameters ──────────────────────────────────────
+  - kind: horus_task
+    id: avg_inclin
+    name: Average helical parameters - Inclination
+    inputs:
+      - id: avg_inclin_config
+        kind: file
+        path: configs/avg_inclin.yaml
+      - id: canal_inclin_ser
+        kind: file
+        path: results/canal_out/canal_output_inclin.ser
+    outputs:
+      - id: avg_inclin_csv
+        kind: file
+        path: results/inclin.averages.csv
+      - id: avg_inclin_jpg
+        kind: file
+        path: results/inclin.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_inclin_config}
+        --input_ser_path ${canal_inclin_ser}
+        --output_csv_path ${avg_inclin_csv}
+        --output_jpg_path ${avg_inclin_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_tip
+    name: Average helical parameters - Tip
+    inputs:
+      - id: avg_tip_config
+        kind: file
+        path: configs/avg_tip.yaml
+      - id: canal_tip_ser
+        kind: file
+        path: results/canal_out/canal_output_tip.ser
+    outputs:
+      - id: avg_tip_csv
+        kind: file
+        path: results/tip.averages.csv
+      - id: avg_tip_jpg
+        kind: file
+        path: results/tip.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_tip_config}
+        --input_ser_path ${canal_tip_ser}
+        --output_csv_path ${avg_tip_csv}
+        --output_jpg_path ${avg_tip_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_xdisp
+    name: Average helical parameters - X-displacement
+    inputs:
+      - id: avg_xdisp_config
+        kind: file
+        path: configs/avg_xdisp.yaml
+      - id: canal_xdisp_ser
+        kind: file
+        path: results/canal_out/canal_output_xdisp.ser
+    outputs:
+      - id: avg_xdisp_csv
+        kind: file
+        path: results/xdisp.averages.csv
+      - id: avg_xdisp_jpg
+        kind: file
+        path: results/xdisp.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_xdisp_config}
+        --input_ser_path ${canal_xdisp_ser}
+        --output_csv_path ${avg_xdisp_csv}
+        --output_jpg_path ${avg_xdisp_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_ydisp
+    name: Average helical parameters - Y-displacement
+    inputs:
+      - id: avg_ydisp_config
+        kind: file
+        path: configs/avg_ydisp.yaml
+      - id: canal_ydisp_ser
+        kind: file
+        path: results/canal_out/canal_output_ydisp.ser
+    outputs:
+      - id: avg_ydisp_csv
+        kind: file
+        path: results/ydisp.averages.csv
+      - id: avg_ydisp_jpg
+        kind: file
+        path: results/ydisp.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_ydisp_config}
+        --input_ser_path ${canal_ydisp_ser}
+        --output_csv_path ${avg_ydisp_csv}
+        --output_jpg_path ${avg_ydisp_jpg}
+    target:
+      kind: local
+
+  # ── Averages: Groove parameters ───────────────────────────────────────────────
+  - kind: horus_task
+    id: avg_majd
+    name: Average helical parameters - Major Groove Depth
+    inputs:
+      - id: avg_majd_config
+        kind: file
+        path: configs/avg_majd.yaml
+      - id: canal_majd_ser
+        kind: file
+        path: results/canal_out/canal_output_majd.ser
+    outputs:
+      - id: avg_majd_csv
+        kind: file
+        path: results/majd.averages.csv
+      - id: avg_majd_jpg
+        kind: file
+        path: results/majd.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_majd_config}
+        --input_ser_path ${canal_majd_ser}
+        --output_csv_path ${avg_majd_csv}
+        --output_jpg_path ${avg_majd_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_majw
+    name: Average helical parameters - Major Groove Width
+    inputs:
+      - id: avg_majw_config
+        kind: file
+        path: configs/avg_majw.yaml
+      - id: canal_majw_ser
+        kind: file
+        path: results/canal_out/canal_output_majw.ser
+    outputs:
+      - id: avg_majw_csv
+        kind: file
+        path: results/majw.averages.csv
+      - id: avg_majw_jpg
+        kind: file
+        path: results/majw.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_majw_config}
+        --input_ser_path ${canal_majw_ser}
+        --output_csv_path ${avg_majw_csv}
+        --output_jpg_path ${avg_majw_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_mind
+    name: Average helical parameters - Minor Groove Depth
+    inputs:
+      - id: avg_mind_config
+        kind: file
+        path: configs/avg_mind.yaml
+      - id: canal_mind_ser
+        kind: file
+        path: results/canal_out/canal_output_mind.ser
+    outputs:
+      - id: avg_mind_csv
+        kind: file
+        path: results/mind.averages.csv
+      - id: avg_mind_jpg
+        kind: file
+        path: results/mind.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_mind_config}
+        --input_ser_path ${canal_mind_ser}
+        --output_csv_path ${avg_mind_csv}
+        --output_jpg_path ${avg_mind_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: avg_minw
+    name: Average helical parameters - Minor Groove Width
+    inputs:
+      - id: avg_minw_config
+        kind: file
+        path: configs/avg_minw.yaml
+      - id: canal_minw_ser
+        kind: file
+        path: results/canal_out/canal_output_minw.ser
+    outputs:
+      - id: avg_minw_csv
+        kind: file
+        path: results/minw.averages.csv
+      - id: avg_minw_jpg
+        kind: file
+        path: results/minw.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_averages
+        --config ${avg_minw_config}
+        --input_ser_path ${canal_minw_ser}
+        --output_csv_path ${avg_minw_csv}
+        --output_jpg_path ${avg_minw_jpg}
+    target:
+      kind: local
+
+  # ── Backbone: Sugar Puckering ─────────────────────────────────────────────────
+  - kind: horus_task
+    id: puckering
+    name: Compute sugar puckering populations
+    inputs:
+      - id: puckering_config
+        kind: file
+        path: configs/puckering.yaml
+      - id: canal_phaseC_ser
+        kind: file
+        path: results/canal_out/canal_output_phaseC.ser
+      - id: canal_phaseW_ser
+        kind: file
+        path: results/canal_out/canal_output_phaseW.ser
+    outputs:
+      - id: puckering_csv
+        kind: file
+        path: results/puckering.averages.csv
+      - id: puckering_jpg
+        kind: file
+        path: results/puckering.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        puckering
+        --config ${puckering_config}
+        --input_phaseC_path ${canal_phaseC_ser}
+        --input_phaseW_path ${canal_phaseW_ser}
+        --output_csv_path ${puckering_csv}
+        --output_jpg_path ${puckering_jpg}
+    target:
+      kind: local
+
+  # ── Backbone: Canonical Alpha/Gamma ───────────────────────────────────────────
+  - kind: horus_task
+    id: canonicalag
+    name: Compute canonical alpha/gamma backbone populations
+    inputs:
+      - id: canonicalag_config
+        kind: file
+        path: configs/canonicalag.yaml
+      - id: canal_alphaC_ser
+        kind: file
+        path: results/canal_out/canal_output_alphaC.ser
+      - id: canal_alphaW_ser
+        kind: file
+        path: results/canal_out/canal_output_alphaW.ser
+      - id: canal_gammaC_ser
+        kind: file
+        path: results/canal_out/canal_output_gammaC.ser
+      - id: canal_gammaW_ser
+        kind: file
+        path: results/canal_out/canal_output_gammaW.ser
+    outputs:
+      - id: canonicalag_csv
+        kind: file
+        path: results/alphagamma.averages.csv
+      - id: canonicalag_jpg
+        kind: file
+        path: results/alphagamma.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        canonicalag
+        --config ${canonicalag_config}
+        --input_alphaC_path ${canal_alphaC_ser}
+        --input_alphaW_path ${canal_alphaW_ser}
+        --input_gammaC_path ${canal_gammaC_ser}
+        --input_gammaW_path ${canal_gammaW_ser}
+        --output_csv_path ${canonicalag_csv}
+        --output_jpg_path ${canonicalag_jpg}
+    target:
+      kind: local
+
+  # ── Backbone: BI/BII Populations ─────────────────────────────────────────────
+  - kind: horus_task
+    id: bipopulations
+    name: Compute BI/BII backbone populations
+    inputs:
+      - id: bipopulations_config
+        kind: file
+        path: configs/bipopulations.yaml
+      - id: canal_epsilC_ser
+        kind: file
+        path: results/canal_out/canal_output_epsilC.ser
+      - id: canal_epsilW_ser
+        kind: file
+        path: results/canal_out/canal_output_epsilW.ser
+      - id: canal_zetaC_ser
+        kind: file
+        path: results/canal_out/canal_output_zetaC.ser
+      - id: canal_zetaW_ser
+        kind: file
+        path: results/canal_out/canal_output_zetaW.ser
+    outputs:
+      - id: bipopulations_csv
+        kind: file
+        path: results/bIbII.averages.csv
+      - id: bipopulations_jpg
+        kind: file
+        path: results/bIbII.averages.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        bipopulations
+        --config ${bipopulations_config}
+        --input_epsilC_path ${canal_epsilC_ser}
+        --input_epsilW_path ${canal_epsilW_ser}
+        --input_zetaC_path ${canal_zetaC_ser}
+        --input_zetaW_path ${canal_zetaW_ser}
+        --output_csv_path ${bipopulations_csv}
+        --output_jpg_path ${bipopulations_jpg}
+    target:
+      kind: local
+
+  # ── Time Series: Base Pair Step parameters ────────────────────────────────────
+  - kind: horus_task
+    id: ts_rise
+    name: Time series helical parameters - Rise
+    inputs:
+      - id: ts_rise_config
+        kind: file
+        path: configs/ts_rise.yaml
+      - id: canal_rise_ser
+        kind: file
+        path: results/canal_out/canal_output_rise.ser
+    outputs:
+      - id: ts_rise_zip
+        kind: file
+        path: results/rise.timeseries.zip
+      - id: ts_rise_CG_csv
+        kind: file
+        path: results/timeseries/series_rise_CG.csv
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_rise_config}
+        --input_ser_path ${canal_rise_ser}
+        --output_zip_path ${ts_rise_zip}
+        && unzip -o ${ts_rise_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_roll
+    name: Time series helical parameters - Roll
+    inputs:
+      - id: ts_roll_config
+        kind: file
+        path: configs/ts_roll.yaml
+      - id: canal_roll_ser
+        kind: file
+        path: results/canal_out/canal_output_roll.ser
+    outputs:
+      - id: ts_roll_zip
+        kind: file
+        path: results/roll.timeseries.zip
+      - id: ts_roll_CG_csv
+        kind: file
+        path: results/timeseries/series_roll_CG.csv
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_roll_config}
+        --input_ser_path ${canal_roll_ser}
+        --output_zip_path ${ts_roll_zip}
+        && unzip -o ${ts_roll_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_twist
+    name: Time series helical parameters - Twist
+    inputs:
+      - id: ts_twist_config
+        kind: file
+        path: configs/ts_twist.yaml
+      - id: canal_twist_ser
+        kind: file
+        path: results/canal_out/canal_output_twist.ser
+    outputs:
+      - id: ts_twist_zip
+        kind: file
+        path: results/twist.timeseries.zip
+      - id: ts_twist_CG_csv
+        kind: file
+        path: results/timeseries/series_twist_CG.csv
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_twist_config}
+        --input_ser_path ${canal_twist_ser}
+        --output_zip_path ${ts_twist_zip}
+        && unzip -o ${ts_twist_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_shift
+    name: Time series helical parameters - Shift
+    inputs:
+      - id: ts_shift_config
+        kind: file
+        path: configs/ts_shift.yaml
+      - id: canal_shift_ser
+        kind: file
+        path: results/canal_out/canal_output_shift.ser
+    outputs:
+      - id: ts_shift_zip
+        kind: file
+        path: results/shift.timeseries.zip
+      - id: ts_shift_CG_csv
+        kind: file
+        path: results/timeseries/series_shift_CG.csv
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_shift_config}
+        --input_ser_path ${canal_shift_ser}
+        --output_zip_path ${ts_shift_zip}
+        && unzip -o ${ts_shift_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_slide
+    name: Time series helical parameters - Slide
+    inputs:
+      - id: ts_slide_config
+        kind: file
+        path: configs/ts_slide.yaml
+      - id: canal_slide_ser
+        kind: file
+        path: results/canal_out/canal_output_slide.ser
+    outputs:
+      - id: ts_slide_zip
+        kind: file
+        path: results/slide.timeseries.zip
+      - id: ts_slide_CG_csv
+        kind: file
+        path: results/timeseries/series_slide_CG.csv
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_slide_config}
+        --input_ser_path ${canal_slide_ser}
+        --output_zip_path ${ts_slide_zip}
+        && unzip -o ${ts_slide_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_tilt
+    name: Time series helical parameters - Tilt
+    inputs:
+      - id: ts_tilt_config
+        kind: file
+        path: configs/ts_tilt.yaml
+      - id: canal_tilt_ser
+        kind: file
+        path: results/canal_out/canal_output_tilt.ser
+    outputs:
+      - id: ts_tilt_zip
+        kind: file
+        path: results/tilt.timeseries.zip
+      - id: ts_tilt_CG_csv
+        kind: file
+        path: results/timeseries/series_tilt_CG.csv
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_tilt_config}
+        --input_ser_path ${canal_tilt_ser}
+        --output_zip_path ${ts_tilt_zip}
+        && unzip -o ${ts_tilt_zip} -d results/timeseries
+    target:
+      kind: local
+
+  # ── Time Series: Base Pair (Intra) parameters ─────────────────────────────────
+  - kind: horus_task
+    id: ts_shear
+    name: Time series helical parameters - Shear
+    inputs:
+      - id: ts_shear_config
+        kind: file
+        path: configs/ts_shear.yaml
+      - id: canal_shear_ser
+        kind: file
+        path: results/canal_out/canal_output_shear.ser
+    outputs:
+      - id: ts_shear_zip
+        kind: file
+        path: results/shear.timeseries.zip
+      - id: ts_shear_C_csv
+        kind: file
+        path: results/timeseries/series_shear_C.csv
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_shear_config}
+        --input_ser_path ${canal_shear_ser}
+        --output_zip_path ${ts_shear_zip}
+        && unzip -o ${ts_shear_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_stretch
+    name: Time series helical parameters - Stretch
+    inputs:
+      - id: ts_stretch_config
+        kind: file
+        path: configs/ts_stretch.yaml
+      - id: canal_stretch_ser
+        kind: file
+        path: results/canal_out/canal_output_stretch.ser
+    outputs:
+      - id: ts_stretch_zip
+        kind: file
+        path: results/stretch.timeseries.zip
+      - id: ts_stretch_C_csv
+        kind: file
+        path: results/timeseries/series_stretch_C.csv
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_stretch_config}
+        --input_ser_path ${canal_stretch_ser}
+        --output_zip_path ${ts_stretch_zip}
+        && unzip -o ${ts_stretch_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_stagger
+    name: Time series helical parameters - Stagger
+    inputs:
+      - id: ts_stagger_config
+        kind: file
+        path: configs/ts_stagger.yaml
+      - id: canal_stagger_ser
+        kind: file
+        path: results/canal_out/canal_output_stagger.ser
+    outputs:
+      - id: ts_stagger_zip
+        kind: file
+        path: results/stagger.timeseries.zip
+      - id: ts_stagger_C_csv
+        kind: file
+        path: results/timeseries/series_stagger_C.csv
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_stagger_config}
+        --input_ser_path ${canal_stagger_ser}
+        --output_zip_path ${ts_stagger_zip}
+        && unzip -o ${ts_stagger_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_buckle
+    name: Time series helical parameters - Buckle
+    inputs:
+      - id: ts_buckle_config
+        kind: file
+        path: configs/ts_buckle.yaml
+      - id: canal_buckle_ser
+        kind: file
+        path: results/canal_out/canal_output_buckle.ser
+    outputs:
+      - id: ts_buckle_zip
+        kind: file
+        path: results/buckle.timeseries.zip
+      - id: ts_buckle_C_csv
+        kind: file
+        path: results/timeseries/series_buckle_C.csv
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_buckle_config}
+        --input_ser_path ${canal_buckle_ser}
+        --output_zip_path ${ts_buckle_zip}
+        && unzip -o ${ts_buckle_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_propel
+    name: Time series helical parameters - Propeller
+    inputs:
+      - id: ts_propel_config
+        kind: file
+        path: configs/ts_propel.yaml
+      - id: canal_propel_ser
+        kind: file
+        path: results/canal_out/canal_output_propel.ser
+    outputs:
+      - id: ts_propel_zip
+        kind: file
+        path: results/propel.timeseries.zip
+      - id: ts_propel_C_csv
+        kind: file
+        path: results/timeseries/series_propel_C.csv
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_propel_config}
+        --input_ser_path ${canal_propel_ser}
+        --output_zip_path ${ts_propel_zip}
+        && unzip -o ${ts_propel_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_opening
+    name: Time series helical parameters - Opening
+    inputs:
+      - id: ts_opening_config
+        kind: file
+        path: configs/ts_opening.yaml
+      - id: canal_opening_ser
+        kind: file
+        path: results/canal_out/canal_output_opening.ser
+    outputs:
+      - id: ts_opening_zip
+        kind: file
+        path: results/opening.timeseries.zip
+      - id: ts_opening_C_csv
+        kind: file
+        path: results/timeseries/series_opening_C.csv
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_opening_config}
+        --input_ser_path ${canal_opening_ser}
+        --output_zip_path ${ts_opening_zip}
+        && unzip -o ${ts_opening_zip} -d results/timeseries
+    target:
+      kind: local
+
+  # ── Time Series: Axis parameters ──────────────────────────────────────────────
+  - kind: horus_task
+    id: ts_inclin
+    name: Time series helical parameters - Inclination
+    inputs:
+      - id: ts_inclin_config
+        kind: file
+        path: configs/ts_inclin.yaml
+      - id: canal_inclin_ser
+        kind: file
+        path: results/canal_out/canal_output_inclin.ser
+    outputs:
+      - id: ts_inclin_zip
+        kind: file
+        path: results/inclin.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_inclin_config}
+        --input_ser_path ${canal_inclin_ser}
+        --output_zip_path ${ts_inclin_zip}
+        && unzip -o ${ts_inclin_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_tip
+    name: Time series helical parameters - Tip
+    inputs:
+      - id: ts_tip_config
+        kind: file
+        path: configs/ts_tip.yaml
+      - id: canal_tip_ser
+        kind: file
+        path: results/canal_out/canal_output_tip.ser
+    outputs:
+      - id: ts_tip_zip
+        kind: file
+        path: results/tip.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_tip_config}
+        --input_ser_path ${canal_tip_ser}
+        --output_zip_path ${ts_tip_zip}
+        && unzip -o ${ts_tip_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_xdisp
+    name: Time series helical parameters - X-displacement
+    inputs:
+      - id: ts_xdisp_config
+        kind: file
+        path: configs/ts_xdisp.yaml
+      - id: canal_xdisp_ser
+        kind: file
+        path: results/canal_out/canal_output_xdisp.ser
+    outputs:
+      - id: ts_xdisp_zip
+        kind: file
+        path: results/xdisp.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_xdisp_config}
+        --input_ser_path ${canal_xdisp_ser}
+        --output_zip_path ${ts_xdisp_zip}
+        && unzip -o ${ts_xdisp_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_ydisp
+    name: Time series helical parameters - Y-displacement
+    inputs:
+      - id: ts_ydisp_config
+        kind: file
+        path: configs/ts_ydisp.yaml
+      - id: canal_ydisp_ser
+        kind: file
+        path: results/canal_out/canal_output_ydisp.ser
+    outputs:
+      - id: ts_ydisp_zip
+        kind: file
+        path: results/ydisp.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_ydisp_config}
+        --input_ser_path ${canal_ydisp_ser}
+        --output_zip_path ${ts_ydisp_zip}
+        && unzip -o ${ts_ydisp_zip} -d results/timeseries
+    target:
+      kind: local
+
+  # ── Time Series: Groove parameters ────────────────────────────────────────────
+  - kind: horus_task
+    id: ts_majd
+    name: Time series helical parameters - Major Groove Depth
+    inputs:
+      - id: ts_majd_config
+        kind: file
+        path: configs/ts_majd.yaml
+      - id: canal_majd_ser
+        kind: file
+        path: results/canal_out/canal_output_majd.ser
+    outputs:
+      - id: ts_majd_zip
+        kind: file
+        path: results/majd.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_majd_config}
+        --input_ser_path ${canal_majd_ser}
+        --output_zip_path ${ts_majd_zip}
+        && unzip -o ${ts_majd_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_majw
+    name: Time series helical parameters - Major Groove Width
+    inputs:
+      - id: ts_majw_config
+        kind: file
+        path: configs/ts_majw.yaml
+      - id: canal_majw_ser
+        kind: file
+        path: results/canal_out/canal_output_majw.ser
+    outputs:
+      - id: ts_majw_zip
+        kind: file
+        path: results/majw.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_majw_config}
+        --input_ser_path ${canal_majw_ser}
+        --output_zip_path ${ts_majw_zip}
+        && unzip -o ${ts_majw_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_mind
+    name: Time series helical parameters - Minor Groove Depth
+    inputs:
+      - id: ts_mind_config
+        kind: file
+        path: configs/ts_mind.yaml
+      - id: canal_mind_ser
+        kind: file
+        path: results/canal_out/canal_output_mind.ser
+    outputs:
+      - id: ts_mind_zip
+        kind: file
+        path: results/mind.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_mind_config}
+        --input_ser_path ${canal_mind_ser}
+        --output_zip_path ${ts_mind_zip}
+        && unzip -o ${ts_mind_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_minw
+    name: Time series helical parameters - Minor Groove Width
+    inputs:
+      - id: ts_minw_config
+        kind: file
+        path: configs/ts_minw.yaml
+      - id: canal_minw_ser
+        kind: file
+        path: results/canal_out/canal_output_minw.ser
+    outputs:
+      - id: ts_minw_zip
+        kind: file
+        path: results/minw.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_minw_config}
+        --input_ser_path ${canal_minw_ser}
+        --output_zip_path ${ts_minw_zip}
+        && unzip -o ${ts_minw_zip} -d results/timeseries
+    target:
+      kind: local
+
+  # ── Time Series: Backbone Torsion parameters ──────────────────────────────────
+  - kind: horus_task
+    id: ts_alphaC
+    name: Time series backbone torsion - alphaC
+    inputs:
+      - id: ts_alphaC_config
+        kind: file
+        path: configs/ts_alphaC.yaml
+      - id: canal_alphaC_ser
+        kind: file
+        path: results/canal_out/canal_output_alphaC.ser
+    outputs:
+      - id: ts_alphaC_zip
+        kind: file
+        path: results/alphaC.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_alphaC_config}
+        --input_ser_path ${canal_alphaC_ser}
+        --output_zip_path ${ts_alphaC_zip}
+        && unzip -o ${ts_alphaC_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_alphaW
+    name: Time series backbone torsion - alphaW
+    inputs:
+      - id: ts_alphaW_config
+        kind: file
+        path: configs/ts_alphaW.yaml
+      - id: canal_alphaW_ser
+        kind: file
+        path: results/canal_out/canal_output_alphaW.ser
+    outputs:
+      - id: ts_alphaW_zip
+        kind: file
+        path: results/alphaW.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_alphaW_config}
+        --input_ser_path ${canal_alphaW_ser}
+        --output_zip_path ${ts_alphaW_zip}
+        && unzip -o ${ts_alphaW_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_betaC
+    name: Time series backbone torsion - betaC
+    inputs:
+      - id: ts_betaC_config
+        kind: file
+        path: configs/ts_betaC.yaml
+      - id: canal_betaC_ser
+        kind: file
+        path: results/canal_out/canal_output_betaC.ser
+    outputs:
+      - id: ts_betaC_zip
+        kind: file
+        path: results/betaC.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_betaC_config}
+        --input_ser_path ${canal_betaC_ser}
+        --output_zip_path ${ts_betaC_zip}
+        && unzip -o ${ts_betaC_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_betaW
+    name: Time series backbone torsion - betaW
+    inputs:
+      - id: ts_betaW_config
+        kind: file
+        path: configs/ts_betaW.yaml
+      - id: canal_betaW_ser
+        kind: file
+        path: results/canal_out/canal_output_betaW.ser
+    outputs:
+      - id: ts_betaW_zip
+        kind: file
+        path: results/betaW.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_betaW_config}
+        --input_ser_path ${canal_betaW_ser}
+        --output_zip_path ${ts_betaW_zip}
+        && unzip -o ${ts_betaW_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_gammaC
+    name: Time series backbone torsion - gammaC
+    inputs:
+      - id: ts_gammaC_config
+        kind: file
+        path: configs/ts_gammaC.yaml
+      - id: canal_gammaC_ser
+        kind: file
+        path: results/canal_out/canal_output_gammaC.ser
+    outputs:
+      - id: ts_gammaC_zip
+        kind: file
+        path: results/gammaC.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_gammaC_config}
+        --input_ser_path ${canal_gammaC_ser}
+        --output_zip_path ${ts_gammaC_zip}
+        && unzip -o ${ts_gammaC_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_gammaW
+    name: Time series backbone torsion - gammaW
+    inputs:
+      - id: ts_gammaW_config
+        kind: file
+        path: configs/ts_gammaW.yaml
+      - id: canal_gammaW_ser
+        kind: file
+        path: results/canal_out/canal_output_gammaW.ser
+    outputs:
+      - id: ts_gammaW_zip
+        kind: file
+        path: results/gammaW.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_gammaW_config}
+        --input_ser_path ${canal_gammaW_ser}
+        --output_zip_path ${ts_gammaW_zip}
+        && unzip -o ${ts_gammaW_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_deltaC
+    name: Time series backbone torsion - deltaC
+    inputs:
+      - id: ts_deltaC_config
+        kind: file
+        path: configs/ts_deltaC.yaml
+      - id: canal_deltaC_ser
+        kind: file
+        path: results/canal_out/canal_output_deltaC.ser
+    outputs:
+      - id: ts_deltaC_zip
+        kind: file
+        path: results/deltaC.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_deltaC_config}
+        --input_ser_path ${canal_deltaC_ser}
+        --output_zip_path ${ts_deltaC_zip}
+        && unzip -o ${ts_deltaC_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_deltaW
+    name: Time series backbone torsion - deltaW
+    inputs:
+      - id: ts_deltaW_config
+        kind: file
+        path: configs/ts_deltaW.yaml
+      - id: canal_deltaW_ser
+        kind: file
+        path: results/canal_out/canal_output_deltaW.ser
+    outputs:
+      - id: ts_deltaW_zip
+        kind: file
+        path: results/deltaW.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_deltaW_config}
+        --input_ser_path ${canal_deltaW_ser}
+        --output_zip_path ${ts_deltaW_zip}
+        && unzip -o ${ts_deltaW_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_epsilC
+    name: Time series backbone torsion - epsilC
+    inputs:
+      - id: ts_epsilC_config
+        kind: file
+        path: configs/ts_epsilC.yaml
+      - id: canal_epsilC_ser
+        kind: file
+        path: results/canal_out/canal_output_epsilC.ser
+    outputs:
+      - id: ts_epsilC_zip
+        kind: file
+        path: results/epsilC.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_epsilC_config}
+        --input_ser_path ${canal_epsilC_ser}
+        --output_zip_path ${ts_epsilC_zip}
+        && unzip -o ${ts_epsilC_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_epsilW
+    name: Time series backbone torsion - epsilW
+    inputs:
+      - id: ts_epsilW_config
+        kind: file
+        path: configs/ts_epsilW.yaml
+      - id: canal_epsilW_ser
+        kind: file
+        path: results/canal_out/canal_output_epsilW.ser
+    outputs:
+      - id: ts_epsilW_zip
+        kind: file
+        path: results/epsilW.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_epsilW_config}
+        --input_ser_path ${canal_epsilW_ser}
+        --output_zip_path ${ts_epsilW_zip}
+        && unzip -o ${ts_epsilW_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_zetaC
+    name: Time series backbone torsion - zetaC
+    inputs:
+      - id: ts_zetaC_config
+        kind: file
+        path: configs/ts_zetaC.yaml
+      - id: canal_zetaC_ser
+        kind: file
+        path: results/canal_out/canal_output_zetaC.ser
+    outputs:
+      - id: ts_zetaC_zip
+        kind: file
+        path: results/zetaC.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_zetaC_config}
+        --input_ser_path ${canal_zetaC_ser}
+        --output_zip_path ${ts_zetaC_zip}
+        && unzip -o ${ts_zetaC_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_zetaW
+    name: Time series backbone torsion - zetaW
+    inputs:
+      - id: ts_zetaW_config
+        kind: file
+        path: configs/ts_zetaW.yaml
+      - id: canal_zetaW_ser
+        kind: file
+        path: results/canal_out/canal_output_zetaW.ser
+    outputs:
+      - id: ts_zetaW_zip
+        kind: file
+        path: results/zetaW.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_zetaW_config}
+        --input_ser_path ${canal_zetaW_ser}
+        --output_zip_path ${ts_zetaW_zip}
+        && unzip -o ${ts_zetaW_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_chiC
+    name: Time series backbone torsion - chiC
+    inputs:
+      - id: ts_chiC_config
+        kind: file
+        path: configs/ts_chiC.yaml
+      - id: canal_chiC_ser
+        kind: file
+        path: results/canal_out/canal_output_chiC.ser
+    outputs:
+      - id: ts_chiC_zip
+        kind: file
+        path: results/chiC.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_chiC_config}
+        --input_ser_path ${canal_chiC_ser}
+        --output_zip_path ${ts_chiC_zip}
+        && unzip -o ${ts_chiC_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_chiW
+    name: Time series backbone torsion - chiW
+    inputs:
+      - id: ts_chiW_config
+        kind: file
+        path: configs/ts_chiW.yaml
+      - id: canal_chiW_ser
+        kind: file
+        path: results/canal_out/canal_output_chiW.ser
+    outputs:
+      - id: ts_chiW_zip
+        kind: file
+        path: results/chiW.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_chiW_config}
+        --input_ser_path ${canal_chiW_ser}
+        --output_zip_path ${ts_chiW_zip}
+        && unzip -o ${ts_chiW_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_phaseC
+    name: Time series backbone torsion - phaseC
+    inputs:
+      - id: ts_phaseC_config
+        kind: file
+        path: configs/ts_phaseC.yaml
+      - id: canal_phaseC_ser
+        kind: file
+        path: results/canal_out/canal_output_phaseC.ser
+    outputs:
+      - id: ts_phaseC_zip
+        kind: file
+        path: results/phaseC.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_phaseC_config}
+        --input_ser_path ${canal_phaseC_ser}
+        --output_zip_path ${ts_phaseC_zip}
+        && unzip -o ${ts_phaseC_zip} -d results/timeseries
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: ts_phaseW
+    name: Time series backbone torsion - phaseW
+    inputs:
+      - id: ts_phaseW_config
+        kind: file
+        path: configs/ts_phaseW.yaml
+      - id: canal_phaseW_ser
+        kind: file
+        path: results/canal_out/canal_output_phaseW.ser
+    outputs:
+      - id: ts_phaseW_zip
+        kind: file
+        path: results/phaseW.timeseries.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_timeseries
+        --config ${ts_phaseW_config}
+        --input_ser_path ${canal_phaseW_ser}
+        --output_zip_path ${ts_phaseW_zip}
+        && unzip -o ${ts_phaseW_zip} -d results/timeseries
+    target:
+      kind: local
+
+  # ── Stiffness ─────────────────────────────────────────────────────────────────
+  - kind: horus_task
+    id: average_stiffness
+    name: Compute average stiffness for Twist
+    inputs:
+      - id: average_stiffness_config
+        kind: file
+        path: configs/average_stiffness.yaml
+      - id: canal_twist_ser
+        kind: file
+        path: results/canal_out/canal_output_twist.ser
+    outputs:
+      - id: average_stiffness_csv
+        kind: file
+        path: results/twist.stiffness.csv
+      - id: average_stiffness_jpg
+        kind: file
+        path: results/twist.stiffness.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        average_stiffness
+        --config ${average_stiffness_config}
+        --input_ser_path ${canal_twist_ser}
+        --output_csv_path ${average_stiffness_csv}
+        --output_jpg_path ${average_stiffness_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: basepair_stiffness
+    name: Compute base-pair step stiffness matrix for CG step
+    inputs:
+      - id: ts_shift_CG_csv
+        kind: file
+        path: results/timeseries/series_shift_CG.csv
+      - id: ts_slide_CG_csv
+        kind: file
+        path: results/timeseries/series_slide_CG.csv
+      - id: ts_rise_CG_csv
+        kind: file
+        path: results/timeseries/series_rise_CG.csv
+      - id: ts_tilt_CG_csv
+        kind: file
+        path: results/timeseries/series_tilt_CG.csv
+      - id: ts_roll_CG_csv
+        kind: file
+        path: results/timeseries/series_roll_CG.csv
+      - id: ts_twist_CG_csv
+        kind: file
+        path: results/timeseries/series_twist_CG.csv
+    outputs:
+      - id: basepair_stiffness_csv
+        kind: file
+        path: results/stiffness_bps.csv
+      - id: basepair_stiffness_jpg
+        kind: file
+        path: results/stiffness_bps.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        basepair_stiffness
+        --input_filename_shift ${ts_shift_CG_csv}
+        --input_filename_slide ${ts_slide_CG_csv}
+        --input_filename_rise ${ts_rise_CG_csv}
+        --input_filename_tilt ${ts_tilt_CG_csv}
+        --input_filename_roll ${ts_roll_CG_csv}
+        --input_filename_twist ${ts_twist_CG_csv}
+        --output_csv_path ${basepair_stiffness_csv}
+        --output_jpg_path ${basepair_stiffness_jpg}
+    target:
+      kind: local
+
+  # ── Bimodality ────────────────────────────────────────────────────────────────
+  - kind: horus_task
+    id: dna_bimodality
+    name: Bimodality analysis of Twist at CG step
+    inputs:
+      - id: dna_bimodality_config
+        kind: file
+        path: configs/dna_bimodality.yaml
+      - id: ts_twist_CG_csv
+        kind: file
+        path: results/timeseries/series_twist_CG.csv
+    outputs:
+      - id: bimodality_csv
+        kind: file
+        path: results/twist.bimodality.csv
+      - id: bimodality_jpg
+        kind: file
+        path: results/twist.bimodality.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        dna_bimodality
+        --config ${dna_bimodality_config}
+        --input_csv_file ${ts_twist_CG_csv}
+        --output_csv_path ${bimodality_csv}
+        --output_jpg_path ${bimodality_jpg}
+    target:
+      kind: local
+
+  # ── Correlations ──────────────────────────────────────────────────────────────
+  - kind: horus_task
+    id: intraseqcorr
+    name: Intra-base pair sequence correlation for Twist
+    inputs:
+      - id: intraseqcorr_config
+        kind: file
+        path: configs/intraseqcorr.yaml
+      - id: canal_twist_ser
+        kind: file
+        path: results/canal_out/canal_output_twist.ser
+    outputs:
+      - id: intraseqcorr_csv
+        kind: file
+        path: results/twist.intrabp_correlation.csv
+      - id: intraseqcorr_jpg
+        kind: file
+        path: results/twist.intrabp_correlation.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        intraseqcorr
+        --config ${intraseqcorr_config}
+        --input_ser_path ${canal_twist_ser}
+        --output_csv_path ${intraseqcorr_csv}
+        --output_jpg_path ${intraseqcorr_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: interseqcorr
+    name: Inter-base pair step sequence correlation for Twist
+    inputs:
+      - id: interseqcorr_config
+        kind: file
+        path: configs/interseqcorr.yaml
+      - id: canal_twist_ser
+        kind: file
+        path: results/canal_out/canal_output_twist.ser
+    outputs:
+      - id: interseqcorr_csv
+        kind: file
+        path: results/twist.interbp_correlation.csv
+      - id: interseqcorr_jpg
+        kind: file
+        path: results/twist.interbp_correlation.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        interseqcorr
+        --config ${interseqcorr_config}
+        --input_ser_path ${canal_twist_ser}
+        --output_csv_path ${interseqcorr_csv}
+        --output_jpg_path ${interseqcorr_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: intrahpcorr
+    name: Intra-base pair helical parameter correlations at C base pair
+    inputs:
+      - id: ts_shear_C_csv
+        kind: file
+        path: results/timeseries/series_shear_C.csv
+      - id: ts_stretch_C_csv
+        kind: file
+        path: results/timeseries/series_stretch_C.csv
+      - id: ts_stagger_C_csv
+        kind: file
+        path: results/timeseries/series_stagger_C.csv
+      - id: ts_buckle_C_csv
+        kind: file
+        path: results/timeseries/series_buckle_C.csv
+      - id: ts_propel_C_csv
+        kind: file
+        path: results/timeseries/series_propel_C.csv
+      - id: ts_opening_C_csv
+        kind: file
+        path: results/timeseries/series_opening_C.csv
+    outputs:
+      - id: intrahpcorr_csv
+        kind: file
+        path: results/helpar_bp_correlation.csv
+      - id: intrahpcorr_jpg
+        kind: file
+        path: results/helpar_bp_correlation.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        intrahpcorr
+        --input_filename_shear ${ts_shear_C_csv}
+        --input_filename_stretch ${ts_stretch_C_csv}
+        --input_filename_stagger ${ts_stagger_C_csv}
+        --input_filename_buckle ${ts_buckle_C_csv}
+        --input_filename_propel ${ts_propel_C_csv}
+        --input_filename_opening ${ts_opening_C_csv}
+        --output_csv_path ${intrahpcorr_csv}
+        --output_jpg_path ${intrahpcorr_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: interhpcorr
+    name: Inter-base pair step helical parameter correlations at CG step
+    inputs:
+      - id: ts_shift_CG_csv
+        kind: file
+        path: results/timeseries/series_shift_CG.csv
+      - id: ts_slide_CG_csv
+        kind: file
+        path: results/timeseries/series_slide_CG.csv
+      - id: ts_rise_CG_csv
+        kind: file
+        path: results/timeseries/series_rise_CG.csv
+      - id: ts_tilt_CG_csv
+        kind: file
+        path: results/timeseries/series_tilt_CG.csv
+      - id: ts_roll_CG_csv
+        kind: file
+        path: results/timeseries/series_roll_CG.csv
+      - id: ts_twist_CG_csv
+        kind: file
+        path: results/timeseries/series_twist_CG.csv
+    outputs:
+      - id: interhpcorr_csv
+        kind: file
+        path: results/helpar_bps_correlation.csv
+      - id: interhpcorr_jpg
+        kind: file
+        path: results/helpar_bps_correlation.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        interhpcorr
+        --input_filename_shift ${ts_shift_CG_csv}
+        --input_filename_slide ${ts_slide_CG_csv}
+        --input_filename_rise ${ts_rise_CG_csv}
+        --input_filename_tilt ${ts_tilt_CG_csv}
+        --input_filename_roll ${ts_roll_CG_csv}
+        --input_filename_twist ${ts_twist_CG_csv}
+        --output_csv_path ${interhpcorr_csv}
+        --output_jpg_path ${interhpcorr_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: intrabpcorr
+    name: Neighboring steps correlation for intra-base pair parameters
+    inputs:
+      - id: intrabpcorr_config
+        kind: file
+        path: configs/intrabpcorr.yaml
+      - id: canal_shear_ser
+        kind: file
+        path: results/canal_out/canal_output_shear.ser
+      - id: canal_stretch_ser
+        kind: file
+        path: results/canal_out/canal_output_stretch.ser
+      - id: canal_stagger_ser
+        kind: file
+        path: results/canal_out/canal_output_stagger.ser
+      - id: canal_buckle_ser
+        kind: file
+        path: results/canal_out/canal_output_buckle.ser
+      - id: canal_propel_ser
+        kind: file
+        path: results/canal_out/canal_output_propel.ser
+      - id: canal_opening_ser
+        kind: file
+        path: results/canal_out/canal_output_opening.ser
+    outputs:
+      - id: intrabpcorr_csv
+        kind: file
+        path: results/bp_correlation.csv
+      - id: intrabpcorr_jpg
+        kind: file
+        path: results/bp_correlation.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        intrabpcorr
+        --config ${intrabpcorr_config}
+        --input_filename_shear ${canal_shear_ser}
+        --input_filename_stretch ${canal_stretch_ser}
+        --input_filename_stagger ${canal_stagger_ser}
+        --input_filename_buckle ${canal_buckle_ser}
+        --input_filename_propel ${canal_propel_ser}
+        --input_filename_opening ${canal_opening_ser}
+        --output_csv_path ${intrabpcorr_csv}
+        --output_jpg_path ${intrabpcorr_jpg}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: interbpcorr
+    name: Neighboring steps correlation for inter-base pair parameters
+    inputs:
+      - id: interbpcorr_config
+        kind: file
+        path: configs/interbpcorr.yaml
+      - id: canal_shift_ser
+        kind: file
+        path: results/canal_out/canal_output_shift.ser
+      - id: canal_slide_ser
+        kind: file
+        path: results/canal_out/canal_output_slide.ser
+      - id: canal_rise_ser
+        kind: file
+        path: results/canal_out/canal_output_rise.ser
+      - id: canal_tilt_ser
+        kind: file
+        path: results/canal_out/canal_output_tilt.ser
+      - id: canal_roll_ser
+        kind: file
+        path: results/canal_out/canal_output_roll.ser
+      - id: canal_twist_ser
+        kind: file
+        path: results/canal_out/canal_output_twist.ser
+    outputs:
+      - id: interbpcorr_csv
+        kind: file
+        path: results/bps_correlation.csv
+      - id: interbpcorr_jpg
+        kind: file
+        path: results/bps_correlation.jpg
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        interbpcorr
+        --config ${interbpcorr_config}
+        --input_filename_shift ${canal_shift_ser}
+        --input_filename_slide ${canal_slide_ser}
+        --input_filename_rise ${canal_rise_ser}
+        --input_filename_tilt ${canal_tilt_ser}
+        --input_filename_roll ${canal_roll_ser}
+        --input_filename_twist ${canal_twist_ser}
+        --output_csv_path ${interbpcorr_csv}
+        --output_jpg_path ${interbpcorr_jpg}
+    target:
+      kind: local
+
+edges:
+  # curves → canal
+  - source: curves
+    source_output: curves_cda
+    target: canal
+    target_input: curves_cda
+
+  - source: curves
+    source_output: curves_lis
+    target: canal
+    target_input: curves_lis
+
+  # canal → averages (base_pair_step)
+  - source: canal
+    source_output: canal_rise_ser
+    target: avg_rise
+    target_input: canal_rise_ser
+
+  - source: canal
+    source_output: canal_roll_ser
+    target: avg_roll
+    target_input: canal_roll_ser
+
+  - source: canal
+    source_output: canal_twist_ser
+    target: avg_twist
+    target_input: canal_twist_ser
+
+  - source: canal
+    source_output: canal_shift_ser
+    target: avg_shift
+    target_input: canal_shift_ser
+
+  - source: canal
+    source_output: canal_slide_ser
+    target: avg_slide
+    target_input: canal_slide_ser
+
+  - source: canal
+    source_output: canal_tilt_ser
+    target: avg_tilt
+    target_input: canal_tilt_ser
+
+  # canal → averages (base_pair)
+  - source: canal
+    source_output: canal_shear_ser
+    target: avg_shear
+    target_input: canal_shear_ser
+
+  - source: canal
+    source_output: canal_stretch_ser
+    target: avg_stretch
+    target_input: canal_stretch_ser
+
+  - source: canal
+    source_output: canal_stagger_ser
+    target: avg_stagger
+    target_input: canal_stagger_ser
+
+  - source: canal
+    source_output: canal_buckle_ser
+    target: avg_buckle
+    target_input: canal_buckle_ser
+
+  - source: canal
+    source_output: canal_propel_ser
+    target: avg_propel
+    target_input: canal_propel_ser
+
+  - source: canal
+    source_output: canal_opening_ser
+    target: avg_opening
+    target_input: canal_opening_ser
+
+  # canal → averages (axis)
+  - source: canal
+    source_output: canal_inclin_ser
+    target: avg_inclin
+    target_input: canal_inclin_ser
+
+  - source: canal
+    source_output: canal_tip_ser
+    target: avg_tip
+    target_input: canal_tip_ser
+
+  - source: canal
+    source_output: canal_xdisp_ser
+    target: avg_xdisp
+    target_input: canal_xdisp_ser
+
+  - source: canal
+    source_output: canal_ydisp_ser
+    target: avg_ydisp
+    target_input: canal_ydisp_ser
+
+  # canal → averages (grooves)
+  - source: canal
+    source_output: canal_majd_ser
+    target: avg_majd
+    target_input: canal_majd_ser
+
+  - source: canal
+    source_output: canal_majw_ser
+    target: avg_majw
+    target_input: canal_majw_ser
+
+  - source: canal
+    source_output: canal_mind_ser
+    target: avg_mind
+    target_input: canal_mind_ser
+
+  - source: canal
+    source_output: canal_minw_ser
+    target: avg_minw
+    target_input: canal_minw_ser
+
+  # canal → backbone
+  - source: canal
+    source_output: canal_phaseC_ser
+    target: puckering
+    target_input: canal_phaseC_ser
+
+  - source: canal
+    source_output: canal_phaseW_ser
+    target: puckering
+    target_input: canal_phaseW_ser
+
+  - source: canal
+    source_output: canal_alphaC_ser
+    target: canonicalag
+    target_input: canal_alphaC_ser
+
+  - source: canal
+    source_output: canal_alphaW_ser
+    target: canonicalag
+    target_input: canal_alphaW_ser
+
+  - source: canal
+    source_output: canal_gammaC_ser
+    target: canonicalag
+    target_input: canal_gammaC_ser
+
+  - source: canal
+    source_output: canal_gammaW_ser
+    target: canonicalag
+    target_input: canal_gammaW_ser
+
+  - source: canal
+    source_output: canal_epsilC_ser
+    target: bipopulations
+    target_input: canal_epsilC_ser
+
+  - source: canal
+    source_output: canal_epsilW_ser
+    target: bipopulations
+    target_input: canal_epsilW_ser
+
+  - source: canal
+    source_output: canal_zetaC_ser
+    target: bipopulations
+    target_input: canal_zetaC_ser
+
+  - source: canal
+    source_output: canal_zetaW_ser
+    target: bipopulations
+    target_input: canal_zetaW_ser
+
+  # canal → timeseries (base_pair_step)
+  - source: canal
+    source_output: canal_rise_ser
+    target: ts_rise
+    target_input: canal_rise_ser
+
+  - source: canal
+    source_output: canal_roll_ser
+    target: ts_roll
+    target_input: canal_roll_ser
+
+  - source: canal
+    source_output: canal_twist_ser
+    target: ts_twist
+    target_input: canal_twist_ser
+
+  - source: canal
+    source_output: canal_shift_ser
+    target: ts_shift
+    target_input: canal_shift_ser
+
+  - source: canal
+    source_output: canal_slide_ser
+    target: ts_slide
+    target_input: canal_slide_ser
+
+  - source: canal
+    source_output: canal_tilt_ser
+    target: ts_tilt
+    target_input: canal_tilt_ser
+
+  # canal → timeseries (base_pair)
+  - source: canal
+    source_output: canal_shear_ser
+    target: ts_shear
+    target_input: canal_shear_ser
+
+  - source: canal
+    source_output: canal_stretch_ser
+    target: ts_stretch
+    target_input: canal_stretch_ser
+
+  - source: canal
+    source_output: canal_stagger_ser
+    target: ts_stagger
+    target_input: canal_stagger_ser
+
+  - source: canal
+    source_output: canal_buckle_ser
+    target: ts_buckle
+    target_input: canal_buckle_ser
+
+  - source: canal
+    source_output: canal_propel_ser
+    target: ts_propel
+    target_input: canal_propel_ser
+
+  - source: canal
+    source_output: canal_opening_ser
+    target: ts_opening
+    target_input: canal_opening_ser
+
+  # canal → timeseries (axis)
+  - source: canal
+    source_output: canal_inclin_ser
+    target: ts_inclin
+    target_input: canal_inclin_ser
+
+  - source: canal
+    source_output: canal_tip_ser
+    target: ts_tip
+    target_input: canal_tip_ser
+
+  - source: canal
+    source_output: canal_xdisp_ser
+    target: ts_xdisp
+    target_input: canal_xdisp_ser
+
+  - source: canal
+    source_output: canal_ydisp_ser
+    target: ts_ydisp
+    target_input: canal_ydisp_ser
+
+  # canal → timeseries (grooves)
+  - source: canal
+    source_output: canal_majd_ser
+    target: ts_majd
+    target_input: canal_majd_ser
+
+  - source: canal
+    source_output: canal_majw_ser
+    target: ts_majw
+    target_input: canal_majw_ser
+
+  - source: canal
+    source_output: canal_mind_ser
+    target: ts_mind
+    target_input: canal_mind_ser
+
+  - source: canal
+    source_output: canal_minw_ser
+    target: ts_minw
+    target_input: canal_minw_ser
+
+  # canal → timeseries (backbone)
+  - source: canal
+    source_output: canal_alphaC_ser
+    target: ts_alphaC
+    target_input: canal_alphaC_ser
+
+  - source: canal
+    source_output: canal_alphaW_ser
+    target: ts_alphaW
+    target_input: canal_alphaW_ser
+
+  - source: canal
+    source_output: canal_betaC_ser
+    target: ts_betaC
+    target_input: canal_betaC_ser
+
+  - source: canal
+    source_output: canal_betaW_ser
+    target: ts_betaW
+    target_input: canal_betaW_ser
+
+  - source: canal
+    source_output: canal_gammaC_ser
+    target: ts_gammaC
+    target_input: canal_gammaC_ser
+
+  - source: canal
+    source_output: canal_gammaW_ser
+    target: ts_gammaW
+    target_input: canal_gammaW_ser
+
+  - source: canal
+    source_output: canal_deltaC_ser
+    target: ts_deltaC
+    target_input: canal_deltaC_ser
+
+  - source: canal
+    source_output: canal_deltaW_ser
+    target: ts_deltaW
+    target_input: canal_deltaW_ser
+
+  - source: canal
+    source_output: canal_epsilC_ser
+    target: ts_epsilC
+    target_input: canal_epsilC_ser
+
+  - source: canal
+    source_output: canal_epsilW_ser
+    target: ts_epsilW
+    target_input: canal_epsilW_ser
+
+  - source: canal
+    source_output: canal_zetaC_ser
+    target: ts_zetaC
+    target_input: canal_zetaC_ser
+
+  - source: canal
+    source_output: canal_zetaW_ser
+    target: ts_zetaW
+    target_input: canal_zetaW_ser
+
+  - source: canal
+    source_output: canal_chiC_ser
+    target: ts_chiC
+    target_input: canal_chiC_ser
+
+  - source: canal
+    source_output: canal_chiW_ser
+    target: ts_chiW
+    target_input: canal_chiW_ser
+
+  - source: canal
+    source_output: canal_phaseC_ser
+    target: ts_phaseC
+    target_input: canal_phaseC_ser
+
+  - source: canal
+    source_output: canal_phaseW_ser
+    target: ts_phaseW
+    target_input: canal_phaseW_ser
+
+  # canal → stiffness / correlations (direct .ser)
+  - source: canal
+    source_output: canal_twist_ser
+    target: average_stiffness
+    target_input: canal_twist_ser
+
+  - source: canal
+    source_output: canal_twist_ser
+    target: intraseqcorr
+    target_input: canal_twist_ser
+
+  - source: canal
+    source_output: canal_twist_ser
+    target: interseqcorr
+    target_input: canal_twist_ser
+
+  - source: canal
+    source_output: canal_shear_ser
+    target: intrabpcorr
+    target_input: canal_shear_ser
+
+  - source: canal
+    source_output: canal_stretch_ser
+    target: intrabpcorr
+    target_input: canal_stretch_ser
+
+  - source: canal
+    source_output: canal_stagger_ser
+    target: intrabpcorr
+    target_input: canal_stagger_ser
+
+  - source: canal
+    source_output: canal_buckle_ser
+    target: intrabpcorr
+    target_input: canal_buckle_ser
+
+  - source: canal
+    source_output: canal_propel_ser
+    target: intrabpcorr
+    target_input: canal_propel_ser
+
+  - source: canal
+    source_output: canal_opening_ser
+    target: intrabpcorr
+    target_input: canal_opening_ser
+
+  - source: canal
+    source_output: canal_shift_ser
+    target: interbpcorr
+    target_input: canal_shift_ser
+
+  - source: canal
+    source_output: canal_slide_ser
+    target: interbpcorr
+    target_input: canal_slide_ser
+
+  - source: canal
+    source_output: canal_rise_ser
+    target: interbpcorr
+    target_input: canal_rise_ser
+
+  - source: canal
+    source_output: canal_tilt_ser
+    target: interbpcorr
+    target_input: canal_tilt_ser
+
+  - source: canal
+    source_output: canal_roll_ser
+    target: interbpcorr
+    target_input: canal_roll_ser
+
+  - source: canal
+    source_output: canal_twist_ser
+    target: interbpcorr
+    target_input: canal_twist_ser
+
+  # timeseries → basepair_stiffness
+  - source: ts_shift
+    source_output: ts_shift_CG_csv
+    target: basepair_stiffness
+    target_input: ts_shift_CG_csv
+
+  - source: ts_slide
+    source_output: ts_slide_CG_csv
+    target: basepair_stiffness
+    target_input: ts_slide_CG_csv
+
+  - source: ts_rise
+    source_output: ts_rise_CG_csv
+    target: basepair_stiffness
+    target_input: ts_rise_CG_csv
+
+  - source: ts_tilt
+    source_output: ts_tilt_CG_csv
+    target: basepair_stiffness
+    target_input: ts_tilt_CG_csv
+
+  - source: ts_roll
+    source_output: ts_roll_CG_csv
+    target: basepair_stiffness
+    target_input: ts_roll_CG_csv
+
+  - source: ts_twist
+    source_output: ts_twist_CG_csv
+    target: basepair_stiffness
+    target_input: ts_twist_CG_csv
+
+  # timeseries → dna_bimodality
+  - source: ts_twist
+    source_output: ts_twist_CG_csv
+    target: dna_bimodality
+    target_input: ts_twist_CG_csv
+
+  # timeseries → intrahpcorr
+  - source: ts_shear
+    source_output: ts_shear_C_csv
+    target: intrahpcorr
+    target_input: ts_shear_C_csv
+
+  - source: ts_stretch
+    source_output: ts_stretch_C_csv
+    target: intrahpcorr
+    target_input: ts_stretch_C_csv
+
+  - source: ts_stagger
+    source_output: ts_stagger_C_csv
+    target: intrahpcorr
+    target_input: ts_stagger_C_csv
+
+  - source: ts_buckle
+    source_output: ts_buckle_C_csv
+    target: intrahpcorr
+    target_input: ts_buckle_C_csv
+
+  - source: ts_propel
+    source_output: ts_propel_C_csv
+    target: intrahpcorr
+    target_input: ts_propel_C_csv
+
+  - source: ts_opening
+    source_output: ts_opening_C_csv
+    target: intrahpcorr
+    target_input: ts_opening_C_csv
+
+  # timeseries → interhpcorr
+  - source: ts_shift
+    source_output: ts_shift_CG_csv
+    target: interhpcorr
+    target_input: ts_shift_CG_csv
+
+  - source: ts_slide
+    source_output: ts_slide_CG_csv
+    target: interhpcorr
+    target_input: ts_slide_CG_csv
+
+  - source: ts_rise
+    source_output: ts_rise_CG_csv
+    target: interhpcorr
+    target_input: ts_rise_CG_csv
+
+  - source: ts_tilt
+    source_output: ts_tilt_CG_csv
+    target: interhpcorr
+    target_input: ts_tilt_CG_csv
+
+  - source: ts_roll
+    source_output: ts_roll_CG_csv
+    target: interhpcorr
+    target_input: ts_roll_CG_csv
+
+  - source: ts_twist
+    source_output: ts_twist_CG_csv
+    target: interhpcorr
+    target_input: ts_twist_CG_csv
+
+  - source: artifact-traj
+    source_output: traj
+    target: curves
+    target_input: traj
+
+  - source: artifact-top
+    source_output: top
+    target: curves
+    target_input: top
+
+  - source: artifact-average_stiffness_config
+    source_output: average_stiffness_config
+    target: average_stiffness
+    target_input: average_stiffness_config
+
+  - source: artifact-avg_buckle_config
+    source_output: avg_buckle_config
+    target: avg_buckle
+    target_input: avg_buckle_config
+
+  - source: artifact-avg_inclin_config
+    source_output: avg_inclin_config
+    target: avg_inclin
+    target_input: avg_inclin_config
+
+  - source: artifact-avg_majd_config
+    source_output: avg_majd_config
+    target: avg_majd
+    target_input: avg_majd_config
+
+  - source: artifact-avg_majw_config
+    source_output: avg_majw_config
+    target: avg_majw
+    target_input: avg_majw_config
+
+  - source: artifact-avg_mind_config
+    source_output: avg_mind_config
+    target: avg_mind
+    target_input: avg_mind_config
+
+  - source: artifact-avg_minw_config
+    source_output: avg_minw_config
+    target: avg_minw
+    target_input: avg_minw_config
+
+  - source: artifact-avg_opening_config
+    source_output: avg_opening_config
+    target: avg_opening
+    target_input: avg_opening_config
+
+  - source: artifact-avg_propel_config
+    source_output: avg_propel_config
+    target: avg_propel
+    target_input: avg_propel_config
+
+  - source: artifact-avg_rise_config
+    source_output: avg_rise_config
+    target: avg_rise
+    target_input: avg_rise_config
+
+  - source: artifact-avg_roll_config
+    source_output: avg_roll_config
+    target: avg_roll
+    target_input: avg_roll_config
+
+  - source: artifact-avg_shear_config
+    source_output: avg_shear_config
+    target: avg_shear
+    target_input: avg_shear_config
+
+  - source: artifact-avg_shift_config
+    source_output: avg_shift_config
+    target: avg_shift
+    target_input: avg_shift_config
+
+  - source: artifact-avg_slide_config
+    source_output: avg_slide_config
+    target: avg_slide
+    target_input: avg_slide_config
+
+  - source: artifact-avg_stagger_config
+    source_output: avg_stagger_config
+    target: avg_stagger
+    target_input: avg_stagger_config
+
+  - source: artifact-avg_stretch_config
+    source_output: avg_stretch_config
+    target: avg_stretch
+    target_input: avg_stretch_config
+
+  - source: artifact-avg_tilt_config
+    source_output: avg_tilt_config
+    target: avg_tilt
+    target_input: avg_tilt_config
+
+  - source: artifact-avg_tip_config
+    source_output: avg_tip_config
+    target: avg_tip
+    target_input: avg_tip_config
+
+  - source: artifact-avg_twist_config
+    source_output: avg_twist_config
+    target: avg_twist
+    target_input: avg_twist_config
+
+  - source: artifact-avg_xdisp_config
+    source_output: avg_xdisp_config
+    target: avg_xdisp
+    target_input: avg_xdisp_config
+
+  - source: artifact-avg_ydisp_config
+    source_output: avg_ydisp_config
+    target: avg_ydisp
+    target_input: avg_ydisp_config
+
+  - source: artifact-bipopulations_config
+    source_output: bipopulations_config
+    target: bipopulations
+    target_input: bipopulations_config
+
+  - source: artifact-canal_config
+    source_output: canal_config
+    target: canal
+    target_input: canal_config
+
+  - source: artifact-canonicalag_config
+    source_output: canonicalag_config
+    target: canonicalag
+    target_input: canonicalag_config
+
+  - source: artifact-curves_config
+    source_output: curves_config
+    target: curves
+    target_input: curves_config
+
+  - source: artifact-dna_bimodality_config
+    source_output: dna_bimodality_config
+    target: dna_bimodality
+    target_input: dna_bimodality_config
+
+  - source: artifact-interbpcorr_config
+    source_output: interbpcorr_config
+    target: interbpcorr
+    target_input: interbpcorr_config
+
+  - source: artifact-interseqcorr_config
+    source_output: interseqcorr_config
+    target: interseqcorr
+    target_input: interseqcorr_config
+
+  - source: artifact-intrabpcorr_config
+    source_output: intrabpcorr_config
+    target: intrabpcorr
+    target_input: intrabpcorr_config
+
+  - source: artifact-intraseqcorr_config
+    source_output: intraseqcorr_config
+    target: intraseqcorr
+    target_input: intraseqcorr_config
+
+  - source: artifact-puckering_config
+    source_output: puckering_config
+    target: puckering
+    target_input: puckering_config
+
+  - source: artifact-ts_alphaC_config
+    source_output: ts_alphaC_config
+    target: ts_alphaC
+    target_input: ts_alphaC_config
+
+  - source: artifact-ts_alphaW_config
+    source_output: ts_alphaW_config
+    target: ts_alphaW
+    target_input: ts_alphaW_config
+
+  - source: artifact-ts_betaC_config
+    source_output: ts_betaC_config
+    target: ts_betaC
+    target_input: ts_betaC_config
+
+  - source: artifact-ts_betaW_config
+    source_output: ts_betaW_config
+    target: ts_betaW
+    target_input: ts_betaW_config
+
+  - source: artifact-ts_buckle_config
+    source_output: ts_buckle_config
+    target: ts_buckle
+    target_input: ts_buckle_config
+
+  - source: artifact-ts_chiC_config
+    source_output: ts_chiC_config
+    target: ts_chiC
+    target_input: ts_chiC_config
+
+  - source: artifact-ts_chiW_config
+    source_output: ts_chiW_config
+    target: ts_chiW
+    target_input: ts_chiW_config
+
+  - source: artifact-ts_deltaC_config
+    source_output: ts_deltaC_config
+    target: ts_deltaC
+    target_input: ts_deltaC_config
+
+  - source: artifact-ts_deltaW_config
+    source_output: ts_deltaW_config
+    target: ts_deltaW
+    target_input: ts_deltaW_config
+
+  - source: artifact-ts_epsilC_config
+    source_output: ts_epsilC_config
+    target: ts_epsilC
+    target_input: ts_epsilC_config
+
+  - source: artifact-ts_epsilW_config
+    source_output: ts_epsilW_config
+    target: ts_epsilW
+    target_input: ts_epsilW_config
+
+  - source: artifact-ts_gammaC_config
+    source_output: ts_gammaC_config
+    target: ts_gammaC
+    target_input: ts_gammaC_config
+
+  - source: artifact-ts_gammaW_config
+    source_output: ts_gammaW_config
+    target: ts_gammaW
+    target_input: ts_gammaW_config
+
+  - source: artifact-ts_inclin_config
+    source_output: ts_inclin_config
+    target: ts_inclin
+    target_input: ts_inclin_config
+
+  - source: artifact-ts_majd_config
+    source_output: ts_majd_config
+    target: ts_majd
+    target_input: ts_majd_config
+
+  - source: artifact-ts_majw_config
+    source_output: ts_majw_config
+    target: ts_majw
+    target_input: ts_majw_config
+
+  - source: artifact-ts_mind_config
+    source_output: ts_mind_config
+    target: ts_mind
+    target_input: ts_mind_config
+
+  - source: artifact-ts_minw_config
+    source_output: ts_minw_config
+    target: ts_minw
+    target_input: ts_minw_config
+
+  - source: artifact-ts_opening_config
+    source_output: ts_opening_config
+    target: ts_opening
+    target_input: ts_opening_config
+
+  - source: artifact-ts_phaseC_config
+    source_output: ts_phaseC_config
+    target: ts_phaseC
+    target_input: ts_phaseC_config
+
+  - source: artifact-ts_phaseW_config
+    source_output: ts_phaseW_config
+    target: ts_phaseW
+    target_input: ts_phaseW_config
+
+  - source: artifact-ts_propel_config
+    source_output: ts_propel_config
+    target: ts_propel
+    target_input: ts_propel_config
+
+  - source: artifact-ts_rise_config
+    source_output: ts_rise_config
+    target: ts_rise
+    target_input: ts_rise_config
+
+  - source: artifact-ts_roll_config
+    source_output: ts_roll_config
+    target: ts_roll
+    target_input: ts_roll_config
+
+  - source: artifact-ts_shear_config
+    source_output: ts_shear_config
+    target: ts_shear
+    target_input: ts_shear_config
+
+  - source: artifact-ts_shift_config
+    source_output: ts_shift_config
+    target: ts_shift
+    target_input: ts_shift_config
+
+  - source: artifact-ts_slide_config
+    source_output: ts_slide_config
+    target: ts_slide
+    target_input: ts_slide_config
+
+  - source: artifact-ts_stagger_config
+    source_output: ts_stagger_config
+    target: ts_stagger
+    target_input: ts_stagger_config
+
+  - source: artifact-ts_stretch_config
+    source_output: ts_stretch_config
+    target: ts_stretch
+    target_input: ts_stretch_config
+
+  - source: artifact-ts_tilt_config
+    source_output: ts_tilt_config
+    target: ts_tilt
+    target_input: ts_tilt_config
+
+  - source: artifact-ts_tip_config
+    source_output: ts_tip_config
+    target: ts_tip
+    target_input: ts_tip_config
+
+  - source: artifact-ts_twist_config
+    source_output: ts_twist_config
+    target: ts_twist
+    target_input: ts_twist_config
+
+  - source: artifact-ts_xdisp_config
+    source_output: ts_xdisp_config
+    target: ts_xdisp
+    target_input: ts_xdisp_config
+
+  - source: artifact-ts_ydisp_config
+    source_output: ts_ydisp_config
+    target: ts_ydisp
+    target_input: ts_ydisp_config
+
+  - source: artifact-ts_zetaC_config
+    source_output: ts_zetaC_config
+    target: ts_zetaC
+    target_input: ts_zetaC_config
+
+  - source: artifact-ts_zetaW_config
+    source_output: ts_zetaW_config
+    target: ts_zetaW
+    target_input: ts_zetaW_config
+
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

@@ -1,0 +1,131 @@
+kind: horus_workflow
+name: AutoDock Vina Docking
+artifacts:
+  - id: ligands
+    kind: file
+    path: examples/ligands.smi
+
+  - id: receptor
+    kind: file
+    path: examples/receptor.pdb
+
+tasks:
+  - kind: horus_task
+    id: prep
+    name: Prepare receptor + ligands + box
+    skip_if_complete: false
+    inputs:
+      - id: receptor
+        name: receptor
+        kind: file
+        path: examples/receptor.pdb
+      - id: ligands
+        name: ligands
+        kind: file
+        path: examples/ligands.smi
+    outputs:
+      - id: vina_inputs
+        name: vina_inputs
+        path: results/vina_inputs.tar.gz
+        kind: file
+    executor:
+      kind: conda_python_environment
+      conda: micromamba # set to mamba/micromamba if that's what's on PATH
+      python_version: "3.11"
+      channels:
+        - conda-forge
+      conda_requirements:
+        - openbabel # receptor -> rigid PDBQT (obabel)
+        - meeko # ligand -> PDBQT (mk_prepare_ligand.py)
+        - rdkit # 3D embedding of SMILES + Meeko's typing
+        - numpy
+        - scipy
+        - gemmi
+    runtime:
+      kind: python_script
+      script: scripts/prep.py
+      # Docking box: edit --center / --size for your pocket. Drop --center to
+      # derive it from a --ref-ligand, or omit both for blind (whole-receptor)
+      # docking (then use a large --size). Default here is the 1iep ATP pocket.
+      args: >-
+        --receptor ${receptor} --ligands ${ligands} --out ${vina_inputs} --center 15.190 53.903 16.917 --size 20 20 20
+    target:
+      kind: local
+  - kind: horus_task
+    id: dock
+    name: Run AutoDock Vina
+    inputs:
+      - id: vina_inputs
+        name: vina_inputs
+        path: results/vina_inputs.tar.gz
+        kind: file
+    outputs:
+      - id: docking_out
+        name: docking_out
+        path: results/docking_out.tar.gz
+        kind: file
+    executor:
+      kind: conda_python_environment
+      conda: micromamba # set to mamba/micromamba if that's what's on PATH
+      python_version: "3.11"
+      channels:
+        - conda-forge
+      conda_requirements:
+        - vina # AutoDock Vina + Python bindings (conda-forge)
+        - numpy
+    runtime:
+      kind: python_script
+      script: scripts/dock.py
+      args: >-
+        --inputs ${vina_inputs} --out ${docking_out} --exhaustiveness 16 --n-poses 9 --cpu 0
+    target:
+      kind: local
+  - kind: horus_task
+    id: summary
+    name: Energy tables
+    inputs:
+      - id: docking_out
+        name: docking_out
+        path: results/docking_out.tar.gz
+        kind: file
+    outputs:
+      - id: summary
+        name: summary
+        path: results/summary.csv
+        kind: file
+      - id: poses
+        name: poses
+        path: results/poses.csv
+        kind: file
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/summary.py
+      python: python3 # summary is stdlib-only; use the target's python3
+      args: --docking ${docking_out} --summary ${summary} --poses ${poses}
+    target:
+      kind: local
+edges:
+  - source: prep
+    source_output: vina_inputs
+    target: dock
+    target_input: vina_inputs
+  - source: dock
+    source_output: docking_out
+    target: summary
+    target_input: docking_out
+
+  - source: artifact-ligands
+    source_output: ligands
+    target: prep
+    target_input: ligands
+
+  - source: artifact-receptor
+    source_output: receptor
+    target: prep
+    target_input: receptor
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results

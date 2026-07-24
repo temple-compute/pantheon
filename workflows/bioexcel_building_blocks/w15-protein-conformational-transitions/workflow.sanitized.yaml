@@ -1,0 +1,365 @@
+kind: horus_workflow
+name: BioExcel GoDMD - Adenylate Kinase Conformational Transition
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+artifacts:
+  - id: cpptraj_convert_config
+    kind: file
+    path: configs/cpptraj_convert.yaml
+
+  - id: extract_chain_origin_config
+    kind: file
+    path: configs/extract_chain_origin.yaml
+
+  - id: extract_chain_target_config
+    kind: file
+    path: configs/extract_chain_target.yaml
+
+  - id: fetch_pdb_origin_config
+    kind: file
+    path: configs/fetch_pdb_origin.yaml
+
+  - id: fetch_pdb_target_config
+    kind: file
+    path: configs/fetch_pdb_target.yaml
+
+  - id: godmd_prep_config
+    kind: file
+    path: configs/godmd_prep.yaml
+
+  - id: godmd_run_config
+    kind: file
+    path: configs/godmd_run.yaml
+
+  - id: remove_molecules_origin_config
+    kind: file
+    path: configs/remove_molecules_origin.yaml
+
+tasks:
+  - kind: horus_task
+    id: fetch_pdb_origin
+    name: Download origin structure 1AKE (closed state) from PDB
+    inputs:
+      - id: fetch_pdb_origin_config
+        kind: file
+        path: configs/fetch_pdb_origin.yaml
+    outputs:
+      - id: origin_pdb
+        kind: file
+        path: results/1ake.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_pdb_origin_config}
+        --output_pdb_path ${origin_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fetch_pdb_target
+    name: Download target structure 4AKE (open state) from PDB
+    inputs:
+      - id: fetch_pdb_target_config
+        kind: file
+        path: configs/fetch_pdb_target.yaml
+    outputs:
+      - id: target_pdb
+        kind: file
+        path: results/4ake.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_pdb_target_config}
+        --output_pdb_path ${target_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_chain_origin
+    name: Extract chain A from origin structure (1AKE)
+    inputs:
+      - id: extract_chain_origin_config
+        kind: file
+        path: configs/extract_chain_origin.yaml
+      - id: origin_pdb
+        kind: file
+        path: results/1ake.pdb
+    outputs:
+      - id: origin_chain_pdb
+        kind: file
+        path: results/1ake.chains.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        extract_chain
+        --config ${extract_chain_origin_config}
+        --input_structure_path ${origin_pdb}
+        --output_structure_path ${origin_chain_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_chain_target
+    name: Extract chain A from target structure (4AKE)
+    inputs:
+      - id: extract_chain_target_config
+        kind: file
+        path: configs/extract_chain_target.yaml
+      - id: target_pdb
+        kind: file
+        path: results/4ake.pdb
+    outputs:
+      - id: target_chain_pdb
+        kind: file
+        path: results/4ake.chains.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        extract_chain
+        --config ${extract_chain_target_config}
+        --input_structure_path ${target_pdb}
+        --output_structure_path ${target_chain_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: remove_molecules_origin
+    name: Remove AP5 inhibitor from origin structure (1AKE)
+    inputs:
+      - id: remove_molecules_origin_config
+        kind: file
+        path: configs/remove_molecules_origin.yaml
+      - id: origin_chain_pdb
+        kind: file
+        path: results/1ake.chains.pdb
+    outputs:
+      - id: origin_nolig_pdb
+        kind: file
+        path: results/1ake.chains.nolig.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        remove_molecules
+        --config ${remove_molecules_origin_config}
+        --input_structure_path ${origin_chain_pdb}
+        --output_molecules_path ${origin_nolig_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: godmd_prep
+    name: Compute residue mapping between origin and target (EMBOSS water alignment)
+    inputs:
+      - id: godmd_prep_config
+        kind: file
+        path: configs/godmd_prep.yaml
+      - id: origin_nolig_pdb
+        kind: file
+        path: results/1ake.chains.nolig.pdb
+      - id: target_chain_pdb
+        kind: file
+        path: results/4ake.chains.pdb
+    outputs:
+      - id: origin_aln
+        kind: file
+        path: results/1ake.aln
+      - id: target_aln
+        kind: file
+        path: results/4ake.aln
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        godmd_prep
+        --config ${godmd_prep_config}
+        --input_pdb_orig_path ${origin_nolig_pdb}
+        --input_pdb_target_path ${target_chain_pdb}
+        --output_aln_orig_path ${origin_aln}
+        --output_aln_target_path ${target_aln}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: godmd_run
+    name: Run GoDMD conformational transition simulation (1AKE → 4AKE)
+    inputs:
+      - id: godmd_run_config
+        kind: file
+        path: configs/godmd_run.yaml
+      - id: origin_nolig_pdb
+        kind: file
+        path: results/1ake.chains.nolig.pdb
+      - id: target_chain_pdb
+        kind: file
+        path: results/4ake.chains.pdb
+      - id: origin_aln
+        kind: file
+        path: results/1ake.aln
+      - id: target_aln
+        kind: file
+        path: results/4ake.aln
+    outputs:
+      - id: godmd_trj
+        kind: file
+        path: results/1ake-4ake.godmd.mdcrd
+      - id: godmd_pdb
+        kind: file
+        path: results/1ake-4ake.godmd.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        godmd_run
+        --config ${godmd_run_config}
+        --input_pdb_orig_path ${origin_nolig_pdb}
+        --input_pdb_target_path ${target_chain_pdb}
+        --input_aln_orig_path ${origin_aln}
+        --input_aln_target_path ${target_aln}
+        --output_log_path 1ake-4ake.godmd.log
+        --output_ene_path 1ake-4ake.godmd.ene.out
+        --output_trj_path ${godmd_trj}
+        --output_pdb_path ${godmd_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: cpptraj_convert
+    name: Convert GoDMD trajectory from mdcrd to XTC format
+    inputs:
+      - id: cpptraj_convert_config
+        kind: file
+        path: configs/cpptraj_convert.yaml
+      - id: godmd_pdb
+        kind: file
+        path: results/1ake-4ake.godmd.pdb
+      - id: godmd_trj
+        kind: file
+        path: results/1ake-4ake.godmd.mdcrd
+    outputs:
+      - id: godmd_trj_xtc
+        kind: file
+        path: results/1ake-4ake.godmd.xtc
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        cpptraj_convert
+        --config ${cpptraj_convert_config}
+        --input_top_path ${godmd_pdb}
+        --input_traj_path ${godmd_trj}
+        --output_cpptraj_path ${godmd_trj_xtc}
+    target:
+      kind: local
+
+edges:
+  - source: fetch_pdb_origin
+    source_output: origin_pdb
+    target: extract_chain_origin
+    target_input: origin_pdb
+
+  - source: fetch_pdb_target
+    source_output: target_pdb
+    target: extract_chain_target
+    target_input: target_pdb
+
+  - source: extract_chain_origin
+    source_output: origin_chain_pdb
+    target: remove_molecules_origin
+    target_input: origin_chain_pdb
+
+  - source: extract_chain_target
+    source_output: target_chain_pdb
+    target: godmd_prep
+    target_input: target_chain_pdb
+
+  - source: extract_chain_target
+    source_output: target_chain_pdb
+    target: godmd_run
+    target_input: target_chain_pdb
+
+  - source: remove_molecules_origin
+    source_output: origin_nolig_pdb
+    target: godmd_prep
+    target_input: origin_nolig_pdb
+
+  - source: remove_molecules_origin
+    source_output: origin_nolig_pdb
+    target: godmd_run
+    target_input: origin_nolig_pdb
+
+  - source: godmd_prep
+    source_output: origin_aln
+    target: godmd_run
+    target_input: origin_aln
+
+  - source: godmd_prep
+    source_output: target_aln
+    target: godmd_run
+    target_input: target_aln
+
+  - source: godmd_run
+    source_output: godmd_trj
+    target: cpptraj_convert
+    target_input: godmd_trj
+
+  - source: godmd_run
+    source_output: godmd_pdb
+    target: cpptraj_convert
+    target_input: godmd_pdb
+
+  - source: artifact-cpptraj_convert_config
+    source_output: cpptraj_convert_config
+    target: cpptraj_convert
+    target_input: cpptraj_convert_config
+
+  - source: artifact-extract_chain_origin_config
+    source_output: extract_chain_origin_config
+    target: extract_chain_origin
+    target_input: extract_chain_origin_config
+
+  - source: artifact-extract_chain_target_config
+    source_output: extract_chain_target_config
+    target: extract_chain_target
+    target_input: extract_chain_target_config
+
+  - source: artifact-fetch_pdb_origin_config
+    source_output: fetch_pdb_origin_config
+    target: fetch_pdb_origin
+    target_input: fetch_pdb_origin_config
+
+  - source: artifact-fetch_pdb_target_config
+    source_output: fetch_pdb_target_config
+    target: fetch_pdb_target
+    target_input: fetch_pdb_target_config
+
+  - source: artifact-godmd_prep_config
+    source_output: godmd_prep_config
+    target: godmd_prep
+    target_input: godmd_prep_config
+
+  - source: artifact-godmd_run_config
+    source_output: godmd_run_config
+    target: godmd_run
+    target_input: godmd_run_config
+
+  - source: artifact-remove_molecules_origin_config
+    source_output: remove_molecules_origin_config
+    target: remove_molecules_origin
+    target_input: remove_molecules_origin_config
+
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

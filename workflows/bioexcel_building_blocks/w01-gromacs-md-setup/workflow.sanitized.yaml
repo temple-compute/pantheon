@@ -1,0 +1,713 @@
+kind: horus_workflow
+name: BioExcel MD Setup - Lysozyme 1AKI
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+artifacts:
+  - id: center_config
+    kind: file
+    path: configs/center.yaml
+
+  - id: dry_trjconv_config
+    kind: file
+    path: configs/dry_trjconv.yaml
+
+  - id: editconf_config
+    kind: file
+    path: configs/editconf.yaml
+
+  - id: fetch_pdb_config
+    kind: file
+    path: configs/fetch_pdb.yaml
+
+  - id: genion_config
+    kind: file
+    path: configs/genion.yaml
+
+  - id: grompp_free_config
+    kind: file
+    path: configs/grompp_free.yaml
+
+  - id: grompp_ions_config
+    kind: file
+    path: configs/grompp_ions.yaml
+
+  - id: grompp_minimize_config
+    kind: file
+    path: configs/grompp_minimize.yaml
+
+  - id: grompp_npt_config
+    kind: file
+    path: configs/grompp_npt.yaml
+
+  - id: grompp_nvt_config
+    kind: file
+    path: configs/grompp_nvt.yaml
+
+tasks:
+  - kind: horus_task
+    id: fetch_pdb
+    name: Download 1AKI structure from PDB
+    inputs:
+      - id: fetch_pdb_config
+        kind: file
+        path: configs/fetch_pdb.yaml
+    outputs:
+      - id: downloaded_pdb
+        kind: file
+        path: results/downloaded.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_pdb_config}
+        --output_pdb_path ${downloaded_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fix_side_chain
+    name: Model missing side-chain atoms
+    inputs:
+      - id: downloaded_pdb
+        kind: file
+        path: results/downloaded.pdb
+    outputs:
+      - id: fixed_pdb
+        kind: file
+        path: results/fixed.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        fix_side_chain
+        --input_pdb_path ${downloaded_pdb}
+        --output_pdb_path ${fixed_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: build_topology
+    name: Build GROMACS topology (pdb2gmx)
+    inputs:
+      - id: fixed_pdb
+        kind: file
+        path: results/fixed.pdb
+    outputs:
+      - id: system_gro
+        kind: file
+        path: results/system.gro
+      - id: pdb2gmx_top
+        kind: file
+        path: results/pdb2gmx_top.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb2gmx
+        --input_pdb_path ${fixed_pdb}
+        --output_gro_path ${system_gro}
+        --output_top_zip_path ${pdb2gmx_top}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: editconf
+    name: Define cubic simulation box
+    inputs:
+      - id: editconf_config
+        kind: file
+        path: configs/editconf.yaml
+      - id: system_gro
+        kind: file
+        path: results/system.gro
+    outputs:
+      - id: boxed_gro
+        kind: file
+        path: results/boxed.gro
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        editconf
+        --config ${editconf_config}
+        --input_gro_path ${system_gro}
+        --output_gro_path ${boxed_gro}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: solvate
+    name: Fill box with SPC water molecules
+    inputs:
+      - id: boxed_gro
+        kind: file
+        path: results/boxed.gro
+      - id: pdb2gmx_top
+        kind: file
+        path: results/pdb2gmx_top.zip
+    outputs:
+      - id: solvated_gro
+        kind: file
+        path: results/solvated.gro
+      - id: solvated_top
+        kind: file
+        path: results/solvated_top.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        solvate
+        --input_solute_gro_path ${boxed_gro}
+        --input_top_zip_path ${pdb2gmx_top}
+        --output_gro_path ${solvated_gro}
+        --output_top_zip_path ${solvated_top}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: grompp_ions
+    name: Compile ion run file (grompp)
+    inputs:
+      - id: grompp_ions_config
+        kind: file
+        path: configs/grompp_ions.yaml
+      - id: solvated_gro
+        kind: file
+        path: results/solvated.gro
+      - id: solvated_top
+        kind: file
+        path: results/solvated_top.zip
+    outputs:
+      - id: ions_tpr
+        kind: file
+        path: results/ions.tpr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        grompp
+        --config ${grompp_ions_config}
+        --input_gro_path ${solvated_gro}
+        --input_top_zip_path ${solvated_top}
+        --output_tpr_path ${ions_tpr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: genion
+    name: Add neutralizing ions
+    inputs:
+      - id: genion_config
+        kind: file
+        path: configs/genion.yaml
+      - id: ions_tpr
+        kind: file
+        path: results/ions.tpr
+      - id: solvated_top
+        kind: file
+        path: results/solvated_top.zip
+    outputs:
+      - id: ionized_gro
+        kind: file
+        path: results/ionized.gro
+      - id: ionized_top
+        kind: file
+        path: results/ionized_top.zip
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        genion
+        --config ${genion_config}
+        --input_tpr_path ${ions_tpr}
+        --input_top_zip_path ${solvated_top}
+        --output_gro_path ${ionized_gro}
+        --output_top_zip_path ${ionized_top}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: grompp_minimize
+    name: Compile minimization run file (grompp)
+    inputs:
+      - id: grompp_minimize_config
+        kind: file
+        path: configs/grompp_minimize.yaml
+      - id: ionized_gro
+        kind: file
+        path: results/ionized.gro
+      - id: ionized_top
+        kind: file
+        path: results/ionized_top.zip
+    outputs:
+      - id: min_tpr
+        kind: file
+        path: results/min.tpr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        grompp
+        --config ${grompp_minimize_config}
+        --input_gro_path ${ionized_gro}
+        --input_top_zip_path ${ionized_top}
+        --output_tpr_path ${min_tpr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: mdrun_minimize
+    name: Energy minimization (steepest descent)
+    inputs:
+      - id: min_tpr
+        kind: file
+        path: results/min.tpr
+    outputs:
+      - id: minimized_gro
+        kind: file
+        path: results/minimized.gro
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mdrun
+        --input_tpr_path ${min_tpr}
+        --output_gro_path ${minimized_gro}
+        --output_trr_path min.trr
+        --output_edr_path min.edr
+        --output_log_path min.log
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: grompp_nvt
+    name: Compile NVT run file (grompp)
+    inputs:
+      - id: grompp_nvt_config
+        kind: file
+        path: configs/grompp_nvt.yaml
+      - id: minimized_gro
+        kind: file
+        path: results/minimized.gro
+      - id: ionized_top
+        kind: file
+        path: results/ionized_top.zip
+    outputs:
+      - id: nvt_tpr
+        kind: file
+        path: results/nvt.tpr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        grompp
+        --config ${grompp_nvt_config}
+        --input_gro_path ${minimized_gro}
+        --input_top_zip_path ${ionized_top}
+        --output_tpr_path ${nvt_tpr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: mdrun_nvt
+    name: NVT equilibration (10 ps, restrained)
+    inputs:
+      - id: nvt_tpr
+        kind: file
+        path: results/nvt.tpr
+    outputs:
+      - id: nvt_gro
+        kind: file
+        path: results/nvt.gro
+      - id: nvt_cpt
+        kind: file
+        path: results/nvt.cpt
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mdrun
+        --input_tpr_path ${nvt_tpr}
+        --output_gro_path ${nvt_gro}
+        --output_cpt_path ${nvt_cpt}
+        --output_trr_path nvt.trr
+        --output_edr_path nvt.edr
+        --output_log_path nvt.log
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: grompp_npt
+    name: Compile NPT run file (grompp)
+    inputs:
+      - id: grompp_npt_config
+        kind: file
+        path: configs/grompp_npt.yaml
+      - id: nvt_gro
+        kind: file
+        path: results/nvt.gro
+      - id: nvt_cpt
+        kind: file
+        path: results/nvt.cpt
+      - id: ionized_top
+        kind: file
+        path: results/ionized_top.zip
+    outputs:
+      - id: npt_tpr
+        kind: file
+        path: results/npt.tpr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        grompp
+        --config ${grompp_npt_config}
+        --input_gro_path ${nvt_gro}
+        --input_cpt_path ${nvt_cpt}
+        --input_top_zip_path ${ionized_top}
+        --output_tpr_path ${npt_tpr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: mdrun_npt
+    name: NPT equilibration (10 ps, restrained)
+    inputs:
+      - id: npt_tpr
+        kind: file
+        path: results/npt.tpr
+    outputs:
+      - id: npt_gro
+        kind: file
+        path: results/npt.gro
+      - id: npt_cpt
+        kind: file
+        path: results/npt.cpt
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mdrun
+        --input_tpr_path ${npt_tpr}
+        --output_gro_path ${npt_gro}
+        --output_cpt_path ${npt_cpt}
+        --output_trr_path npt.trr
+        --output_edr_path npt.edr
+        --output_log_path npt.log
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: grompp_free
+    name: Compile free MD run file (grompp)
+    inputs:
+      - id: grompp_free_config
+        kind: file
+        path: configs/grompp_free.yaml
+      - id: npt_gro
+        kind: file
+        path: results/npt.gro
+      - id: npt_cpt
+        kind: file
+        path: results/npt.cpt
+      - id: ionized_top
+        kind: file
+        path: results/ionized_top.zip
+    outputs:
+      - id: md_tpr
+        kind: file
+        path: results/md.tpr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        grompp
+        --config ${grompp_free_config}
+        --input_gro_path ${npt_gro}
+        --input_cpt_path ${npt_cpt}
+        --input_top_zip_path ${ionized_top}
+        --output_tpr_path ${md_tpr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: mdrun_free
+    name: Free MD simulation (100 ps)
+    inputs:
+      - id: md_tpr
+        kind: file
+        path: results/md.tpr
+    outputs:
+      - id: md_gro
+        kind: file
+        path: results/md.gro
+      - id: md_trr
+        kind: file
+        path: results/md.trr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        mdrun
+        --input_tpr_path ${md_tpr}
+        --output_gro_path ${md_gro}
+        --output_trr_path ${md_trr}
+        --output_edr_path md.edr
+        --output_log_path md.log
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: gmx_image
+    name: Center protein and fix PBC in trajectory
+    inputs:
+      - id: center_config
+        kind: file
+        path: configs/center.yaml
+      - id: md_trr
+        kind: file
+        path: results/md.trr
+      - id: md_tpr
+        kind: file
+        path: results/md.tpr
+    outputs:
+      - id: imaged_trr
+        kind: file
+        path: results/imaged.trr
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_image
+        --config ${center_config}
+        --input_traj_path ${md_trr}
+        --input_top_path ${md_tpr}
+        --output_traj_path ${imaged_trr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: gmx_trjconv_str
+    name: Extract dry protein structure from trajectory
+    inputs:
+      - id: dry_trjconv_config
+        kind: file
+        path: configs/dry_trjconv.yaml
+      - id: md_gro
+        kind: file
+        path: results/md.gro
+      - id: md_tpr
+        kind: file
+        path: results/md.tpr
+    outputs:
+      - id: dry_gro
+        kind: file
+        path: results/dry.gro
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        gmx_trjconv_str
+        --config ${dry_trjconv_config}
+        --input_structure_path ${md_gro}
+        --input_top_path ${md_tpr}
+        --output_str_path ${dry_gro}
+    target:
+      kind: local
+
+edges:
+  - source: fetch_pdb
+    source_output: downloaded_pdb
+    target: fix_side_chain
+    target_input: downloaded_pdb
+
+  - source: fix_side_chain
+    source_output: fixed_pdb
+    target: build_topology
+    target_input: fixed_pdb
+
+  - source: build_topology
+    source_output: system_gro
+    target: editconf
+    target_input: system_gro
+
+  - source: build_topology
+    source_output: pdb2gmx_top
+    target: solvate
+    target_input: pdb2gmx_top
+
+  - source: editconf
+    source_output: boxed_gro
+    target: solvate
+    target_input: boxed_gro
+
+  - source: solvate
+    source_output: solvated_gro
+    target: grompp_ions
+    target_input: solvated_gro
+
+  - source: solvate
+    source_output: solvated_top
+    target: grompp_ions
+    target_input: solvated_top
+
+  - source: solvate
+    source_output: solvated_top
+    target: genion
+    target_input: solvated_top
+
+  - source: grompp_ions
+    source_output: ions_tpr
+    target: genion
+    target_input: ions_tpr
+
+  - source: genion
+    source_output: ionized_gro
+    target: grompp_minimize
+    target_input: ionized_gro
+
+  - source: genion
+    source_output: ionized_top
+    target: grompp_minimize
+    target_input: ionized_top
+
+  - source: genion
+    source_output: ionized_top
+    target: grompp_nvt
+    target_input: ionized_top
+
+  - source: genion
+    source_output: ionized_top
+    target: grompp_npt
+    target_input: ionized_top
+
+  - source: genion
+    source_output: ionized_top
+    target: grompp_free
+    target_input: ionized_top
+
+  - source: grompp_minimize
+    source_output: min_tpr
+    target: mdrun_minimize
+    target_input: min_tpr
+
+  - source: mdrun_minimize
+    source_output: minimized_gro
+    target: grompp_nvt
+    target_input: minimized_gro
+
+  - source: grompp_nvt
+    source_output: nvt_tpr
+    target: mdrun_nvt
+    target_input: nvt_tpr
+
+  - source: mdrun_nvt
+    source_output: nvt_gro
+    target: grompp_npt
+    target_input: nvt_gro
+
+  - source: mdrun_nvt
+    source_output: nvt_cpt
+    target: grompp_npt
+    target_input: nvt_cpt
+
+  - source: grompp_npt
+    source_output: npt_tpr
+    target: mdrun_npt
+    target_input: npt_tpr
+
+  - source: mdrun_npt
+    source_output: npt_gro
+    target: grompp_free
+    target_input: npt_gro
+
+  - source: mdrun_npt
+    source_output: npt_cpt
+    target: grompp_free
+    target_input: npt_cpt
+
+  - source: grompp_free
+    source_output: md_tpr
+    target: mdrun_free
+    target_input: md_tpr
+
+  - source: grompp_free
+    source_output: md_tpr
+    target: gmx_image
+    target_input: md_tpr
+
+  - source: grompp_free
+    source_output: md_tpr
+    target: gmx_trjconv_str
+    target_input: md_tpr
+
+  - source: mdrun_free
+    source_output: md_gro
+    target: gmx_trjconv_str
+    target_input: md_gro
+
+  - source: mdrun_free
+    source_output: md_trr
+    target: gmx_image
+    target_input: md_trr
+
+  - source: artifact-center_config
+    source_output: center_config
+    target: gmx_image
+    target_input: center_config
+
+  - source: artifact-dry_trjconv_config
+    source_output: dry_trjconv_config
+    target: gmx_trjconv_str
+    target_input: dry_trjconv_config
+
+  - source: artifact-editconf_config
+    source_output: editconf_config
+    target: editconf
+    target_input: editconf_config
+
+  - source: artifact-fetch_pdb_config
+    source_output: fetch_pdb_config
+    target: fetch_pdb
+    target_input: fetch_pdb_config
+
+  - source: artifact-genion_config
+    source_output: genion_config
+    target: genion
+    target_input: genion_config
+
+  - source: artifact-grompp_free_config
+    source_output: grompp_free_config
+    target: grompp_free
+    target_input: grompp_free_config
+
+  - source: artifact-grompp_ions_config
+    source_output: grompp_ions_config
+    target: grompp_ions
+    target_input: grompp_ions_config
+
+  - source: artifact-grompp_minimize_config
+    source_output: grompp_minimize_config
+    target: grompp_minimize
+    target_input: grompp_minimize_config
+
+  - source: artifact-grompp_npt_config
+    source_output: grompp_npt_config
+    target: grompp_npt
+    target_input: grompp_npt_config
+
+  - source: artifact-grompp_nvt_config
+    source_output: grompp_nvt_config
+    target: grompp_nvt
+    target_input: grompp_nvt_config
+
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

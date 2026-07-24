@@ -1,0 +1,172 @@
+kind: horus_workflow
+name: BioExcel Ligand Parameterization
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+artifacts:
+  - id: add_h_config
+    kind: file
+    path: configs/add_h.yaml
+
+  - id: fetch_ligand_config
+    kind: file
+    path: configs/fetch_ligand.yaml
+
+  - id: minimize_h_config
+    kind: file
+    path: configs/minimize_h.yaml
+
+  - id: params_config
+    kind: file
+    path: configs/params.yaml
+
+tasks:
+  - kind: horus_task
+    skip_if_complete: false
+    id: fetch_ligand
+    name: Fetch ligand structure from PDB
+    inputs:
+      - id: fetch_ligand_config
+        kind: file
+        path: configs/fetch_ligand.yaml
+    outputs:
+      - id: ligand_pdb
+        kind: file
+        path: results/ligand.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        ligand
+        --config ${fetch_ligand_config}
+        --output_pdb_path ${ligand_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: add_hydrogens
+    name: Add hydrogen atoms (OpenBabel)
+    inputs:
+      - id: add_h_config
+        kind: file
+        path: configs/add_h.yaml
+      - id: ligand_pdb
+        kind: file
+        path: results/ligand.pdb
+    outputs:
+      - id: ligand_mol2
+        kind: file
+        path: results/ligand.H.mol2
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        babel_add_hydrogens
+        --config ${add_h_config}
+        --input_path ${ligand_pdb}
+        --output_path ${ligand_mol2}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: minimize_hydrogens
+    name: Energetically minimize hydrogen atoms (OpenBabel GAFF)
+    inputs:
+      - id: minimize_h_config
+        kind: file
+        path: configs/minimize_h.yaml
+      - id: ligand_mol2
+        kind: file
+        path: results/ligand.H.mol2
+    outputs:
+      - id: minimized_pdb
+        kind: file
+        path: results/ligand.H.min.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        babel_minimize
+        --config ${minimize_h_config}
+        --input_path ${ligand_mol2}
+        --output_path ${minimized_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: parameterize
+    name: Generate GROMACS parameters (ACPype / GAFF)
+    inputs:
+      - id: params_config
+        kind: file
+        path: configs/params.yaml
+      - id: minimized_pdb
+        kind: file
+        path: results/ligand.H.min.pdb
+    outputs:
+      - id: params_gro
+        kind: file
+        path: results/ligand.params.gro
+      - id: params_itp
+        kind: file
+        path: results/ligand.params.itp
+      - id: params_top
+        kind: file
+        path: results/ligand.params.top
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        acpype_params_gmx
+        --config ${params_config}
+        --input_path ${minimized_pdb}
+        --output_path_gro ${params_gro}
+        --output_path_itp ${params_itp}
+        --output_path_top ${params_top}
+    target:
+      kind: local
+
+edges:
+  - source: fetch_ligand
+    source_output: ligand_pdb
+    target: add_hydrogens
+    target_input: ligand_pdb
+
+  - source: add_hydrogens
+    source_output: ligand_mol2
+    target: minimize_hydrogens
+    target_input: ligand_mol2
+
+  - source: minimize_hydrogens
+    source_output: minimized_pdb
+    target: parameterize
+    target_input: minimized_pdb
+
+  - source: artifact-add_h_config
+    source_output: add_h_config
+    target: add_hydrogens
+    target_input: add_h_config
+
+  - source: artifact-fetch_ligand_config
+    source_output: fetch_ligand_config
+    target: fetch_ligand
+    target_input: fetch_ligand_config
+
+  - source: artifact-minimize_h_config
+    source_output: minimize_h_config
+    target: minimize_hydrogens
+    target_input: minimize_h_config
+
+  - source: artifact-params_config
+    source_output: params_config
+    target: parameterize
+    target_input: params_config
+
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"
