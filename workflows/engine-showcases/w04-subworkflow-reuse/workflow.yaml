@@ -1,5 +1,10 @@
 kind: horus_workflow
 name: Subworkflow Reuse Showcase
+artifacts:
+  - id: quotes
+    kind: file
+    path: examples/quotes.txt
+
 tasks:
   - kind: horus_task
     id: split
@@ -136,6 +141,12 @@ edges:
     source_output: clean
     target: combine
     target_input: b
+
+  - source: artifact-quotes
+    source_output: quotes
+    target: split
+    target_input: quotes
+
 
 orchestrator_target:
   kind: local

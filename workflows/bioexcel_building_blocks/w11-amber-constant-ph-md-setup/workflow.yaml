@@ -15,6 +15,71 @@ _docker_executor: &docker_executor
 _target: &target
   kind: local
 
+artifacts:
+  - id: cphstats_config
+    kind: file
+    path: configs/cphstats.yaml
+
+  - id: fetch_pdb_config
+    kind: file
+    path: configs/fetch_pdb.yaml
+
+  - id: leap_add_ions_config
+    kind: file
+    path: configs/leap_add_ions.yaml
+
+  - id: leap_gen_top_config
+    kind: file
+    path: configs/leap_gen_top.yaml
+
+  - id: leap_solvate_config
+    kind: file
+    path: configs/leap_solvate.yaml
+
+  - id: parmed_cpinutil_config
+    kind: file
+    path: configs/parmed_cpinutil.yaml
+
+  - id: pdb4amber_config
+    kind: file
+    path: configs/pdb4amber.yaml
+
+  - id: process_heat_config
+    kind: file
+    path: configs/process_heat.yaml
+
+  - id: process_min_config
+    kind: file
+    path: configs/process_min.yaml
+
+  - id: process_npt_config
+    kind: file
+    path: configs/process_npt.yaml
+
+  - id: process_nvt_config
+    kind: file
+    path: configs/process_nvt.yaml
+
+  - id: sander_cph_free_config
+    kind: file
+    path: configs/sander_cph_free.yaml
+
+  - id: sander_heat_config
+    kind: file
+    path: configs/sander_heat.yaml
+
+  - id: sander_min_config
+    kind: file
+    path: configs/sander_min.yaml
+
+  - id: sander_npt_config
+    kind: file
+    path: configs/sander_npt.yaml
+
+  - id: sander_nvt_config
+    kind: file
+    path: configs/sander_nvt.yaml
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
@@ -622,6 +687,87 @@ edges:
     source_output: ph_cpout
     target: cphstats
     target_input: ph_cpout
+
+  - source: artifact-cphstats_config
+    source_output: cphstats_config
+    target: cphstats
+    target_input: cphstats_config
+
+  - source: artifact-fetch_pdb_config
+    source_output: fetch_pdb_config
+    target: fetch_pdb
+    target_input: fetch_pdb_config
+
+  - source: artifact-leap_add_ions_config
+    source_output: leap_add_ions_config
+    target: leap_add_ions
+    target_input: leap_add_ions_config
+
+  - source: artifact-leap_gen_top_config
+    source_output: leap_gen_top_config
+    target: leap_gen_top
+    target_input: leap_gen_top_config
+
+  - source: artifact-leap_solvate_config
+    source_output: leap_solvate_config
+    target: leap_solvate
+    target_input: leap_solvate_config
+
+  - source: artifact-parmed_cpinutil_config
+    source_output: parmed_cpinutil_config
+    target: parmed_cpinutil
+    target_input: parmed_cpinutil_config
+
+  - source: artifact-pdb4amber_config
+    source_output: pdb4amber_config
+    target: pdb4amber
+    target_input: pdb4amber_config
+
+  - source: artifact-process_heat_config
+    source_output: process_heat_config
+    target: process_heat
+    target_input: process_heat_config
+
+  - source: artifact-process_min_config
+    source_output: process_min_config
+    target: process_min
+    target_input: process_min_config
+
+  - source: artifact-process_npt_config
+    source_output: process_npt_config
+    target: process_npt
+    target_input: process_npt_config
+
+  - source: artifact-process_nvt_config
+    source_output: process_nvt_config
+    target: process_nvt
+    target_input: process_nvt_config
+
+  - source: artifact-sander_cph_free_config
+    source_output: sander_cph_free_config
+    target: sander_cph_free
+    target_input: sander_cph_free_config
+
+  - source: artifact-sander_heat_config
+    source_output: sander_heat_config
+    target: sander_heat
+    target_input: sander_heat_config
+
+  - source: artifact-sander_min_config
+    source_output: sander_min_config
+    target: sander_min
+    target_input: sander_min_config
+
+  - source: artifact-sander_npt_config
+    source_output: sander_npt_config
+    target: sander_npt
+    target_input: sander_npt_config
+
+  - source: artifact-sander_nvt_config
+    source_output: sander_nvt_config
+    target: sander_nvt
+    target_input: sander_nvt_config
+
 
 orchestrator_target:
   kind: local

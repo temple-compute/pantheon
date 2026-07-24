@@ -15,6 +15,167 @@ _docker_executor_flexserv: &docker_executor_flexserv
   kind: docker
   image: quay.io/biocontainers/biobb_flexserv:5.2.1--py310pl5321ha6fa2df_0
 
+artifacts:
+  - id: bd_run_config
+    kind: file
+    path: configs/bd_run.yaml
+
+  - id: concoord_disco_config
+    kind: file
+    path: configs/concoord_disco.yaml
+
+  - id: concoord_dist_config
+    kind: file
+    path: configs/concoord_dist.yaml
+
+  - id: cpptraj_convert_concoord_config
+    kind: file
+    path: configs/cpptraj_convert_concoord.yaml
+
+  - id: cpptraj_convert_imods_config
+    kind: file
+    path: configs/cpptraj_convert_imods.yaml
+
+  - id: cpptraj_convert_nma_config
+    kind: file
+    path: configs/cpptraj_convert_nma.yaml
+
+  - id: cpptraj_convert_nolb_config
+    kind: file
+    path: configs/cpptraj_convert_nolb.yaml
+
+  - id: cpptraj_convert_prody_config
+    kind: file
+    path: configs/cpptraj_convert_prody.yaml
+
+  - id: cpptraj_convert_proj_config
+    kind: file
+    path: configs/cpptraj_convert_proj.yaml
+
+  - id: cpptraj_mask_backbone_config
+    kind: file
+    path: configs/cpptraj_mask_backbone.yaml
+
+  - id: cpptraj_mask_ca_config
+    kind: file
+    path: configs/cpptraj_mask_ca.yaml
+
+  - id: cpptraj_rms_bd_config
+    kind: file
+    path: configs/cpptraj_rms_bd.yaml
+
+  - id: cpptraj_rms_concoord_config
+    kind: file
+    path: configs/cpptraj_rms_concoord.yaml
+
+  - id: cpptraj_rms_dmd_config
+    kind: file
+    path: configs/cpptraj_rms_dmd.yaml
+
+  - id: cpptraj_rms_imods_config
+    kind: file
+    path: configs/cpptraj_rms_imods.yaml
+
+  - id: cpptraj_rms_meta_config
+    kind: file
+    path: configs/cpptraj_rms_meta.yaml
+
+  - id: cpptraj_rms_nma_config
+    kind: file
+    path: configs/cpptraj_rms_nma.yaml
+
+  - id: cpptraj_rms_nolb_config
+    kind: file
+    path: configs/cpptraj_rms_nolb.yaml
+
+  - id: cpptraj_rms_prody_config
+    kind: file
+    path: configs/cpptraj_rms_prody.yaml
+
+  - id: dmd_run_config
+    kind: file
+    path: configs/dmd_run.yaml
+
+  - id: extract_chain_config
+    kind: file
+    path: configs/extract_chain.yaml
+
+  - id: extract_model_config
+    kind: file
+    path: configs/extract_model.yaml
+
+  - id: fetch_pdb_config
+    kind: file
+    path: configs/fetch_pdb.yaml
+
+  - id: gmx_cluster_config
+    kind: file
+    path: configs/gmx_cluster.yaml
+
+  - id: imod_imc_config
+    kind: file
+    path: configs/imod_imc.yaml
+
+  - id: imod_imode_config
+    kind: file
+    path: configs/imod_imode.yaml
+
+  - id: make_ndx_config
+    kind: file
+    path: configs/make_ndx.yaml
+
+  - id: nma_run_config
+    kind: file
+    path: configs/nma_run.yaml
+
+  - id: nolb_nma_config
+    kind: file
+    path: configs/nolb_nma.yaml
+
+  - id: pcz_animate_config
+    kind: file
+    path: configs/pcz_animate.yaml
+
+  - id: pcz_bfactor_config
+    kind: file
+    path: configs/pcz_bfactor.yaml
+
+  - id: pcz_collectivity_config
+    kind: file
+    path: configs/pcz_collectivity.yaml
+
+  - id: pcz_evecs_config
+    kind: file
+    path: configs/pcz_evecs.yaml
+
+  - id: pcz_hinges_bfactor_config
+    kind: file
+    path: configs/pcz_hinges_bfactor.yaml
+
+  - id: pcz_hinges_dyndom_config
+    kind: file
+    path: configs/pcz_hinges_dyndom.yaml
+
+  - id: pcz_hinges_fcte_config
+    kind: file
+    path: configs/pcz_hinges_fcte.yaml
+
+  - id: pcz_stiffness_config
+    kind: file
+    path: configs/pcz_stiffness.yaml
+
+  - id: pcz_zip_classic_config
+    kind: file
+    path: configs/pcz_zip_classic.yaml
+
+  - id: pcz_zip_gaussian_config
+    kind: file
+    path: configs/pcz_zip_gaussian.yaml
+
+  - id: prody_anm_config
+    kind: file
+    path: configs/prody_anm.yaml
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
@@ -1586,6 +1747,207 @@ edges:
     source_output: proj1_crd
     target: cpptraj_convert_proj
     target_input: proj1_crd
+
+  - source: artifact-bd_run_config
+    source_output: bd_run_config
+    target: bd_run
+    target_input: bd_run_config
+
+  - source: artifact-concoord_disco_config
+    source_output: concoord_disco_config
+    target: concoord_disco
+    target_input: concoord_disco_config
+
+  - source: artifact-concoord_dist_config
+    source_output: concoord_dist_config
+    target: concoord_dist
+    target_input: concoord_dist_config
+
+  - source: artifact-cpptraj_convert_concoord_config
+    source_output: cpptraj_convert_concoord_config
+    target: cpptraj_convert_concoord
+    target_input: cpptraj_convert_concoord_config
+
+  - source: artifact-cpptraj_convert_imods_config
+    source_output: cpptraj_convert_imods_config
+    target: cpptraj_convert_imods
+    target_input: cpptraj_convert_imods_config
+
+  - source: artifact-cpptraj_convert_nma_config
+    source_output: cpptraj_convert_nma_config
+    target: cpptraj_convert_nma
+    target_input: cpptraj_convert_nma_config
+
+  - source: artifact-cpptraj_convert_nolb_config
+    source_output: cpptraj_convert_nolb_config
+    target: cpptraj_convert_nolb
+    target_input: cpptraj_convert_nolb_config
+
+  - source: artifact-cpptraj_convert_prody_config
+    source_output: cpptraj_convert_prody_config
+    target: cpptraj_convert_prody
+    target_input: cpptraj_convert_prody_config
+
+  - source: artifact-cpptraj_convert_proj_config
+    source_output: cpptraj_convert_proj_config
+    target: cpptraj_convert_proj
+    target_input: cpptraj_convert_proj_config
+
+  - source: artifact-cpptraj_mask_backbone_config
+    source_output: cpptraj_mask_backbone_config
+    target: cpptraj_mask_backbone
+    target_input: cpptraj_mask_backbone_config
+
+  - source: artifact-cpptraj_mask_ca_config
+    source_output: cpptraj_mask_ca_config
+    target: cpptraj_mask_ca
+    target_input: cpptraj_mask_ca_config
+
+  - source: artifact-cpptraj_rms_bd_config
+    source_output: cpptraj_rms_bd_config
+    target: cpptraj_rms_bd
+    target_input: cpptraj_rms_bd_config
+
+  - source: artifact-cpptraj_rms_concoord_config
+    source_output: cpptraj_rms_concoord_config
+    target: cpptraj_rms_concoord
+    target_input: cpptraj_rms_concoord_config
+
+  - source: artifact-cpptraj_rms_dmd_config
+    source_output: cpptraj_rms_dmd_config
+    target: cpptraj_rms_dmd
+    target_input: cpptraj_rms_dmd_config
+
+  - source: artifact-cpptraj_rms_imods_config
+    source_output: cpptraj_rms_imods_config
+    target: cpptraj_rms_imods
+    target_input: cpptraj_rms_imods_config
+
+  - source: artifact-cpptraj_rms_meta_config
+    source_output: cpptraj_rms_meta_config
+    target: cpptraj_rms_meta
+    target_input: cpptraj_rms_meta_config
+
+  - source: artifact-cpptraj_rms_nma_config
+    source_output: cpptraj_rms_nma_config
+    target: cpptraj_rms_nma
+    target_input: cpptraj_rms_nma_config
+
+  - source: artifact-cpptraj_rms_nolb_config
+    source_output: cpptraj_rms_nolb_config
+    target: cpptraj_rms_nolb
+    target_input: cpptraj_rms_nolb_config
+
+  - source: artifact-cpptraj_rms_prody_config
+    source_output: cpptraj_rms_prody_config
+    target: cpptraj_rms_prody
+    target_input: cpptraj_rms_prody_config
+
+  - source: artifact-dmd_run_config
+    source_output: dmd_run_config
+    target: dmd_run
+    target_input: dmd_run_config
+
+  - source: artifact-extract_chain_config
+    source_output: extract_chain_config
+    target: extract_chain
+    target_input: extract_chain_config
+
+  - source: artifact-extract_model_config
+    source_output: extract_model_config
+    target: extract_model
+    target_input: extract_model_config
+
+  - source: artifact-fetch_pdb_config
+    source_output: fetch_pdb_config
+    target: fetch_pdb
+    target_input: fetch_pdb_config
+
+  - source: artifact-gmx_cluster_config
+    source_output: gmx_cluster_config
+    target: gmx_cluster
+    target_input: gmx_cluster_config
+
+  - source: artifact-imod_imc_config
+    source_output: imod_imc_config
+    target: imod_imc
+    target_input: imod_imc_config
+
+  - source: artifact-imod_imode_config
+    source_output: imod_imode_config
+    target: imod_imode
+    target_input: imod_imode_config
+
+  - source: artifact-make_ndx_config
+    source_output: make_ndx_config
+    target: make_ndx
+    target_input: make_ndx_config
+
+  - source: artifact-nma_run_config
+    source_output: nma_run_config
+    target: nma_run
+    target_input: nma_run_config
+
+  - source: artifact-nolb_nma_config
+    source_output: nolb_nma_config
+    target: nolb_nma
+    target_input: nolb_nma_config
+
+  - source: artifact-pcz_animate_config
+    source_output: pcz_animate_config
+    target: pcz_animate
+    target_input: pcz_animate_config
+
+  - source: artifact-pcz_bfactor_config
+    source_output: pcz_bfactor_config
+    target: pcz_bfactor
+    target_input: pcz_bfactor_config
+
+  - source: artifact-pcz_collectivity_config
+    source_output: pcz_collectivity_config
+    target: pcz_collectivity
+    target_input: pcz_collectivity_config
+
+  - source: artifact-pcz_evecs_config
+    source_output: pcz_evecs_config
+    target: pcz_evecs
+    target_input: pcz_evecs_config
+
+  - source: artifact-pcz_hinges_bfactor_config
+    source_output: pcz_hinges_bfactor_config
+    target: pcz_hinges_bfactor
+    target_input: pcz_hinges_bfactor_config
+
+  - source: artifact-pcz_hinges_dyndom_config
+    source_output: pcz_hinges_dyndom_config
+    target: pcz_hinges_dyndom
+    target_input: pcz_hinges_dyndom_config
+
+  - source: artifact-pcz_hinges_fcte_config
+    source_output: pcz_hinges_fcte_config
+    target: pcz_hinges_fcte
+    target_input: pcz_hinges_fcte_config
+
+  - source: artifact-pcz_stiffness_config
+    source_output: pcz_stiffness_config
+    target: pcz_stiffness
+    target_input: pcz_stiffness_config
+
+  - source: artifact-pcz_zip_classic_config
+    source_output: pcz_zip_classic_config
+    target: pcz_zip_classic
+    target_input: pcz_zip_classic_config
+
+  - source: artifact-pcz_zip_gaussian_config
+    source_output: pcz_zip_gaussian_config
+    target: pcz_zip_gaussian
+    target_input: pcz_zip_gaussian_config
+
+  - source: artifact-prody_anm_config
+    source_output: prody_anm_config
+    target: prody_anm
+    target_input: prody_anm_config
+
 
 orchestrator_target:
   kind: local

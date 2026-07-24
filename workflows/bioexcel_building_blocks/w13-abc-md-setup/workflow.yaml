@@ -15,6 +15,155 @@ _docker_executor: &docker_executor
 _target: &target
   kind: local
 
+artifacts:
+  - id: md_mdin
+    kind: file
+    path: ABCix_config_files/md.in
+
+  - id: step1_mdin
+    kind: file
+    path: ABCix_config_files/step1.in
+
+  - id: step10_mdin
+    kind: file
+    path: ABCix_config_files/step10.in
+
+  - id: step2_mdin
+    kind: file
+    path: ABCix_config_files/step2.in
+
+  - id: step3_mdin
+    kind: file
+    path: ABCix_config_files/step3.in
+
+  - id: step4_mdin
+    kind: file
+    path: ABCix_config_files/step4.in
+
+  - id: step5_mdin
+    kind: file
+    path: ABCix_config_files/step5.in
+
+  - id: step6_mdin
+    kind: file
+    path: ABCix_config_files/step6.in
+
+  - id: step7_mdin
+    kind: file
+    path: ABCix_config_files/step7.in
+
+  - id: step8_mdin
+    kind: file
+    path: ABCix_config_files/step8.in
+
+  - id: step9_mdin
+    kind: file
+    path: ABCix_config_files/step9.in
+
+  - id: dna_pdb
+    kind: file
+    path: CGCGAATTCGCG.pdb
+
+  - id: cpptraj_randomize_ions_config
+    kind: file
+    path: configs/cpptraj_randomize_ions.yaml
+
+  - id: leap_add_ions_config
+    kind: file
+    path: configs/leap_add_ions.yaml
+
+  - id: leap_gen_top_config
+    kind: file
+    path: configs/leap_gen_top.yaml
+
+  - id: leap_solvate_config
+    kind: file
+    path: configs/leap_solvate.yaml
+
+  - id: process_eq1_config
+    kind: file
+    path: configs/process_eq1.yaml
+
+  - id: process_eq10_config
+    kind: file
+    path: configs/process_eq10.yaml
+
+  - id: process_eq2_config
+    kind: file
+    path: configs/process_eq2.yaml
+
+  - id: process_eq3_config
+    kind: file
+    path: configs/process_eq3.yaml
+
+  - id: process_eq4_config
+    kind: file
+    path: configs/process_eq4.yaml
+
+  - id: process_eq5_config
+    kind: file
+    path: configs/process_eq5.yaml
+
+  - id: process_eq6_config
+    kind: file
+    path: configs/process_eq6.yaml
+
+  - id: process_eq7_config
+    kind: file
+    path: configs/process_eq7.yaml
+
+  - id: process_eq8_config
+    kind: file
+    path: configs/process_eq8.yaml
+
+  - id: process_eq9_config
+    kind: file
+    path: configs/process_eq9.yaml
+
+  - id: sander_eq1_config
+    kind: file
+    path: configs/sander_eq1.yaml
+
+  - id: sander_eq10_config
+    kind: file
+    path: configs/sander_eq10.yaml
+
+  - id: sander_eq2_config
+    kind: file
+    path: configs/sander_eq2.yaml
+
+  - id: sander_eq3_config
+    kind: file
+    path: configs/sander_eq3.yaml
+
+  - id: sander_eq4_config
+    kind: file
+    path: configs/sander_eq4.yaml
+
+  - id: sander_eq5_config
+    kind: file
+    path: configs/sander_eq5.yaml
+
+  - id: sander_eq6_config
+    kind: file
+    path: configs/sander_eq6.yaml
+
+  - id: sander_eq7_config
+    kind: file
+    path: configs/sander_eq7.yaml
+
+  - id: sander_eq8_config
+    kind: file
+    path: configs/sander_eq8.yaml
+
+  - id: sander_eq9_config
+    kind: file
+    path: configs/sander_eq9.yaml
+
+  - id: sander_md_config
+    kind: file
+    path: configs/sander_md.yaml
+
 tasks:
   - kind: horus_task
     id: leap_gen_top
@@ -1084,6 +1233,192 @@ edges:
     source_output: eq10_rst
     target: sander_md
     target_input: eq10_rst
+
+  - source: artifact-md_mdin
+    source_output: md_mdin
+    target: sander_md
+    target_input: md_mdin
+
+  - source: artifact-step1_mdin
+    source_output: step1_mdin
+    target: sander_eq1
+    target_input: step1_mdin
+
+  - source: artifact-step10_mdin
+    source_output: step10_mdin
+    target: sander_eq10
+    target_input: step10_mdin
+
+  - source: artifact-step2_mdin
+    source_output: step2_mdin
+    target: sander_eq2
+    target_input: step2_mdin
+
+  - source: artifact-step3_mdin
+    source_output: step3_mdin
+    target: sander_eq3
+    target_input: step3_mdin
+
+  - source: artifact-step4_mdin
+    source_output: step4_mdin
+    target: sander_eq4
+    target_input: step4_mdin
+
+  - source: artifact-step5_mdin
+    source_output: step5_mdin
+    target: sander_eq5
+    target_input: step5_mdin
+
+  - source: artifact-step6_mdin
+    source_output: step6_mdin
+    target: sander_eq6
+    target_input: step6_mdin
+
+  - source: artifact-step7_mdin
+    source_output: step7_mdin
+    target: sander_eq7
+    target_input: step7_mdin
+
+  - source: artifact-step8_mdin
+    source_output: step8_mdin
+    target: sander_eq8
+    target_input: step8_mdin
+
+  - source: artifact-step9_mdin
+    source_output: step9_mdin
+    target: sander_eq9
+    target_input: step9_mdin
+
+  - source: artifact-dna_pdb
+    source_output: dna_pdb
+    target: leap_gen_top
+    target_input: dna_pdb
+
+  - source: artifact-cpptraj_randomize_ions_config
+    source_output: cpptraj_randomize_ions_config
+    target: cpptraj_randomize_ions
+    target_input: cpptraj_randomize_ions_config
+
+  - source: artifact-leap_add_ions_config
+    source_output: leap_add_ions_config
+    target: leap_add_ions
+    target_input: leap_add_ions_config
+
+  - source: artifact-leap_gen_top_config
+    source_output: leap_gen_top_config
+    target: leap_gen_top
+    target_input: leap_gen_top_config
+
+  - source: artifact-leap_solvate_config
+    source_output: leap_solvate_config
+    target: leap_solvate
+    target_input: leap_solvate_config
+
+  - source: artifact-process_eq1_config
+    source_output: process_eq1_config
+    target: process_eq1
+    target_input: process_eq1_config
+
+  - source: artifact-process_eq10_config
+    source_output: process_eq10_config
+    target: process_eq10
+    target_input: process_eq10_config
+
+  - source: artifact-process_eq2_config
+    source_output: process_eq2_config
+    target: process_eq2
+    target_input: process_eq2_config
+
+  - source: artifact-process_eq3_config
+    source_output: process_eq3_config
+    target: process_eq3
+    target_input: process_eq3_config
+
+  - source: artifact-process_eq4_config
+    source_output: process_eq4_config
+    target: process_eq4
+    target_input: process_eq4_config
+
+  - source: artifact-process_eq5_config
+    source_output: process_eq5_config
+    target: process_eq5
+    target_input: process_eq5_config
+
+  - source: artifact-process_eq6_config
+    source_output: process_eq6_config
+    target: process_eq6
+    target_input: process_eq6_config
+
+  - source: artifact-process_eq7_config
+    source_output: process_eq7_config
+    target: process_eq7
+    target_input: process_eq7_config
+
+  - source: artifact-process_eq8_config
+    source_output: process_eq8_config
+    target: process_eq8
+    target_input: process_eq8_config
+
+  - source: artifact-process_eq9_config
+    source_output: process_eq9_config
+    target: process_eq9
+    target_input: process_eq9_config
+
+  - source: artifact-sander_eq1_config
+    source_output: sander_eq1_config
+    target: sander_eq1
+    target_input: sander_eq1_config
+
+  - source: artifact-sander_eq10_config
+    source_output: sander_eq10_config
+    target: sander_eq10
+    target_input: sander_eq10_config
+
+  - source: artifact-sander_eq2_config
+    source_output: sander_eq2_config
+    target: sander_eq2
+    target_input: sander_eq2_config
+
+  - source: artifact-sander_eq3_config
+    source_output: sander_eq3_config
+    target: sander_eq3
+    target_input: sander_eq3_config
+
+  - source: artifact-sander_eq4_config
+    source_output: sander_eq4_config
+    target: sander_eq4
+    target_input: sander_eq4_config
+
+  - source: artifact-sander_eq5_config
+    source_output: sander_eq5_config
+    target: sander_eq5
+    target_input: sander_eq5_config
+
+  - source: artifact-sander_eq6_config
+    source_output: sander_eq6_config
+    target: sander_eq6
+    target_input: sander_eq6_config
+
+  - source: artifact-sander_eq7_config
+    source_output: sander_eq7_config
+    target: sander_eq7
+    target_input: sander_eq7_config
+
+  - source: artifact-sander_eq8_config
+    source_output: sander_eq8_config
+    target: sander_eq8
+    target_input: sander_eq8_config
+
+  - source: artifact-sander_eq9_config
+    source_output: sander_eq9_config
+    target: sander_eq9
+    target_input: sander_eq9_config
+
+  - source: artifact-sander_md_config
+    source_output: sander_md_config
+    target: sander_md
+    target_input: sander_md_config
+
 
 orchestrator_target:
   kind: local

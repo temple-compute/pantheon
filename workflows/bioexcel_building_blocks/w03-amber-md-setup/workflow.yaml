@@ -15,6 +15,79 @@ _docker_executor: &docker_executor
 _target: &target
   kind: local
 
+artifacts:
+  - id: cpptraj_image_config
+    kind: file
+    path: configs/cpptraj_image.yaml
+
+  - id: cpptraj_rgyr_config
+    kind: file
+    path: configs/cpptraj_rgyr.yaml
+
+  - id: cpptraj_rms_exp_config
+    kind: file
+    path: configs/cpptraj_rms_exp.yaml
+
+  - id: cpptraj_rms_first_config
+    kind: file
+    path: configs/cpptraj_rms_first.yaml
+
+  - id: fetch_pdb_config
+    kind: file
+    path: configs/fetch_pdb.yaml
+
+  - id: gen_top_config
+    kind: file
+    path: configs/gen_top.yaml
+
+  - id: leap_add_ions_config
+    kind: file
+    path: configs/leap_add_ions.yaml
+
+  - id: leap_solvate_config
+    kind: file
+    path: configs/leap_solvate.yaml
+
+  - id: process_energy_config
+    kind: file
+    path: configs/process_energy.yaml
+
+  - id: process_npt_config
+    kind: file
+    path: configs/process_npt.yaml
+
+  - id: process_temp_config
+    kind: file
+    path: configs/process_temp.yaml
+
+  - id: sander_free_config
+    kind: file
+    path: configs/sander_free.yaml
+
+  - id: sander_h_min_config
+    kind: file
+    path: configs/sander_h_min.yaml
+
+  - id: sander_heat_config
+    kind: file
+    path: configs/sander_heat.yaml
+
+  - id: sander_min_config
+    kind: file
+    path: configs/sander_min.yaml
+
+  - id: sander_n_min_config
+    kind: file
+    path: configs/sander_n_min.yaml
+
+  - id: sander_npt_config
+    kind: file
+    path: configs/sander_npt.yaml
+
+  - id: sander_nvt_config
+    kind: file
+    path: configs/sander_nvt.yaml
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
@@ -869,6 +942,112 @@ edges:
     source_output: free_traj
     target: cpptraj_image
     target_input: free_traj
+
+  - source: artifact-cpptraj_image_config
+    source_output: cpptraj_image_config
+    target: cpptraj_image
+    target_input: cpptraj_image_config
+
+  - source: artifact-cpptraj_rgyr_config
+    source_output: cpptraj_rgyr_config
+    target: cpptraj_rgyr
+    target_input: cpptraj_rgyr_config
+
+  - source: artifact-cpptraj_rms_exp_config
+    source_output: cpptraj_rms_exp_config
+    target: cpptraj_rms_exp
+    target_input: cpptraj_rms_exp_config
+
+  - source: artifact-cpptraj_rms_first_config
+    source_output: cpptraj_rms_first_config
+    target: cpptraj_rms_first
+    target_input: cpptraj_rms_first_config
+
+  - source: artifact-fetch_pdb_config
+    source_output: fetch_pdb_config
+    target: fetch_pdb
+    target_input: fetch_pdb_config
+
+  - source: artifact-gen_top_config
+    source_output: gen_top_config
+    target: gen_top
+    target_input: gen_top_config
+
+  - source: artifact-leap_add_ions_config
+    source_output: leap_add_ions_config
+    target: leap_add_ions
+    target_input: leap_add_ions_config
+
+  - source: artifact-leap_solvate_config
+    source_output: leap_solvate_config
+    target: leap_solvate
+    target_input: leap_solvate_config
+
+  - source: artifact-process_energy_config
+    source_output: process_energy_config
+    target: process_h_min
+    target_input: process_energy_config
+
+  - source: artifact-process_energy_config
+    source_output: process_energy_config
+    target: process_n_min
+    target_input: process_energy_config
+
+  - source: artifact-process_energy_config
+    source_output: process_energy_config
+    target: process_min
+    target_input: process_energy_config
+
+  - source: artifact-process_npt_config
+    source_output: process_npt_config
+    target: process_npt
+    target_input: process_npt_config
+
+  - source: artifact-process_temp_config
+    source_output: process_temp_config
+    target: process_heat
+    target_input: process_temp_config
+
+  - source: artifact-process_temp_config
+    source_output: process_temp_config
+    target: process_nvt
+    target_input: process_temp_config
+
+  - source: artifact-sander_free_config
+    source_output: sander_free_config
+    target: sander_free
+    target_input: sander_free_config
+
+  - source: artifact-sander_h_min_config
+    source_output: sander_h_min_config
+    target: sander_h_min
+    target_input: sander_h_min_config
+
+  - source: artifact-sander_heat_config
+    source_output: sander_heat_config
+    target: sander_heat
+    target_input: sander_heat_config
+
+  - source: artifact-sander_min_config
+    source_output: sander_min_config
+    target: sander_min
+    target_input: sander_min_config
+
+  - source: artifact-sander_n_min_config
+    source_output: sander_n_min_config
+    target: sander_n_min
+    target_input: sander_n_min_config
+
+  - source: artifact-sander_npt_config
+    source_output: sander_npt_config
+    target: sander_npt
+    target_input: sander_npt_config
+
+  - source: artifact-sander_nvt_config
+    source_output: sander_nvt_config
+    target: sander_nvt
+    target_input: sander_nvt_config
+
 
 orchestrator_target:
   kind: local

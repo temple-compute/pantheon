@@ -12,6 +12,43 @@ _docker_executor: &docker_executor
   kind: docker
   image: quay.io/biocontainers/biobb_amber:5.2.1--py312hc5e4ab4_0
 
+artifacts:
+  - id: canonical_fasta_config
+    kind: file
+    path: configs/canonical_fasta.yaml
+
+  - id: extract_chain_config
+    kind: file
+    path: configs/extract_chain.yaml
+
+  - id: extract_model_config
+    kind: file
+    path: configs/extract_model.yaml
+
+  - id: fetch_pdb_config
+    kind: file
+    path: configs/fetch_pdb.yaml
+
+  - id: fix_altlocs_config
+    kind: file
+    path: configs/fix_altlocs.yaml
+
+  - id: leap_gen_top_config
+    kind: file
+    path: configs/leap_gen_top.yaml
+
+  - id: remove_molecules_ligands_config
+    kind: file
+    path: configs/remove_molecules_ligands.yaml
+
+  - id: remove_molecules_metals_config
+    kind: file
+    path: configs/remove_molecules_metals.yaml
+
+  - id: sander_mdrun_config
+    kind: file
+    path: configs/sander_mdrun.yaml
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
@@ -594,6 +631,52 @@ edges:
     source_output: final_pdb
     target: structure_check_final
     target_input: final_pdb
+
+  - source: artifact-canonical_fasta_config
+    source_output: canonical_fasta_config
+    target: canonical_fasta
+    target_input: canonical_fasta_config
+
+  - source: artifact-extract_chain_config
+    source_output: extract_chain_config
+    target: extract_chain
+    target_input: extract_chain_config
+
+  - source: artifact-extract_model_config
+    source_output: extract_model_config
+    target: extract_model
+    target_input: extract_model_config
+
+  - source: artifact-fetch_pdb_config
+    source_output: fetch_pdb_config
+    target: fetch_pdb
+    target_input: fetch_pdb_config
+
+  - source: artifact-fix_altlocs_config
+    source_output: fix_altlocs_config
+    target: fix_altlocs
+    target_input: fix_altlocs_config
+
+  - source: artifact-leap_gen_top_config
+    source_output: leap_gen_top_config
+    target: leap_gen_top
+    target_input: leap_gen_top_config
+
+  - source: artifact-remove_molecules_ligands_config
+    source_output: remove_molecules_ligands_config
+    target: remove_molecules_ligands
+    target_input: remove_molecules_ligands_config
+
+  - source: artifact-remove_molecules_metals_config
+    source_output: remove_molecules_metals_config
+    target: remove_molecules_metals
+    target_input: remove_molecules_metals_config
+
+  - source: artifact-sander_mdrun_config
+    source_output: sander_mdrun_config
+    target: sander_mdrun
+    target_input: sander_mdrun_config
+
 
 orchestrator_target:
   kind: local

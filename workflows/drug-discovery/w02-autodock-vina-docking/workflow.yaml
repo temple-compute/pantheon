@@ -1,5 +1,14 @@
 kind: horus_workflow
 name: AutoDock Vina Docking
+artifacts:
+  - id: ligands
+    kind: file
+    path: examples/ligands.smi
+
+  - id: receptor
+    kind: file
+    path: examples/receptor.pdb
+
 tasks:
   - kind: horus_task
     id: prep
@@ -106,6 +115,17 @@ edges:
     source_output: docking_out
     target: summary
     target_input: docking_out
+
+  - source: artifact-ligands
+    source_output: ligands
+    target: prep
+    target_input: ligands
+
+  - source: artifact-receptor
+    source_output: receptor
+    target: prep
+    target_input: receptor
+
 orchestrator_target:
   kind: local
   working_directory: horus_workflow_results

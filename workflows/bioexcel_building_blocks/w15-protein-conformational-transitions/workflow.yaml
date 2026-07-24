@@ -7,6 +7,39 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+artifacts:
+  - id: cpptraj_convert_config
+    kind: file
+    path: configs/cpptraj_convert.yaml
+
+  - id: extract_chain_origin_config
+    kind: file
+    path: configs/extract_chain_origin.yaml
+
+  - id: extract_chain_target_config
+    kind: file
+    path: configs/extract_chain_target.yaml
+
+  - id: fetch_pdb_origin_config
+    kind: file
+    path: configs/fetch_pdb_origin.yaml
+
+  - id: fetch_pdb_target_config
+    kind: file
+    path: configs/fetch_pdb_target.yaml
+
+  - id: godmd_prep_config
+    kind: file
+    path: configs/godmd_prep.yaml
+
+  - id: godmd_run_config
+    kind: file
+    path: configs/godmd_run.yaml
+
+  - id: remove_molecules_origin_config
+    kind: file
+    path: configs/remove_molecules_origin.yaml
+
 tasks:
   - kind: horus_task
     id: fetch_pdb_origin
@@ -285,6 +318,47 @@ edges:
     source_output: godmd_pdb
     target: cpptraj_convert
     target_input: godmd_pdb
+
+  - source: artifact-cpptraj_convert_config
+    source_output: cpptraj_convert_config
+    target: cpptraj_convert
+    target_input: cpptraj_convert_config
+
+  - source: artifact-extract_chain_origin_config
+    source_output: extract_chain_origin_config
+    target: extract_chain_origin
+    target_input: extract_chain_origin_config
+
+  - source: artifact-extract_chain_target_config
+    source_output: extract_chain_target_config
+    target: extract_chain_target
+    target_input: extract_chain_target_config
+
+  - source: artifact-fetch_pdb_origin_config
+    source_output: fetch_pdb_origin_config
+    target: fetch_pdb_origin
+    target_input: fetch_pdb_origin_config
+
+  - source: artifact-fetch_pdb_target_config
+    source_output: fetch_pdb_target_config
+    target: fetch_pdb_target
+    target_input: fetch_pdb_target_config
+
+  - source: artifact-godmd_prep_config
+    source_output: godmd_prep_config
+    target: godmd_prep
+    target_input: godmd_prep_config
+
+  - source: artifact-godmd_run_config
+    source_output: godmd_run_config
+    target: godmd_run
+    target_input: godmd_run_config
+
+  - source: artifact-remove_molecules_origin_config
+    source_output: remove_molecules_origin_config
+    target: remove_molecules_origin
+    target_input: remove_molecules_origin_config
+
 
 orchestrator_target:
   kind: local
