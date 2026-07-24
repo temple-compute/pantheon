@@ -7,6 +7,23 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+artifacts:
+  - id: add_h_config
+    kind: file
+    path: configs/add_h.yaml
+
+  - id: fetch_ligand_config
+    kind: file
+    path: configs/fetch_ligand.yaml
+
+  - id: minimize_h_config
+    kind: file
+    path: configs/minimize_h.yaml
+
+  - id: params_config
+    kind: file
+    path: configs/params.yaml
+
 tasks:
   - kind: horus_task
     skip_if_complete: false
@@ -128,6 +145,27 @@ edges:
     source_output: minimized_pdb
     target: parameterize
     target_input: minimized_pdb
+
+  - source: artifact-add_h_config
+    source_output: add_h_config
+    target: add_hydrogens
+    target_input: add_h_config
+
+  - source: artifact-fetch_ligand_config
+    source_output: fetch_ligand_config
+    target: fetch_ligand
+    target_input: fetch_ligand_config
+
+  - source: artifact-minimize_h_config
+    source_output: minimize_h_config
+    target: minimize_hydrogens
+    target_input: minimize_h_config
+
+  - source: artifact-params_config
+    source_output: params_config
+    target: parameterize
+    target_input: params_config
+
 
 orchestrator_target:
   kind: local

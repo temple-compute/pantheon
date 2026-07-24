@@ -7,6 +7,67 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+artifacts:
+  - id: build_model_config
+    kind: file
+    path: configs/build_model.yaml
+
+  - id: evaluate_model_config
+    kind: file
+    path: configs/evaluate_model.yaml
+
+  - id: featurize_test_trajectory_config
+    kind: file
+    path: configs/featurize_test_trajectory.yaml
+
+  - id: featurize_train_trajectory_config
+    kind: file
+    path: configs/featurize_train_trajectory.yaml
+
+  - id: fetch_test_trajectory_config
+    kind: file
+    path: configs/fetch_test_trajectory.yaml
+
+  - id: fetch_train_trajectory_config
+    kind: file
+    path: configs/fetch_train_trajectory.yaml
+
+  - id: fit_test_trajectory_config
+    kind: file
+    path: configs/fit_test_trajectory.yaml
+
+  - id: fit_train_trajectory_config
+    kind: file
+    path: configs/fit_train_trajectory.yaml
+
+  - id: gmx_rmsf_apo_config
+    kind: file
+    path: configs/gmx_rmsf_apo.yaml
+
+  - id: gmx_rmsf_holo_config
+    kind: file
+    path: configs/gmx_rmsf_holo.yaml
+
+  - id: gmx_rmsf_holo_recon_config
+    kind: file
+    path: configs/gmx_rmsf_holo_recon.yaml
+
+  - id: make_ndx_apo_config
+    kind: file
+    path: configs/make_ndx_apo.yaml
+
+  - id: make_ndx_holo_config
+    kind: file
+    path: configs/make_ndx_holo.yaml
+
+  - id: make_plumed_config
+    kind: file
+    path: configs/make_plumed.yaml
+
+  - id: train_model_config
+    kind: file
+    path: configs/train_model.yaml
+
 tasks:
   - kind: horus_task
     id: fetch_train_trajectory
@@ -660,6 +721,82 @@ edges:
     source_output: train_stats
     target: make_plumed
     target_input: train_stats
+
+  - source: artifact-build_model_config
+    source_output: build_model_config
+    target: build_model
+    target_input: build_model_config
+
+  - source: artifact-evaluate_model_config
+    source_output: evaluate_model_config
+    target: evaluate_model
+    target_input: evaluate_model_config
+
+  - source: artifact-featurize_test_trajectory_config
+    source_output: featurize_test_trajectory_config
+    target: featurize_test_trajectory
+    target_input: featurize_test_trajectory_config
+
+  - source: artifact-featurize_train_trajectory_config
+    source_output: featurize_train_trajectory_config
+    target: featurize_train_trajectory
+    target_input: featurize_train_trajectory_config
+
+  - source: artifact-fetch_test_trajectory_config
+    source_output: fetch_test_trajectory_config
+    target: fetch_test_trajectory
+    target_input: fetch_test_trajectory_config
+
+  - source: artifact-fetch_train_trajectory_config
+    source_output: fetch_train_trajectory_config
+    target: fetch_train_trajectory
+    target_input: fetch_train_trajectory_config
+
+  - source: artifact-fit_test_trajectory_config
+    source_output: fit_test_trajectory_config
+    target: fit_test_trajectory
+    target_input: fit_test_trajectory_config
+
+  - source: artifact-fit_train_trajectory_config
+    source_output: fit_train_trajectory_config
+    target: fit_train_trajectory
+    target_input: fit_train_trajectory_config
+
+  - source: artifact-gmx_rmsf_apo_config
+    source_output: gmx_rmsf_apo_config
+    target: gmx_rmsf_apo
+    target_input: gmx_rmsf_apo_config
+
+  - source: artifact-gmx_rmsf_holo_config
+    source_output: gmx_rmsf_holo_config
+    target: gmx_rmsf_holo
+    target_input: gmx_rmsf_holo_config
+
+  - source: artifact-gmx_rmsf_holo_recon_config
+    source_output: gmx_rmsf_holo_recon_config
+    target: gmx_rmsf_holo_recon
+    target_input: gmx_rmsf_holo_recon_config
+
+  - source: artifact-make_ndx_apo_config
+    source_output: make_ndx_apo_config
+    target: make_ndx_apo
+    target_input: make_ndx_apo_config
+
+  - source: artifact-make_ndx_holo_config
+    source_output: make_ndx_holo_config
+    target: make_ndx_holo
+    target_input: make_ndx_holo_config
+
+  - source: artifact-make_plumed_config
+    source_output: make_plumed_config
+    target: make_plumed
+    target_input: make_plumed_config
+
+  - source: artifact-train_model_config
+    source_output: train_model_config
+    target: train_model
+    target_input: train_model_config
+
 
 orchestrator_target:
   kind: local

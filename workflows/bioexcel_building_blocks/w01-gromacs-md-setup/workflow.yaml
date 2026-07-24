@@ -7,6 +7,47 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+artifacts:
+  - id: center_config
+    kind: file
+    path: configs/center.yaml
+
+  - id: dry_trjconv_config
+    kind: file
+    path: configs/dry_trjconv.yaml
+
+  - id: editconf_config
+    kind: file
+    path: configs/editconf.yaml
+
+  - id: fetch_pdb_config
+    kind: file
+    path: configs/fetch_pdb.yaml
+
+  - id: genion_config
+    kind: file
+    path: configs/genion.yaml
+
+  - id: grompp_free_config
+    kind: file
+    path: configs/grompp_free.yaml
+
+  - id: grompp_ions_config
+    kind: file
+    path: configs/grompp_ions.yaml
+
+  - id: grompp_minimize_config
+    kind: file
+    path: configs/grompp_minimize.yaml
+
+  - id: grompp_npt_config
+    kind: file
+    path: configs/grompp_npt.yaml
+
+  - id: grompp_nvt_config
+    kind: file
+    path: configs/grompp_nvt.yaml
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
@@ -615,6 +656,57 @@ edges:
     source_output: md_trr
     target: gmx_image
     target_input: md_trr
+
+  - source: artifact-center_config
+    source_output: center_config
+    target: gmx_image
+    target_input: center_config
+
+  - source: artifact-dry_trjconv_config
+    source_output: dry_trjconv_config
+    target: gmx_trjconv_str
+    target_input: dry_trjconv_config
+
+  - source: artifact-editconf_config
+    source_output: editconf_config
+    target: editconf
+    target_input: editconf_config
+
+  - source: artifact-fetch_pdb_config
+    source_output: fetch_pdb_config
+    target: fetch_pdb
+    target_input: fetch_pdb_config
+
+  - source: artifact-genion_config
+    source_output: genion_config
+    target: genion
+    target_input: genion_config
+
+  - source: artifact-grompp_free_config
+    source_output: grompp_free_config
+    target: grompp_free
+    target_input: grompp_free_config
+
+  - source: artifact-grompp_ions_config
+    source_output: grompp_ions_config
+    target: grompp_ions
+    target_input: grompp_ions_config
+
+  - source: artifact-grompp_minimize_config
+    source_output: grompp_minimize_config
+    target: grompp_minimize
+    target_input: grompp_minimize_config
+
+  - source: artifact-grompp_npt_config
+    source_output: grompp_npt_config
+    target: grompp_npt
+    target_input: grompp_npt_config
+
+  - source: artifact-grompp_nvt_config
+    source_output: grompp_nvt_config
+    target: grompp_nvt
+    target_input: grompp_nvt_config
+
 
 orchestrator_target:
   kind: local

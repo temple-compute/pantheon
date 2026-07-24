@@ -11,6 +11,47 @@ _docker_executor: &docker_executor
   kind: docker
   image: quay.io/biocontainers/biobb_vs:5.2.1--pyhdfd78af_0
 
+artifacts:
+  - id: babel_convert_pdb2pdbqt_config
+    kind: file
+    path: configs/babel_convert_pdb2pdbqt.yaml
+
+  - id: babel_convert_pdbqt2pdb_config
+    kind: file
+    path: configs/babel_convert_pdbqt2pdb.yaml
+
+  - id: babel_convert_sdf2pdb_config
+    kind: file
+    path: configs/babel_convert_sdf2pdb.yaml
+
+  - id: bindingsite_config
+    kind: file
+    path: configs/bindingsite.yaml
+
+  - id: box_config
+    kind: file
+    path: configs/box.yaml
+
+  - id: extract_model_pdbqt_config
+    kind: file
+    path: configs/extract_model_pdbqt.yaml
+
+  - id: fetch_pdb_config
+    kind: file
+    path: configs/fetch_pdb.yaml
+
+  - id: ideal_sdf_config
+    kind: file
+    path: configs/ideal_sdf.yaml
+
+  - id: pdb_cluster_zip_config
+    kind: file
+    path: configs/pdb_cluster_zip.yaml
+
+  - id: str_check_add_hydrogens_config
+    kind: file
+    path: configs/str_check_add_hydrogens.yaml
+
 tasks:
   - kind: horus_task
     id: create_results_folder
@@ -440,6 +481,57 @@ edges:
     source_output: results_dir
     target: ideal_sdf
     target_input: results_dir
+
+  - source: artifact-babel_convert_pdb2pdbqt_config
+    source_output: babel_convert_pdb2pdbqt_config
+    target: babel_convert_pdb2pdbqt
+    target_input: babel_convert_pdb2pdbqt_config
+
+  - source: artifact-babel_convert_pdbqt2pdb_config
+    source_output: babel_convert_pdbqt2pdb_config
+    target: babel_convert_pdbqt2pdb
+    target_input: babel_convert_pdbqt2pdb_config
+
+  - source: artifact-babel_convert_sdf2pdb_config
+    source_output: babel_convert_sdf2pdb_config
+    target: babel_convert_sdf2pdb
+    target_input: babel_convert_sdf2pdb_config
+
+  - source: artifact-bindingsite_config
+    source_output: bindingsite_config
+    target: bindingsite
+    target_input: bindingsite_config
+
+  - source: artifact-box_config
+    source_output: box_config
+    target: box
+    target_input: box_config
+
+  - source: artifact-extract_model_pdbqt_config
+    source_output: extract_model_pdbqt_config
+    target: extract_model_pdbqt
+    target_input: extract_model_pdbqt_config
+
+  - source: artifact-fetch_pdb_config
+    source_output: fetch_pdb_config
+    target: fetch_pdb
+    target_input: fetch_pdb_config
+
+  - source: artifact-ideal_sdf_config
+    source_output: ideal_sdf_config
+    target: ideal_sdf
+    target_input: ideal_sdf_config
+
+  - source: artifact-pdb_cluster_zip_config
+    source_output: pdb_cluster_zip_config
+    target: pdb_cluster_zip
+    target_input: pdb_cluster_zip_config
+
+  - source: artifact-str_check_add_hydrogens_config
+    source_output: str_check_add_hydrogens_config
+    target: str_check_add_hydrogens
+    target_input: str_check_add_hydrogens_config
+
 
 orchestrator_target:
   kind: local

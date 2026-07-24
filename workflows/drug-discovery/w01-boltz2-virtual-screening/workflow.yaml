@@ -1,5 +1,14 @@
 kind: horus_workflow
 name: Boltz2 Virtual Screening
+artifacts:
+  - id: ligands
+    kind: file
+    path: examples/ligands.smi
+
+  - id: fasta
+    kind: file
+    path: examples/target.fasta
+
 tasks:
   - kind: horus_task
     id: prep
@@ -82,6 +91,17 @@ edges:
     source_output: predictions
     target: rank
     target_input: predictions
+
+  - source: artifact-ligands
+    source_output: ligands
+    target: prep
+    target_input: ligands
+
+  - source: artifact-fasta
+    source_output: fasta
+    target: prep
+    target_input: fasta
+
 orchestrator_target:
   kind: local
   working_directory: horus_workflow_results

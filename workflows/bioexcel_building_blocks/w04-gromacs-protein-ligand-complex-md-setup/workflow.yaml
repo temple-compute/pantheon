@@ -7,6 +7,107 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+artifacts:
+  - id: acpype_params_gmx_config
+    kind: file
+    path: configs/acpype_params_gmx.yaml
+
+  - id: append_ligand_config
+    kind: file
+    path: configs/append_ligand.yaml
+
+  - id: babel_minimize_config
+    kind: file
+    path: configs/babel_minimize.yaml
+
+  - id: dry_trjconv_config
+    kind: file
+    path: configs/dry_trjconv.yaml
+
+  - id: editconf_config
+    kind: file
+    path: configs/editconf.yaml
+
+  - id: extract_heteroatoms_config
+    kind: file
+    path: configs/extract_heteroatoms.yaml
+
+  - id: fetch_pdb_config
+    kind: file
+    path: configs/fetch_pdb.yaml
+
+  - id: genion_config
+    kind: file
+    path: configs/genion.yaml
+
+  - id: genrestr_config
+    kind: file
+    path: configs/genrestr.yaml
+
+  - id: gmx_energy_min_config
+    kind: file
+    path: configs/gmx_energy_min.yaml
+
+  - id: gmx_energy_npt_config
+    kind: file
+    path: configs/gmx_energy_npt.yaml
+
+  - id: gmx_energy_nvt_config
+    kind: file
+    path: configs/gmx_energy_nvt.yaml
+
+  - id: gmx_image_config
+    kind: file
+    path: configs/gmx_image.yaml
+
+  - id: gmx_rgyr_config
+    kind: file
+    path: configs/gmx_rgyr.yaml
+
+  - id: gmx_rms_config
+    kind: file
+    path: configs/gmx_rms.yaml
+
+  - id: grompp_free_config
+    kind: file
+    path: configs/grompp_free.yaml
+
+  - id: grompp_ions_config
+    kind: file
+    path: configs/grompp_ions.yaml
+
+  - id: grompp_minimize_config
+    kind: file
+    path: configs/grompp_minimize.yaml
+
+  - id: grompp_npt_config
+    kind: file
+    path: configs/grompp_npt.yaml
+
+  - id: grompp_nvt_config
+    kind: file
+    path: configs/grompp_nvt.yaml
+
+  - id: make_ndx_complex_config
+    kind: file
+    path: configs/make_ndx_complex.yaml
+
+  - id: make_ndx_ligand_config
+    kind: file
+    path: configs/make_ndx_ligand.yaml
+
+  - id: pdb2gmx_config
+    kind: file
+    path: configs/pdb2gmx.yaml
+
+  - id: reduce_add_hydrogens_config
+    kind: file
+    path: configs/reduce_add_hydrogens.yaml
+
+  - id: trjconv_system_config
+    kind: file
+    path: configs/trjconv_system.yaml
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
@@ -1270,6 +1371,142 @@ edges:
     source_output: md_gro
     target: gmx_trjconv_str_dry
     target_input: md_gro
+
+  - source: artifact-acpype_params_gmx_config
+    source_output: acpype_params_gmx_config
+    target: acpype_params_gmx
+    target_input: acpype_params_gmx_config
+
+  - source: artifact-append_ligand_config
+    source_output: append_ligand_config
+    target: append_ligand
+    target_input: append_ligand_config
+
+  - source: artifact-babel_minimize_config
+    source_output: babel_minimize_config
+    target: babel_minimize
+    target_input: babel_minimize_config
+
+  - source: artifact-dry_trjconv_config
+    source_output: dry_trjconv_config
+    target: gmx_trjconv_str_dry
+    target_input: dry_trjconv_config
+
+  - source: artifact-editconf_config
+    source_output: editconf_config
+    target: editconf
+    target_input: editconf_config
+
+  - source: artifact-extract_heteroatoms_config
+    source_output: extract_heteroatoms_config
+    target: extract_heteroatoms
+    target_input: extract_heteroatoms_config
+
+  - source: artifact-fetch_pdb_config
+    source_output: fetch_pdb_config
+    target: fetch_pdb
+    target_input: fetch_pdb_config
+
+  - source: artifact-genion_config
+    source_output: genion_config
+    target: genion
+    target_input: genion_config
+
+  - source: artifact-genrestr_config
+    source_output: genrestr_config
+    target: genrestr
+    target_input: genrestr_config
+
+  - source: artifact-gmx_energy_min_config
+    source_output: gmx_energy_min_config
+    target: gmx_energy_min
+    target_input: gmx_energy_min_config
+
+  - source: artifact-gmx_energy_npt_config
+    source_output: gmx_energy_npt_config
+    target: gmx_energy_npt
+    target_input: gmx_energy_npt_config
+
+  - source: artifact-gmx_energy_nvt_config
+    source_output: gmx_energy_nvt_config
+    target: gmx_energy_nvt
+    target_input: gmx_energy_nvt_config
+
+  - source: artifact-gmx_image_config
+    source_output: gmx_image_config
+    target: gmx_image
+    target_input: gmx_image_config
+
+  - source: artifact-gmx_rgyr_config
+    source_output: gmx_rgyr_config
+    target: gmx_rgyr
+    target_input: gmx_rgyr_config
+
+  - source: artifact-gmx_rms_config
+    source_output: gmx_rms_config
+    target: gmx_rms_first
+    target_input: gmx_rms_config
+
+  - source: artifact-gmx_rms_config
+    source_output: gmx_rms_config
+    target: gmx_rms_exp
+    target_input: gmx_rms_config
+
+  - source: artifact-grompp_free_config
+    source_output: grompp_free_config
+    target: grompp_free
+    target_input: grompp_free_config
+
+  - source: artifact-grompp_ions_config
+    source_output: grompp_ions_config
+    target: grompp_ions
+    target_input: grompp_ions_config
+
+  - source: artifact-grompp_minimize_config
+    source_output: grompp_minimize_config
+    target: grompp_minimize
+    target_input: grompp_minimize_config
+
+  - source: artifact-grompp_npt_config
+    source_output: grompp_npt_config
+    target: grompp_npt
+    target_input: grompp_npt_config
+
+  - source: artifact-grompp_nvt_config
+    source_output: grompp_nvt_config
+    target: grompp_nvt
+    target_input: grompp_nvt_config
+
+  - source: artifact-make_ndx_complex_config
+    source_output: make_ndx_complex_config
+    target: make_ndx_complex
+    target_input: make_ndx_complex_config
+
+  - source: artifact-make_ndx_ligand_config
+    source_output: make_ndx_ligand_config
+    target: make_ndx_ligand
+    target_input: make_ndx_ligand_config
+
+  - source: artifact-pdb2gmx_config
+    source_output: pdb2gmx_config
+    target: pdb2gmx
+    target_input: pdb2gmx_config
+
+  - source: artifact-reduce_add_hydrogens_config
+    source_output: reduce_add_hydrogens_config
+    target: reduce_add_hydrogens
+    target_input: reduce_add_hydrogens_config
+
+  - source: artifact-trjconv_system_config
+    source_output: trjconv_system_config
+    target: trjconv_protein
+    target_input: trjconv_system_config
+
+  - source: artifact-trjconv_system_config
+    source_output: trjconv_system_config
+    target: trjconv_ligand
+    target_input: trjconv_system_config
+
 
 orchestrator_target:
   kind: local

@@ -11,6 +11,283 @@ _docker_executor: &docker_executor
   kind: docker
   image: quay.io/biocontainers/biobb_dna:5.2.1--pyhdfd78af_0
 
+artifacts:
+  - id: traj
+    kind: file
+    path: TRAJ/structure.stripped.nc
+
+  - id: top
+    kind: file
+    path: TRAJ/structure.stripped.top
+
+  - id: average_stiffness_config
+    kind: file
+    path: configs/average_stiffness.yaml
+
+  - id: avg_buckle_config
+    kind: file
+    path: configs/avg_buckle.yaml
+
+  - id: avg_inclin_config
+    kind: file
+    path: configs/avg_inclin.yaml
+
+  - id: avg_majd_config
+    kind: file
+    path: configs/avg_majd.yaml
+
+  - id: avg_majw_config
+    kind: file
+    path: configs/avg_majw.yaml
+
+  - id: avg_mind_config
+    kind: file
+    path: configs/avg_mind.yaml
+
+  - id: avg_minw_config
+    kind: file
+    path: configs/avg_minw.yaml
+
+  - id: avg_opening_config
+    kind: file
+    path: configs/avg_opening.yaml
+
+  - id: avg_propel_config
+    kind: file
+    path: configs/avg_propel.yaml
+
+  - id: avg_rise_config
+    kind: file
+    path: configs/avg_rise.yaml
+
+  - id: avg_roll_config
+    kind: file
+    path: configs/avg_roll.yaml
+
+  - id: avg_shear_config
+    kind: file
+    path: configs/avg_shear.yaml
+
+  - id: avg_shift_config
+    kind: file
+    path: configs/avg_shift.yaml
+
+  - id: avg_slide_config
+    kind: file
+    path: configs/avg_slide.yaml
+
+  - id: avg_stagger_config
+    kind: file
+    path: configs/avg_stagger.yaml
+
+  - id: avg_stretch_config
+    kind: file
+    path: configs/avg_stretch.yaml
+
+  - id: avg_tilt_config
+    kind: file
+    path: configs/avg_tilt.yaml
+
+  - id: avg_tip_config
+    kind: file
+    path: configs/avg_tip.yaml
+
+  - id: avg_twist_config
+    kind: file
+    path: configs/avg_twist.yaml
+
+  - id: avg_xdisp_config
+    kind: file
+    path: configs/avg_xdisp.yaml
+
+  - id: avg_ydisp_config
+    kind: file
+    path: configs/avg_ydisp.yaml
+
+  - id: bipopulations_config
+    kind: file
+    path: configs/bipopulations.yaml
+
+  - id: canal_config
+    kind: file
+    path: configs/canal.yaml
+
+  - id: canonicalag_config
+    kind: file
+    path: configs/canonicalag.yaml
+
+  - id: curves_config
+    kind: file
+    path: configs/curves.yaml
+
+  - id: dna_bimodality_config
+    kind: file
+    path: configs/dna_bimodality.yaml
+
+  - id: interbpcorr_config
+    kind: file
+    path: configs/interbpcorr.yaml
+
+  - id: interseqcorr_config
+    kind: file
+    path: configs/interseqcorr.yaml
+
+  - id: intrabpcorr_config
+    kind: file
+    path: configs/intrabpcorr.yaml
+
+  - id: intraseqcorr_config
+    kind: file
+    path: configs/intraseqcorr.yaml
+
+  - id: puckering_config
+    kind: file
+    path: configs/puckering.yaml
+
+  - id: ts_alphaC_config
+    kind: file
+    path: configs/ts_alphaC.yaml
+
+  - id: ts_alphaW_config
+    kind: file
+    path: configs/ts_alphaW.yaml
+
+  - id: ts_betaC_config
+    kind: file
+    path: configs/ts_betaC.yaml
+
+  - id: ts_betaW_config
+    kind: file
+    path: configs/ts_betaW.yaml
+
+  - id: ts_buckle_config
+    kind: file
+    path: configs/ts_buckle.yaml
+
+  - id: ts_chiC_config
+    kind: file
+    path: configs/ts_chiC.yaml
+
+  - id: ts_chiW_config
+    kind: file
+    path: configs/ts_chiW.yaml
+
+  - id: ts_deltaC_config
+    kind: file
+    path: configs/ts_deltaC.yaml
+
+  - id: ts_deltaW_config
+    kind: file
+    path: configs/ts_deltaW.yaml
+
+  - id: ts_epsilC_config
+    kind: file
+    path: configs/ts_epsilC.yaml
+
+  - id: ts_epsilW_config
+    kind: file
+    path: configs/ts_epsilW.yaml
+
+  - id: ts_gammaC_config
+    kind: file
+    path: configs/ts_gammaC.yaml
+
+  - id: ts_gammaW_config
+    kind: file
+    path: configs/ts_gammaW.yaml
+
+  - id: ts_inclin_config
+    kind: file
+    path: configs/ts_inclin.yaml
+
+  - id: ts_majd_config
+    kind: file
+    path: configs/ts_majd.yaml
+
+  - id: ts_majw_config
+    kind: file
+    path: configs/ts_majw.yaml
+
+  - id: ts_mind_config
+    kind: file
+    path: configs/ts_mind.yaml
+
+  - id: ts_minw_config
+    kind: file
+    path: configs/ts_minw.yaml
+
+  - id: ts_opening_config
+    kind: file
+    path: configs/ts_opening.yaml
+
+  - id: ts_phaseC_config
+    kind: file
+    path: configs/ts_phaseC.yaml
+
+  - id: ts_phaseW_config
+    kind: file
+    path: configs/ts_phaseW.yaml
+
+  - id: ts_propel_config
+    kind: file
+    path: configs/ts_propel.yaml
+
+  - id: ts_rise_config
+    kind: file
+    path: configs/ts_rise.yaml
+
+  - id: ts_roll_config
+    kind: file
+    path: configs/ts_roll.yaml
+
+  - id: ts_shear_config
+    kind: file
+    path: configs/ts_shear.yaml
+
+  - id: ts_shift_config
+    kind: file
+    path: configs/ts_shift.yaml
+
+  - id: ts_slide_config
+    kind: file
+    path: configs/ts_slide.yaml
+
+  - id: ts_stagger_config
+    kind: file
+    path: configs/ts_stagger.yaml
+
+  - id: ts_stretch_config
+    kind: file
+    path: configs/ts_stretch.yaml
+
+  - id: ts_tilt_config
+    kind: file
+    path: configs/ts_tilt.yaml
+
+  - id: ts_tip_config
+    kind: file
+    path: configs/ts_tip.yaml
+
+  - id: ts_twist_config
+    kind: file
+    path: configs/ts_twist.yaml
+
+  - id: ts_xdisp_config
+    kind: file
+    path: configs/ts_xdisp.yaml
+
+  - id: ts_ydisp_config
+    kind: file
+    path: configs/ts_ydisp.yaml
+
+  - id: ts_zetaC_config
+    kind: file
+    path: configs/ts_zetaC.yaml
+
+  - id: ts_zetaW_config
+    kind: file
+    path: configs/ts_zetaW.yaml
+
 tasks:
   # ── Step 1: Curves+ ─────────────────────────────────────────────────────────
   - kind: horus_task
@@ -2742,6 +3019,352 @@ edges:
     source_output: ts_twist_CG_csv
     target: interhpcorr
     target_input: ts_twist_CG_csv
+
+  - source: artifact-traj
+    source_output: traj
+    target: curves
+    target_input: traj
+
+  - source: artifact-top
+    source_output: top
+    target: curves
+    target_input: top
+
+  - source: artifact-average_stiffness_config
+    source_output: average_stiffness_config
+    target: average_stiffness
+    target_input: average_stiffness_config
+
+  - source: artifact-avg_buckle_config
+    source_output: avg_buckle_config
+    target: avg_buckle
+    target_input: avg_buckle_config
+
+  - source: artifact-avg_inclin_config
+    source_output: avg_inclin_config
+    target: avg_inclin
+    target_input: avg_inclin_config
+
+  - source: artifact-avg_majd_config
+    source_output: avg_majd_config
+    target: avg_majd
+    target_input: avg_majd_config
+
+  - source: artifact-avg_majw_config
+    source_output: avg_majw_config
+    target: avg_majw
+    target_input: avg_majw_config
+
+  - source: artifact-avg_mind_config
+    source_output: avg_mind_config
+    target: avg_mind
+    target_input: avg_mind_config
+
+  - source: artifact-avg_minw_config
+    source_output: avg_minw_config
+    target: avg_minw
+    target_input: avg_minw_config
+
+  - source: artifact-avg_opening_config
+    source_output: avg_opening_config
+    target: avg_opening
+    target_input: avg_opening_config
+
+  - source: artifact-avg_propel_config
+    source_output: avg_propel_config
+    target: avg_propel
+    target_input: avg_propel_config
+
+  - source: artifact-avg_rise_config
+    source_output: avg_rise_config
+    target: avg_rise
+    target_input: avg_rise_config
+
+  - source: artifact-avg_roll_config
+    source_output: avg_roll_config
+    target: avg_roll
+    target_input: avg_roll_config
+
+  - source: artifact-avg_shear_config
+    source_output: avg_shear_config
+    target: avg_shear
+    target_input: avg_shear_config
+
+  - source: artifact-avg_shift_config
+    source_output: avg_shift_config
+    target: avg_shift
+    target_input: avg_shift_config
+
+  - source: artifact-avg_slide_config
+    source_output: avg_slide_config
+    target: avg_slide
+    target_input: avg_slide_config
+
+  - source: artifact-avg_stagger_config
+    source_output: avg_stagger_config
+    target: avg_stagger
+    target_input: avg_stagger_config
+
+  - source: artifact-avg_stretch_config
+    source_output: avg_stretch_config
+    target: avg_stretch
+    target_input: avg_stretch_config
+
+  - source: artifact-avg_tilt_config
+    source_output: avg_tilt_config
+    target: avg_tilt
+    target_input: avg_tilt_config
+
+  - source: artifact-avg_tip_config
+    source_output: avg_tip_config
+    target: avg_tip
+    target_input: avg_tip_config
+
+  - source: artifact-avg_twist_config
+    source_output: avg_twist_config
+    target: avg_twist
+    target_input: avg_twist_config
+
+  - source: artifact-avg_xdisp_config
+    source_output: avg_xdisp_config
+    target: avg_xdisp
+    target_input: avg_xdisp_config
+
+  - source: artifact-avg_ydisp_config
+    source_output: avg_ydisp_config
+    target: avg_ydisp
+    target_input: avg_ydisp_config
+
+  - source: artifact-bipopulations_config
+    source_output: bipopulations_config
+    target: bipopulations
+    target_input: bipopulations_config
+
+  - source: artifact-canal_config
+    source_output: canal_config
+    target: canal
+    target_input: canal_config
+
+  - source: artifact-canonicalag_config
+    source_output: canonicalag_config
+    target: canonicalag
+    target_input: canonicalag_config
+
+  - source: artifact-curves_config
+    source_output: curves_config
+    target: curves
+    target_input: curves_config
+
+  - source: artifact-dna_bimodality_config
+    source_output: dna_bimodality_config
+    target: dna_bimodality
+    target_input: dna_bimodality_config
+
+  - source: artifact-interbpcorr_config
+    source_output: interbpcorr_config
+    target: interbpcorr
+    target_input: interbpcorr_config
+
+  - source: artifact-interseqcorr_config
+    source_output: interseqcorr_config
+    target: interseqcorr
+    target_input: interseqcorr_config
+
+  - source: artifact-intrabpcorr_config
+    source_output: intrabpcorr_config
+    target: intrabpcorr
+    target_input: intrabpcorr_config
+
+  - source: artifact-intraseqcorr_config
+    source_output: intraseqcorr_config
+    target: intraseqcorr
+    target_input: intraseqcorr_config
+
+  - source: artifact-puckering_config
+    source_output: puckering_config
+    target: puckering
+    target_input: puckering_config
+
+  - source: artifact-ts_alphaC_config
+    source_output: ts_alphaC_config
+    target: ts_alphaC
+    target_input: ts_alphaC_config
+
+  - source: artifact-ts_alphaW_config
+    source_output: ts_alphaW_config
+    target: ts_alphaW
+    target_input: ts_alphaW_config
+
+  - source: artifact-ts_betaC_config
+    source_output: ts_betaC_config
+    target: ts_betaC
+    target_input: ts_betaC_config
+
+  - source: artifact-ts_betaW_config
+    source_output: ts_betaW_config
+    target: ts_betaW
+    target_input: ts_betaW_config
+
+  - source: artifact-ts_buckle_config
+    source_output: ts_buckle_config
+    target: ts_buckle
+    target_input: ts_buckle_config
+
+  - source: artifact-ts_chiC_config
+    source_output: ts_chiC_config
+    target: ts_chiC
+    target_input: ts_chiC_config
+
+  - source: artifact-ts_chiW_config
+    source_output: ts_chiW_config
+    target: ts_chiW
+    target_input: ts_chiW_config
+
+  - source: artifact-ts_deltaC_config
+    source_output: ts_deltaC_config
+    target: ts_deltaC
+    target_input: ts_deltaC_config
+
+  - source: artifact-ts_deltaW_config
+    source_output: ts_deltaW_config
+    target: ts_deltaW
+    target_input: ts_deltaW_config
+
+  - source: artifact-ts_epsilC_config
+    source_output: ts_epsilC_config
+    target: ts_epsilC
+    target_input: ts_epsilC_config
+
+  - source: artifact-ts_epsilW_config
+    source_output: ts_epsilW_config
+    target: ts_epsilW
+    target_input: ts_epsilW_config
+
+  - source: artifact-ts_gammaC_config
+    source_output: ts_gammaC_config
+    target: ts_gammaC
+    target_input: ts_gammaC_config
+
+  - source: artifact-ts_gammaW_config
+    source_output: ts_gammaW_config
+    target: ts_gammaW
+    target_input: ts_gammaW_config
+
+  - source: artifact-ts_inclin_config
+    source_output: ts_inclin_config
+    target: ts_inclin
+    target_input: ts_inclin_config
+
+  - source: artifact-ts_majd_config
+    source_output: ts_majd_config
+    target: ts_majd
+    target_input: ts_majd_config
+
+  - source: artifact-ts_majw_config
+    source_output: ts_majw_config
+    target: ts_majw
+    target_input: ts_majw_config
+
+  - source: artifact-ts_mind_config
+    source_output: ts_mind_config
+    target: ts_mind
+    target_input: ts_mind_config
+
+  - source: artifact-ts_minw_config
+    source_output: ts_minw_config
+    target: ts_minw
+    target_input: ts_minw_config
+
+  - source: artifact-ts_opening_config
+    source_output: ts_opening_config
+    target: ts_opening
+    target_input: ts_opening_config
+
+  - source: artifact-ts_phaseC_config
+    source_output: ts_phaseC_config
+    target: ts_phaseC
+    target_input: ts_phaseC_config
+
+  - source: artifact-ts_phaseW_config
+    source_output: ts_phaseW_config
+    target: ts_phaseW
+    target_input: ts_phaseW_config
+
+  - source: artifact-ts_propel_config
+    source_output: ts_propel_config
+    target: ts_propel
+    target_input: ts_propel_config
+
+  - source: artifact-ts_rise_config
+    source_output: ts_rise_config
+    target: ts_rise
+    target_input: ts_rise_config
+
+  - source: artifact-ts_roll_config
+    source_output: ts_roll_config
+    target: ts_roll
+    target_input: ts_roll_config
+
+  - source: artifact-ts_shear_config
+    source_output: ts_shear_config
+    target: ts_shear
+    target_input: ts_shear_config
+
+  - source: artifact-ts_shift_config
+    source_output: ts_shift_config
+    target: ts_shift
+    target_input: ts_shift_config
+
+  - source: artifact-ts_slide_config
+    source_output: ts_slide_config
+    target: ts_slide
+    target_input: ts_slide_config
+
+  - source: artifact-ts_stagger_config
+    source_output: ts_stagger_config
+    target: ts_stagger
+    target_input: ts_stagger_config
+
+  - source: artifact-ts_stretch_config
+    source_output: ts_stretch_config
+    target: ts_stretch
+    target_input: ts_stretch_config
+
+  - source: artifact-ts_tilt_config
+    source_output: ts_tilt_config
+    target: ts_tilt
+    target_input: ts_tilt_config
+
+  - source: artifact-ts_tip_config
+    source_output: ts_tip_config
+    target: ts_tip
+    target_input: ts_tip_config
+
+  - source: artifact-ts_twist_config
+    source_output: ts_twist_config
+    target: ts_twist
+    target_input: ts_twist_config
+
+  - source: artifact-ts_xdisp_config
+    source_output: ts_xdisp_config
+    target: ts_xdisp
+    target_input: ts_xdisp_config
+
+  - source: artifact-ts_ydisp_config
+    source_output: ts_ydisp_config
+    target: ts_ydisp
+    target_input: ts_ydisp_config
+
+  - source: artifact-ts_zetaC_config
+    source_output: ts_zetaC_config
+    target: ts_zetaC
+    target_input: ts_zetaC_config
+
+  - source: artifact-ts_zetaW_config
+    source_output: ts_zetaW_config
+    target: ts_zetaW
+    target_input: ts_zetaW_config
+
 
 orchestrator_target:
   kind: local

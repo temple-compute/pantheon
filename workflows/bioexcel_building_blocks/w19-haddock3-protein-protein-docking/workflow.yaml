@@ -7,6 +7,87 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+artifacts:
+  - id: actpass_to_ambig_config
+    kind: file
+    path: configs/actpass_to_ambig.yaml
+
+  - id: ab_chain_config
+    kind: file
+    path: configs/chain_A.yaml
+
+  - id: ag_chain_config
+    kind: file
+    path: configs/chain_B.yaml
+
+  - id: clust_fcc_config
+    kind: file
+    path: configs/clust_fcc.yaml
+
+  - id: em_ref_config
+    kind: file
+    path: configs/em_ref.yaml
+
+  - id: fetch_antibody_config
+    kind: file
+    path: configs/fetch_antibody.yaml
+
+  - id: fetch_antigen_config
+    kind: file
+    path: configs/fetch_antigen.yaml
+
+  - id: fetch_complex_config
+    kind: file
+    path: configs/fetch_complex.yaml
+
+  - id: flex_ref_config
+    kind: file
+    path: configs/flex_ref.yaml
+
+  - id: passive_from_active_config
+    kind: file
+    path: configs/passive_from_active.yaml
+
+  - id: ab_H_tidy_config
+    kind: file
+    path: configs/pdb_tidy_strict.yaml
+
+  - id: ab_reres_config
+    kind: file
+    path: configs/reres_1.yaml
+
+  - id: rigid_body_config
+    kind: file
+    path: configs/rigid_body.yaml
+
+  - id: cx_ag_selchain_config
+    kind: file
+    path: configs/selchain_A.yaml
+
+  - id: ab_H_selchain_config
+    kind: file
+    path: configs/selchain_H.yaml
+
+  - id: ab_L_selchain_config
+    kind: file
+    path: configs/selchain_L.yaml
+
+  - id: sele_top_config
+    kind: file
+    path: configs/sele_top.yaml
+
+  - id: sele_top_clusts_config
+    kind: file
+    path: configs/sele_top_clusts.yaml
+
+  - id: ab_L_selres_config
+    kind: file
+    path: configs/selres_1_107.yaml
+
+  - id: ab_H_selres_config
+    kind: file
+    path: configs/selres_1_120.yaml
+
 tasks:
 
   # ── Structure download ────────────────────────────────────────────────────
@@ -2409,6 +2490,182 @@ edges:
     source_output: haddock_wf_data_capri4
     target: contact_map
     target_input: haddock_wf_data_in
+
+  - source: artifact-actpass_to_ambig_config
+    source_output: actpass_to_ambig_config
+    target: actpass_to_ambig
+    target_input: actpass_to_ambig_config
+
+  - source: artifact-ab_chain_config
+    source_output: ab_chain_config
+    target: ab_chain
+    target_input: ab_chain_config
+
+  - source: artifact-ab_chain_config
+    source_output: ab_chain_config
+    target: cx_ab_chain
+    target_input: cx_ab_chain_config
+
+  - source: artifact-ag_chain_config
+    source_output: ag_chain_config
+    target: ag_chain
+    target_input: ag_chain_config
+
+  - source: artifact-ag_chain_config
+    source_output: ag_chain_config
+    target: cx_ag_chain
+    target_input: cx_ag_chain_config
+
+  - source: artifact-clust_fcc_config
+    source_output: clust_fcc_config
+    target: clust_fcc
+    target_input: clust_fcc_config
+
+  - source: artifact-em_ref_config
+    source_output: em_ref_config
+    target: em_ref
+    target_input: em_ref_config
+
+  - source: artifact-fetch_antibody_config
+    source_output: fetch_antibody_config
+    target: fetch_antibody
+    target_input: fetch_antibody_config
+
+  - source: artifact-fetch_antigen_config
+    source_output: fetch_antigen_config
+    target: fetch_antigen
+    target_input: fetch_antigen_config
+
+  - source: artifact-fetch_complex_config
+    source_output: fetch_complex_config
+    target: fetch_complex
+    target_input: fetch_complex_config
+
+  - source: artifact-flex_ref_config
+    source_output: flex_ref_config
+    target: flex_ref
+    target_input: flex_ref_config
+
+  - source: artifact-passive_from_active_config
+    source_output: passive_from_active_config
+    target: passive_from_active
+    target_input: passive_from_active_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: ab_H_tidy
+    target_input: ab_H_tidy_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: ab_L_tidy
+    target_input: ab_L_tidy_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: ab_tidy_final
+    target_input: ab_tidy_final_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: ag_tidy
+    target_input: ag_tidy_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: ag_tidy_final
+    target_input: ag_tidy_final_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: cx_ab_tidy_final
+    target_input: cx_ab_tidy_final_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: cx_ag_tidy
+    target_input: cx_ag_tidy_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: cx_ag_tidy_final
+    target_input: cx_ag_tidy_final_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: cx_tidy_final
+    target_input: cx_tidy_final_config
+
+  - source: artifact-ab_reres_config
+    source_output: ab_reres_config
+    target: ab_reres
+    target_input: ab_reres_config
+
+  - source: artifact-ab_reres_config
+    source_output: ab_reres_config
+    target: cx_ab_reres
+    target_input: cx_ab_reres_config
+
+  - source: artifact-rigid_body_config
+    source_output: rigid_body_config
+    target: rigid_body
+    target_input: rigid_body_config
+
+  - source: artifact-cx_ag_selchain_config
+    source_output: cx_ag_selchain_config
+    target: cx_ag_selchain
+    target_input: cx_ag_selchain_config
+
+  - source: artifact-ab_H_selchain_config
+    source_output: ab_H_selchain_config
+    target: ab_H_selchain
+    target_input: ab_H_selchain_config
+
+  - source: artifact-ab_H_selchain_config
+    source_output: ab_H_selchain_config
+    target: cx_H_selchain
+    target_input: cx_H_selchain_config
+
+  - source: artifact-ab_L_selchain_config
+    source_output: ab_L_selchain_config
+    target: ab_L_selchain
+    target_input: ab_L_selchain_config
+
+  - source: artifact-ab_L_selchain_config
+    source_output: ab_L_selchain_config
+    target: cx_L_selchain
+    target_input: cx_L_selchain_config
+
+  - source: artifact-sele_top_config
+    source_output: sele_top_config
+    target: sele_top
+    target_input: sele_top_config
+
+  - source: artifact-sele_top_clusts_config
+    source_output: sele_top_clusts_config
+    target: sele_top_clusts
+    target_input: sele_top_clusts_config
+
+  - source: artifact-ab_L_selres_config
+    source_output: ab_L_selres_config
+    target: ab_L_selres
+    target_input: ab_L_selres_config
+
+  - source: artifact-ab_L_selres_config
+    source_output: ab_L_selres_config
+    target: cx_L_selres
+    target_input: cx_L_selres_config
+
+  - source: artifact-ab_H_selres_config
+    source_output: ab_H_selres_config
+    target: ab_H_selres
+    target_input: ab_H_selres_config
+
+  - source: artifact-ab_H_selres_config
+    source_output: ab_H_selres_config
+    target: cx_H_selres
+    target_input: cx_H_selres_config
+
 
 orchestrator_target:
   kind: local

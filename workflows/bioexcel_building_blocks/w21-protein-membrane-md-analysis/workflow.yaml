@@ -14,6 +14,55 @@ _docker_executor_mem: &docker_executor_mem
 _target: &target
   kind: local
 
+artifacts:
+  - id: assign_leaflets_config
+    kind: file
+    path: configs/assign_leaflets.yaml
+
+  - id: compute_area_per_lipid_config
+    kind: file
+    path: configs/compute_area_per_lipid.yaml
+
+  - id: compute_density_profile_config
+    kind: file
+    path: configs/compute_density_profile.yaml
+
+  - id: compute_flip_flop_config
+    kind: file
+    path: configs/compute_flip_flop.yaml
+
+  - id: compute_order_parameters_config
+    kind: file
+    path: configs/compute_order_parameters.yaml
+
+  - id: compute_pore_dimensions_config
+    kind: file
+    path: configs/compute_pore_dimensions.yaml
+
+  - id: compute_zpositions_config
+    kind: file
+    path: configs/compute_zpositions.yaml
+
+  - id: compute_zpositions_around_config
+    kind: file
+    path: configs/compute_zpositions_around.yaml
+
+  - id: download_trajectory_config
+    kind: file
+    path: configs/download_trajectory.yaml
+
+  - id: fit_membrane_config
+    kind: file
+    path: configs/fit_membrane.yaml
+
+  - id: fit_protein_config
+    kind: file
+    path: configs/fit_protein.yaml
+
+  - id: identify_leaflets_fatslim_config
+    kind: file
+    path: configs/identify_leaflets_fatslim.yaml
+
 tasks:
   - kind: horus_task
     id: download_trajectory
@@ -473,6 +522,67 @@ edges:
     source_output: leaflets_data_csv
     target: compute_flip_flop
     target_input: leaflets_data_csv
+
+  - source: artifact-assign_leaflets_config
+    source_output: assign_leaflets_config
+    target: assign_leaflets
+    target_input: assign_leaflets_config
+
+  - source: artifact-compute_area_per_lipid_config
+    source_output: compute_area_per_lipid_config
+    target: compute_area_per_lipid
+    target_input: compute_area_per_lipid_config
+
+  - source: artifact-compute_density_profile_config
+    source_output: compute_density_profile_config
+    target: compute_density_profile
+    target_input: compute_density_profile_config
+
+  - source: artifact-compute_flip_flop_config
+    source_output: compute_flip_flop_config
+    target: compute_flip_flop
+    target_input: compute_flip_flop_config
+
+  - source: artifact-compute_order_parameters_config
+    source_output: compute_order_parameters_config
+    target: compute_order_parameters
+    target_input: compute_order_parameters_config
+
+  - source: artifact-compute_pore_dimensions_config
+    source_output: compute_pore_dimensions_config
+    target: compute_pore_dimensions
+    target_input: compute_pore_dimensions_config
+
+  - source: artifact-compute_zpositions_config
+    source_output: compute_zpositions_config
+    target: compute_zpositions
+    target_input: compute_zpositions_config
+
+  - source: artifact-compute_zpositions_around_config
+    source_output: compute_zpositions_around_config
+    target: compute_zpositions_around
+    target_input: compute_zpositions_around_config
+
+  - source: artifact-download_trajectory_config
+    source_output: download_trajectory_config
+    target: download_trajectory
+    target_input: download_trajectory_config
+
+  - source: artifact-fit_membrane_config
+    source_output: fit_membrane_config
+    target: fit_membrane
+    target_input: fit_membrane_config
+
+  - source: artifact-fit_protein_config
+    source_output: fit_protein_config
+    target: fit_protein
+    target_input: fit_protein_config
+
+  - source: artifact-identify_leaflets_fatslim_config
+    source_output: identify_leaflets_fatslim_config
+    target: identify_leaflets_fatslim
+    target_input: identify_leaflets_fatslim_config
+
 
 orchestrator_target:
   kind: local

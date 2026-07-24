@@ -15,6 +15,103 @@ _docker_executor_cmip: &docker_executor_cmip
   kind: docker
   image: quay.io/biocontainers/biobb_cmip:5.2.3--pyhdfd78af_0
 
+artifacts:
+  - id: md_pdb
+    kind: file
+    path: Files/RBD-hACE2-ZN.pdb
+
+  - id: md_top
+    kind: file
+    path: Files/RBD-hACE2-ZN.top
+
+  - id: acpype_params_ac_config
+    kind: file
+    path: configs/acpype_params_ac.yaml
+
+  - id: cmip_ignore_residues_hace2_config
+    kind: file
+    path: configs/cmip_ignore_residues_hace2.yaml
+
+  - id: cmip_ignore_residues_protein_config
+    kind: file
+    path: configs/cmip_ignore_residues_protein.yaml
+
+  - id: cmip_ignore_residues_rbd_config
+    kind: file
+    path: configs/cmip_ignore_residues_rbd.yaml
+
+  - id: cmip_run_complex_box_config
+    kind: file
+    path: configs/cmip_run_complex_box.yaml
+
+  - id: cmip_run_egfr_interaction_config
+    kind: file
+    path: configs/cmip_run_egfr_interaction.yaml
+
+  - id: cmip_run_hace2_box_config
+    kind: file
+    path: configs/cmip_run_hace2_box.yaml
+
+  - id: cmip_run_hace2_interaction_config
+    kind: file
+    path: configs/cmip_run_hace2_interaction.yaml
+
+  - id: cmip_run_mip_neg_config
+    kind: file
+    path: configs/cmip_run_mip_neg.yaml
+
+  - id: cmip_run_mip_neutral_config
+    kind: file
+    path: configs/cmip_run_mip_neutral.yaml
+
+  - id: cmip_run_mip_pos_config
+    kind: file
+    path: configs/cmip_run_mip_pos.yaml
+
+  - id: cmip_run_rbd_box_config
+    kind: file
+    path: configs/cmip_run_rbd_box.yaml
+
+  - id: cmip_run_rbd_interaction_config
+    kind: file
+    path: configs/cmip_run_rbd_interaction.yaml
+
+  - id: cmip_titration_lysozyme_config
+    kind: file
+    path: configs/cmip_titration_lysozyme.yaml
+
+  - id: extract_chain_hace2_config
+    kind: file
+    path: configs/extract_chain_hace2.yaml
+
+  - id: extract_chain_rbd_config
+    kind: file
+    path: configs/extract_chain_rbd.yaml
+
+  - id: extract_heteroatoms_config
+    kind: file
+    path: configs/extract_heteroatoms.yaml
+
+  - id: fetch_pdb_complex_config
+    kind: file
+    path: configs/fetch_pdb_complex.yaml
+
+  - id: fetch_pdb_lysozyme_config
+    kind: file
+    path: configs/fetch_pdb_lysozyme.yaml
+
+  - id: leap_gen_top_config
+    kind: file
+    path: configs/leap_gen_top.yaml
+
+  - id: remove_ligand_config
+    kind: file
+    path: configs/remove_ligand.yaml
+
+  - id: sander_mdrun_config
+    kind: file
+    path: configs/sander_mdrun.yaml
+
 tasks:
   # ── Section 1: Lysozyme MIPs ──────────────────────────────────────────────
 
@@ -1049,6 +1146,127 @@ edges:
     source_output: hace2_ignored_pdb
     target: cmip_run_hace2_interaction
     target_input: hace2_ignored_pdb
+
+  - source: artifact-md_pdb
+    source_output: md_pdb
+    target: cmip_prepare_structure_md
+    target_input: md_pdb
+
+  - source: artifact-md_top
+    source_output: md_top
+    target: cmip_prepare_structure_md
+    target_input: md_top
+
+  - source: artifact-acpype_params_ac_config
+    source_output: acpype_params_ac_config
+    target: acpype_params_ac
+    target_input: acpype_params_ac_config
+
+  - source: artifact-cmip_ignore_residues_hace2_config
+    source_output: cmip_ignore_residues_hace2_config
+    target: cmip_ignore_residues_hace2
+    target_input: cmip_ignore_residues_hace2_config
+
+  - source: artifact-cmip_ignore_residues_protein_config
+    source_output: cmip_ignore_residues_protein_config
+    target: cmip_ignore_residues_protein
+    target_input: cmip_ignore_residues_protein_config
+
+  - source: artifact-cmip_ignore_residues_rbd_config
+    source_output: cmip_ignore_residues_rbd_config
+    target: cmip_ignore_residues_rbd
+    target_input: cmip_ignore_residues_rbd_config
+
+  - source: artifact-cmip_run_complex_box_config
+    source_output: cmip_run_complex_box_config
+    target: cmip_run_complex_box
+    target_input: cmip_run_complex_box_config
+
+  - source: artifact-cmip_run_egfr_interaction_config
+    source_output: cmip_run_egfr_interaction_config
+    target: cmip_run_egfr_interaction
+    target_input: cmip_run_egfr_interaction_config
+
+  - source: artifact-cmip_run_hace2_box_config
+    source_output: cmip_run_hace2_box_config
+    target: cmip_run_hace2_box
+    target_input: cmip_run_hace2_box_config
+
+  - source: artifact-cmip_run_hace2_interaction_config
+    source_output: cmip_run_hace2_interaction_config
+    target: cmip_run_hace2_interaction
+    target_input: cmip_run_hace2_interaction_config
+
+  - source: artifact-cmip_run_mip_neg_config
+    source_output: cmip_run_mip_neg_config
+    target: cmip_run_mip_neg
+    target_input: cmip_run_mip_neg_config
+
+  - source: artifact-cmip_run_mip_neutral_config
+    source_output: cmip_run_mip_neutral_config
+    target: cmip_run_mip_neutral
+    target_input: cmip_run_mip_neutral_config
+
+  - source: artifact-cmip_run_mip_pos_config
+    source_output: cmip_run_mip_pos_config
+    target: cmip_run_mip_pos
+    target_input: cmip_run_mip_pos_config
+
+  - source: artifact-cmip_run_rbd_box_config
+    source_output: cmip_run_rbd_box_config
+    target: cmip_run_rbd_box
+    target_input: cmip_run_rbd_box_config
+
+  - source: artifact-cmip_run_rbd_interaction_config
+    source_output: cmip_run_rbd_interaction_config
+    target: cmip_run_rbd_interaction
+    target_input: cmip_run_rbd_interaction_config
+
+  - source: artifact-cmip_titration_lysozyme_config
+    source_output: cmip_titration_lysozyme_config
+    target: cmip_titration_lysozyme
+    target_input: cmip_titration_lysozyme_config
+
+  - source: artifact-extract_chain_hace2_config
+    source_output: extract_chain_hace2_config
+    target: extract_chain_hace2
+    target_input: extract_chain_hace2_config
+
+  - source: artifact-extract_chain_rbd_config
+    source_output: extract_chain_rbd_config
+    target: extract_chain_rbd
+    target_input: extract_chain_rbd_config
+
+  - source: artifact-extract_heteroatoms_config
+    source_output: extract_heteroatoms_config
+    target: extract_heteroatoms
+    target_input: extract_heteroatoms_config
+
+  - source: artifact-fetch_pdb_complex_config
+    source_output: fetch_pdb_complex_config
+    target: fetch_pdb_complex
+    target_input: fetch_pdb_complex_config
+
+  - source: artifact-fetch_pdb_lysozyme_config
+    source_output: fetch_pdb_lysozyme_config
+    target: fetch_pdb_lysozyme
+    target_input: fetch_pdb_lysozyme_config
+
+  - source: artifact-leap_gen_top_config
+    source_output: leap_gen_top_config
+    target: leap_gen_top
+    target_input: leap_gen_top_config
+
+  - source: artifact-remove_ligand_config
+    source_output: remove_ligand_config
+    target: remove_ligand
+    target_input: remove_ligand_config
+
+  - source: artifact-sander_mdrun_config
+    source_output: sander_mdrun_config
+    target: sander_mdrun
+    target_input: sander_mdrun_config
+
 
 orchestrator_target:
   kind: local

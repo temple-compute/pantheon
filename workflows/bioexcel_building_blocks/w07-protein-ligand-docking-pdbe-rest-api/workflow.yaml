@@ -11,6 +11,43 @@ _docker_executor: &docker_executor
   kind: docker
   image: quay.io/biocontainers/biobb_vs:5.2.1--pyhdfd78af_0
 
+artifacts:
+  - id: convert_pose_to_pdb_config
+    kind: file
+    path: configs/convert_pose_to_pdb.yaml
+
+  - id: convert_sdf_to_pdb_config
+    kind: file
+    path: configs/convert_sdf_to_pdb.yaml
+
+  - id: download_ligand_sdf_config
+    kind: file
+    path: configs/download_ligand_sdf.yaml
+
+  - id: download_pdb_config
+    kind: file
+    path: configs/download_pdb.yaml
+
+  - id: extract_docking_pose_config
+    kind: file
+    path: configs/extract_docking_pose.yaml
+
+  - id: generate_cavity_box_config
+    kind: file
+    path: configs/generate_cavity_box.yaml
+
+  - id: get_binding_sites_config
+    kind: file
+    path: configs/get_binding_sites.yaml
+
+  - id: prepare_ligand_pdbqt_config
+    kind: file
+    path: configs/prepare_ligand_pdbqt.yaml
+
+  - id: prepare_receptor_pdbqt_config
+    kind: file
+    path: configs/prepare_receptor_pdbqt.yaml
+
 tasks:
   - kind: horus_task
     id: download_pdb
@@ -364,6 +401,52 @@ edges:
     source_output: output_pdb_model
     target: assemble_complex
     target_input: output_pdb_model
+
+  - source: artifact-convert_pose_to_pdb_config
+    source_output: convert_pose_to_pdb_config
+    target: convert_pose_to_pdb
+    target_input: convert_pose_to_pdb_config
+
+  - source: artifact-convert_sdf_to_pdb_config
+    source_output: convert_sdf_to_pdb_config
+    target: convert_sdf_to_pdb
+    target_input: convert_sdf_to_pdb_config
+
+  - source: artifact-download_ligand_sdf_config
+    source_output: download_ligand_sdf_config
+    target: download_ligand_sdf
+    target_input: download_ligand_sdf_config
+
+  - source: artifact-download_pdb_config
+    source_output: download_pdb_config
+    target: download_pdb
+    target_input: download_pdb_config
+
+  - source: artifact-extract_docking_pose_config
+    source_output: extract_docking_pose_config
+    target: extract_docking_pose
+    target_input: extract_docking_pose_config
+
+  - source: artifact-generate_cavity_box_config
+    source_output: generate_cavity_box_config
+    target: generate_cavity_box
+    target_input: generate_cavity_box_config
+
+  - source: artifact-get_binding_sites_config
+    source_output: get_binding_sites_config
+    target: get_binding_sites
+    target_input: get_binding_sites_config
+
+  - source: artifact-prepare_ligand_pdbqt_config
+    source_output: prepare_ligand_pdbqt_config
+    target: prepare_ligand_pdbqt
+    target_input: prepare_ligand_pdbqt_config
+
+  - source: artifact-prepare_receptor_pdbqt_config
+    source_output: prepare_receptor_pdbqt_config
+    target: prepare_receptor_pdbqt
+    target_input: prepare_receptor_pdbqt_config
+
 
 orchestrator_target:
   kind: local

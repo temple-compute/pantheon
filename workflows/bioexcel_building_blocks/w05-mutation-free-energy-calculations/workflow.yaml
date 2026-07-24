@@ -11,6 +11,103 @@ _docker_executor_pmx: &docker_executor_pmx
   kind: docker
   image: quay.io/biocontainers/biobb_pmx:5.2.2--pyhdfd78af_0
 
+artifacts:
+  - id: gmx_energy_eq_stateA_config
+    kind: file
+    path: configs/gmx_energy_eq_stateA.yaml
+
+  - id: gmx_energy_eq_stateB_config
+    kind: file
+    path: configs/gmx_energy_eq_stateB.yaml
+
+  - id: gmx_energy_min_stateB_config
+    kind: file
+    path: configs/gmx_energy_min_stateB.yaml
+
+  - id: gmx_trjconv_str_ens_stateA_config
+    kind: file
+    path: configs/gmx_trjconv_str_ens_stateA.yaml
+
+  - id: gmx_trjconv_str_ens_stateB_config
+    kind: file
+    path: configs/gmx_trjconv_str_ens_stateB.yaml
+
+  - id: grompp_eq_stateA_config
+    kind: file
+    path: configs/grompp_eq_stateA.yaml
+
+  - id: grompp_eq_stateB_config
+    kind: file
+    path: configs/grompp_eq_stateB.yaml
+
+  - id: grompp_min_stateB_config
+    kind: file
+    path: configs/grompp_min_stateB.yaml
+
+  - id: grompp_ti_stateA_config
+    kind: file
+    path: configs/grompp_ti_stateA.yaml
+
+  - id: grompp_ti_stateB_config
+    kind: file
+    path: configs/grompp_ti_stateB.yaml
+
+  - id: make_ndx_stateB_config
+    kind: file
+    path: configs/make_ndx_stateB.yaml
+
+  - id: pdb2gmx_stateA_config
+    kind: file
+    path: configs/pdb2gmx_stateA.yaml
+
+  - id: pdb2gmx_stateB_config
+    kind: file
+    path: configs/pdb2gmx_stateB.yaml
+
+  - id: pmxanalyse_config
+    kind: file
+    path: configs/pmxanalyse.yaml
+
+  - id: pmxgentop_stateA_config
+    kind: file
+    path: configs/pmxgentop_stateA.yaml
+
+  - id: pmxgentop_stateB_config
+    kind: file
+    path: configs/pmxgentop_stateB.yaml
+
+  - id: pmxmutate_stateA_config
+    kind: file
+    path: configs/pmxmutate_stateA.yaml
+
+  - id: pmxmutate_stateB_config
+    kind: file
+    path: configs/pmxmutate_stateB.yaml
+
+  - id: dhdlA_zip
+    kind: file
+    path: pmx_tutorial/dhdlA.zip
+
+  - id: dhdlB_zip
+    kind: file
+    path: pmx_tutorial/dhdlB.zip
+
+  - id: stateA_tpr
+    kind: file
+    path: pmx_tutorial/stateA.tpr
+
+  - id: stateA_traj
+    kind: file
+    path: pmx_tutorial/stateA_1ns.xtc
+
+  - id: stateB_tpr
+    kind: file
+    path: pmx_tutorial/stateB.tpr
+
+  - id: stateB_traj
+    kind: file
+    path: pmx_tutorial/stateB_1ns.xtc
+
 tasks:
   # ── Extract snapshots from equilibrium trajectories ──────────────────────
 
@@ -821,6 +918,127 @@ edges:
     source_output: ti_stateB_tpr
     target: mdrun_ti_stateB
     target_input: ti_stateB_tpr
+
+  - source: artifact-gmx_energy_eq_stateA_config
+    source_output: gmx_energy_eq_stateA_config
+    target: gmx_energy_eq_stateA
+    target_input: gmx_energy_eq_stateA_config
+
+  - source: artifact-gmx_energy_eq_stateB_config
+    source_output: gmx_energy_eq_stateB_config
+    target: gmx_energy_eq_stateB
+    target_input: gmx_energy_eq_stateB_config
+
+  - source: artifact-gmx_energy_min_stateB_config
+    source_output: gmx_energy_min_stateB_config
+    target: gmx_energy_min_stateB
+    target_input: gmx_energy_min_stateB_config
+
+  - source: artifact-gmx_trjconv_str_ens_stateA_config
+    source_output: gmx_trjconv_str_ens_stateA_config
+    target: gmx_trjconv_str_ens_stateA
+    target_input: gmx_trjconv_str_ens_stateA_config
+
+  - source: artifact-gmx_trjconv_str_ens_stateB_config
+    source_output: gmx_trjconv_str_ens_stateB_config
+    target: gmx_trjconv_str_ens_stateB
+    target_input: gmx_trjconv_str_ens_stateB_config
+
+  - source: artifact-grompp_eq_stateA_config
+    source_output: grompp_eq_stateA_config
+    target: grompp_eq_stateA
+    target_input: grompp_eq_stateA_config
+
+  - source: artifact-grompp_eq_stateB_config
+    source_output: grompp_eq_stateB_config
+    target: grompp_eq_stateB
+    target_input: grompp_eq_stateB_config
+
+  - source: artifact-grompp_min_stateB_config
+    source_output: grompp_min_stateB_config
+    target: grompp_min_stateB
+    target_input: grompp_min_stateB_config
+
+  - source: artifact-grompp_ti_stateA_config
+    source_output: grompp_ti_stateA_config
+    target: grompp_ti_stateA
+    target_input: grompp_ti_stateA_config
+
+  - source: artifact-grompp_ti_stateB_config
+    source_output: grompp_ti_stateB_config
+    target: grompp_ti_stateB
+    target_input: grompp_ti_stateB_config
+
+  - source: artifact-make_ndx_stateB_config
+    source_output: make_ndx_stateB_config
+    target: make_ndx_stateB
+    target_input: make_ndx_stateB_config
+
+  - source: artifact-pdb2gmx_stateA_config
+    source_output: pdb2gmx_stateA_config
+    target: pdb2gmx_stateA
+    target_input: pdb2gmx_stateA_config
+
+  - source: artifact-pdb2gmx_stateB_config
+    source_output: pdb2gmx_stateB_config
+    target: pdb2gmx_stateB
+    target_input: pdb2gmx_stateB_config
+
+  - source: artifact-pmxanalyse_config
+    source_output: pmxanalyse_config
+    target: pmxanalyse
+    target_input: pmxanalyse_config
+
+  - source: artifact-pmxgentop_stateA_config
+    source_output: pmxgentop_stateA_config
+    target: pmxgentop_stateA
+    target_input: pmxgentop_stateA_config
+
+  - source: artifact-pmxgentop_stateB_config
+    source_output: pmxgentop_stateB_config
+    target: pmxgentop_stateB
+    target_input: pmxgentop_stateB_config
+
+  - source: artifact-pmxmutate_stateA_config
+    source_output: pmxmutate_stateA_config
+    target: pmxmutate_stateA
+    target_input: pmxmutate_stateA_config
+
+  - source: artifact-pmxmutate_stateB_config
+    source_output: pmxmutate_stateB_config
+    target: pmxmutate_stateB
+    target_input: pmxmutate_stateB_config
+
+  - source: artifact-dhdlA_zip
+    source_output: dhdlA_zip
+    target: pmxanalyse
+    target_input: dhdlA_zip
+
+  - source: artifact-dhdlB_zip
+    source_output: dhdlB_zip
+    target: pmxanalyse
+    target_input: dhdlB_zip
+
+  - source: artifact-stateA_tpr
+    source_output: stateA_tpr
+    target: gmx_trjconv_str_ens_stateA
+    target_input: stateA_tpr
+
+  - source: artifact-stateA_traj
+    source_output: stateA_traj
+    target: gmx_trjconv_str_ens_stateA
+    target_input: stateA_traj
+
+  - source: artifact-stateB_tpr
+    source_output: stateB_tpr
+    target: gmx_trjconv_str_ens_stateB
+    target_input: stateB_tpr
+
+  - source: artifact-stateB_traj
+    source_output: stateB_traj
+    target: gmx_trjconv_str_ens_stateB
+    target_input: stateB_traj
+
 
 orchestrator_target:
   kind: local
