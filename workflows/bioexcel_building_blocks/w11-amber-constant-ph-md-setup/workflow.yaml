@@ -17,66 +17,98 @@ _target: &target
 
 artifacts:
   - id: cphstats_config
+    name: pKa analysis config
+    description: Sets the running-average window used by cphstats for protonation-state analysis.
     kind: file
     path: configs/cphstats.yaml
 
   - id: fetch_pdb_config
+    name: Structure fetch config
+    description: Sets the PDB code (6PTI) to download from the RCSB.
     kind: file
     path: configs/fetch_pdb.yaml
 
   - id: leap_add_ions_config
+    name: Ion neutralization config
+    description: Controls leap's neutralization and ion-addition settings.
     kind: file
     path: configs/leap_add_ions.yaml
 
   - id: leap_gen_top_config
+    name: Topology build config
+    description: Controls the force field (ff14SB) and constph residue templates leap uses to build the topology.
     kind: file
     path: configs/leap_gen_top.yaml
 
   - id: leap_solvate_config
+    name: Solvation config
+    description: Controls the water model and truncated octahedron box geometry leap uses to solvate the system.
     kind: file
     path: configs/leap_solvate.yaml
 
   - id: parmed_cpinutil_config
+    name: Constant pH input config
+    description: Sets the Generalized Born model (igb) and the list of titratable residue names for cpinutil.
     kind: file
     path: configs/parmed_cpinutil.yaml
 
   - id: pdb4amber_config
+    name: AMBER prep config
+    description: Controls pdb4amber's structure preparation settings for constant-pH AMBER.
     kind: file
     path: configs/pdb4amber.yaml
 
   - id: process_heat_config
+    name: Heating analysis config
+    description: Controls process_mdout's extraction of temperature data from the heating stage.
     kind: file
     path: configs/process_heat.yaml
 
   - id: process_min_config
+    name: Minimization analysis config
+    description: Controls process_minout's extraction of energy data from the minimization stage.
     kind: file
     path: configs/process_min.yaml
 
   - id: process_npt_config
+    name: NPT analysis config
+    description: Controls process_mdout's extraction of pressure and density data from the NPT stage.
     kind: file
     path: configs/process_npt.yaml
 
   - id: process_nvt_config
+    name: NVT analysis config
+    description: Controls process_mdout's extraction of temperature data from the NVT stage.
     kind: file
     path: configs/process_nvt.yaml
 
   - id: sander_cph_free_config
+    name: Constant pH MD config
+    description: Controls sander's constant-pH production MD parameters (solvph, icnstph, ntcnstph).
     kind: file
     path: configs/sander_cph_free.yaml
 
   - id: sander_heat_config
+    name: Heating MD config
+    description: Controls sander's heating-stage simulation parameters.
     kind: file
     path: configs/sander_heat.yaml
 
   - id: sander_min_config
+    name: Minimization MD config
+    description: Controls sander's energy minimization parameters and restraints.
     kind: file
     path: configs/sander_min.yaml
 
   - id: sander_npt_config
+    name: NPT MD config
+    description: Controls sander's NPT equilibration parameters.
     kind: file
     path: configs/sander_npt.yaml
 
   - id: sander_nvt_config
+    name: NVT MD config
+    description: Controls sander's NVT equilibration parameters.
     kind: file
     path: configs/sander_nvt.yaml
 
@@ -84,12 +116,15 @@ tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Download 6PTI structure from PDB
+    description: Downloads the 6PTI structure from the RCSB PDB using biobb_io.
     inputs:
       - id: fetch_pdb_config
+        name: Structure fetch config
         kind: file
         path: configs/fetch_pdb.yaml
     outputs:
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/6PTI.pdb
     executor: *executor
@@ -104,15 +139,19 @@ tasks:
   - kind: horus_task
     id: pdb4amber
     name: Prepare PDB for constant pH AMBER (pdb4amber)
+    description: Runs pdb4amber to prepare the downloaded structure for constant-pH AMBER simulation.
     inputs:
       - id: pdb4amber_config
+        name: AMBER prep config
         kind: file
         path: configs/pdb4amber.yaml
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/6PTI.pdb
     outputs:
       - id: pdb4amber_pdb
+        name: AMBER-ready structure
         kind: file
         path: results/structure.pdb4amber.pdb
     executor: *docker_executor
@@ -128,21 +167,27 @@ tasks:
   - kind: horus_task
     id: leap_gen_top
     name: Create protein system topology with ff14SB and constph (leap)
+    description: Runs leap to build the protein topology using the ff14SB force field and constph residue templates.
     inputs:
       - id: leap_gen_top_config
+        name: Topology build config
         kind: file
         path: configs/leap_gen_top.yaml
       - id: pdb4amber_pdb
+        name: AMBER-ready structure
         kind: file
         path: results/structure.pdb4amber.pdb
     outputs:
       - id: top_pdb
+        name: Protein topology structure
         kind: file
         path: results/structure.leap.pdb
       - id: top_top
+        name: Protein topology file
         kind: file
         path: results/structure.leap.top
       - id: top_crd
+        name: Protein topology coordinates
         kind: file
         path: results/structure.leap.crd
     executor: *docker_executor
@@ -160,21 +205,27 @@ tasks:
   - kind: horus_task
     id: leap_solvate
     name: Create truncated octahedron solvent box (leap)
+    description: Runs leap to solvate the system in a truncated octahedron TIP3P water box.
     inputs:
       - id: leap_solvate_config
+        name: Solvation config
         kind: file
         path: configs/leap_solvate.yaml
       - id: top_pdb
+        name: Protein topology structure
         kind: file
         path: results/structure.leap.pdb
     outputs:
       - id: solv_pdb
+        name: Solvated structure
         kind: file
         path: results/structure.solv.pdb
       - id: solv_top
+        name: Solvated topology
         kind: file
         path: results/structure.solv.parmtop
       - id: solv_crd
+        name: Solvated coordinates
         kind: file
         path: results/structure.solv.crd
     executor: *docker_executor
@@ -192,21 +243,27 @@ tasks:
   - kind: horus_task
     id: leap_add_ions
     name: Neutralize and add ions (leap)
+    description: Runs leap to neutralize the system and add ions.
     inputs:
       - id: leap_add_ions_config
+        name: Ion neutralization config
         kind: file
         path: configs/leap_add_ions.yaml
       - id: solv_pdb
+        name: Solvated structure
         kind: file
         path: results/structure.solv.pdb
     outputs:
       - id: ions_pdb
+        name: Ion-neutralized structure
         kind: file
         path: results/structure.ions.pdb
       - id: ions_top
+        name: Ion-neutralized topology
         kind: file
         path: results/structure.ions.parmtop
       - id: ions_crd
+        name: Ion-neutralized coordinates
         kind: file
         path: results/structure.ions.crd
     executor: *docker_executor
@@ -224,18 +281,25 @@ tasks:
   - kind: horus_task
     id: parmed_cpinutil
     name: Generate constant pH input file (cpinutil)
+    description: Runs cpinutil to generate the constant-pH input file for titratable residues (ASP, GLU, CYS, LYS, TYR).
     inputs:
       - id: parmed_cpinutil_config
+        name: Constant pH input config
         kind: file
         path: configs/parmed_cpinutil.yaml
       - id: ions_top
+        name: Ion-neutralized topology
         kind: file
         path: results/structure.ions.parmtop
     outputs:
       - id: cpin_path
+        name: Constant pH input file
+        description: The AMBER cpin file listing titratable residues and their protonation-state parameters.
         kind: file
         path: results/structure.cpin
       - id: cph_top
+        name: Constant pH topology
+        description: Topology file updated with constph residue templates for constant-pH MD.
         kind: file
         path: results/structure.cpH.parmtop
     executor: *docker_executor
@@ -252,24 +316,31 @@ tasks:
   - kind: horus_task
     id: sander_min
     name: Energy minimize the system with backbone restraints (sander)
+    description: Runs sander to energy minimize the system with backbone restraints.
     inputs:
       - id: sander_min_config
+        name: Minimization MD config
         kind: file
         path: configs/sander_min.yaml
       - id: cph_top
+        name: Constant pH topology
         kind: file
         path: results/structure.cpH.parmtop
       - id: ions_crd
+        name: Ion-neutralized coordinates
         kind: file
         path: results/structure.ions.crd
     outputs:
       - id: min_traj
+        name: Minimization trajectory
         kind: file
         path: results/sander.cpH.x
       - id: min_rst
+        name: Minimization restart file
         kind: file
         path: results/sander.cpH.rst
       - id: min_log
+        name: Minimization log
         kind: file
         path: results/sander.cpH.log
     executor: *docker_executor

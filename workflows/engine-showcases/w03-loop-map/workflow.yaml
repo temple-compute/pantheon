@@ -9,16 +9,19 @@ tasks:
   - kind: horus_task
     id: iterate
     name: Square each iteration index (bounded range map)
+    description: Fans out one clone per iteration index (0..4) and squares that index.
     map:
       range: 5
       index_input: idx
       template:
         inputs:
           - id: idx
+            name: Iteration index
             kind: file
             path: idx.txt # populated per-clone with its iteration index
         outputs:
           - id: square
+            name: Squared value
             kind: file
             path: square.txt
         runtime:
@@ -35,16 +38,17 @@ tasks:
   - kind: horus_task
     id: gather
     name: Sum the squares
+    description: Sums every clone's squared value into a single total.
     inputs:
       # Fed by the map's fan-in: one FolderArtifact with every clone's
       # square.txt under iterate.gathered/<i>/.
       - id: results
-        name: results
+        name: Gathered squares
         kind: folder
         path: iterate.gathered/
     outputs:
       - id: total
-        name: total
+        name: Sum of squares
         kind: file
         path: results/total.txt
     executor:

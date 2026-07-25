@@ -13,42 +13,62 @@ _docker_executor: &docker_executor
 
 artifacts:
   - id: babel_convert_pdb2pdbqt_config
+    name: Ligand PDB to PDBQT config
+    description: Configuration for the OpenBabel conversion of the docking-ready ligand from PDB to PDBQT format.
     kind: file
     path: configs/babel_convert_pdb2pdbqt.yaml
 
   - id: babel_convert_pdbqt2pdb_config
+    name: Docking pose PDBQT to PDB config
+    description: Configuration for the OpenBabel conversion of the top docking pose from PDBQT back to PDB format.
     kind: file
     path: configs/babel_convert_pdbqt2pdb.yaml
 
   - id: babel_convert_sdf2pdb_config
+    name: Ligand SDF to PDB config
+    description: Configuration for the OpenBabel conversion of the Imatinib ligand from SDF to PDB format.
     kind: file
     path: configs/babel_convert_sdf2pdb.yaml
 
   - id: bindingsite_config
+    name: Binding site detection config
+    description: Parameters controlling how the binding site is inferred from the PDB Cluster90 collection.
     kind: file
     path: configs/bindingsite.yaml
 
   - id: box_config
+    name: Docking box config
+    description: Padding and offset parameters for the cavity box generated around the binding site.
     kind: file
     path: configs/box.yaml
 
   - id: extract_model_pdbqt_config
+    name: Pose extraction config
+    description: Specifies which docking pose to extract from the AutoDock Vina output.
     kind: file
     path: configs/extract_model_pdbqt.yaml
 
   - id: fetch_pdb_config
+    name: PDB fetch config
+    description: Specifies the PDB code (3HEC) of the receptor structure to download.
     kind: file
     path: configs/fetch_pdb.yaml
 
   - id: ideal_sdf_config
+    name: Ligand SDF fetch config
+    description: Specifies the ligand code (STI, Imatinib) to download as an idealized SDF structure.
     kind: file
     path: configs/ideal_sdf.yaml
 
   - id: pdb_cluster_zip_config
+    name: Cluster90 download config
+    description: Specifies the PDB Cluster90 sequence-identity threshold and target used to fetch homologous structures.
     kind: file
     path: configs/pdb_cluster_zip.yaml
 
   - id: str_check_add_hydrogens_config
+    name: Receptor protonation config
+    description: Protonation settings used when preparing the receptor structure for docking.
     kind: file
     path: configs/str_check_add_hydrogens.yaml
 
@@ -56,8 +76,10 @@ tasks:
   - kind: horus_task
     id: create_results_folder
     name: Create results folder
+    description: Creates the results output directory used by all downstream tasks.
     outputs:
       - id: results_dir
+        name: Results directory
         kind: folder
         path: results
     executor: *executor
@@ -69,15 +91,19 @@ tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Download 3HEC structure from PDB
+    description: Runs the biobb `pdb` tool to fetch the 3HEC receptor structure from the RCSB PDB.
     inputs:
       - id: results_dir
+        name: Results directory
         kind: folder
         path: results
       - id: fetch_pdb_config
+        name: PDB fetch config
         kind: file
         path: configs/fetch_pdb.yaml
     outputs:
       - id: download_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/download.pdb
     executor: *executor
@@ -93,12 +119,15 @@ tasks:
   - kind: horus_task
     id: extract_molecule
     name: Extract protein structure from downloaded PDB
+    description: Runs the biobb `extract_molecule` tool to isolate the protein chain from the downloaded PDB file, discarding heteroatoms and ligands.
     inputs:
       - id: download_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/download.pdb
     outputs:
       - id: pdb_protein
+        name: Protein structure
         kind: file
         path: results/pdb_protein.pdb
     executor: *executor
@@ -114,15 +143,19 @@ tasks:
   - kind: horus_task
     id: pdb_cluster_zip
     name: Download PDB Cluster90 collection for 3HEC
+    description: Runs the biobb `pdb_cluster_zip` tool to download a zip of Cluster90 (90% sequence identity) homologous structures for the target.
     inputs:
       - id: results_dir
+        name: Results directory
         kind: folder
         path: results
       - id: pdb_cluster_zip_config
+        name: Cluster90 download config
         kind: file
         path: configs/pdb_cluster_zip.yaml
     outputs:
       - id: pdb_cluster
+        name: Cluster90 structure collection
         kind: file
         path: results/pdb_cluster.zip
     executor: *executor
@@ -138,18 +171,23 @@ tasks:
   - kind: horus_task
     id: bindingsite
     name: Extract binding site from Cluster90 collection
+    description: Runs the biobb `bindingsite` tool to infer the ligand binding site by analyzing where ligands cluster across the Cluster90 homologs.
     inputs:
       - id: bindingsite_config
+        name: Binding site detection config
         kind: file
         path: configs/bindingsite.yaml
       - id: pdb_protein
+        name: Protein structure
         kind: file
         path: results/pdb_protein.pdb
       - id: pdb_cluster
+        name: Cluster90 structure collection
         kind: file
         path: results/pdb_cluster.zip
     outputs:
       - id: output_bindingsite
+        name: Binding site structure
         kind: file
         path: results/bindingsite.pdb
     executor: *docker_executor
@@ -167,15 +205,19 @@ tasks:
   - kind: horus_task
     id: box
     name: Generate cavity box around binding site
+    description: Runs the biobb `box` tool to generate a cavity box enclosing the binding site, used as the AutoDock Vina search space.
     inputs:
       - id: box_config
+        name: Docking box config
         kind: file
         path: configs/box.yaml
       - id: output_bindingsite
+        name: Binding site structure
         kind: file
         path: results/bindingsite.pdb
     outputs:
       - id: output_box
+        name: Docking box
         kind: file
         path: results/box.pdb
     executor: *docker_executor
@@ -192,15 +234,19 @@ tasks:
   - kind: horus_task
     id: ideal_sdf
     name: Download Imatinib (STI) small molecule as SDF
+    description: Runs the biobb `ideal_sdf` tool to download the idealized STI (Imatinib) ligand structure in SDF format from the PDB Chemical Component Dictionary.
     inputs:
       - id: results_dir
+        name: Results directory
         kind: folder
         path: results
       - id: ideal_sdf_config
+        name: Ligand SDF fetch config
         kind: file
         path: configs/ideal_sdf.yaml
     outputs:
       - id: sdf_ideal
+        name: Ligand SDF structure
         kind: file
         path: results/ideal.sdf
     executor: *executor
@@ -216,15 +262,19 @@ tasks:
   - kind: horus_task
     id: babel_convert_sdf2pdb
     name: Convert small molecule from SDF to PDB format
+    description: Runs OpenBabel via the biobb `babel_convert` tool to convert the ligand structure from SDF to PDB format.
     inputs:
       - id: babel_convert_sdf2pdb_config
+        name: Ligand SDF to PDB config
         kind: file
         path: configs/babel_convert_sdf2pdb.yaml
       - id: sdf_ideal
+        name: Ligand SDF structure
         kind: file
         path: results/ideal.sdf
     outputs:
       - id: ligand_pdb
+        name: Ligand PDB structure
         kind: file
         path: results/ligand.pdb
     executor: *executor
@@ -241,15 +291,19 @@ tasks:
   - kind: horus_task
     id: babel_convert_pdb2pdbqt
     name: Prepare ligand for docking (PDB to PDBQT)
+    description: Runs OpenBabel via the biobb `babel_convert` tool to convert the ligand from PDB to PDBQT format for AutoDock Vina.
     inputs:
       - id: babel_convert_pdb2pdbqt_config
+        name: Ligand PDB to PDBQT config
         kind: file
         path: configs/babel_convert_pdb2pdbqt.yaml
       - id: ligand_pdb
+        name: Ligand PDB structure
         kind: file
         path: results/ligand.pdb
     outputs:
       - id: prep_ligand
+        name: Docking-ready ligand
         kind: file
         path: results/prep_ligand.pdbqt
     executor: *executor
@@ -266,15 +320,19 @@ tasks:
   - kind: horus_task
     id: str_check_add_hydrogens
     name: Prepare receptor protein for docking (PDB to PDBQT)
+    description: Runs the biobb `str_check_add_hydrogens` tool to protonate the receptor and convert it to PDBQT format for docking.
     inputs:
       - id: str_check_add_hydrogens_config
+        name: Receptor protonation config
         kind: file
         path: configs/str_check_add_hydrogens.yaml
       - id: pdb_protein
+        name: Protein structure
         kind: file
         path: results/pdb_protein.pdb
     outputs:
       - id: prep_receptor
+        name: Docking-ready receptor
         kind: file
         path: results/prep_receptor.pdbqt
     executor: *executor
@@ -291,21 +349,27 @@ tasks:
   - kind: horus_task
     id: autodock_vina_run
     name: Run AutoDock Vina docking
+    description: Runs AutoDock Vina to dock the prepared ligand against the prepared receptor within the generated docking box.
     inputs:
       - id: prep_ligand
+        name: Docking-ready ligand
         kind: file
         path: results/prep_ligand.pdbqt
       - id: prep_receptor
+        name: Docking-ready receptor
         kind: file
         path: results/prep_receptor.pdbqt
       - id: output_box
+        name: Docking box
         kind: file
         path: results/box.pdb
     outputs:
       - id: output_vina_pdbqt
+        name: Vina docking poses
         kind: file
         path: results/output_vina.pdbqt
       - id: output_vina_log
+        name: Vina docking log
         kind: file
         path: results/output_vina.log
     executor: *docker_executor
@@ -324,15 +388,19 @@ tasks:
   - kind: horus_task
     id: extract_model_pdbqt
     name: Extract top docking pose from Vina output
+    description: Runs the biobb `extract_model_pdbqt` tool to extract a single ranked pose from the Vina output file.
     inputs:
       - id: extract_model_pdbqt_config
+        name: Pose extraction config
         kind: file
         path: configs/extract_model_pdbqt.yaml
       - id: output_vina_pdbqt
+        name: Vina docking poses
         kind: file
         path: results/output_vina.pdbqt
     outputs:
       - id: output_pdbqt_model
+        name: Top docking pose (PDBQT)
         kind: file
         path: results/output_model.pdbqt
     executor: *docker_executor
@@ -349,15 +417,19 @@ tasks:
   - kind: horus_task
     id: babel_convert_pdbqt2pdb
     name: Convert docking pose from PDBQT to PDB format
+    description: Runs OpenBabel via the biobb `babel_convert` tool to convert the extracted docking pose from PDBQT to PDB format.
     inputs:
       - id: babel_convert_pdbqt2pdb_config
+        name: Docking pose PDBQT to PDB config
         kind: file
         path: configs/babel_convert_pdbqt2pdb.yaml
       - id: output_pdbqt_model
+        name: Top docking pose (PDBQT)
         kind: file
         path: results/output_model.pdbqt
     outputs:
       - id: output_pdb_model
+        name: Top docking pose (PDB)
         kind: file
         path: results/output_model.pdb
     executor: *executor
@@ -374,15 +446,20 @@ tasks:
   - kind: horus_task
     id: cat_pdb
     name: Combine protein and docked ligand into final structure
+    description: Runs the biobb `cat_pdb` tool to concatenate the receptor protein and docked ligand pose into a single complex structure.
     inputs:
       - id: pdb_protein
+        name: Protein structure
         kind: file
         path: results/pdb_protein.pdb
       - id: output_pdb_model
+        name: Top docking pose (PDB)
         kind: file
         path: results/output_model.pdb
     outputs:
       - id: output_structure
+        name: Final protein-ligand complex
+        description: Assembled protein-ligand complex structure, the final output of the workflow.
         kind: file
         path: results/output_structure.pdb
     executor: *executor
