@@ -9,42 +9,62 @@ _executor: &executor
 
 artifacts:
   - id: center_config
+    name: Centering configuration
+    description: GROMACS configuration for re-centering the protein and removing periodic boundary condition artifacts from the trajectory.
     kind: file
     path: configs/center.yaml
 
   - id: dry_trjconv_config
+    name: Dry structure extraction configuration
+    description: Configuration for extracting the final solvent-stripped protein structure from the trajectory.
     kind: file
     path: configs/dry_trjconv.yaml
 
   - id: editconf_config
+    name: Simulation box configuration
+    description: Configuration defining the cubic simulation box dimensions and padding.
     kind: file
     path: configs/editconf.yaml
 
   - id: fetch_pdb_config
+    name: PDB fetch configuration
+    description: Configuration specifying which PDB entry (1AKI) to download from the RCSB.
     kind: file
     path: configs/fetch_pdb.yaml
 
   - id: genion_config
+    name: Ion addition configuration
+    description: Configuration for genion controlling the ion type and concentration used to neutralize the system.
     kind: file
     path: configs/genion.yaml
 
   - id: grompp_free_config
+    name: Free MD run configuration
+    description: GROMACS mdp parameters for the unrestrained production MD run.
     kind: file
     path: configs/grompp_free.yaml
 
   - id: grompp_ions_config
+    name: Ion step run configuration
+    description: GROMACS mdp parameters used to compile the run file for adding ions.
     kind: file
     path: configs/grompp_ions.yaml
 
   - id: grompp_minimize_config
+    name: Minimization run configuration
+    description: GROMACS mdp parameters for the energy minimization run.
     kind: file
     path: configs/grompp_minimize.yaml
 
   - id: grompp_npt_config
+    name: NPT equilibration configuration
+    description: GROMACS mdp parameters for the NPT (constant pressure) equilibration run.
     kind: file
     path: configs/grompp_npt.yaml
 
   - id: grompp_nvt_config
+    name: NVT equilibration configuration
+    description: GROMACS mdp parameters for the NVT (constant volume) equilibration run.
     kind: file
     path: configs/grompp_nvt.yaml
 
@@ -52,12 +72,15 @@ tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Download 1AKI structure from PDB
+    description: Downloads the 1AKI lysozyme structure from the RCSB PDB.
     inputs:
       - id: fetch_pdb_config
+        name: PDB fetch configuration
         kind: file
         path: configs/fetch_pdb.yaml
     outputs:
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/downloaded.pdb
     executor: *executor
@@ -73,12 +96,15 @@ tasks:
   - kind: horus_task
     id: fix_side_chain
     name: Model missing side-chain atoms
+    description: Rebuilds missing side-chain atoms in the downloaded structure using biobb_structure_utils.
     inputs:
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/downloaded.pdb
     outputs:
       - id: fixed_pdb
+        name: Structure with modelled side chains
         kind: file
         path: results/fixed.pdb
     executor: *executor
@@ -94,15 +120,20 @@ tasks:
   - kind: horus_task
     id: build_topology
     name: Build GROMACS topology (pdb2gmx)
+    description: Runs GROMACS pdb2gmx with the CHARMM36 force field to generate the initial coordinate file and topology.
     inputs:
       - id: fixed_pdb
+        name: Structure with modelled side chains
         kind: file
         path: results/fixed.pdb
     outputs:
       - id: system_gro
+        name: Initial system coordinates
         kind: file
         path: results/system.gro
       - id: pdb2gmx_top
+        name: Initial topology archive
+        description: GROMACS topology and position restraint files packaged as a zip archive.
         kind: file
         path: results/pdb2gmx_top.zip
     executor: *executor
@@ -119,15 +150,19 @@ tasks:
   - kind: horus_task
     id: editconf
     name: Define cubic simulation box
+    description: Runs GROMACS editconf to place the protein in a cubic simulation box.
     inputs:
       - id: editconf_config
+        name: Simulation box configuration
         kind: file
         path: configs/editconf.yaml
       - id: system_gro
+        name: Initial system coordinates
         kind: file
         path: results/system.gro
     outputs:
       - id: boxed_gro
+        name: Boxed system coordinates
         kind: file
         path: results/boxed.gro
     executor: *executor
@@ -144,18 +179,24 @@ tasks:
   - kind: horus_task
     id: solvate
     name: Fill box with SPC water molecules
+    description: Runs GROMACS solvate to fill the simulation box with SPC water molecules.
     inputs:
       - id: boxed_gro
+        name: Boxed system coordinates
         kind: file
         path: results/boxed.gro
       - id: pdb2gmx_top
+        name: Initial topology archive
         kind: file
         path: results/pdb2gmx_top.zip
     outputs:
       - id: solvated_gro
+        name: Solvated system coordinates
         kind: file
         path: results/solvated.gro
       - id: solvated_top
+        name: Solvated topology archive
+        description: Updated topology archive including the added water molecules.
         kind: file
         path: results/solvated_top.zip
     executor: *executor
@@ -173,18 +214,24 @@ tasks:
   - kind: horus_task
     id: grompp_ions
     name: Compile ion run file (grompp)
+    description: Runs GROMACS grompp to compile the run input file used for adding neutralizing ions.
     inputs:
       - id: grompp_ions_config
+        name: Ion step run configuration
         kind: file
         path: configs/grompp_ions.yaml
       - id: solvated_gro
+        name: Solvated system coordinates
         kind: file
         path: results/solvated.gro
       - id: solvated_top
+        name: Solvated topology archive
         kind: file
         path: results/solvated_top.zip
     outputs:
       - id: ions_tpr
+        name: Ion step run file
+        description: Binary GROMACS run input file (.tpr) compiled for the ion addition step.
         kind: file
         path: results/ions.tpr
     executor: *executor
@@ -202,21 +249,28 @@ tasks:
   - kind: horus_task
     id: genion
     name: Add neutralizing ions
+    description: Runs GROMACS genion to replace solvent molecules with Na+/Cl- ions and neutralize the system.
     inputs:
       - id: genion_config
+        name: Ion addition configuration
         kind: file
         path: configs/genion.yaml
       - id: ions_tpr
+        name: Ion step run file
         kind: file
         path: results/ions.tpr
       - id: solvated_top
+        name: Solvated topology archive
         kind: file
         path: results/solvated_top.zip
     outputs:
       - id: ionized_gro
+        name: Ionized system coordinates
         kind: file
         path: results/ionized.gro
       - id: ionized_top
+        name: Ionized topology archive
+        description: Updated topology archive reflecting the neutralizing ions.
         kind: file
         path: results/ionized_top.zip
     executor: *executor
@@ -235,18 +289,24 @@ tasks:
   - kind: horus_task
     id: grompp_minimize
     name: Compile minimization run file (grompp)
+    description: Runs GROMACS grompp to compile the run input file for energy minimization.
     inputs:
       - id: grompp_minimize_config
+        name: Minimization run configuration
         kind: file
         path: configs/grompp_minimize.yaml
       - id: ionized_gro
+        name: Ionized system coordinates
         kind: file
         path: results/ionized.gro
       - id: ionized_top
+        name: Ionized topology archive
         kind: file
         path: results/ionized_top.zip
     outputs:
       - id: min_tpr
+        name: Minimization run file
+        description: Binary GROMACS run input file (.tpr) compiled for energy minimization.
         kind: file
         path: results/min.tpr
     executor: *executor
@@ -264,12 +324,15 @@ tasks:
   - kind: horus_task
     id: mdrun_minimize
     name: Energy minimization (steepest descent)
+    description: Runs GROMACS mdrun to energy-minimize the system using the steepest descent algorithm.
     inputs:
       - id: min_tpr
+        name: Minimization run file
         kind: file
         path: results/min.tpr
     outputs:
       - id: minimized_gro
+        name: Minimized system coordinates
         kind: file
         path: results/minimized.gro
     executor: *executor
@@ -288,18 +351,24 @@ tasks:
   - kind: horus_task
     id: grompp_nvt
     name: Compile NVT run file (grompp)
+    description: Runs GROMACS grompp to compile the run input file for restrained NVT equilibration.
     inputs:
       - id: grompp_nvt_config
+        name: NVT equilibration configuration
         kind: file
         path: configs/grompp_nvt.yaml
       - id: minimized_gro
+        name: Minimized system coordinates
         kind: file
         path: results/minimized.gro
       - id: ionized_top
+        name: Ionized topology archive
         kind: file
         path: results/ionized_top.zip
     outputs:
       - id: nvt_tpr
+        name: NVT run file
+        description: Binary GROMACS run input file (.tpr) compiled for NVT equilibration.
         kind: file
         path: results/nvt.tpr
     executor: *executor
@@ -317,15 +386,20 @@ tasks:
   - kind: horus_task
     id: mdrun_nvt
     name: NVT equilibration (10 ps, restrained)
+    description: Runs GROMACS mdrun for a 10 ps restrained NVT (constant volume) equilibration.
     inputs:
       - id: nvt_tpr
+        name: NVT run file
         kind: file
         path: results/nvt.tpr
     outputs:
       - id: nvt_gro
+        name: NVT equilibrated coordinates
         kind: file
         path: results/nvt.gro
       - id: nvt_cpt
+        name: NVT checkpoint
+        description: GROMACS checkpoint file for resuming or continuing from the NVT equilibration state.
         kind: file
         path: results/nvt.cpt
     executor: *executor
@@ -345,21 +419,28 @@ tasks:
   - kind: horus_task
     id: grompp_npt
     name: Compile NPT run file (grompp)
+    description: Runs GROMACS grompp to compile the run input file for restrained NPT equilibration.
     inputs:
       - id: grompp_npt_config
+        name: NPT equilibration configuration
         kind: file
         path: configs/grompp_npt.yaml
       - id: nvt_gro
+        name: NVT equilibrated coordinates
         kind: file
         path: results/nvt.gro
       - id: nvt_cpt
+        name: NVT checkpoint
         kind: file
         path: results/nvt.cpt
       - id: ionized_top
+        name: Ionized topology archive
         kind: file
         path: results/ionized_top.zip
     outputs:
       - id: npt_tpr
+        name: NPT run file
+        description: Binary GROMACS run input file (.tpr) compiled for NPT equilibration.
         kind: file
         path: results/npt.tpr
     executor: *executor
@@ -378,15 +459,20 @@ tasks:
   - kind: horus_task
     id: mdrun_npt
     name: NPT equilibration (10 ps, restrained)
+    description: Runs GROMACS mdrun for a 10 ps restrained NPT (constant pressure) equilibration.
     inputs:
       - id: npt_tpr
+        name: NPT run file
         kind: file
         path: results/npt.tpr
     outputs:
       - id: npt_gro
+        name: NPT equilibrated coordinates
         kind: file
         path: results/npt.gro
       - id: npt_cpt
+        name: NPT checkpoint
+        description: GROMACS checkpoint file for resuming or continuing from the NPT equilibration state.
         kind: file
         path: results/npt.cpt
     executor: *executor
@@ -406,21 +492,28 @@ tasks:
   - kind: horus_task
     id: grompp_free
     name: Compile free MD run file (grompp)
+    description: Runs GROMACS grompp to compile the run input file for the unrestrained production MD run.
     inputs:
       - id: grompp_free_config
+        name: Free MD run configuration
         kind: file
         path: configs/grompp_free.yaml
       - id: npt_gro
+        name: NPT equilibrated coordinates
         kind: file
         path: results/npt.gro
       - id: npt_cpt
+        name: NPT checkpoint
         kind: file
         path: results/npt.cpt
       - id: ionized_top
+        name: Ionized topology archive
         kind: file
         path: results/ionized_top.zip
     outputs:
       - id: md_tpr
+        name: Production MD run file
+        description: Binary GROMACS run input file (.tpr) compiled for the unrestrained production MD run.
         kind: file
         path: results/md.tpr
     executor: *executor
@@ -439,15 +532,19 @@ tasks:
   - kind: horus_task
     id: mdrun_free
     name: Free MD simulation (100 ps)
+    description: Runs GROMACS mdrun for the 100 ps unrestrained production MD simulation.
     inputs:
       - id: md_tpr
+        name: Production MD run file
         kind: file
         path: results/md.tpr
     outputs:
       - id: md_gro
+        name: Production MD final coordinates
         kind: file
         path: results/md.gro
       - id: md_trr
+        name: Production MD trajectory
         kind: file
         path: results/md.trr
     executor: *executor
@@ -466,18 +563,23 @@ tasks:
   - kind: horus_task
     id: gmx_image
     name: Center protein and fix PBC in trajectory
+    description: Runs GROMACS trjconv to re-center the protein and remove periodic boundary condition artifacts from the trajectory.
     inputs:
       - id: center_config
+        name: Centering configuration
         kind: file
         path: configs/center.yaml
       - id: md_trr
+        name: Production MD trajectory
         kind: file
         path: results/md.trr
       - id: md_tpr
+        name: Production MD run file
         kind: file
         path: results/md.tpr
     outputs:
       - id: imaged_trr
+        name: Re-centered trajectory
         kind: file
         path: results/imaged.trr
     executor: *executor
@@ -495,18 +597,23 @@ tasks:
   - kind: horus_task
     id: gmx_trjconv_str
     name: Extract dry protein structure from trajectory
+    description: Runs GROMACS trjconv to extract the final solvent-stripped protein structure.
     inputs:
       - id: dry_trjconv_config
+        name: Dry structure extraction configuration
         kind: file
         path: configs/dry_trjconv.yaml
       - id: md_gro
+        name: Production MD final coordinates
         kind: file
         path: results/md.gro
       - id: md_tpr
+        name: Production MD run file
         kind: file
         path: results/md.tpr
     outputs:
       - id: dry_gro
+        name: Dry protein structure
         kind: file
         path: results/dry.gro
     executor: *executor

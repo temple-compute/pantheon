@@ -17,162 +17,242 @@ _docker_executor_flexserv: &docker_executor_flexserv
 
 artifacts:
   - id: bd_run_config
+    name: BD run config
+    description: Configures FlexServ Brownian Dynamics simulation parameters.
     kind: file
     path: configs/bd_run.yaml
 
   - id: concoord_disco_config
+    name: CONCOORD disco config
+    description: Configures CONCOORD's DISCO step that generates the distance-restraint structure ensemble.
     kind: file
     path: configs/concoord_disco.yaml
 
   - id: concoord_dist_config
+    name: CONCOORD dist config
+    description: Configures CONCOORD's DIST step that computes interatomic distance restraints.
     kind: file
     path: configs/concoord_dist.yaml
 
   - id: cpptraj_convert_concoord_config
+    name: CONCOORD TRR conversion config
+    description: Configures cpptraj conversion of the CONCOORD ensemble trajectory to TRR format.
     kind: file
     path: configs/cpptraj_convert_concoord.yaml
 
   - id: cpptraj_convert_imods_config
+    name: iMODS TRR conversion config
+    description: Configures cpptraj conversion of the iMODS ensemble trajectory to TRR format.
     kind: file
     path: configs/cpptraj_convert_imods.yaml
 
   - id: cpptraj_convert_nma_config
+    name: FlexServ NMA TRR conversion config
+    description: Configures cpptraj conversion of the FlexServ NMA ensemble trajectory to TRR format.
     kind: file
     path: configs/cpptraj_convert_nma.yaml
 
   - id: cpptraj_convert_nolb_config
+    name: NOLB TRR conversion config
+    description: Configures cpptraj conversion of the NOLB ensemble trajectory to TRR format.
     kind: file
     path: configs/cpptraj_convert_nolb.yaml
 
   - id: cpptraj_convert_prody_config
+    name: ProDy TRR conversion config
+    description: Configures cpptraj conversion of the ProDy ANM ensemble trajectory to TRR format.
     kind: file
     path: configs/cpptraj_convert_prody.yaml
 
   - id: cpptraj_convert_proj_config
+    name: PC1 projection conversion config
+    description: Configures cpptraj conversion of the PC1 projection trajectory to XTC format.
     kind: file
     path: configs/cpptraj_convert_proj.yaml
 
   - id: cpptraj_mask_backbone_config
+    name: Backbone mask config
+    description: Configures the cpptraj atom mask used to extract backbone atoms from the monomer.
     kind: file
     path: configs/cpptraj_mask_backbone.yaml
 
   - id: cpptraj_mask_ca_config
+    name: Cα mask config
+    description: Configures the cpptraj atom mask used to extract Cα atoms from the monomer.
     kind: file
     path: configs/cpptraj_mask_ca.yaml
 
   - id: cpptraj_rms_bd_config
+    name: BD RMSD analysis config
+    description: Configures cpptraj RMSD analysis and fitting of the Brownian Dynamics trajectory.
     kind: file
     path: configs/cpptraj_rms_bd.yaml
 
   - id: cpptraj_rms_concoord_config
+    name: CONCOORD RMSD analysis config
+    description: Configures cpptraj RMSD analysis of the CONCOORD ensemble.
     kind: file
     path: configs/cpptraj_rms_concoord.yaml
 
   - id: cpptraj_rms_dmd_config
+    name: DMD RMSD analysis config
+    description: Configures cpptraj RMSD analysis and fitting of the Discrete Molecular Dynamics trajectory.
     kind: file
     path: configs/cpptraj_rms_dmd.yaml
 
   - id: cpptraj_rms_imods_config
+    name: iMODS RMSD analysis config
+    description: Configures cpptraj RMSD analysis of the iMODS ensemble.
     kind: file
     path: configs/cpptraj_rms_imods.yaml
 
   - id: cpptraj_rms_meta_config
+    name: Meta-trajectory RMSD config
+    description: Configures cpptraj RMSD fitting of the clustered meta-trajectory representatives.
     kind: file
     path: configs/cpptraj_rms_meta.yaml
 
   - id: cpptraj_rms_nma_config
+    name: NMA RMSD analysis config
+    description: Configures cpptraj RMSD analysis of the FlexServ NMA ensemble.
     kind: file
     path: configs/cpptraj_rms_nma.yaml
 
   - id: cpptraj_rms_nolb_config
+    name: NOLB RMSD analysis config
+    description: Configures cpptraj RMSD analysis of the NOLB ensemble.
     kind: file
     path: configs/cpptraj_rms_nolb.yaml
 
   - id: cpptraj_rms_prody_config
+    name: ProDy RMSD analysis config
+    description: Configures cpptraj RMSD analysis of the ProDy ANM ensemble.
     kind: file
     path: configs/cpptraj_rms_prody.yaml
 
   - id: dmd_run_config
+    name: DMD run config
+    description: Configures FlexServ Discrete Molecular Dynamics simulation parameters.
     kind: file
     path: configs/dmd_run.yaml
 
   - id: extract_chain_config
+    name: Chain extraction config
+    description: Configures extraction of chain A from the structure.
     kind: file
     path: configs/extract_chain.yaml
 
   - id: extract_model_config
+    name: Model extraction config
+    description: Configures extraction of the first model from the downloaded structure.
     kind: file
     path: configs/extract_model.yaml
 
   - id: fetch_pdb_config
+    name: PDB fetch config
+    description: Sets the PDB code, chain, and model used to download the starting structure from PDBe.
     kind: file
     path: configs/fetch_pdb.yaml
 
   - id: gmx_cluster_config
+    name: GROMACS clustering config
+    description: Controls the GROMACS clustering algorithm and cutoff used on the meta-trajectory.
     kind: file
     path: configs/gmx_cluster.yaml
 
   - id: imod_imc_config
+    name: iMODS Monte Carlo config
+    description: Configures iMODS internal-coordinate Monte Carlo sampling parameters.
     kind: file
     path: configs/imod_imc.yaml
 
   - id: imod_imode_config
+    name: iMODS NMA config
+    description: Configures iMODS internal-coordinate normal mode analysis parameters.
     kind: file
     path: configs/imod_imode.yaml
 
   - id: make_ndx_config
+    name: GROMACS index config
+    description: Configures creation of the GROMACS index file for Cα atoms.
     kind: file
     path: configs/make_ndx.yaml
 
   - id: nma_run_config
+    name: NMA run config
+    description: Configures FlexServ Normal Mode Analysis simulation parameters.
     kind: file
     path: configs/nma_run.yaml
 
   - id: nolb_nma_config
+    name: NOLB NMA config
+    description: Configures NOLB non-linear rigid-block normal mode analysis parameters.
     kind: file
     path: configs/nolb_nma.yaml
 
   - id: pcz_animate_config
+    name: PC1 animation config
+    description: Configures generation of the animated trajectory along the first principal component.
     kind: file
     path: configs/pcz_animate.yaml
 
   - id: pcz_bfactor_config
+    name: B-factor analysis config
+    description: Configures PCA-derived B-factor analysis parameters.
     kind: file
     path: configs/pcz_bfactor.yaml
 
   - id: pcz_collectivity_config
+    name: Collectivity index config
+    description: Configures the collectivity index analysis of PCA modes.
     kind: file
     path: configs/pcz_collectivity.yaml
 
   - id: pcz_evecs_config
+    name: PCA eigenvector config
+    description: Configures extraction of PCA eigenvectors from the compressed trajectory.
     kind: file
     path: configs/pcz_evecs.yaml
 
   - id: pcz_hinges_bfactor_config
+    name: B-factor hinge detection config
+    description: Configures hinge-point detection using the B-factor slope method.
     kind: file
     path: configs/pcz_hinges_bfactor.yaml
 
   - id: pcz_hinges_dyndom_config
+    name: DynDom hinge detection config
+    description: Configures hinge-point detection using the Dynamic Domain decomposition method.
     kind: file
     path: configs/pcz_hinges_dyndom.yaml
 
   - id: pcz_hinges_fcte_config
+    name: Force-constant hinge detection config
+    description: Configures hinge-point detection using the force constant method.
     kind: file
     path: configs/pcz_hinges_fcte.yaml
 
   - id: pcz_stiffness_config
+    name: Stiffness analysis config
+    description: Configures apparent stiffness analysis derived from PCA modes.
     kind: file
     path: configs/pcz_stiffness.yaml
 
   - id: pcz_zip_classic_config
+    name: Classical PCA compression config
+    description: Configures classical RMSd-fitted PCA compression of the meta-trajectory.
     kind: file
     path: configs/pcz_zip_classic.yaml
 
   - id: pcz_zip_gaussian_config
+    name: Gaussian PCA compression config
+    description: Configures Gaussian-weighted RMSd-fitted PCA compression of the meta-trajectory.
     kind: file
     path: configs/pcz_zip_gaussian.yaml
 
   - id: prody_anm_config
+    name: ProDy ANM config
+    description: Configures the ProDy Anisotropic Network Model ensemble generation parameters.
     kind: file
     path: configs/prody_anm.yaml
 

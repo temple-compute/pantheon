@@ -17,150 +17,224 @@ _target: &target
 
 artifacts:
   - id: md_mdin
+    name: MD production mdin
+    description: AMBER sander input file for the free MD production run.
     kind: file
     path: ABCix_config_files/md.in
 
   - id: step1_mdin
+    name: Equilibration step 1 mdin
+    description: AMBER sander input file for equilibration step 1.
     kind: file
     path: ABCix_config_files/step1.in
 
   - id: step10_mdin
+    name: Equilibration step 10 mdin
+    description: AMBER sander input file for equilibration step 10.
     kind: file
     path: ABCix_config_files/step10.in
 
   - id: step2_mdin
+    name: Equilibration step 2 mdin
+    description: AMBER sander input file for equilibration step 2.
     kind: file
     path: ABCix_config_files/step2.in
 
   - id: step3_mdin
+    name: Equilibration step 3 mdin
+    description: AMBER sander input file for equilibration step 3.
     kind: file
     path: ABCix_config_files/step3.in
 
   - id: step4_mdin
+    name: Equilibration step 4 mdin
+    description: AMBER sander input file for equilibration step 4.
     kind: file
     path: ABCix_config_files/step4.in
 
   - id: step5_mdin
+    name: Equilibration step 5 mdin
+    description: AMBER sander input file for equilibration step 5.
     kind: file
     path: ABCix_config_files/step5.in
 
   - id: step6_mdin
+    name: Equilibration step 6 mdin
+    description: AMBER sander input file for equilibration step 6.
     kind: file
     path: ABCix_config_files/step6.in
 
   - id: step7_mdin
+    name: Equilibration step 7 mdin
+    description: AMBER sander input file for equilibration step 7.
     kind: file
     path: ABCix_config_files/step7.in
 
   - id: step8_mdin
+    name: Equilibration step 8 mdin
+    description: AMBER sander input file for equilibration step 8.
     kind: file
     path: ABCix_config_files/step8.in
 
   - id: step9_mdin
+    name: Equilibration step 9 mdin
+    description: AMBER sander input file for equilibration step 9.
     kind: file
     path: ABCix_config_files/step9.in
 
   - id: dna_pdb
+    name: DNA starting structure (PDB)
+    description: Initial Drew-Dickerson dodecamer DNA structure.
     kind: file
     path: CGCGAATTCGCG.pdb
 
   - id: cpptraj_randomize_ions_config
+    name: Ion randomization config
+    description: Parameters for randomizing ion positions with cpptraj.
     kind: file
     path: configs/cpptraj_randomize_ions.yaml
 
   - id: leap_add_ions_config
+    name: Ion addition config
+    description: Parameters for adding ions at 100 mM with leap.
     kind: file
     path: configs/leap_add_ions.yaml
 
   - id: leap_gen_top_config
+    name: Topology generation config
+    description: Parameters for building the DNA system topology with leap.
     kind: file
     path: configs/leap_gen_top.yaml
 
   - id: leap_solvate_config
+    name: Solvation config
+    description: Parameters for building the solvent box with leap.
     kind: file
     path: configs/leap_solvate.yaml
 
   - id: process_eq1_config
+    name: Eq1 energy extraction config
+    description: Parameters for extracting minimization energy from the eq1 log.
     kind: file
     path: configs/process_eq1.yaml
 
   - id: process_eq10_config
+    name: Eq10 energy extraction config
+    description: Parameters for extracting pressure and density from the eq10 log.
     kind: file
     path: configs/process_eq10.yaml
 
   - id: process_eq2_config
+    name: Eq2 energy extraction config
+    description: Parameters for extracting temperature from the eq2 log.
     kind: file
     path: configs/process_eq2.yaml
 
   - id: process_eq3_config
+    name: Eq3 energy extraction config
+    description: Parameters for extracting minimization energy from the eq3 log.
     kind: file
     path: configs/process_eq3.yaml
 
   - id: process_eq4_config
+    name: Eq4 energy extraction config
+    description: Parameters for extracting minimization energy from the eq4 log.
     kind: file
     path: configs/process_eq4.yaml
 
   - id: process_eq5_config
+    name: Eq5 energy extraction config
+    description: Parameters for extracting minimization energy from the eq5 log.
     kind: file
     path: configs/process_eq5.yaml
 
   - id: process_eq6_config
+    name: Eq6 energy extraction config
+    description: Parameters for extracting pressure and density from the eq6 log.
     kind: file
     path: configs/process_eq6.yaml
 
   - id: process_eq7_config
+    name: Eq7 energy extraction config
+    description: Parameters for extracting pressure and density from the eq7 log.
     kind: file
     path: configs/process_eq7.yaml
 
   - id: process_eq8_config
+    name: Eq8 energy extraction config
+    description: Parameters for extracting pressure and density from the eq8 log.
     kind: file
     path: configs/process_eq8.yaml
 
   - id: process_eq9_config
+    name: Eq9 energy extraction config
+    description: Parameters for extracting pressure and density from the eq9 log.
     kind: file
     path: configs/process_eq9.yaml
 
   - id: sander_eq1_config
+    name: Eq1 sander config
+    description: Parameters for equilibration step 1 (minimization with restraints).
     kind: file
     path: configs/sander_eq1.yaml
 
   - id: sander_eq10_config
+    name: Eq10 sander config
+    description: Parameters for equilibration step 10 (npt production equilibration).
     kind: file
     path: configs/sander_eq10.yaml
 
   - id: sander_eq2_config
+    name: Eq2 sander config
+    description: Parameters for equilibration step 2 (heating with restraints).
     kind: file
     path: configs/sander_eq2.yaml
 
   - id: sander_eq3_config
+    name: Eq3 sander config
+    description: Parameters for equilibration step 3 (minimization with restraints).
     kind: file
     path: configs/sander_eq3.yaml
 
   - id: sander_eq4_config
+    name: Eq4 sander config
+    description: Parameters for equilibration step 4 (minimization with restraints).
     kind: file
     path: configs/sander_eq4.yaml
 
   - id: sander_eq5_config
+    name: Eq5 sander config
+    description: Parameters for equilibration step 5 (minimization without restraints).
     kind: file
     path: configs/sander_eq5.yaml
 
   - id: sander_eq6_config
+    name: Eq6 sander config
+    description: Parameters for equilibration step 6 (npt with restraints).
     kind: file
     path: configs/sander_eq6.yaml
 
   - id: sander_eq7_config
+    name: Eq7 sander config
+    description: Parameters for equilibration step 7 (npt with restraints).
     kind: file
     path: configs/sander_eq7.yaml
 
   - id: sander_eq8_config
+    name: Eq8 sander config
+    description: Parameters for equilibration step 8 (npt with backbone restraints).
     kind: file
     path: configs/sander_eq8.yaml
 
   - id: sander_eq9_config
+    name: Eq9 sander config
+    description: Parameters for equilibration step 9 (npt without restraints).
     kind: file
     path: configs/sander_eq9.yaml
 
   - id: sander_md_config
+    name: MD production sander config
+    description: Parameters for the free MD production run.
     kind: file
     path: configs/sander_md.yaml
 
@@ -168,21 +242,29 @@ tasks:
   - kind: horus_task
     id: leap_gen_top
     name: Create DNA system topology (leap)
+    description: Builds the DNA system topology and initial coordinates with LEaP.
     inputs:
       - id: leap_gen_top_config
+        name: Topology generation config
+        description: Parameters for building the DNA system topology with leap.
         kind: file
         path: configs/leap_gen_top.yaml
       - id: dna_pdb
+        name: DNA starting structure (PDB)
+        description: Initial Drew-Dickerson dodecamer DNA structure.
         kind: file
         path: CGCGAATTCGCG.pdb
     outputs:
       - id: leap_pdb
+        name: DNA structure (leap)
         kind: file
         path: results/structure.leap.pdb
       - id: leap_top
+        name: DNA topology (leap)
         kind: file
         path: results/structure.leap.top
       - id: leap_crd
+        name: DNA coordinates (leap)
         kind: file
         path: results/structure.leap.crd
     executor: *docker_executor
@@ -200,21 +282,28 @@ tasks:
   - kind: horus_task
     id: leap_solvate
     name: Create solvent box and solvate DNA system (leap)
+    description: Builds an explicit solvent box around the DNA system with LEaP.
     inputs:
       - id: leap_solvate_config
+        name: Solvation config
+        description: Parameters for building the solvent box with leap.
         kind: file
         path: configs/leap_solvate.yaml
       - id: leap_pdb
+        name: DNA structure (leap)
         kind: file
         path: results/structure.leap.pdb
     outputs:
       - id: solv_pdb
+        name: Solvated structure
         kind: file
         path: results/structure.solv.pdb
       - id: solv_top
+        name: Solvated topology
         kind: file
         path: results/structure.solv.parmtop
       - id: solv_crd
+        name: Solvated coordinates
         kind: file
         path: results/structure.solv.crd
     executor: *docker_executor
@@ -232,21 +321,28 @@ tasks:
   - kind: horus_task
     id: leap_add_ions
     name: Add ions at 100 mM concentration (leap)
+    description: Neutralizes and adds ions at 100 mM concentration with LEaP.
     inputs:
       - id: leap_add_ions_config
+        name: Ion addition config
+        description: Parameters for adding ions at 100 mM with leap.
         kind: file
         path: configs/leap_add_ions.yaml
       - id: solv_pdb
+        name: Solvated structure
         kind: file
         path: results/structure.solv.pdb
     outputs:
       - id: ions_pdb
+        name: Ionized structure
         kind: file
         path: results/structure.ions.pdb
       - id: ions_top
+        name: Ionized topology
         kind: file
         path: results/structure.ions.parmtop
       - id: ions_crd
+        name: Ionized coordinates
         kind: file
         path: results/structure.ions.crd
     executor: *docker_executor
@@ -264,21 +360,28 @@ tasks:
   - kind: horus_task
     id: cpptraj_randomize_ions
     name: Randomize ion positions (cpptraj)
+    description: Randomizes ion positions to avoid artifacts from LEaP placement.
     inputs:
       - id: cpptraj_randomize_ions_config
+        name: Ion randomization config
+        description: Parameters for randomizing ion positions with cpptraj.
         kind: file
         path: configs/cpptraj_randomize_ions.yaml
       - id: ions_top
+        name: Ionized topology
         kind: file
         path: results/structure.ions.parmtop
       - id: ions_crd
+        name: Ionized coordinates
         kind: file
         path: results/structure.ions.crd
     outputs:
       - id: rand_ions_crd
+        name: Randomized-ion coordinates
         kind: file
         path: results/structure.randIons.crd
       - id: rand_ions_pdb
+        name: Randomized-ion structure
         kind: file
         path: results/structure.randIons.pdb
     executor: *docker_executor
@@ -296,12 +399,15 @@ tasks:
   - kind: horus_task
     id: parmed_hmassrepartition
     name: Hydrogen mass repartitioning for 4 fs timestep (parmed)
+    description: Repartitions hydrogen masses so a 4 fs timestep is stable.
     inputs:
       - id: ions_top
+        name: Ionized topology
         kind: file
         path: results/structure.ions.parmtop
     outputs:
       - id: top_4fs
+        name: 4 fs-timestep topology
         kind: file
         path: results/structure.leap.4fs.top
     executor: *docker_executor
@@ -316,30 +422,41 @@ tasks:
   - kind: horus_task
     id: sander_eq1
     name: Equilibration step 1 - Minimization with restraints (sander)
+    description: Runs equilibration step 1 (minimization with restraints) with sander.
     inputs:
       - id: sander_eq1_config
+        name: Eq1 sander config
+        description: Parameters for equilibration step 1 (minimization with restraints).
         kind: file
         path: configs/sander_eq1.yaml
       - id: top_4fs
+        name: 4 fs-timestep topology
         kind: file
         path: results/structure.leap.4fs.top
       - id: step1_mdin
+        name: Equilibration step 1 mdin
+        description: AMBER sander input file for equilibration step 1.
         kind: file
         path: ABCix_config_files/step1.in
       - id: rand_ions_crd
+        name: Randomized-ion coordinates
         kind: file
         path: results/structure.randIons.crd
     outputs:
       - id: eq1_traj
+        name: Eq1 trajectory
         kind: file
         path: results/sander.eq1.nc
       - id: eq1_rst
+        name: Eq1 restart
         kind: file
         path: results/sander.eq1.ncrst
       - id: eq1_log
+        name: Eq1 log
         kind: file
         path: results/sander.eq1.log
       - id: eq1_mdinfo
+        name: Eq1 run info
         kind: file
         path: results/sander.eq1.mdinfo
     executor: *docker_executor
@@ -361,15 +478,20 @@ tasks:
   - kind: horus_task
     id: process_eq1
     name: Extract eq1 minimization energy (process_minout)
+    description: Extracts minimization energy from the eq1 sander log.
     inputs:
       - id: process_eq1_config
+        name: Eq1 energy extraction config
+        description: Parameters for extracting minimization energy from the eq1 log.
         kind: file
         path: configs/process_eq1.yaml
       - id: eq1_log
+        name: Eq1 log
         kind: file
         path: results/sander.eq1.log
     outputs:
       - id: eq1_dat
+        name: Eq1 minimization energy (dat)
         kind: file
         path: results/sander.eq1.energy.dat
     executor: *docker_executor
@@ -385,30 +507,41 @@ tasks:
   - kind: horus_task
     id: sander_eq2
     name: Equilibration step 2 - Heating with restraints (sander)
+    description: Runs equilibration step 2 (heating with restraints) with sander.
     inputs:
       - id: sander_eq2_config
+        name: Eq2 sander config
+        description: Parameters for equilibration step 2 (heating with restraints).
         kind: file
         path: configs/sander_eq2.yaml
       - id: top_4fs
+        name: 4 fs-timestep topology
         kind: file
         path: results/structure.leap.4fs.top
       - id: step2_mdin
+        name: Equilibration step 2 mdin
+        description: AMBER sander input file for equilibration step 2.
         kind: file
         path: ABCix_config_files/step2.in
       - id: eq1_rst
+        name: Eq1 restart
         kind: file
         path: results/sander.eq1.ncrst
     outputs:
       - id: eq2_traj
+        name: Eq2 trajectory
         kind: file
         path: results/sander.eq2.nc
       - id: eq2_rst
+        name: Eq2 restart
         kind: file
         path: results/sander.eq2.ncrst
       - id: eq2_log
+        name: Eq2 log
         kind: file
         path: results/sander.eq2.log
       - id: eq2_mdinfo
+        name: Eq2 run info
         kind: file
         path: results/sander.eq2.mdinfo
     executor: *docker_executor
@@ -430,15 +563,20 @@ tasks:
   - kind: horus_task
     id: process_eq2
     name: Extract eq2 temperature (process_mdout)
+    description: Extracts temperature from the eq2 sander log.
     inputs:
       - id: process_eq2_config
+        name: Eq2 energy extraction config
+        description: Parameters for extracting temperature from the eq2 log.
         kind: file
         path: configs/process_eq2.yaml
       - id: eq2_log
+        name: Eq2 log
         kind: file
         path: results/sander.eq2.log
     outputs:
       - id: eq2_dat
+        name: Eq2 temperature (dat)
         kind: file
         path: results/sander.eq2.energy.dat
     executor: *docker_executor
@@ -454,30 +592,41 @@ tasks:
   - kind: horus_task
     id: sander_eq3
     name: Equilibration step 3 - Minimization with restraints (sander)
+    description: Runs equilibration step 3 (minimization with restraints) with sander.
     inputs:
       - id: sander_eq3_config
+        name: Eq3 sander config
+        description: Parameters for equilibration step 3 (minimization with restraints).
         kind: file
         path: configs/sander_eq3.yaml
       - id: top_4fs
+        name: 4 fs-timestep topology
         kind: file
         path: results/structure.leap.4fs.top
       - id: step3_mdin
+        name: Equilibration step 3 mdin
+        description: AMBER sander input file for equilibration step 3.
         kind: file
         path: ABCix_config_files/step3.in
       - id: eq2_rst
+        name: Eq2 restart
         kind: file
         path: results/sander.eq2.ncrst
     outputs:
       - id: eq3_traj
+        name: Eq3 trajectory
         kind: file
         path: results/sander.eq3.nc
       - id: eq3_rst
+        name: Eq3 restart
         kind: file
         path: results/sander.eq3.ncrst
       - id: eq3_log
+        name: Eq3 log
         kind: file
         path: results/sander.eq3.log
       - id: eq3_mdinfo
+        name: Eq3 run info
         kind: file
         path: results/sander.eq3.mdinfo
     executor: *docker_executor
@@ -499,15 +648,20 @@ tasks:
   - kind: horus_task
     id: process_eq3
     name: Extract eq3 minimization energy (process_minout)
+    description: Extracts minimization energy from the eq3 sander log.
     inputs:
       - id: process_eq3_config
+        name: Eq3 energy extraction config
+        description: Parameters for extracting minimization energy from the eq3 log.
         kind: file
         path: configs/process_eq3.yaml
       - id: eq3_log
+        name: Eq3 log
         kind: file
         path: results/sander.eq3.log
     outputs:
       - id: eq3_dat
+        name: Eq3 minimization energy (dat)
         kind: file
         path: results/sander.eq3.energy.dat
     executor: *docker_executor
@@ -523,30 +677,41 @@ tasks:
   - kind: horus_task
     id: sander_eq4
     name: Equilibration step 4 - Minimization with restraints (sander)
+    description: Runs equilibration step 4 (minimization with restraints) with sander.
     inputs:
       - id: sander_eq4_config
+        name: Eq4 sander config
+        description: Parameters for equilibration step 4 (minimization with restraints).
         kind: file
         path: configs/sander_eq4.yaml
       - id: top_4fs
+        name: 4 fs-timestep topology
         kind: file
         path: results/structure.leap.4fs.top
       - id: step4_mdin
+        name: Equilibration step 4 mdin
+        description: AMBER sander input file for equilibration step 4.
         kind: file
         path: ABCix_config_files/step4.in
       - id: eq3_rst
+        name: Eq3 restart
         kind: file
         path: results/sander.eq3.ncrst
     outputs:
       - id: eq4_traj
+        name: Eq4 trajectory
         kind: file
         path: results/sander.eq4.nc
       - id: eq4_rst
+        name: Eq4 restart
         kind: file
         path: results/sander.eq4.ncrst
       - id: eq4_log
+        name: Eq4 log
         kind: file
         path: results/sander.eq4.log
       - id: eq4_mdinfo
+        name: Eq4 run info
         kind: file
         path: results/sander.eq4.mdinfo
     executor: *docker_executor
@@ -568,15 +733,20 @@ tasks:
   - kind: horus_task
     id: process_eq4
     name: Extract eq4 minimization energy (process_minout)
+    description: Extracts minimization energy from the eq4 sander log.
     inputs:
       - id: process_eq4_config
+        name: Eq4 energy extraction config
+        description: Parameters for extracting minimization energy from the eq4 log.
         kind: file
         path: configs/process_eq4.yaml
       - id: eq4_log
+        name: Eq4 log
         kind: file
         path: results/sander.eq4.log
     outputs:
       - id: eq4_dat
+        name: Eq4 minimization energy (dat)
         kind: file
         path: results/sander.eq4.energy.dat
     executor: *docker_executor
@@ -592,30 +762,41 @@ tasks:
   - kind: horus_task
     id: sander_eq5
     name: Equilibration step 5 - Minimization without restraints (sander)
+    description: Runs equilibration step 5 (minimization without restraints) with sander.
     inputs:
       - id: sander_eq5_config
+        name: Eq5 sander config
+        description: Parameters for equilibration step 5 (minimization without restraints).
         kind: file
         path: configs/sander_eq5.yaml
       - id: top_4fs
+        name: 4 fs-timestep topology
         kind: file
         path: results/structure.leap.4fs.top
       - id: step5_mdin
+        name: Equilibration step 5 mdin
+        description: AMBER sander input file for equilibration step 5.
         kind: file
         path: ABCix_config_files/step5.in
       - id: eq4_rst
+        name: Eq4 restart
         kind: file
         path: results/sander.eq4.ncrst
     outputs:
       - id: eq5_traj
+        name: Eq5 trajectory
         kind: file
         path: results/sander.eq5.nc
       - id: eq5_rst
+        name: Eq5 restart
         kind: file
         path: results/sander.eq5.ncrst
       - id: eq5_log
+        name: Eq5 log
         kind: file
         path: results/sander.eq5.log
       - id: eq5_mdinfo
+        name: Eq5 run info
         kind: file
         path: results/sander.eq5.mdinfo
     executor: *docker_executor
@@ -637,15 +818,20 @@ tasks:
   - kind: horus_task
     id: process_eq5
     name: Extract eq5 minimization energy (process_minout)
+    description: Extracts minimization energy from the eq5 sander log.
     inputs:
       - id: process_eq5_config
+        name: Eq5 energy extraction config
+        description: Parameters for extracting minimization energy from the eq5 log.
         kind: file
         path: configs/process_eq5.yaml
       - id: eq5_log
+        name: Eq5 log
         kind: file
         path: results/sander.eq5.log
     outputs:
       - id: eq5_dat
+        name: Eq5 minimization energy (dat)
         kind: file
         path: results/sander.eq5.energy.dat
     executor: *docker_executor
@@ -661,30 +847,41 @@ tasks:
   - kind: horus_task
     id: sander_eq6
     name: Equilibration step 6 - NPT with restraints (sander)
+    description: Runs equilibration step 6 (npt with restraints) with sander.
     inputs:
       - id: sander_eq6_config
+        name: Eq6 sander config
+        description: Parameters for equilibration step 6 (npt with restraints).
         kind: file
         path: configs/sander_eq6.yaml
       - id: top_4fs
+        name: 4 fs-timestep topology
         kind: file
         path: results/structure.leap.4fs.top
       - id: step6_mdin
+        name: Equilibration step 6 mdin
+        description: AMBER sander input file for equilibration step 6.
         kind: file
         path: ABCix_config_files/step6.in
       - id: eq5_rst
+        name: Eq5 restart
         kind: file
         path: results/sander.eq5.ncrst
     outputs:
       - id: eq6_traj
+        name: Eq6 trajectory
         kind: file
         path: results/sander.eq6.nc
       - id: eq6_rst
+        name: Eq6 restart
         kind: file
         path: results/sander.eq6.ncrst
       - id: eq6_log
+        name: Eq6 log
         kind: file
         path: results/sander.eq6.log
       - id: eq6_mdinfo
+        name: Eq6 run info
         kind: file
         path: results/sander.eq6.mdinfo
     executor: *docker_executor
@@ -706,15 +903,20 @@ tasks:
   - kind: horus_task
     id: process_eq6
     name: Extract eq6 pressure and density (process_mdout)
+    description: Extracts pressure and density from the eq6 sander log.
     inputs:
       - id: process_eq6_config
+        name: Eq6 energy extraction config
+        description: Parameters for extracting pressure and density from the eq6 log.
         kind: file
         path: configs/process_eq6.yaml
       - id: eq6_log
+        name: Eq6 log
         kind: file
         path: results/sander.eq6.log
     outputs:
       - id: eq6_dat
+        name: Eq6 pressure and density (dat)
         kind: file
         path: results/sander.eq6.pressure_and_density.dat
     executor: *docker_executor
@@ -730,30 +932,41 @@ tasks:
   - kind: horus_task
     id: sander_eq7
     name: Equilibration step 7 - NPT with restraints (sander)
+    description: Runs equilibration step 7 (npt with restraints) with sander.
     inputs:
       - id: sander_eq7_config
+        name: Eq7 sander config
+        description: Parameters for equilibration step 7 (npt with restraints).
         kind: file
         path: configs/sander_eq7.yaml
       - id: top_4fs
+        name: 4 fs-timestep topology
         kind: file
         path: results/structure.leap.4fs.top
       - id: step7_mdin
+        name: Equilibration step 7 mdin
+        description: AMBER sander input file for equilibration step 7.
         kind: file
         path: ABCix_config_files/step7.in
       - id: eq6_rst
+        name: Eq6 restart
         kind: file
         path: results/sander.eq6.ncrst
     outputs:
       - id: eq7_traj
+        name: Eq7 trajectory
         kind: file
         path: results/sander.eq7.nc
       - id: eq7_rst
+        name: Eq7 restart
         kind: file
         path: results/sander.eq7.ncrst
       - id: eq7_log
+        name: Eq7 log
         kind: file
         path: results/sander.eq7.log
       - id: eq7_mdinfo
+        name: Eq7 run info
         kind: file
         path: results/sander.eq7.mdinfo
     executor: *docker_executor
@@ -775,15 +988,20 @@ tasks:
   - kind: horus_task
     id: process_eq7
     name: Extract eq7 pressure and density (process_mdout)
+    description: Extracts pressure and density from the eq7 sander log.
     inputs:
       - id: process_eq7_config
+        name: Eq7 energy extraction config
+        description: Parameters for extracting pressure and density from the eq7 log.
         kind: file
         path: configs/process_eq7.yaml
       - id: eq7_log
+        name: Eq7 log
         kind: file
         path: results/sander.eq7.log
     outputs:
       - id: eq7_dat
+        name: Eq7 pressure and density (dat)
         kind: file
         path: results/sander.eq7.pressure_and_density.dat
     executor: *docker_executor
@@ -799,30 +1017,41 @@ tasks:
   - kind: horus_task
     id: sander_eq8
     name: Equilibration step 8 - NPT with backbone restraints (sander)
+    description: Runs equilibration step 8 (npt with backbone restraints) with sander.
     inputs:
       - id: sander_eq8_config
+        name: Eq8 sander config
+        description: Parameters for equilibration step 8 (npt with backbone restraints).
         kind: file
         path: configs/sander_eq8.yaml
       - id: top_4fs
+        name: 4 fs-timestep topology
         kind: file
         path: results/structure.leap.4fs.top
       - id: step8_mdin
+        name: Equilibration step 8 mdin
+        description: AMBER sander input file for equilibration step 8.
         kind: file
         path: ABCix_config_files/step8.in
       - id: eq7_rst
+        name: Eq7 restart
         kind: file
         path: results/sander.eq7.ncrst
     outputs:
       - id: eq8_traj
+        name: Eq8 trajectory
         kind: file
         path: results/sander.eq8.nc
       - id: eq8_rst
+        name: Eq8 restart
         kind: file
         path: results/sander.eq8.ncrst
       - id: eq8_log
+        name: Eq8 log
         kind: file
         path: results/sander.eq8.log
       - id: eq8_mdinfo
+        name: Eq8 run info
         kind: file
         path: results/sander.eq8.mdinfo
     executor: *docker_executor
@@ -844,15 +1073,20 @@ tasks:
   - kind: horus_task
     id: process_eq8
     name: Extract eq8 pressure and density (process_mdout)
+    description: Extracts pressure and density from the eq8 sander log.
     inputs:
       - id: process_eq8_config
+        name: Eq8 energy extraction config
+        description: Parameters for extracting pressure and density from the eq8 log.
         kind: file
         path: configs/process_eq8.yaml
       - id: eq8_log
+        name: Eq8 log
         kind: file
         path: results/sander.eq8.log
     outputs:
       - id: eq8_dat
+        name: Eq8 pressure and density (dat)
         kind: file
         path: results/sander.eq8.pressure_and_density.dat
     executor: *docker_executor
@@ -868,30 +1102,41 @@ tasks:
   - kind: horus_task
     id: sander_eq9
     name: Equilibration step 9 - NPT without restraints (sander)
+    description: Runs equilibration step 9 (npt without restraints) with sander.
     inputs:
       - id: sander_eq9_config
+        name: Eq9 sander config
+        description: Parameters for equilibration step 9 (npt without restraints).
         kind: file
         path: configs/sander_eq9.yaml
       - id: top_4fs
+        name: 4 fs-timestep topology
         kind: file
         path: results/structure.leap.4fs.top
       - id: step9_mdin
+        name: Equilibration step 9 mdin
+        description: AMBER sander input file for equilibration step 9.
         kind: file
         path: ABCix_config_files/step9.in
       - id: eq8_rst
+        name: Eq8 restart
         kind: file
         path: results/sander.eq8.ncrst
     outputs:
       - id: eq9_traj
+        name: Eq9 trajectory
         kind: file
         path: results/sander.eq9.nc
       - id: eq9_rst
+        name: Eq9 restart
         kind: file
         path: results/sander.eq9.ncrst
       - id: eq9_log
+        name: Eq9 log
         kind: file
         path: results/sander.eq9.log
       - id: eq9_mdinfo
+        name: Eq9 run info
         kind: file
         path: results/sander.eq9.mdinfo
     executor: *docker_executor
@@ -913,15 +1158,20 @@ tasks:
   - kind: horus_task
     id: process_eq9
     name: Extract eq9 pressure and density (process_mdout)
+    description: Extracts pressure and density from the eq9 sander log.
     inputs:
       - id: process_eq9_config
+        name: Eq9 energy extraction config
+        description: Parameters for extracting pressure and density from the eq9 log.
         kind: file
         path: configs/process_eq9.yaml
       - id: eq9_log
+        name: Eq9 log
         kind: file
         path: results/sander.eq9.log
     outputs:
       - id: eq9_dat
+        name: Eq9 pressure and density (dat)
         kind: file
         path: results/sander.eq9.pressure_and_density.dat
     executor: *docker_executor
@@ -937,30 +1187,41 @@ tasks:
   - kind: horus_task
     id: sander_eq10
     name: Equilibration step 10 - NPT production equilibration (sander)
+    description: Runs equilibration step 10 (npt production equilibration) with sander.
     inputs:
       - id: sander_eq10_config
+        name: Eq10 sander config
+        description: Parameters for equilibration step 10 (npt production equilibration).
         kind: file
         path: configs/sander_eq10.yaml
       - id: top_4fs
+        name: 4 fs-timestep topology
         kind: file
         path: results/structure.leap.4fs.top
       - id: step10_mdin
+        name: Equilibration step 10 mdin
+        description: AMBER sander input file for equilibration step 10.
         kind: file
         path: ABCix_config_files/step10.in
       - id: eq9_rst
+        name: Eq9 restart
         kind: file
         path: results/sander.eq9.ncrst
     outputs:
       - id: eq10_traj
+        name: Eq10 trajectory
         kind: file
         path: results/sander.eq10.nc
       - id: eq10_rst
+        name: Eq10 restart
         kind: file
         path: results/sander.eq10.ncrst
       - id: eq10_log
+        name: Eq10 log
         kind: file
         path: results/sander.eq10.log
       - id: eq10_mdinfo
+        name: Eq10 run info
         kind: file
         path: results/sander.eq10.mdinfo
     executor: *docker_executor
@@ -982,15 +1243,20 @@ tasks:
   - kind: horus_task
     id: process_eq10
     name: Extract eq10 pressure and density (process_mdout)
+    description: Extracts pressure and density from the eq10 sander log.
     inputs:
       - id: process_eq10_config
+        name: Eq10 energy extraction config
+        description: Parameters for extracting pressure and density from the eq10 log.
         kind: file
         path: configs/process_eq10.yaml
       - id: eq10_log
+        name: Eq10 log
         kind: file
         path: results/sander.eq10.log
     outputs:
       - id: eq10_dat
+        name: Eq10 pressure and density (dat)
         kind: file
         path: results/sander.eq10.pressure_and_density.dat
     executor: *docker_executor
@@ -1006,30 +1272,41 @@ tasks:
   - kind: horus_task
     id: sander_md
     name: Free MD production simulation (sander)
+    description: Runs the free (unrestrained) MD production simulation with sander.
     inputs:
       - id: sander_md_config
+        name: MD production sander config
+        description: Parameters for the free MD production run.
         kind: file
         path: configs/sander_md.yaml
       - id: top_4fs
+        name: 4 fs-timestep topology
         kind: file
         path: results/structure.leap.4fs.top
       - id: md_mdin
+        name: MD production mdin
+        description: AMBER sander input file for the free MD production run.
         kind: file
         path: ABCix_config_files/md.in
       - id: eq10_rst
+        name: Eq10 restart
         kind: file
         path: results/sander.eq10.ncrst
     outputs:
       - id: md_traj
+        name: MD production trajectory
         kind: file
         path: results/sander.md.nc
       - id: md_rst
+        name: MD production restart
         kind: file
         path: results/sander.md.ncrst
       - id: md_log
+        name: MD production log
         kind: file
         path: results/sander.md.log
       - id: md_mdinfo
+        name: MD production run info
         kind: file
         path: results/sander.md.mdinfo
     executor: *docker_executor

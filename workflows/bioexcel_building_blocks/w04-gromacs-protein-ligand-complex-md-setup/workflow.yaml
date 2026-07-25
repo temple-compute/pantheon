@@ -9,102 +9,152 @@ _executor: &executor
 
 artifacts:
   - id: acpype_params_gmx_config
+    name: ACPype parameterization config
+    description: Settings controlling ACPype/GAFF ligand topology generation.
     kind: file
     path: configs/acpype_params_gmx.yaml
 
   - id: append_ligand_config
+    name: Ligand topology merge config
+    description: Settings controlling how the ligand topology and restraints are appended to the protein topology.
     kind: file
     path: configs/append_ligand.yaml
 
   - id: babel_minimize_config
+    name: OpenBabel minimization config
+    description: Settings for the OpenBabel GAFF energy minimization of the ligand's hydrogens.
     kind: file
     path: configs/babel_minimize.yaml
 
   - id: dry_trjconv_config
+    name: Dry structure extraction config
+    description: Settings selecting the atom group used to extract the solvent-free final structure.
     kind: file
     path: configs/dry_trjconv.yaml
 
   - id: editconf_config
+    name: Solvent box config
+    description: Settings defining the simulation box type and size.
     kind: file
     path: configs/editconf.yaml
 
   - id: extract_heteroatoms_config
+    name: Ligand extraction config
+    description: Settings specifying the JZ4 ligand heteroatom code to extract from the PDB.
     kind: file
     path: configs/extract_heteroatoms.yaml
 
   - id: fetch_pdb_config
+    name: PDB fetch config
+    description: Settings specifying the PDB code (3HTB) to download.
     kind: file
     path: configs/fetch_pdb.yaml
 
   - id: genion_config
+    name: Ion addition config
+    description: Settings for the neutralizing NaCl ion concentration and placement.
     kind: file
     path: configs/genion.yaml
 
   - id: genrestr_config
+    name: Ligand restraint config
+    description: Settings for the ligand position-restraint force constants.
     kind: file
     path: configs/genrestr.yaml
 
   - id: gmx_energy_min_config
+    name: Minimization energy config
+    description: Settings selecting which energy terms to extract after minimization.
     kind: file
     path: configs/gmx_energy_min.yaml
 
   - id: gmx_energy_npt_config
+    name: NPT energy config
+    description: Settings selecting which pressure/density terms to extract during NPT equilibration.
     kind: file
     path: configs/gmx_energy_npt.yaml
 
   - id: gmx_energy_nvt_config
+    name: NVT energy config
+    description: Settings selecting which temperature terms to extract during NVT equilibration.
     kind: file
     path: configs/gmx_energy_nvt.yaml
 
   - id: gmx_image_config
+    name: Trajectory imaging config
+    description: Settings for centering the complex and removing periodic-boundary artifacts.
     kind: file
     path: configs/gmx_image.yaml
 
   - id: gmx_rgyr_config
+    name: Radius of gyration config
+    description: Settings for the radius of gyration calculation.
     kind: file
     path: configs/gmx_rgyr.yaml
 
   - id: gmx_rms_config
+    name: RMSd analysis config
+    description: Settings for the backbone RMSd calculation.
     kind: file
     path: configs/gmx_rms.yaml
 
   - id: grompp_free_config
+    name: Free MD mdp config
+    description: GROMACS mdp parameters (time step, length) for the unrestrained production MD run.
     kind: file
     path: configs/grompp_free.yaml
 
   - id: grompp_ions_config
+    name: Ion step mdp config
+    description: GROMACS mdp parameters for the ion-placement preprocessing step.
     kind: file
     path: configs/grompp_ions.yaml
 
   - id: grompp_minimize_config
+    name: Minimization mdp config
+    description: GROMACS mdp parameters for the energy minimization run.
     kind: file
     path: configs/grompp_minimize.yaml
 
   - id: grompp_npt_config
+    name: NPT mdp config
+    description: GROMACS mdp parameters (pressure coupling, temperature) for NPT equilibration.
     kind: file
     path: configs/grompp_npt.yaml
 
   - id: grompp_nvt_config
+    name: NVT mdp config
+    description: GROMACS mdp parameters (temperature coupling) for NVT equilibration.
     kind: file
     path: configs/grompp_nvt.yaml
 
   - id: make_ndx_complex_config
+    name: Complex index config
+    description: Settings for defining the protein-ligand complex index group.
     kind: file
     path: configs/make_ndx_complex.yaml
 
   - id: make_ndx_ligand_config
+    name: Ligand index config
+    description: Settings for defining the ligand heavy-atom index group.
     kind: file
     path: configs/make_ndx_ligand.yaml
 
   - id: pdb2gmx_config
+    name: Protein topology config
+    description: Settings specifying the protein force field and water model.
     kind: file
     path: configs/pdb2gmx.yaml
 
   - id: reduce_add_hydrogens_config
+    name: Hydrogen addition config
+    description: Settings for adding hydrogens to the ligand with Reduce.
     kind: file
     path: configs/reduce_add_hydrogens.yaml
 
   - id: trjconv_system_config
+    name: Structure conversion config
+    description: Settings for converting GRO structures to PDB with hydrogens.
     kind: file
     path: configs/trjconv_system.yaml
 
@@ -112,12 +162,15 @@ tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Download 3HTB structure from PDB
+    description: Downloads the 3HTB (T4 lysozyme L99A/M102Q + JZ4) structure from the RCSB PDB.
     inputs:
       - id: fetch_pdb_config
+        name: PDB fetch config
         kind: file
         path: configs/fetch_pdb.yaml
     outputs:
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/downloaded.pdb
     executor: *executor
@@ -133,15 +186,19 @@ tasks:
   - kind: horus_task
     id: extract_heteroatoms
     name: Extract JZ4 ligand from PDB
+    description: Extracts the JZ4 ligand heteroatoms from the downloaded structure using biobb_structure_utils.
     inputs:
       - id: extract_heteroatoms_config
+        name: Ligand extraction config
         kind: file
         path: configs/extract_heteroatoms.yaml
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/downloaded.pdb
     outputs:
       - id: ligand_pdb
+        name: Extracted ligand structure
         kind: file
         path: results/ligand.pdb
     executor: *executor
@@ -158,12 +215,15 @@ tasks:
   - kind: horus_task
     id: extract_molecule
     name: Extract protein chain from PDB
+    description: Extracts the protein chain from the downloaded structure using biobb_structure_utils.
     inputs:
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/downloaded.pdb
     outputs:
       - id: protein_pdb
+        name: Extracted protein structure
         kind: file
         path: results/protein.pdb
     executor: *executor
@@ -179,12 +239,16 @@ tasks:
   - kind: horus_task
     id: fix_side_chain
     name: Model missing side-chain atoms
+    description: Models in any missing protein side-chain atoms.
     inputs:
       - id: protein_pdb
+        name: Extracted protein structure
         kind: file
         path: results/protein.pdb
     outputs:
       - id: fixed_pdb
+        name: Repaired protein structure
+        description: Protein structure with missing side-chain atoms modeled in.
         kind: file
         path: results/fixed.pdb
     executor: *executor
@@ -200,18 +264,24 @@ tasks:
   - kind: horus_task
     id: pdb2gmx
     name: Build GROMACS protein topology (amber99sb-ildn, SPC/E)
+    description: Runs GROMACS pdb2gmx to build the protein topology with the amber99sb-ildn force field and SPC/E water model.
     inputs:
       - id: pdb2gmx_config
+        name: Protein topology config
         kind: file
         path: configs/pdb2gmx.yaml
       - id: fixed_pdb
+        name: Repaired protein structure
+        description: Protein structure with missing side-chain atoms modeled in.
         kind: file
         path: results/fixed.pdb
     outputs:
       - id: pdb2gmx_gro
+        name: Protein coordinates
         kind: file
         path: results/pdb2gmx.gro
       - id: pdb2gmx_top
+        name: Protein topology
         kind: file
         path: results/pdb2gmx_top.zip
     executor: *executor
@@ -229,15 +299,19 @@ tasks:
   - kind: horus_task
     id: reduce_add_hydrogens
     name: Add hydrogen atoms to ligand (Reduce)
+    description: Adds hydrogen atoms to the ligand using Reduce.
     inputs:
       - id: reduce_add_hydrogens_config
+        name: Hydrogen addition config
         kind: file
         path: configs/reduce_add_hydrogens.yaml
       - id: ligand_pdb
+        name: Extracted ligand structure
         kind: file
         path: results/ligand.pdb
     outputs:
       - id: ligand_reduce_H_pdb
+        name: Protonated ligand structure
         kind: file
         path: results/ligand.reduce.H.pdb
     executor: *executor
@@ -254,15 +328,20 @@ tasks:
   - kind: horus_task
     id: babel_minimize
     name: Energetically minimize ligand with hydrogens (OpenBabel GAFF)
+    description: Energy-minimizes the protonated ligand with OpenBabel using the GAFF force field.
     inputs:
       - id: babel_minimize_config
+        name: OpenBabel minimization config
         kind: file
         path: configs/babel_minimize.yaml
       - id: ligand_reduce_H_pdb
+        name: Protonated ligand structure
         kind: file
         path: results/ligand.reduce.H.pdb
     outputs:
       - id: ligand_H_min_mol2
+        name: Minimized ligand structure
+        description: Ligand structure with hydrogens energy-minimized, in MOL2 format.
         kind: file
         path: results/ligand.H.min.mol2
     executor: *executor
@@ -279,21 +358,30 @@ tasks:
   - kind: horus_task
     id: acpype_params_gmx
     name: Generate ligand GROMACS topology (ACPype / amberGAFF)
+    description: Generates a GROMACS-compatible ligand topology with ACPype using amberGAFF parameters.
     inputs:
       - id: acpype_params_gmx_config
+        name: ACPype parameterization config
         kind: file
         path: configs/acpype_params_gmx.yaml
       - id: ligand_H_min_mol2
+        name: Minimized ligand structure
+        description: Ligand structure with hydrogens energy-minimized, in MOL2 format.
         kind: file
         path: results/ligand.H.min.mol2
     outputs:
       - id: ligand_params_gro
+        name: Ligand coordinates
         kind: file
         path: results/ligand.params.gro
       - id: ligand_params_itp
+        name: Ligand topology
+        description: GAFF/ACPype ligand topology to be included in the merged complex topology.
         kind: file
         path: results/ligand.params.itp
       - id: ligand_params_top
+        name: Ligand standalone topology
+        description: Standalone GROMACS topology file for the ligand.
         kind: file
         path: results/ligand.params.top
     executor: *executor
@@ -312,15 +400,19 @@ tasks:
   - kind: horus_task
     id: make_ndx_ligand
     name: Create index file for ligand heavy atoms
+    description: Runs GROMACS make_ndx to build an index group of the ligand's heavy atoms.
     inputs:
       - id: make_ndx_ligand_config
+        name: Ligand index config
         kind: file
         path: configs/make_ndx_ligand.yaml
       - id: ligand_params_gro
+        name: Ligand coordinates
         kind: file
         path: results/ligand.params.gro
     outputs:
       - id: ligand_index_ndx
+        name: Ligand heavy-atom index
         kind: file
         path: results/ligand_index.ndx
     executor: *executor
@@ -337,18 +429,23 @@ tasks:
   - kind: horus_task
     id: genrestr
     name: Generate ligand position restraints (1000 kJ/mol·nm²)
+    description: Runs GROMACS genrestr to generate ligand position restraints (1000 kJ/mol*nm^2).
     inputs:
       - id: genrestr_config
+        name: Ligand restraint config
         kind: file
         path: configs/genrestr.yaml
       - id: ligand_params_gro
+        name: Ligand coordinates
         kind: file
         path: results/ligand.params.gro
       - id: ligand_index_ndx
+        name: Ligand heavy-atom index
         kind: file
         path: results/ligand_index.ndx
     outputs:
       - id: ligand_posres_itp
+        name: Ligand position restraints
         kind: file
         path: results/ligand_posres.itp
     executor: *executor
@@ -366,15 +463,19 @@ tasks:
   - kind: horus_task
     id: trjconv_protein
     name: Convert protein GRO to PDB (with hydrogens)
+    description: Runs GROMACS trjconv to convert the protein GRO coordinates to a PDB file with hydrogens.
     inputs:
       - id: trjconv_system_config
+        name: Structure conversion config
         kind: file
         path: configs/trjconv_system.yaml
       - id: pdb2gmx_gro
+        name: Protein coordinates
         kind: file
         path: results/pdb2gmx.gro
     outputs:
       - id: protein_H_pdb
+        name: Protein structure (PDB)
         kind: file
         path: results/protein_H.pdb
     executor: *executor
@@ -392,15 +493,19 @@ tasks:
   - kind: horus_task
     id: trjconv_ligand
     name: Convert ligand GRO to PDB (with hydrogens)
+    description: Runs GROMACS trjconv to convert the ligand GRO coordinates to a PDB file with hydrogens.
     inputs:
       - id: trjconv_system_config
+        name: Structure conversion config
         kind: file
         path: configs/trjconv_system.yaml
       - id: ligand_params_gro
+        name: Ligand coordinates
         kind: file
         path: results/ligand.params.gro
     outputs:
       - id: ligand_H_pdb
+        name: Ligand structure (PDB)
         kind: file
         path: results/ligand_H.pdb
     executor: *executor
@@ -418,15 +523,19 @@ tasks:
   - kind: horus_task
     id: cat_pdb_complex
     name: Concatenate protein and ligand into complex structure
+    description: Concatenates the protonated protein and ligand structures into a single complex PDB.
     inputs:
       - id: protein_H_pdb
+        name: Protein structure (PDB)
         kind: file
         path: results/protein_H.pdb
       - id: ligand_H_pdb
+        name: Ligand structure (PDB)
         kind: file
         path: results/ligand_H.pdb
     outputs:
       - id: complex_H_pdb
+        name: Merged complex structure
         kind: file
         path: results/complex_H.pdb
     executor: *executor
@@ -443,21 +552,29 @@ tasks:
   - kind: horus_task
     id: append_ligand
     name: Append ligand topology to protein topology
+    description: Merges the ligand topology and position restraints into the protein topology to form the complex topology.
     inputs:
       - id: append_ligand_config
+        name: Ligand topology merge config
         kind: file
         path: configs/append_ligand.yaml
       - id: pdb2gmx_top
+        name: Protein topology
         kind: file
         path: results/pdb2gmx_top.zip
       - id: ligand_posres_itp
+        name: Ligand position restraints
         kind: file
         path: results/ligand_posres.itp
       - id: ligand_params_itp
+        name: Ligand topology
+        description: GAFF/ACPype ligand topology to be included in the merged complex topology.
         kind: file
         path: results/ligand.params.itp
     outputs:
       - id: complex_top
+        name: Complex topology
+        description: Merged protein-ligand topology (protein topology plus ligand topology and restraints).
         kind: file
         path: results/complex_top.zip
     executor: *executor
@@ -476,15 +593,19 @@ tasks:
   - kind: horus_task
     id: editconf
     name: Define truncated octahedron solvent box (0.8 nm)
+    description: Runs GROMACS editconf to define a truncated octahedron solvent box (0.8 nm) around the complex.
     inputs:
       - id: editconf_config
+        name: Solvent box config
         kind: file
         path: configs/editconf.yaml
       - id: complex_H_pdb
+        name: Merged complex structure
         kind: file
         path: results/complex_H.pdb
     outputs:
       - id: boxed_gro
+        name: Boxed complex structure
         kind: file
         path: results/boxed.gro
     executor: *executor
@@ -501,18 +622,24 @@ tasks:
   - kind: horus_task
     id: solvate
     name: Fill box with SPC water molecules
+    description: Runs GROMACS solvate to fill the box with SPC water molecules.
     inputs:
       - id: boxed_gro
+        name: Boxed complex structure
         kind: file
         path: results/boxed.gro
       - id: complex_top
+        name: Complex topology
+        description: Merged protein-ligand topology (protein topology plus ligand topology and restraints).
         kind: file
         path: results/complex_top.zip
     outputs:
       - id: solvated_gro
+        name: Solvated complex structure
         kind: file
         path: results/solvated.gro
       - id: solvated_top
+        name: Solvated complex topology
         kind: file
         path: results/solvated_top.zip
     executor: *executor
@@ -530,18 +657,24 @@ tasks:
   - kind: horus_task
     id: grompp_ions
     name: Compile ion run file (grompp)
+    description: Runs GROMACS grompp to compile the run input file used for ion placement.
     inputs:
       - id: grompp_ions_config
+        name: Ion step mdp config
         kind: file
         path: configs/grompp_ions.yaml
       - id: solvated_gro
+        name: Solvated complex structure
         kind: file
         path: results/solvated.gro
       - id: solvated_top
+        name: Solvated complex topology
         kind: file
         path: results/solvated_top.zip
     outputs:
       - id: ions_tpr
+        name: Ion step run input
+        description: Compiled GROMACS run input (tpr) for placing neutralizing ions.
         kind: file
         path: results/ions.tpr
     executor: *executor
@@ -559,21 +692,28 @@ tasks:
   - kind: horus_task
     id: genion
     name: Add neutralizing ions
+    description: Runs GROMACS genion to add neutralizing NaCl ions to the solvated system.
     inputs:
       - id: genion_config
+        name: Ion addition config
         kind: file
         path: configs/genion.yaml
       - id: ions_tpr
+        name: Ion step run input
+        description: Compiled GROMACS run input (tpr) for placing neutralizing ions.
         kind: file
         path: results/ions.tpr
       - id: solvated_top
+        name: Solvated complex topology
         kind: file
         path: results/solvated_top.zip
     outputs:
       - id: ionized_gro
+        name: Neutralized complex structure
         kind: file
         path: results/ionized.gro
       - id: ionized_top
+        name: Neutralized complex topology
         kind: file
         path: results/ionized_top.zip
     executor: *executor
@@ -592,18 +732,24 @@ tasks:
   - kind: horus_task
     id: grompp_minimize
     name: Compile energy minimization run file (grompp)
+    description: Runs GROMACS grompp to compile the run input file for energy minimization.
     inputs:
       - id: grompp_minimize_config
+        name: Minimization mdp config
         kind: file
         path: configs/grompp_minimize.yaml
       - id: ionized_gro
+        name: Neutralized complex structure
         kind: file
         path: results/ionized.gro
       - id: ionized_top
+        name: Neutralized complex topology
         kind: file
         path: results/ionized_top.zip
     outputs:
       - id: min_tpr
+        name: Minimization run input
+        description: Compiled GROMACS run input (tpr) for the energy minimization step.
         kind: file
         path: results/min.tpr
     executor: *executor
@@ -621,15 +767,21 @@ tasks:
   - kind: horus_task
     id: mdrun_minimize
     name: Energy minimization (steepest descent, max 500 kJ/mol·nm)
+    description: Runs GROMACS mdrun to energy-minimize the system with the steepest descent algorithm (max 500 kJ/mol*nm).
     inputs:
       - id: min_tpr
+        name: Minimization run input
+        description: Compiled GROMACS run input (tpr) for the energy minimization step.
         kind: file
         path: results/min.tpr
     outputs:
       - id: minimized_gro
+        name: Minimized complex structure
         kind: file
         path: results/minimized.gro
       - id: min_edr
+        name: Minimization energy log
+        description: GROMACS energy log (edr) from the minimization run.
         kind: file
         path: results/min.edr
     executor: *executor
@@ -648,15 +800,20 @@ tasks:
   - kind: horus_task
     id: gmx_energy_min
     name: Extract potential energy from minimization
+    description: Runs GROMACS energy to extract the potential energy trace from the minimization run.
     inputs:
       - id: gmx_energy_min_config
+        name: Minimization energy config
         kind: file
         path: configs/gmx_energy_min.yaml
       - id: min_edr
+        name: Minimization energy log
+        description: GROMACS energy log (edr) from the minimization run.
         kind: file
         path: results/min.edr
     outputs:
       - id: min_energy_xvg
+        name: Minimization energy trace
         kind: file
         path: results/min_energy.xvg
     executor: *executor
@@ -673,15 +830,19 @@ tasks:
   - kind: horus_task
     id: make_ndx_complex
     name: Create index file for protein-ligand complex group
+    description: Runs GROMACS make_ndx to build the protein-ligand complex index group.
     inputs:
       - id: make_ndx_complex_config
+        name: Complex index config
         kind: file
         path: configs/make_ndx_complex.yaml
       - id: minimized_gro
+        name: Minimized complex structure
         kind: file
         path: results/minimized.gro
     outputs:
       - id: complex_index_ndx
+        name: Complex index groups
         kind: file
         path: results/complex_index.ndx
     executor: *executor
@@ -698,21 +859,28 @@ tasks:
   - kind: horus_task
     id: grompp_nvt
     name: Compile NVT equilibration run file (grompp)
+    description: Runs GROMACS grompp to compile the run input file for NVT equilibration.
     inputs:
       - id: grompp_nvt_config
+        name: NVT mdp config
         kind: file
         path: configs/grompp_nvt.yaml
       - id: minimized_gro
+        name: Minimized complex structure
         kind: file
         path: results/minimized.gro
       - id: ionized_top
+        name: Neutralized complex topology
         kind: file
         path: results/ionized_top.zip
       - id: complex_index_ndx
+        name: Complex index groups
         kind: file
         path: results/complex_index.ndx
     outputs:
       - id: nvt_tpr
+        name: NVT run input
+        description: Compiled GROMACS run input (tpr) for NVT equilibration.
         kind: file
         path: results/nvt.tpr
     executor: *executor
@@ -731,18 +899,26 @@ tasks:
   - kind: horus_task
     id: mdrun_nvt
     name: NVT equilibration (restrained, Protein_Other + Water_and_ions coupling)
+    description: Runs GROMACS mdrun for restrained NVT equilibration with Protein_Other and Water_and_ions temperature coupling.
     inputs:
       - id: nvt_tpr
+        name: NVT run input
+        description: Compiled GROMACS run input (tpr) for NVT equilibration.
         kind: file
         path: results/nvt.tpr
     outputs:
       - id: nvt_gro
+        name: NVT-equilibrated structure
         kind: file
         path: results/nvt.gro
       - id: nvt_cpt
+        name: NVT checkpoint
+        description: GROMACS checkpoint file carrying velocities and state from NVT equilibration.
         kind: file
         path: results/nvt.cpt
       - id: nvt_edr
+        name: NVT energy log
+        description: GROMACS energy log (edr) from NVT equilibration.
         kind: file
         path: results/nvt.edr
     executor: *executor
@@ -762,15 +938,20 @@ tasks:
   - kind: horus_task
     id: gmx_energy_nvt
     name: Extract system temperature during NVT equilibration
+    description: Runs GROMACS energy to extract the system temperature trace from NVT equilibration.
     inputs:
       - id: gmx_energy_nvt_config
+        name: NVT energy config
         kind: file
         path: configs/gmx_energy_nvt.yaml
       - id: nvt_edr
+        name: NVT energy log
+        description: GROMACS energy log (edr) from NVT equilibration.
         kind: file
         path: results/nvt.edr
     outputs:
       - id: nvt_temp_xvg
+        name: NVT temperature trace
         kind: file
         path: results/nvt_temp.xvg
     executor: *executor
@@ -787,24 +968,33 @@ tasks:
   - kind: horus_task
     id: grompp_npt
     name: Compile NPT equilibration run file (grompp)
+    description: Runs GROMACS grompp to compile the run input file for NPT equilibration.
     inputs:
       - id: grompp_npt_config
+        name: NPT mdp config
         kind: file
         path: configs/grompp_npt.yaml
       - id: nvt_gro
+        name: NVT-equilibrated structure
         kind: file
         path: results/nvt.gro
       - id: nvt_cpt
+        name: NVT checkpoint
+        description: GROMACS checkpoint file carrying velocities and state from NVT equilibration.
         kind: file
         path: results/nvt.cpt
       - id: ionized_top
+        name: Neutralized complex topology
         kind: file
         path: results/ionized_top.zip
       - id: complex_index_ndx
+        name: Complex index groups
         kind: file
         path: results/complex_index.ndx
     outputs:
       - id: npt_tpr
+        name: NPT run input
+        description: Compiled GROMACS run input (tpr) for NPT equilibration.
         kind: file
         path: results/npt.tpr
     executor: *executor
@@ -824,18 +1014,26 @@ tasks:
   - kind: horus_task
     id: mdrun_npt
     name: NPT equilibration (restrained, pressure coupling enabled)
+    description: Runs GROMACS mdrun for restrained NPT equilibration with pressure coupling enabled.
     inputs:
       - id: npt_tpr
+        name: NPT run input
+        description: Compiled GROMACS run input (tpr) for NPT equilibration.
         kind: file
         path: results/npt.tpr
     outputs:
       - id: npt_gro
+        name: NPT-equilibrated structure
         kind: file
         path: results/npt.gro
       - id: npt_cpt
+        name: NPT checkpoint
+        description: GROMACS checkpoint file carrying velocities and state from NPT equilibration.
         kind: file
         path: results/npt.cpt
       - id: npt_edr
+        name: NPT energy log
+        description: GROMACS energy log (edr) from NPT equilibration.
         kind: file
         path: results/npt.edr
     executor: *executor
@@ -855,15 +1053,20 @@ tasks:
   - kind: horus_task
     id: gmx_energy_npt
     name: Extract pressure and density during NPT equilibration
+    description: Runs GROMACS energy to extract the pressure and density traces from NPT equilibration.
     inputs:
       - id: gmx_energy_npt_config
+        name: NPT energy config
         kind: file
         path: configs/gmx_energy_npt.yaml
       - id: npt_edr
+        name: NPT energy log
+        description: GROMACS energy log (edr) from NPT equilibration.
         kind: file
         path: results/npt.edr
     outputs:
       - id: npt_PD_xvg
+        name: NPT pressure/density trace
         kind: file
         path: results/npt_PD.xvg
     executor: *executor
@@ -880,21 +1083,29 @@ tasks:
   - kind: horus_task
     id: grompp_free
     name: Compile free MD run file (grompp)
+    description: Runs GROMACS grompp to compile the run input file for the unrestrained production MD run.
     inputs:
       - id: grompp_free_config
+        name: Free MD mdp config
         kind: file
         path: configs/grompp_free.yaml
       - id: npt_gro
+        name: NPT-equilibrated structure
         kind: file
         path: results/npt.gro
       - id: npt_cpt
+        name: NPT checkpoint
+        description: GROMACS checkpoint file carrying velocities and state from NPT equilibration.
         kind: file
         path: results/npt.cpt
       - id: ionized_top
+        name: Neutralized complex topology
         kind: file
         path: results/ionized_top.zip
     outputs:
       - id: md_tpr
+        name: Production MD run input
+        description: Compiled GROMACS run input (tpr) for the unrestrained production MD run.
         kind: file
         path: results/md.tpr
     executor: *executor
@@ -913,15 +1124,20 @@ tasks:
   - kind: horus_task
     id: mdrun_free
     name: Free MD simulation (50 ps, unrestrained)
+    description: Runs GROMACS mdrun for the unrestrained free production MD simulation (50 ps).
     inputs:
       - id: md_tpr
+        name: Production MD run input
+        description: Compiled GROMACS run input (tpr) for the unrestrained production MD run.
         kind: file
         path: results/md.tpr
     outputs:
       - id: md_gro
+        name: Production MD final structure
         kind: file
         path: results/md.gro
       - id: md_trr
+        name: Production MD trajectory
         kind: file
         path: results/md.trr
     executor: *executor
@@ -941,18 +1157,24 @@ tasks:
   - kind: horus_task
     id: gmx_rms_first
     name: RMSd vs minimized/equilibrated structure (backbone)
+    description: Runs GROMACS rms to compute backbone RMSd of the production trajectory against the minimized/equilibrated structure.
     inputs:
       - id: gmx_rms_config
+        name: RMSd analysis config
         kind: file
         path: configs/gmx_rms.yaml
       - id: md_tpr
+        name: Production MD run input
+        description: Compiled GROMACS run input (tpr) for the unrestrained production MD run.
         kind: file
         path: results/md.tpr
       - id: md_trr
+        name: Production MD trajectory
         kind: file
         path: results/md.trr
     outputs:
       - id: rms_first_xvg
+        name: RMSd vs minimized structure
         kind: file
         path: results/rms_first.xvg
     executor: *executor
@@ -970,18 +1192,24 @@ tasks:
   - kind: horus_task
     id: gmx_rms_exp
     name: RMSd vs experimental structure (backbone)
+    description: Runs GROMACS rms to compute backbone RMSd of the production trajectory against the experimental structure.
     inputs:
       - id: gmx_rms_config
+        name: RMSd analysis config
         kind: file
         path: configs/gmx_rms.yaml
       - id: min_tpr
+        name: Minimization run input
+        description: Compiled GROMACS run input (tpr) for the energy minimization step.
         kind: file
         path: results/min.tpr
       - id: md_trr
+        name: Production MD trajectory
         kind: file
         path: results/md.trr
     outputs:
       - id: rms_exp_xvg
+        name: RMSd vs experimental structure
         kind: file
         path: results/rms_exp.xvg
     executor: *executor
@@ -999,18 +1227,24 @@ tasks:
   - kind: horus_task
     id: gmx_rgyr
     name: Radius of gyration during free MD (backbone)
+    description: Runs GROMACS gyrate to compute the backbone radius of gyration over the production trajectory.
     inputs:
       - id: gmx_rgyr_config
+        name: Radius of gyration config
         kind: file
         path: configs/gmx_rgyr.yaml
       - id: min_tpr
+        name: Minimization run input
+        description: Compiled GROMACS run input (tpr) for the energy minimization step.
         kind: file
         path: results/min.tpr
       - id: md_trr
+        name: Production MD trajectory
         kind: file
         path: results/md.trr
     outputs:
       - id: rgyr_xvg
+        name: Radius of gyration trace
         kind: file
         path: results/rgyr.xvg
     executor: *executor
@@ -1028,21 +1262,29 @@ tasks:
   - kind: horus_task
     id: gmx_image
     name: Center complex and strip solvent from trajectory
+    description: Runs GROMACS trjconv to center the complex and strip periodic-boundary artifacts from the production trajectory.
     inputs:
       - id: gmx_image_config
+        name: Trajectory imaging config
         kind: file
         path: configs/gmx_image.yaml
       - id: md_trr
+        name: Production MD trajectory
         kind: file
         path: results/md.trr
       - id: md_tpr
+        name: Production MD run input
+        description: Compiled GROMACS run input (tpr) for the unrestrained production MD run.
         kind: file
         path: results/md.tpr
       - id: complex_index_ndx
+        name: Complex index groups
         kind: file
         path: results/complex_index.ndx
     outputs:
       - id: imaged_trr
+        name: Imaged trajectory
+        description: Production trajectory with the complex centered and periodic-boundary artifacts removed.
         kind: file
         path: results/imaged.trr
     executor: *executor
@@ -1061,21 +1303,28 @@ tasks:
   - kind: horus_task
     id: gmx_trjconv_str_dry
     name: Extract dry protein-ligand structure (remove solvent)
+    description: Runs GROMACS trjconv to extract the final protein-ligand structure with solvent removed.
     inputs:
       - id: dry_trjconv_config
+        name: Dry structure extraction config
         kind: file
         path: configs/dry_trjconv.yaml
       - id: md_gro
+        name: Production MD final structure
         kind: file
         path: results/md.gro
       - id: md_tpr
+        name: Production MD run input
+        description: Compiled GROMACS run input (tpr) for the unrestrained production MD run.
         kind: file
         path: results/md.tpr
       - id: complex_index_ndx
+        name: Complex index groups
         kind: file
         path: results/complex_index.ndx
     outputs:
       - id: dry_gro
+        name: Dry final structure
         kind: file
         path: results/dry.gro
     executor: *executor

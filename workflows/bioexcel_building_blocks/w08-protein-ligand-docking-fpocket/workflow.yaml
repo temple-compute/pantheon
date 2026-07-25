@@ -13,46 +13,68 @@ _docker_executor: &docker_executor
 
 artifacts:
   - id: babel_convert_pdb_to_pdbqt_config
+    name: Ligand PDB→PDBQT config
+    description: OpenBabel settings for converting the ligand from PDB to PDBQT and adding partial charges.
     kind: file
     path: configs/babel_convert_pdb_to_pdbqt.yaml
 
   - id: babel_convert_pdbqt_to_pdb_config
+    name: Pose PDBQT→PDB config
+    description: OpenBabel settings for converting the top docking pose from PDBQT back to PDB format.
     kind: file
     path: configs/babel_convert_pdbqt_to_pdb.yaml
 
   - id: babel_convert_sdf_to_pdb_config
+    name: Ligand SDF→PDB config
+    description: OpenBabel settings for converting the ligand from SDF to PDB format.
     kind: file
     path: configs/babel_convert_sdf_to_pdb.yaml
 
   - id: box_config
+    name: Docking box config
+    description: Parameters controlling the size and offset of the docking box generated around the selected pocket.
     kind: file
     path: configs/box.yaml
 
   - id: extract_model_pdbqt_config
+    name: Pose extraction config
+    description: Specifies which Vina docking pose (model 1) to extract from the docking output.
     kind: file
     path: configs/extract_model_pdbqt.yaml
 
   - id: fetch_pdb_config
+    name: Receptor fetch config
+    description: Specifies the target PDB code (3HEC) to download.
     kind: file
     path: configs/fetch_pdb.yaml
 
   - id: fpocket_filter_config
+    name: Pocket filter config
+    description: Volume range (800-2000 Å³) used to filter candidate cavities detected by fpocket.
     kind: file
     path: configs/fpocket_filter.yaml
 
   - id: fpocket_run_config
+    name: fpocket run config
+    description: Parameters controlling fpocket's cavity-detection run on the receptor.
     kind: file
     path: configs/fpocket_run.yaml
 
   - id: fpocket_select_config
+    name: Pocket selection config
+    description: Specifies which detected pocket (pocket 6) to select for docking.
     kind: file
     path: configs/fpocket_select.yaml
 
   - id: ideal_sdf_config
+    name: Ligand fetch config
+    description: Specifies the ligand code (STI, Imatinib) to download in SDF format.
     kind: file
     path: configs/ideal_sdf.yaml
 
   - id: str_check_add_hydrogens_config
+    name: Receptor protonation config
+    description: Settings for adding hydrogens and preparing the receptor for docking.
     kind: file
     path: configs/str_check_add_hydrogens.yaml
 
@@ -60,12 +82,15 @@ tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Download 3HEC structure from PDB
+    description: Downloads the p38-alpha MAP kinase receptor structure (PDB 3HEC) from the Protein Data Bank.
     inputs:
       - id: fetch_pdb_config
+        name: Receptor fetch config
         kind: file
         path: configs/fetch_pdb.yaml
     outputs:
       - id: download_pdb
+        name: Downloaded receptor structure
         kind: file
         path: results/download.pdb
     executor: *executor
@@ -81,12 +106,15 @@ tasks:
   - kind: horus_task
     id: extract_protein
     name: Extract protein structure (remove ligands, ions, water)
+    description: Runs biobb extract_molecule to strip ligands, ions, and water, leaving only the protein structure.
     inputs:
       - id: download_pdb
+        name: Downloaded receptor structure
         kind: file
         path: results/download.pdb
     outputs:
       - id: pdb_protein
+        name: Protein-only structure
         kind: file
         path: results/pdb_protein.pdb
     executor: *executor
@@ -102,18 +130,23 @@ tasks:
   - kind: horus_task
     id: fpocket_run
     name: Compute protein cavities with fpocket
+    description: Runs fpocket to detect candidate binding cavities on the receptor surface.
     inputs:
       - id: fpocket_run_config
+        name: fpocket run config
         kind: file
         path: configs/fpocket_run.yaml
       - id: pdb_protein
+        name: Protein-only structure
         kind: file
         path: results/pdb_protein.pdb
     outputs:
       - id: fpocket_all_pockets
+        name: All detected pockets
         kind: file
         path: results/fpocket_all_pockets.zip
       - id: fpocket_summary
+        name: Pocket summary
         kind: file
         path: results/fpocket_summary.json
     executor: *docker_executor
@@ -131,18 +164,23 @@ tasks:
   - kind: horus_task
     id: fpocket_filter
     name: Filter protein cavities by volume (800-2000 Å³)
+    description: Filters the detected cavities to those within an 800-2000 Å³ volume range.
     inputs:
       - id: fpocket_filter_config
+        name: Pocket filter config
         kind: file
         path: configs/fpocket_filter.yaml
       - id: fpocket_all_pockets
+        name: All detected pockets
         kind: file
         path: results/fpocket_all_pockets.zip
       - id: fpocket_summary
+        name: Pocket summary
         kind: file
         path: results/fpocket_summary.json
     outputs:
       - id: fpocket_filter_pockets
+        name: Filtered pockets
         kind: file
         path: results/fpocket_filter_pockets.zip
     executor: *docker_executor
@@ -160,18 +198,23 @@ tasks:
   - kind: horus_task
     id: fpocket_select
     name: Extract selected pocket cavity (pocket 6)
+    description: Extracts the selected cavity (pocket 6) as PDB and PQR files for docking box generation.
     inputs:
       - id: fpocket_select_config
+        name: Pocket selection config
         kind: file
         path: configs/fpocket_select.yaml
       - id: fpocket_filter_pockets
+        name: Filtered pockets
         kind: file
         path: results/fpocket_filter_pockets.zip
     outputs:
       - id: fpocket_cavity
+        name: Selected pocket cavity
         kind: file
         path: results/fpocket_cavity.pdb
       - id: fpocket_pocket
+        name: Selected pocket (PQR)
         kind: file
         path: results/fpocket_pocket.pqr
     executor: *docker_executor
@@ -189,15 +232,19 @@ tasks:
   - kind: horus_task
     id: box
     name: Generate docking box around selected cavity (offset 12 Å)
+    description: Generates a docking box around the selected cavity with a 12 Å offset.
     inputs:
       - id: box_config
+        name: Docking box config
         kind: file
         path: configs/box.yaml
       - id: fpocket_pocket
+        name: Selected pocket (PQR)
         kind: file
         path: results/fpocket_pocket.pqr
     outputs:
       - id: output_box
+        name: Docking box
         kind: file
         path: results/box.pdb
     executor: *docker_executor
@@ -214,12 +261,15 @@ tasks:
   - kind: horus_task
     id: ideal_sdf
     name: Download Imatinib (STI) small molecule in SDF format
+    description: Downloads the Imatinib (ligand code STI) small molecule structure in SDF format from the PDB Chemical Component Dictionary.
     inputs:
       - id: ideal_sdf_config
+        name: Ligand fetch config
         kind: file
         path: configs/ideal_sdf.yaml
     outputs:
       - id: sdf_ideal
+        name: Ligand SDF
         kind: file
         path: results/ideal.sdf
     executor: *executor
@@ -235,15 +285,19 @@ tasks:
   - kind: horus_task
     id: babel_convert_sdf_to_pdb
     name: Convert small molecule from SDF to PDB format
+    description: Uses OpenBabel to convert the ligand from SDF to PDB format.
     inputs:
       - id: babel_convert_sdf_to_pdb_config
+        name: Ligand SDF→PDB config
         kind: file
         path: configs/babel_convert_sdf_to_pdb.yaml
       - id: sdf_ideal
+        name: Ligand SDF
         kind: file
         path: results/ideal.sdf
     outputs:
       - id: ligand_pdb
+        name: Ligand PDB
         kind: file
         path: results/ligand.pdb
     executor: *executor
@@ -260,15 +314,19 @@ tasks:
   - kind: horus_task
     id: babel_convert_pdb_to_pdbqt
     name: Prepare ligand for docking (PDB to PDBQT, add partial charges)
+    description: Uses OpenBabel to convert the ligand from PDB to PDBQT format and add partial charges for docking.
     inputs:
       - id: babel_convert_pdb_to_pdbqt_config
+        name: Ligand PDB→PDBQT config
         kind: file
         path: configs/babel_convert_pdb_to_pdbqt.yaml
       - id: ligand_pdb
+        name: Ligand PDB
         kind: file
         path: results/ligand.pdb
     outputs:
       - id: prep_ligand
+        name: Docking-ready ligand
         kind: file
         path: results/prep_ligand.pdbqt
     executor: *executor
@@ -285,15 +343,19 @@ tasks:
   - kind: horus_task
     id: str_check_add_hydrogens
     name: Prepare receptor protein for docking (PDB to PDBQT, add charges)
+    description: Adds hydrogens and converts the receptor to a docking-ready PDBQT structure.
     inputs:
       - id: str_check_add_hydrogens_config
+        name: Receptor protonation config
         kind: file
         path: configs/str_check_add_hydrogens.yaml
       - id: pdb_protein
+        name: Protein-only structure
         kind: file
         path: results/pdb_protein.pdb
     outputs:
       - id: prep_receptor
+        name: Docking-ready receptor
         kind: file
         path: results/prep_receptor.pdbqt
     executor: *executor
@@ -310,18 +372,23 @@ tasks:
   - kind: horus_task
     id: autodock_vina_run
     name: Run AutoDock Vina docking
+    description: Runs AutoDock Vina to dock the prepared ligand into the receptor within the generated docking box.
     inputs:
       - id: prep_ligand
+        name: Docking-ready ligand
         kind: file
         path: results/prep_ligand.pdbqt
       - id: prep_receptor
+        name: Docking-ready receptor
         kind: file
         path: results/prep_receptor.pdbqt
       - id: output_box
+        name: Docking box
         kind: file
         path: results/box.pdb
     outputs:
       - id: output_vina_pdbqt
+        name: Vina docking output
         kind: file
         path: results/output_vina.pdbqt
     executor: *docker_executor
@@ -340,15 +407,19 @@ tasks:
   - kind: horus_task
     id: extract_model_pdbqt
     name: Extract docking pose (model 1) from Vina output
+    description: Extracts the top-ranked docking pose (model 1) from the Vina output.
     inputs:
       - id: extract_model_pdbqt_config
+        name: Pose extraction config
         kind: file
         path: configs/extract_model_pdbqt.yaml
       - id: output_vina_pdbqt
+        name: Vina docking output
         kind: file
         path: results/output_vina.pdbqt
     outputs:
       - id: output_pdbqt_model
+        name: Top docking pose (PDBQT)
         kind: file
         path: results/output_model.pdbqt
     executor: *docker_executor
@@ -365,15 +436,19 @@ tasks:
   - kind: horus_task
     id: babel_convert_pdbqt_to_pdb
     name: Convert docking pose from PDBQT to PDB format
+    description: Uses OpenBabel to convert the top docking pose from PDBQT to PDB format.
     inputs:
       - id: babel_convert_pdbqt_to_pdb_config
+        name: Pose PDBQT→PDB config
         kind: file
         path: configs/babel_convert_pdbqt_to_pdb.yaml
       - id: output_pdbqt_model
+        name: Top docking pose (PDBQT)
         kind: file
         path: results/output_model.pdbqt
     outputs:
       - id: output_pdb_model
+        name: Top docking pose (PDB)
         kind: file
         path: results/output_model.pdb
     executor: *executor
@@ -390,15 +465,19 @@ tasks:
   - kind: horus_task
     id: cat_pdb
     name: Superpose ligand docking pose onto target protein structure
+    description: Concatenates the receptor and ligand pose PDB files into the final protein-ligand complex structure.
     inputs:
       - id: pdb_protein
+        name: Protein-only structure
         kind: file
         path: results/pdb_protein.pdb
       - id: output_pdb_model
+        name: Top docking pose (PDB)
         kind: file
         path: results/output_model.pdb
     outputs:
       - id: output_structure
+        name: Final complex structure
         kind: file
         path: results/output_structure.pdb
     executor: *executor

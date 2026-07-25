@@ -9,62 +9,92 @@ _executor: &executor
 
 artifacts:
   - id: build_model_config
+    name: AE architecture config
+    description: Configuration controlling the AutoEncoder architecture (layer sizes, latent dimension, activations, learning rate).
     kind: file
     path: configs/build_model.yaml
 
   - id: evaluate_model_config
+    name: Model evaluation config
+    description: Configuration for evaluating the trained AutoEncoder on a dataset.
     kind: file
     path: configs/evaluate_model.yaml
 
   - id: featurize_test_trajectory_config
+    name: Holo featurization config
+    description: Configuration for featurizing the holo trajectory as Cα Cartesian coordinates.
     kind: file
     path: configs/featurize_test_trajectory.yaml
 
   - id: featurize_train_trajectory_config
+    name: Apo featurization config
+    description: Configuration for featurizing the apo trajectory as Cα Cartesian coordinates.
     kind: file
     path: configs/featurize_train_trajectory.yaml
 
   - id: fetch_test_trajectory_config
+    name: Holo trajectory fetch config
+    description: Configuration setting the MDDB project/node ID and frame range for the holo trajectory download.
     kind: file
     path: configs/fetch_test_trajectory.yaml
 
   - id: fetch_train_trajectory_config
+    name: Apo trajectory fetch config
+    description: Configuration setting the MDDB project/node ID and frame range for the apo trajectory download.
     kind: file
     path: configs/fetch_train_trajectory.yaml
 
   - id: fit_test_trajectory_config
+    name: Holo trajectory fit config
+    description: Configuration for fitting/aligning the holo trajectory to the apo reference structure.
     kind: file
     path: configs/fit_test_trajectory.yaml
 
   - id: fit_train_trajectory_config
+    name: Apo trajectory fit config
+    description: Configuration for fitting/aligning the apo trajectory.
     kind: file
     path: configs/fit_train_trajectory.yaml
 
   - id: gmx_rmsf_apo_config
+    name: Apo RMSF config
+    description: Configuration for the GROMACS RMSF calculation on the apo trajectory.
     kind: file
     path: configs/gmx_rmsf_apo.yaml
 
   - id: gmx_rmsf_holo_config
+    name: Holo RMSF config
+    description: Configuration for the GROMACS RMSF calculation on the holo trajectory.
     kind: file
     path: configs/gmx_rmsf_holo.yaml
 
   - id: gmx_rmsf_holo_recon_config
+    name: Reconstructed holo RMSF config
+    description: Configuration for the GROMACS RMSF calculation on the AE-reconstructed holo trajectory.
     kind: file
     path: configs/gmx_rmsf_holo_recon.yaml
 
   - id: make_ndx_apo_config
+    name: Apo index config
+    description: Configuration selecting the Cα atom group for the apo GROMACS index file.
     kind: file
     path: configs/make_ndx_apo.yaml
 
   - id: make_ndx_holo_config
+    name: Holo index config
+    description: Configuration selecting the Cα atom group for the holo GROMACS index file.
     kind: file
     path: configs/make_ndx_holo.yaml
 
   - id: make_plumed_config
+    name: PLUMED export config
+    description: Configuration controlling the PLUMED bias (metadynamics parameters) and printed collective variables.
     kind: file
     path: configs/make_plumed.yaml
 
   - id: train_model_config
+    name: Model training config
+    description: Configuration controlling batch size, train/validation split, and epoch count for AutoEncoder training.
     kind: file
     path: configs/train_model.yaml
 
@@ -72,15 +102,19 @@ tasks:
   - kind: horus_task
     id: fetch_train_trajectory
     name: Download apo training trajectory (6W9C_apo) from MDDB
+    description: Downloads the apo (ligand-free) 6W9C trajectory and structure from the MDDB database.
     inputs:
       - id: fetch_train_trajectory_config
+        name: Apo trajectory fetch config
         kind: file
         path: configs/fetch_train_trajectory.yaml
     outputs:
       - id: train_structure
+        name: Apo structure (6W9C)
         kind: file
         path: results/6W9C_apo.pdb
       - id: train_trajectory
+        name: Apo trajectory (raw)
         kind: file
         path: results/6W9C_apo.xtc
     executor: *executor
@@ -97,18 +131,23 @@ tasks:
   - kind: horus_task
     id: fit_train_trajectory
     name: Fit and align apo training trajectory (rot+trans)
+    description: Fits and aligns the apo trajectory (rotation + translation) using GROMACS via biobb gmx_image.
     inputs:
       - id: fit_train_trajectory_config
+        name: Apo trajectory fit config
         kind: file
         path: configs/fit_train_trajectory.yaml
       - id: train_trajectory
+        name: Apo trajectory (raw)
         kind: file
         path: results/6W9C_apo.xtc
       - id: train_structure
+        name: Apo structure (6W9C)
         kind: file
         path: results/6W9C_apo.pdb
     outputs:
       - id: train_trajectory_fit
+        name: Apo trajectory (fitted)
         kind: file
         path: results/6W9C_apo_fit.xtc
     executor: *executor
@@ -126,21 +165,27 @@ tasks:
   - kind: horus_task
     id: featurize_train_trajectory
     name: Featurize apo training trajectory (CA Cartesian coordinates)
+    description: Featurizes the fitted apo trajectory as Cα Cartesian coordinates for AE training.
     inputs:
       - id: featurize_train_trajectory_config
+        name: Apo featurization config
         kind: file
         path: configs/featurize_train_trajectory.yaml
       - id: train_trajectory_fit
+        name: Apo trajectory (fitted)
         kind: file
         path: results/6W9C_apo_fit.xtc
       - id: train_structure
+        name: Apo structure (6W9C)
         kind: file
         path: results/6W9C_apo.pdb
     outputs:
       - id: train_dataset
+        name: Apo featurized dataset
         kind: file
         path: results/6W9C_apo.pt
       - id: train_stats
+        name: Apo featurization statistics
         kind: file
         path: results/6W9C_apo_stats.pt
     executor: *executor
@@ -159,15 +204,19 @@ tasks:
   - kind: horus_task
     id: build_model
     name: Build autoencoder model architecture
+    description: Builds the AutoEncoder architecture (encoder/decoder layers, latent dimension) from the featurization statistics.
     inputs:
       - id: build_model_config
+        name: AE architecture config
         kind: file
         path: configs/build_model.yaml
       - id: train_stats
+        name: Apo featurization statistics
         kind: file
         path: results/6W9C_apo_stats.pt
     outputs:
       - id: initial_model
+        name: Untrained AE model
         kind: file
         path: results/model.pth
     executor: *executor
@@ -184,21 +233,27 @@ tasks:
   - kind: horus_task
     id: train_model
     name: Train autoencoder model on apo trajectory dataset
+    description: Trains the AutoEncoder on the featurized apo dataset.
     inputs:
       - id: train_model_config
+        name: Model training config
         kind: file
         path: configs/train_model.yaml
       - id: initial_model
+        name: Untrained AE model
         kind: file
         path: results/model.pth
       - id: train_dataset
+        name: Apo featurized dataset
         kind: file
         path: results/6W9C_apo.pt
     outputs:
       - id: trained_model
+        name: Trained AE model
         kind: file
         path: results/apo_trained_model.pth
       - id: training_metrics
+        name: Training metrics
         kind: file
         path: results/model_training_metrics.npz
     executor: *executor
@@ -217,15 +272,19 @@ tasks:
   - kind: horus_task
     id: fetch_test_trajectory
     name: Download holo test trajectory (6W9C_holo) from MDDB
+    description: Downloads the holo (ligand-bound) 6W9C trajectory and structure from the MDDB database.
     inputs:
       - id: fetch_test_trajectory_config
+        name: Holo trajectory fetch config
         kind: file
         path: configs/fetch_test_trajectory.yaml
     outputs:
       - id: test_structure
+        name: Holo structure (6W9C)
         kind: file
         path: results/6W9C_holo.pdb
       - id: test_trajectory
+        name: Holo trajectory (raw)
         kind: file
         path: results/6W9C_holo.xtc
     executor: *executor
@@ -242,18 +301,23 @@ tasks:
   - kind: horus_task
     id: fit_test_trajectory
     name: Fit and align holo test trajectory to apo reference (rot+trans)
+    description: Fits and aligns the holo trajectory to the apo reference structure (rotation + translation).
     inputs:
       - id: fit_test_trajectory_config
+        name: Holo trajectory fit config
         kind: file
         path: configs/fit_test_trajectory.yaml
       - id: test_trajectory
+        name: Holo trajectory (raw)
         kind: file
         path: results/6W9C_holo.xtc
       - id: train_structure
+        name: Apo structure (6W9C)
         kind: file
         path: results/6W9C_apo.pdb
     outputs:
       - id: test_trajectory_fit
+        name: Holo trajectory (fitted)
         kind: file
         path: results/6W9C_holo_fit.xtc
     executor: *executor
@@ -271,21 +335,27 @@ tasks:
   - kind: horus_task
     id: featurize_test_trajectory
     name: Featurize holo test trajectory (CA Cartesian coordinates)
+    description: Featurizes the fitted holo trajectory as Cα Cartesian coordinates.
     inputs:
       - id: featurize_test_trajectory_config
+        name: Holo featurization config
         kind: file
         path: configs/featurize_test_trajectory.yaml
       - id: test_trajectory_fit
+        name: Holo trajectory (fitted)
         kind: file
         path: results/6W9C_holo_fit.xtc
       - id: test_structure
+        name: Holo structure (6W9C)
         kind: file
         path: results/6W9C_holo.pdb
     outputs:
       - id: test_dataset
+        name: Holo featurized dataset
         kind: file
         path: results/6W9C_holo.pt
       - id: test_stats
+        name: Holo featurization statistics
         kind: file
         path: results/6W9C_holo_stats.pt
     executor: *executor
@@ -304,18 +374,23 @@ tasks:
   - kind: horus_task
     id: evaluate_model
     name: Evaluate trained autoencoder on apo dataset
+    description: Evaluates the trained AutoEncoder on the apo dataset to obtain latent-space representations.
     inputs:
       - id: evaluate_model_config
+        name: Model evaluation config
         kind: file
         path: configs/evaluate_model.yaml
       - id: trained_model
+        name: Trained AE model
         kind: file
         path: results/apo_trained_model.pth
       - id: train_dataset
+        name: Apo featurized dataset
         kind: file
         path: results/6W9C_apo.pt
     outputs:
       - id: eval_results
+        name: Model evaluation results
         kind: file
         path: results/apo_eval_results.npz
     executor: *executor
@@ -333,15 +408,19 @@ tasks:
   - kind: horus_task
     id: make_ndx_apo
     name: Create GROMACS index file for apo CA atoms
+    description: Creates a GROMACS index file selecting Cα atoms of the apo structure.
     inputs:
       - id: make_ndx_apo_config
+        name: Apo index config
         kind: file
         path: configs/make_ndx_apo.yaml
       - id: train_structure
+        name: Apo structure (6W9C)
         kind: file
         path: results/6W9C_apo.pdb
     outputs:
       - id: train_index
+        name: Apo Cα index
         kind: file
         path: results/6W9C_apo.ndx
     executor: *executor
@@ -358,15 +437,19 @@ tasks:
   - kind: horus_task
     id: make_ndx_holo
     name: Create GROMACS index file for holo CA atoms
+    description: Creates a GROMACS index file selecting Cα atoms of the holo structure.
     inputs:
       - id: make_ndx_holo_config
+        name: Holo index config
         kind: file
         path: configs/make_ndx_holo.yaml
       - id: test_structure
+        name: Holo structure (6W9C)
         kind: file
         path: results/6W9C_holo.pdb
     outputs:
       - id: test_index
+        name: Holo Cα index
         kind: file
         path: results/6W9C_holo.ndx
     executor: *executor
@@ -383,21 +466,27 @@ tasks:
   - kind: horus_task
     id: gmx_rmsf_apo
     name: Compute RMSF of apo trajectory
+    description: Computes per-residue RMSF of the apo trajectory using GROMACS.
     inputs:
       - id: gmx_rmsf_apo_config
+        name: Apo RMSF config
         kind: file
         path: configs/gmx_rmsf_apo.yaml
       - id: train_structure
+        name: Apo structure (6W9C)
         kind: file
         path: results/6W9C_apo.pdb
       - id: train_trajectory
+        name: Apo trajectory (raw)
         kind: file
         path: results/6W9C_apo.xtc
       - id: train_index
+        name: Apo Cα index
         kind: file
         path: results/6W9C_apo.ndx
     outputs:
       - id: rmsf_apo
+        name: Apo RMSF profile
         kind: file
         path: results/6W9C_apo_rmsf.xvg
     executor: *executor
@@ -416,21 +505,27 @@ tasks:
   - kind: horus_task
     id: gmx_rmsf_holo
     name: Compute RMSF of holo trajectory
+    description: Computes per-residue RMSF of the holo trajectory using GROMACS.
     inputs:
       - id: gmx_rmsf_holo_config
+        name: Holo RMSF config
         kind: file
         path: configs/gmx_rmsf_holo.yaml
       - id: test_structure
+        name: Holo structure (6W9C)
         kind: file
         path: results/6W9C_holo.pdb
       - id: test_trajectory
+        name: Holo trajectory (raw)
         kind: file
         path: results/6W9C_holo.xtc
       - id: test_index
+        name: Holo Cα index
         kind: file
         path: results/6W9C_holo.ndx
     outputs:
       - id: rmsf_holo
+        name: Holo RMSF profile
         kind: file
         path: results/6W9C_holo_rmsf.xvg
     executor: *executor
@@ -449,18 +544,23 @@ tasks:
   - kind: horus_task
     id: reconstruct_trajectory
     name: Reconstruct holo trajectory from autoencoder latent space
+    description: Reconstructs the holo trajectory from the AutoEncoder's latent-space representation.
     inputs:
       - id: eval_results
+        name: Model evaluation results
         kind: file
         path: results/apo_eval_results.npz
       - id: test_stats
+        name: Holo featurization statistics
         kind: file
         path: results/6W9C_holo_stats.pt
     outputs:
       - id: recon_trajectory
+        name: Reconstructed holo trajectory
         kind: file
         path: results/6W9C_holo_recon.xtc
       - id: recon_structure
+        name: Reconstructed holo structure
         kind: file
         path: results/6W9C_holo_recon.pdb
     executor: *executor
@@ -478,21 +578,27 @@ tasks:
   - kind: horus_task
     id: gmx_rmsf_holo_recon
     name: Compute RMSF of reconstructed holo trajectory
+    description: Computes per-residue RMSF of the AE-reconstructed holo trajectory to assess reconstruction quality.
     inputs:
       - id: gmx_rmsf_holo_recon_config
+        name: Reconstructed holo RMSF config
         kind: file
         path: configs/gmx_rmsf_holo_recon.yaml
       - id: recon_structure
+        name: Reconstructed holo structure
         kind: file
         path: results/6W9C_holo_recon.pdb
       - id: recon_trajectory
+        name: Reconstructed holo trajectory
         kind: file
         path: results/6W9C_holo_recon.xtc
       - id: test_index
+        name: Holo Cα index
         kind: file
         path: results/6W9C_holo.ndx
     outputs:
       - id: rmsf_holo_recon
+        name: Reconstructed holo RMSF profile
         kind: file
         path: results/6W9C_holo_recon_rmsf.xvg
     executor: *executor
@@ -511,30 +617,39 @@ tasks:
   - kind: horus_task
     id: make_plumed
     name: Generate PLUMED input files for enhanced sampling with autoencoder CVs
+    description: Exports the trained AutoEncoder as a PLUMED-compatible collective variable, with bias and feature input files, for enhanced-sampling simulations.
     inputs:
       - id: make_plumed_config
+        name: PLUMED export config
         kind: file
         path: configs/make_plumed.yaml
       - id: trained_model
+        name: Trained AE model
         kind: file
         path: results/apo_trained_model.pth
       - id: train_index
+        name: Apo Cα index
         kind: file
         path: results/6W9C_apo.ndx
       - id: train_structure
+        name: Apo structure (6W9C)
         kind: file
         path: results/6W9C_apo.pdb
       - id: train_stats
+        name: Apo featurization statistics
         kind: file
         path: results/6W9C_apo_stats.pt
     outputs:
       - id: plumed_model
+        name: PLUMED CV model
         kind: file
         path: results/plumed_model.ptc
       - id: plumed_dat
+        name: PLUMED input file
         kind: file
         path: results/plumed.dat
       - id: plumed_features_dat
+        name: PLUMED features file
         kind: file
         path: results/features.dat
     executor: *executor
