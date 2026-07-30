@@ -64,6 +64,13 @@ uv run horus run workflow.yaml
 | W-25 | [AutoEncoders for MD Analysis](workflows/bioexcel_building_blocks/w20-autoencoders-md-analysis/README.md) | Trains an AutoEncoder on MD trajectories for feature extraction and PLUMED collective-variable export |
 | W-26 | [Protein-Membrane MD Analysis](workflows/bioexcel_building_blocks/w21-protein-membrane-md-analysis/README.md) | Membrane MD analysis: leaflet identification, bilayer thickness, order parameters, area per lipid, pore radius |
 
+### AI
+
+| ID | Workflow | Description |
+|---|---|---|
+| W-28 | [LLM From Scratch - Pretrain, SFT & Eval](workflows/ai/w01-train-llm/README.md) | Clone a from-scratch Transformer repo, tokenize Pile/instruction data, pretrain, SFT, and evaluate GSM8K accuracy |
+| W-29 | [Tiny LLM From Scratch - TinyStories Pretrain & Sample](workflows/ai/w02-tiny-llm/README.md) | Pretrain a small from-scratch Transformer on TinyStories (not the 900GB Pile) and sample a generated story |
+
 ### Engine Showcases
 
 Small, self-contained workflows that demonstrate horus-runtime engine
