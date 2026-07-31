@@ -75,6 +75,13 @@ tasks:
           kind: shell
         target:
           kind: local
+        # Advisory only: read by resource-aware targets, and compared against
+        # measured usage by the tc-os resources dashboard. Every clone of the
+        # map inherits it, so a generous request here is multiplied by the
+        # fan-out width — which is exactly what right-sizing recovers.
+        resources:
+          cpus: 4
+          memory_gb: 8
       gather:
         task: gather
         input: results

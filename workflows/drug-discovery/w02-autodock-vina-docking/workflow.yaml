@@ -33,6 +33,10 @@ tasks:
         name: Vina input archive
         path: results/vina_inputs.tar.gz
         kind: file
+
+    resources:
+      cpus: 2
+      memory_gb: 4
     executor:
       kind: conda_python_environment
       conda: micromamba # set to mamba/micromamba if that's what's on PATH
@@ -70,6 +74,12 @@ tasks:
         name: Docking results archive
         path: results/docking_out.tar.gz
         kind: file
+
+    # Advisory only: read by resource-aware targets (Slurm, Terraform) and by
+    # the tc-os dashboard to compare what was asked for against what was used.
+    resources:
+      cpus: 16
+      memory_gb: 32
     executor:
       kind: conda_python_environment
       conda: micromamba # set to mamba/micromamba if that's what's on PATH
