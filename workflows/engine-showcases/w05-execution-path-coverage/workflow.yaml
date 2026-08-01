@@ -1,0 +1,179 @@
+kind: horus_workflow
+name: Execution Path Coverage Harness
+# One task per distinct way horus-runtime can execute work, chained so they run
+# one at a time (overlapping tasks would make in-process measurement ambiguous).
+# Every task does the same job: touch ~300 MiB of pages, burn CPU for ~4s, write
+# a stamp JSON naming the interpreter and pid that did it.
+#
+# The `python_function` executor is NOT here: its runtime takes a live Python
+# callable (`func`), which no YAML can express. That path lives in `run.py`,
+# which loads this file and appends the task. See README.md.
+tasks:
+  - kind: horus_task
+    id: shell_command
+    name: Shell executor + command runtime
+    description: Plain subprocess path — the shell executor runs a literal command string on the target.
+    skip_if_complete: false
+    outputs:
+      - id: stamp
+        name: Shell command stamp
+        kind: file
+        path: results/shell_command.json
+    # Advisory only, and deliberately generous: right-sizing has something to
+    # recover only if the request is bigger than the measured usage.
+    resources:
+      cpus: 4
+      memory_gb: 8
+      walltime: "00:05:00"
+    executor:
+      kind: shell
+    runtime:
+      kind: command
+      # Inline on purpose: a `command` runtime is a raw string, with no script
+      # shipped to the target. `iter(fn, None)` is the sentinel form of a
+      # while-loop, so the whole burn fits on one line.
+      command: >-
+        python3 -c "import json,os,sys,time;b=bytearray(300<<20);[b.__setitem__(i,1) for i in range(0,len(b),4096)];t=time.monotonic()+4;n=sum(1 for _ in iter(lambda: pow(3,100000,99991) if time.monotonic()<t else None, None));os.makedirs(os.path.dirname('${stamp}'),exist_ok=True);json.dump({'label':'shell_command','python':sys.executable,'pid':os.getpid(),'allocated_mb':len(b)>>20,'cpu_iterations':n,'chain':['shell_command']},open('${stamp}','w'),indent=2)"
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: shell_python_script
+    name: Shell executor + python_script runtime
+    description: Subprocess path with a script shipped to the target and run by the target's own interpreter.
+    skip_if_complete: false
+    inputs:
+      - id: prev
+        name: Upstream stamp
+        kind: file
+        path: results/shell_command.json
+    outputs:
+      - id: stamp
+        name: Python script stamp
+        kind: file
+        path: results/shell_python_script.json
+    resources:
+      cpus: 4
+      memory_gb: 8
+      walltime: "00:05:00"
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/burn.py
+      python: python3 # stdlib-only; use the target's python3
+      args: --label shell_python_script --prev ${prev} --out ${stamp}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: uv_environment
+    name: uv environment executor + python_script runtime
+    description: Subprocess path inside a uv-provisioned virtualenv built on the target before the task runs.
+    skip_if_complete: false
+    inputs:
+      - id: prev
+        name: Upstream stamp
+        kind: file
+        path: results/shell_python_script.json
+    outputs:
+      - id: stamp
+        name: uv environment stamp
+        kind: file
+        path: results/uv_environment.json
+    resources:
+      cpus: 4
+      memory_gb: 8
+      walltime: "00:10:00" # includes building the venv on a cold run
+    executor:
+      kind: uv_python_environment
+      python: "3.13"
+      # No requirements: the venv itself is the point. burn.py is stdlib-only
+      # and reports `sys.executable`, which is the proof it ran inside the venv
+      # rather than against the system interpreter.
+      requirements: []
+    runtime:
+      kind: python_script
+      script: scripts/burn.py
+      # NOTE: no `python:` override here. The environment executor activates the
+      # venv and then runs the runtime's interpreter, so leaving the default
+      # (`python`) is what routes the script through the venv. Pinning
+      # `python3` would silently run outside the environment.
+      args: --label uv_environment --prev ${prev} --out ${stamp}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: python_exec_string
+    name: Python executor + python code-string runtime
+    description: In-process path — the code string is run with exec() inside the orchestrator, no subprocess at all.
+    skip_if_complete: false
+    inputs:
+      - id: prev
+        name: Upstream stamp
+        kind: file
+        path: results/uv_environment.json
+    outputs:
+      - id: stamp
+        name: Python exec stamp
+        kind: file
+        path: results/python_exec_string.json
+    resources:
+      cpus: 4
+      memory_gb: 8
+      walltime: "00:05:00"
+    executor:
+      kind: python
+    runtime:
+      kind: python
+      # Duplicated from scripts/burn.py on purpose: this runtime ships a string,
+      # not a file, so the snippet has to stand alone.
+      code: |
+        import json, os, sys, time
+
+        buf = bytearray(300 << 20)
+        for i in range(0, len(buf), 4096):
+            buf[i] = 1
+        end = time.monotonic() + 4
+        iterations = 0
+        while time.monotonic() < end:
+            pow(3, 100_000, 99991)
+            iterations += 1
+
+        with open("${prev}", encoding="utf-8") as fh:
+            chain = json.load(fh).get("chain", [])
+        os.makedirs(os.path.dirname("${stamp}"), exist_ok=True)
+        with open("${stamp}", "w", encoding="utf-8") as fh:
+            json.dump(
+                {
+                    "label": "python_exec_string",
+                    "python": sys.executable,
+                    "pid": os.getpid(),
+                    "allocated_mb": len(buf) >> 20,
+                    "cpu_iterations": iterations,
+                    "chain": [*chain, "python_exec_string"],
+                },
+                fh,
+                indent=2,
+            )
+        del buf
+    target:
+      kind: local
+
+edges:
+  - source: shell_command
+    source_output: stamp
+    target: shell_python_script
+    target_input: prev
+  - source: shell_python_script
+    source_output: stamp
+    target: uv_environment
+    target_input: prev
+  - source: uv_environment
+    source_output: stamp
+    target: python_exec_string
+    target_input: prev
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
