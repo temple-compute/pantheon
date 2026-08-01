@@ -11,7 +11,6 @@ _shell: &shell
   kind: shell
 
 tasks:
-  # --- Step 0: get the code -------------------------------------------------
   - kind: horus_task
     id: clone_repo
     name: Clone train-llm-from-scratch
@@ -31,7 +30,6 @@ tasks:
     target:
       kind: local
 
-  # --- Stream 1: pretraining text (The Pile) --------------------------------
   - kind: horus_task
     id: prepare_pretrain_val
     name: Prepare pretraining val split
@@ -83,7 +81,6 @@ tasks:
     target:
       kind: local
 
-  # --- Stream 2: SFT instruction data (Alpaca, Dolly, GSM8K) ----------------
   - kind: horus_task
     id: prepare_sft_data
     name: Prepare SFT packed dataset
@@ -115,7 +112,6 @@ tasks:
     target:
       kind: local
 
-  # --- Stream 3: preference pairs (HH-RLHF, UltraFeedback) ------------------
   - kind: horus_task
     id: prepare_preference_data
     name: Prepare reward-model / DPO preference pairs

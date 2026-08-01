@@ -1,6 +1,12 @@
 # W-28 · LLM From Scratch - Pretrain, SFT & Eval
 
-![Domain: AI](https://img.shields.io/badge/domain-ai-blue)
+![Domain: AI](https://img.shields.io/badge/WIP-red) ![Domain: AI](https://img.shields.io/badge/domain-ai-blue)
+
+> [!WARNING]
+> **This workflow is not yet complete.**
+>
+> The workflow is currently under development and should be considered a work in progress. Some stages may be incomplete, experimental, or subject to change. Use it for reference or testing only until it is finalized.
+
 
 ## Overview
 
@@ -95,32 +101,9 @@ its own datasets (Pile shard, Alpaca, Dolly, GSM8K) from Hugging Face.
 - `prepare_pretrain_train`'s `--num_shards` (currently `1`) controls how much Pile text is
   pulled for pretraining.
 
-## Implementation Notes
-
-- Checkpoint paths are threaded through explicitly (`--out_ckpt $pretrained_ckpt`, etc.) so
-  Horus's declared task `outputs:` match exactly what the script writes — the repo's own
-  defaults point at `/ephemeral/...`, which doesn't exist under `target: {kind: local}`.
-- `scripts/pretrain_base.py` / `scripts/train_sft.py` support a `--print-config` flag (dump the
-  fully-resolved config as JSON and exit) — useful for debugging a task's command outside of
-  Horus before wiring it into the workflow.
-- All modern training/eval scripts degrade cleanly between single-process and
-  `torchrun`-launched multi-GPU using the same flags (`src/post_training/distributed.py` reads
-  `WORLD_SIZE`/`RANK`/`LOCAL_RANK`), so adding multi-GPU support later is a matter of wrapping
-  the `command:` in `torchrun --standalone --nproc_per_node=N`, not rewriting the pipeline.
-
-## Open Questions
-
-- Reward-model, DPO, PPO, and GRPO stages (`train_reward.py`, `train_dpo.py`, `train_ppo.py`,
-  `train_grpo.py`) are not covered by this workflow — a follow-up workflow could consume
-  `preferences.jsonl` / `rl_prompts_*.jsonl`, both already produced here.
-- Multi-GPU (`torchrun`) execution isn't wired into any task; this workflow assumes single
-  GPU/CPU local execution.
-- No workflow in this repository yet demonstrates a remote/SSH or Slurm GPU target for a
-  training-shaped stage — real full-scale training (the repo's default 400M-param / 2×H100
-  config) would benefit from one, but the target-kind YAML syntax needs to be confirmed against
-  the `horus-ssh`/`horus-slurm` runtime packages before adding it here.
-
 ## References
 
 - [train-llm-from-scratch](https://github.com/FareedKhan-dev/train-llm-from-scratch) — source
   repo cloned by this workflow.
+- [horus-runtime](https://github.com/temple-compute/horus-runtime) — workflow engine and plugin framework.
+- [horus-environments](https://github.com/temple-compute/horus-environments) — horus plugin for conda-based Python environments.
