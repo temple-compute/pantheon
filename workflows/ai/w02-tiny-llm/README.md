@@ -2,6 +2,8 @@
 
 ![Domain: AI](https://img.shields.io/badge/domain-ai-blue) ![horus-runtime](https://img.shields.io/badge/horus--runtime-workflow-green)
 
+<img width="1080" height="929" alt="train-llm-cropped" src="https://github.com/user-attachments/assets/6b4a80ef-bf49-473d-9e85-c76f69373673" />
+
 ## Overview
 
 A fast, small-data companion to [W-28](../w01-train-llm/README.md): pretrains the same
