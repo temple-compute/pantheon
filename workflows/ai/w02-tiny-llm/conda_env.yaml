@@ -1,0 +1,17 @@
+name: horus-tiny-llm
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - git
+  - pip
+  - pip:
+      - torch
+      - numpy
+      - h5py
+      - requests
+      - tqdm
+      - zstandard
+      - tiktoken
+      - datasets
+      - wandb
