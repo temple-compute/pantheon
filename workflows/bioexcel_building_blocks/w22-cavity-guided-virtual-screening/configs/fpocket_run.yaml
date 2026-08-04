@@ -1,0 +1,7 @@
+properties:
+  # Alpha-sphere radius window and minimum sphere count, from
+  # cavity_analysis.config_contents step5_cavity_analysis.
+  min_radius: 3
+  max_radius: 6
+  num_spheres: 35
+  sort_by: druggability_score

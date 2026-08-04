@@ -1,0 +1,10 @@
+[project]
+name = "w23-cavity-analysis"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "horus-environments>=0.1.2",
+  # 0.2.2 is the floor: earlier versions report a map's gather input as an
+  # un-promoted root artifact, which fails the repo's sanitize-check CI gate.
+  "horus-runtime>=0.2.2",
+]

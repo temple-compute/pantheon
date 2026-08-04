@@ -1,0 +1,15 @@
+properties:
+  # Loosened for 3HEC, whose ATP-site cavity scores poorly on fpocket's `score`
+  # (0.341) even though its druggability is excellent (0.876). The tighter
+  # cavity_analysis defaults -- score [0.4, 1], druggability_score [0.4, 1],
+  # volume [200, 5000] -- reject every pocket in this structure ("No matches
+  # found"). Tighten them again for a holo structure with a well-formed pocket.
+  score:
+    - 0
+    - 1
+  druggability_score:
+    - 0
+    - 1
+  volume:
+    - 500
+    - 5000

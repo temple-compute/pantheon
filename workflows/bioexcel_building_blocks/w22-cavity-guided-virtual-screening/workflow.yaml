@@ -1,0 +1,548 @@
+kind: horus_workflow
+name: BioExcel Cavity-Guided Virtual Screening
+
+# One conda env serves every task: the four helper scripts need MDAnalysis,
+# OpenBabel and the BioBB python API *in-process* (the per-ligand try/except in
+# dock_batch.py is only possible when the building blocks are imported rather
+# than shelled out to). Docker covers the steps that just need the fpocket
+# binary, exactly as W-13 does.
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env_vs"
+  conda: micromamba # set to mamba/conda if that's what's on PATH
+  environment_file: conda_env.yaml
+
+_docker_executor: &docker_executor
+  kind: docker
+  image: quay.io/biocontainers/biobb_vs:5.2.1--pyhdfd78af_0
+
+artifacts:
+  - id: box_config
+    name: Docking box config
+    description: Offset between the last cavity atom and the docking box boundary.
+    kind: file
+    path: configs/box.yaml
+
+  - id: extract_protein_config
+    name: Protein extraction config
+    description: Selects protein-only extraction, dropping water, ions, and the crystal ligand.
+    kind: file
+    path: configs/extract_protein.yaml
+
+  - id: fetch_pdb_config
+    name: Receptor fetch config
+    description: Specifies the target PDB code (3HEC, p38-alpha MAP kinase) to download.
+    kind: file
+    path: configs/fetch_pdb.yaml
+
+  - id: fpocket_filter_config
+    name: Pocket filter config
+    description: Score, druggability, and volume windows used to filter detected cavities.
+    kind: file
+    path: configs/fpocket_filter.yaml
+
+  - id: fpocket_run_config
+    name: fpocket run config
+    description: Alpha-sphere radius window and minimum sphere count for cavity detection.
+    kind: file
+    path: configs/fpocket_run.yaml
+
+  - id: ligand_library
+    name: Candidate ligand library
+    description: SDF (or SMILES) library of candidate ligands to screen against the receptor.
+    kind: file
+    path: examples/ligands.sdf
+
+  - id: str_check_add_hydrogens_config
+    name: Receptor protonation config
+    description: Settings for adding hydrogens and converting the receptor to PDBQT.
+    kind: file
+    path: configs/str_check_add_hydrogens.yaml
+
+tasks:
+  - kind: horus_task
+    id: fetch_pdb
+    name: Download the receptor structure from the PDB
+    description: Downloads the target receptor structure (PDB 3HEC) from the Protein Data Bank.
+    skip_if_complete: false
+    inputs:
+      - id: fetch_pdb_config
+        name: Receptor fetch config
+        kind: file
+        path: configs/fetch_pdb.yaml
+    outputs:
+      - id: download_pdb
+        name: Downloaded receptor structure
+        kind: file
+        path: results/download.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        pdb
+        --config ${fetch_pdb_config}
+        --output_pdb_path ${download_pdb}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: extract_protein
+    name: Extract the protein (drop water, ions, and ligands)
+    description: Strips water, ions, and the crystal ligand so only the protein is screened against.
+    inputs:
+      - id: extract_protein_config
+        name: Protein extraction config
+        kind: file
+        path: configs/extract_protein.yaml
+      - id: download_pdb
+        name: Downloaded receptor structure
+        kind: file
+        path: results/download.pdb
+    outputs:
+      - id: pdb_protein
+        name: Protein-only structure
+        kind: file
+        path: results/protein.pdb
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        extract_molecule
+        --config ${extract_protein_config}
+        --input_structure_path ${download_pdb}
+        --output_molecule_path ${pdb_protein}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fpocket_run
+    name: Detect cavities with fpocket
+    description: Runs fpocket to detect candidate binding cavities on the receptor surface.
+    inputs:
+      - id: fpocket_run_config
+        name: fpocket run config
+        kind: file
+        path: configs/fpocket_run.yaml
+      - id: pdb_protein
+        name: Protein-only structure
+        kind: file
+        path: results/protein.pdb
+    outputs:
+      - id: all_pockets
+        name: All detected pockets
+        kind: file
+        path: results/all_pockets.zip
+      - id: pockets_summary
+        name: Pocket summary
+        kind: file
+        path: results/pockets_summary.json
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        fpocket_run
+        --config ${fpocket_run_config}
+        --input_pdb_path ${pdb_protein}
+        --output_pockets_zip ${all_pockets}
+        --output_summary ${pockets_summary}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fpocket_filter
+    name: Filter cavities by score, druggability, and volume
+    description: Keeps only the cavities whose fpocket metrics fall inside the configured windows.
+    inputs:
+      - id: fpocket_filter_config
+        name: Pocket filter config
+        kind: file
+        path: configs/fpocket_filter.yaml
+      - id: all_pockets
+        name: All detected pockets
+        kind: file
+        path: results/all_pockets.zip
+      - id: pockets_summary
+        name: Pocket summary
+        kind: file
+        path: results/pockets_summary.json
+    outputs:
+      - id: filtered_pockets
+        name: Filtered pockets
+        kind: file
+        path: results/filtered_pockets.zip
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        fpocket_filter
+        --config ${fpocket_filter_config}
+        --input_pockets_zip ${all_pockets}
+        --input_summary ${pockets_summary}
+        --output_filter_pockets_zip ${filtered_pockets}
+    target:
+      kind: local
+
+  # The bridge between cavity detection and screening. It emits the *config
+  # file* that fpocket_select consumes rather than a pocket number, because the
+  # BioBB CLI takes its pocket only through --config: a task producing its
+  # downstream neighbour's config, wired by an ordinary edge, is what makes a
+  # runtime-chosen pocket expressible without any engine feature.
+  #
+  # Add --residue-selection "resid 37 or resid 49" (MDAnalysis syntax) to keep
+  # only the cavities near a known site; empty keeps them all. --rank-by picks
+  # the metric that decides the winner.
+  - kind: horus_task
+    id: select_pocket
+    name: Select the cavity to dock into
+    description: Filters the surviving cavities by proximity to a residue selection and picks the best-ranked one.
+    inputs:
+      - id: filtered_pockets
+        name: Filtered pockets
+        kind: file
+        path: results/filtered_pockets.zip
+      - id: pockets_summary
+        name: Pocket summary
+        kind: file
+        path: results/pockets_summary.json
+      - id: pdb_protein
+        name: Protein-only structure
+        kind: file
+        path: results/protein.pdb
+    outputs:
+      - id: fpocket_select_config
+        name: Generated pocket selection config
+        kind: file
+        path: results/fpocket_select.yaml
+      - id: pocket_report
+        name: Pocket selection report
+        kind: file
+        path: results/pocket_report.json
+    executor: *executor
+    runtime:
+      kind: python_script
+      script: scripts/select_pocket.py
+      args: >-
+        --pockets ${filtered_pockets}
+        --summary ${pockets_summary}
+        --structure ${pdb_protein}
+        --out-config ${fpocket_select_config}
+        --out-report ${pocket_report}
+        --rank-by druggability_score
+        --distance-threshold 10
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fpocket_select
+    name: Extract the selected cavity
+    description: Extracts the selected cavity as PDB and PQR files for docking box generation.
+    inputs:
+      - id: fpocket_select_config
+        name: Generated pocket selection config
+        kind: file
+        path: results/fpocket_select.yaml
+      - id: filtered_pockets
+        name: Filtered pockets
+        kind: file
+        path: results/filtered_pockets.zip
+    outputs:
+      - id: cavity_pdb
+        name: Selected cavity
+        kind: file
+        path: results/cavity.pdb
+      - id: pocket_pqr
+        name: Selected pocket (PQR)
+        kind: file
+        path: results/pocket.pqr
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        fpocket_select
+        --config ${fpocket_select_config}
+        --input_pockets_zip ${filtered_pockets}
+        --output_pocket_pdb ${cavity_pdb}
+        --output_pocket_pqr ${pocket_pqr}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: box
+    name: Generate the docking box around the cavity
+    description: Builds the AutoDock Vina search box around the selected cavity with the configured offset.
+    inputs:
+      - id: box_config
+        name: Docking box config
+        kind: file
+        path: configs/box.yaml
+      - id: pocket_pqr
+        name: Selected pocket (PQR)
+        kind: file
+        path: results/pocket.pqr
+    outputs:
+      - id: output_box
+        name: Docking box
+        kind: file
+        path: results/box.pdb
+    executor: *docker_executor
+    runtime:
+      kind: command
+      command: >-
+        box
+        --config ${box_config}
+        --input_pdb_path ${pocket_pqr}
+        --output_pdb_path ${output_box}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: str_check_add_hydrogens
+    name: Prepare the receptor for docking
+    description: Adds hydrogens at pH 7 and converts the receptor to a docking-ready PDBQT structure.
+    inputs:
+      - id: str_check_add_hydrogens_config
+        name: Receptor protonation config
+        kind: file
+        path: configs/str_check_add_hydrogens.yaml
+      - id: pdb_protein
+        name: Protein-only structure
+        kind: file
+        path: results/protein.pdb
+    outputs:
+      - id: prep_receptor
+        name: Docking-ready receptor
+        kind: file
+        path: results/prep_receptor.pdbqt
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        str_check_add_hydrogens
+        --config ${str_check_add_hydrogens_config}
+        --input_structure_path ${pdb_protein}
+        --output_structure_path ${prep_receptor}
+    target:
+      kind: local
+
+  # Produces the collection the `dock` map fans out over: one *sub-directory*
+  # per batch, since the engine copytree's the i-th child into each clone.
+  # It also takes the receptor and box as real inputs and copies them into
+  # every batch folder -- a map clone cannot receive an edge, so shared data
+  # has to travel inside the slice. --batch-size is the parallelism dial.
+  - kind: horus_task
+    id: split_ligands
+    name: Split the ligand library into batches
+    description: Chunks the ligand library into per-batch folders, each carrying its own copy of the receptor and box.
+    inputs:
+      - id: ligand_library
+        name: Candidate ligand library
+        kind: file
+        path: examples/ligands.sdf
+      - id: prep_receptor
+        name: Docking-ready receptor
+        kind: file
+        path: results/prep_receptor.pdbqt
+      - id: output_box
+        name: Docking box
+        kind: file
+        path: results/box.pdb
+    outputs:
+      - id: ligand_batches
+        name: Ligand batch folders
+        kind: folder
+        path: ligand_batches/
+    executor: *executor
+    runtime:
+      kind: python_script
+      script: scripts/split_ligands.py
+      args: >-
+        --library ${ligand_library}
+        --receptor ${prep_receptor}
+        --box ${output_box}
+        --out ${ligand_batches}
+        --batch-size 2
+    target:
+      kind: local
+
+  # The fan-out. One concurrent clone per batch folder; the template declares
+  # exactly one output (required), pinned by the engine at dock.gathered/<i>/.
+  # No `edges:` entries are needed for split_ligands -> dock -> rank: the map
+  # block fully describes both the fan-out and the fan-in, and the loader
+  # synthesizes those edges.
+  - kind: horus_task
+    id: dock
+    name: Dock each ligand batch concurrently
+    description: Fans out one clone per ligand batch, each preparing and docking its ligands with AutoDock Vina.
+    map:
+      over:
+        source_task: split_ligands
+        source_output: ligand_batches
+        item_input: batch
+      template:
+        kind: horus_task
+        inputs:
+          - id: batch
+            name: One ligand batch
+            kind: folder
+            path: batch/ # overwritten per-clone with its slice of ligand_batches/
+        outputs:
+          - id: docked
+            name: Batch docking results
+            kind: folder
+            path: docked/
+        executor: *executor
+        runtime:
+          kind: python_script
+          script: scripts/dock_batch.py
+          args: >-
+            --batch ${batch}
+            --out ${docked}
+            --exhaustiveness 8
+            --cpu 1
+        target:
+          kind: local
+      gather:
+        task: rank
+        input: results
+
+  - kind: horus_task
+    id: rank
+    name: Rank the screened ligands by binding affinity
+    description: Collects every batch's docking output, ranks the ligands by Vina affinity, and writes the top poses.
+    inputs:
+      # Fed by the map's fan-in: one folder holding every clone's output under
+      # dock.gathered/<i>/.
+      - id: results
+        name: Gathered docking results
+        kind: folder
+        path: dock.gathered/
+    outputs:
+      - id: scores
+        name: Ranked affinity table
+        kind: file
+        path: results/scores.csv
+      - id: screening_summary
+        name: Screening summary
+        kind: file
+        path: results/screening_summary.json
+      - id: poses
+        name: Top docking poses
+        kind: folder
+        path: results/poses/
+    executor: *executor
+    runtime:
+      kind: python_script
+      script: scripts/rank.py
+      args: >-
+        --results ${results}
+        --scores ${scores}
+        --summary ${screening_summary}
+        --poses ${poses}
+        --top 10
+    target:
+      kind: local
+
+edges:
+  - source: fetch_pdb
+    source_output: download_pdb
+    target: extract_protein
+    target_input: download_pdb
+
+  - source: extract_protein
+    source_output: pdb_protein
+    target: fpocket_run
+    target_input: pdb_protein
+
+  - source: extract_protein
+    source_output: pdb_protein
+    target: select_pocket
+    target_input: pdb_protein
+
+  - source: extract_protein
+    source_output: pdb_protein
+    target: str_check_add_hydrogens
+    target_input: pdb_protein
+
+  - source: fpocket_run
+    source_output: all_pockets
+    target: fpocket_filter
+    target_input: all_pockets
+
+  - source: fpocket_run
+    source_output: pockets_summary
+    target: fpocket_filter
+    target_input: pockets_summary
+
+  - source: fpocket_run
+    source_output: pockets_summary
+    target: select_pocket
+    target_input: pockets_summary
+
+  - source: fpocket_filter
+    source_output: filtered_pockets
+    target: select_pocket
+    target_input: filtered_pockets
+
+  - source: fpocket_filter
+    source_output: filtered_pockets
+    target: fpocket_select
+    target_input: filtered_pockets
+
+  - source: select_pocket
+    source_output: fpocket_select_config
+    target: fpocket_select
+    target_input: fpocket_select_config
+
+  - source: fpocket_select
+    source_output: pocket_pqr
+    target: box
+    target_input: pocket_pqr
+
+  - source: box
+    source_output: output_box
+    target: split_ligands
+    target_input: output_box
+
+  - source: str_check_add_hydrogens
+    source_output: prep_receptor
+    target: split_ligands
+    target_input: prep_receptor
+
+  - source: artifact-box_config
+    source_output: box_config
+    target: box
+    target_input: box_config
+
+  - source: artifact-extract_protein_config
+    source_output: extract_protein_config
+    target: extract_protein
+    target_input: extract_protein_config
+
+  - source: artifact-fetch_pdb_config
+    source_output: fetch_pdb_config
+    target: fetch_pdb
+    target_input: fetch_pdb_config
+
+  - source: artifact-fpocket_filter_config
+    source_output: fpocket_filter_config
+    target: fpocket_filter
+    target_input: fpocket_filter_config
+
+  - source: artifact-fpocket_run_config
+    source_output: fpocket_run_config
+    target: fpocket_run
+    target_input: fpocket_run_config
+
+  - source: artifact-ligand_library
+    source_output: ligand_library
+    target: split_ligands
+    target_input: ligand_library
+
+  - source: artifact-str_check_add_hydrogens_config
+    source_output: str_check_add_hydrogens_config
+    target: str_check_add_hydrogens
+    target_input: str_check_add_hydrogens_config
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
