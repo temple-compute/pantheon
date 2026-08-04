@@ -1,0 +1,13 @@
+# Subset of biobb_vs_workflows/environment.yml: this workflow only needs the
+# cavity-detection half. python is pinned to 3.11 to match the sibling W-28
+# environment (biobb_vs pulls vina, which has no py3.12 build).
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - biobb_common>=5.2.2
+  - biobb_structure_utils>=5.2.1
+  - biobb_vs>=5.2.1
+  - mdanalysis
+  - pyyaml

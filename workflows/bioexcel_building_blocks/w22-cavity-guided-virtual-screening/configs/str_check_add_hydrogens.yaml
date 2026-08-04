@@ -1,0 +1,5 @@
+properties:
+  # Receptor protonation at pH 7. Vina ignores partial charges, but the
+  # hydrogens decide which H-bond donors/acceptors exist.
+  charges: true
+  mode: auto

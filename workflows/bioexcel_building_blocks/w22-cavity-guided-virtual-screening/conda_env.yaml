@@ -1,0 +1,16 @@
+# Mirrors biobb_vs_workflows/environment.yml, minus its `pip: - .` self-install.
+# python is pinned to 3.11 on purpose: vina (pulled in by biobb_vs) has no
+# py3.12 build, so 3.12 will not solve.
+channels:
+  - conda-forge
+  - bioconda
+dependencies:
+  - python=3.11
+  - biobb_common>=5.2.2
+  - biobb_io>=5.2.3
+  - biobb_structure_utils>=5.2.1
+  - biobb_chemistry>=5.2.1
+  - biobb_vs>=5.2.1
+  - mdanalysis
+  - openbabel==3.1.1
+  - pyyaml
