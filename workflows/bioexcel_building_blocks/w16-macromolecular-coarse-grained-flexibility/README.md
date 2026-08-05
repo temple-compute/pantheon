@@ -60,7 +60,7 @@ The first run builds the conda environment (this takes a few minutes). Subsequen
 
 The workflow fetches 1A32 automatically from the PDB. It also reads one static reference file bundled in `Files/`: `Files/1a32.MoDEL.pcz`, a pre-compressed 10 ns all-atom MD trajectory of 1A32 from the MoDEL database, used only as a comparison baseline in the similarity analyses.
 
-**Outputs** (all under `results/`):
+**Outputs** (all under `workflow_results/results/`):
 - `1a32.pdb`, `1a32_ca.pdb` — downloaded and Cα-reduced structures
 - `bd_ensemble.mdcrd`, `dmd_ensemble.mdcrd`, `nma_ensemble.mdcrd` — raw coarse-grained ensembles (+ `.log`, `.xtc`, RMSD `.dat`)
 - `bd_ensemble.pcz`, `dmd_ensemble.pcz`, `nma_ensemble.pcz` — PCA-compressed trajectories

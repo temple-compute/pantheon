@@ -45,7 +45,7 @@ cd workflows/engine-showcases/w04-subworkflow-reuse
 uv sync
 # or: pip install horus-runtime
 
-horus run workflow.yaml
+uv run horus run workflow.yaml
 ```
 
 Outputs land in `horus_workflow_results/`: `quote_a.txt`/`quote_b.txt`,

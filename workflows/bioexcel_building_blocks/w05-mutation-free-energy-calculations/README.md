@@ -58,7 +58,7 @@ The first run builds the conda environment (this takes a few minutes). Subsequen
 
 **Inputs** — pre-generated equilibrium trajectories bundled in `pmx_tutorial/`: `stateA_1ns.xtc`/`stateA.tpr` (wild type) and `stateB_1ns.xtc`/`stateB.tpr` (mutant). The final `pmxanalyse` step also reads `pmx_tutorial/dhdlA.zip` and `pmx_tutorial/dhdlB.zip` — bundles of many pre-computed replicate dHdl curves, since the CGI/BAR/Jarzynski estimators need dozens of independent transitions to converge (the single `tiA_dhdl.xvg`/`tiB_dhdl.xvg` this workflow's own `mdrun_ti_stateA`/`mdrun_ti_stateB` steps produce are illustrative of the method, not the statistical sample analyzed).
 
-**Outputs** (all under `results/`):
+**Outputs** (all under `workflow_results/results/`):
 - `mutA.pdb`, `mutB.pdb` — modelled mutant structures per state
 - `pmxA_top.zip`, `pmxB_top.zip` — hybrid dual-topology files
 - `eqoutA.gro`, `eqoutB.gro` — equilibrated structures per state

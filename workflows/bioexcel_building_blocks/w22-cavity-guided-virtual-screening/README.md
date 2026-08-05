@@ -1,4 +1,4 @@
-# W-28 · Cavity-Guided Virtual Screening
+# W-30 · Cavity-Guided Virtual Screening
 
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel--building--blocks-blue)
 
@@ -21,6 +21,20 @@ It needs HPC for the same reason every screen does: docking is embarrassingly
 parallel and linear in library size. The bundled 8-ligand example runs in about
 two minutes on a laptop; a 100k-compound library is a cluster job, and the only
 thing that changes is `--batch-size` and the clones' `target:`.
+
+## Quick start
+
+```bash
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+cd workflows/bioexcel_building_blocks/w22-cavity-guided-virtual-screening
+uv sync
+# or: pip install horus-runtime horus-environments
+
+# Docker is required: the fpocket-backed steps run in a Linux container.
+uv run horus run workflow.yaml
+```
 
 ## Compute Pattern
 
