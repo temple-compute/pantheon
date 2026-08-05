@@ -32,8 +32,6 @@ All building blocks share a unique syntax — requiring input files, output file
 | 22 | [w22-cavity-guided-virtual-screening](w22-cavity-guided-virtual-screening/) | BioExcel Cavity-Guided Virtual Screening — fpocket + AutoDock Vina |
 | 23 | [w23-cavity-analysis](w23-cavity-analysis/) | BioExcel Cavity Analysis — fpocket across a conformational ensemble |
 
-Run instructions for every workflow live in [docs/WALKTHROUGHS.md](../../docs/WALKTHROUGHS.md).
-
 ## macOS ARM64 (Apple Silicon) — Executor Strategy
 
 Several biobb packages have **no osx-arm64 conda package** and cannot be installed via conda on Apple Silicon:

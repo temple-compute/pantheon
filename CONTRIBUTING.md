@@ -57,7 +57,7 @@ Add your workflow to the structure table under its domain, using the next free g
 
 ### 5. Document run instructions
 
-Add a `## Quick start` section to your workflow README following the standard block (install uv, `uv sync`, `uv run horus run workflow.yaml`) and note which executors the workflow uses (conda, Docker, or both), since that determines the prerequisites. The root `README.md` links to [docs/WALKTHROUGHS.md](./docs/WALKTHROUGHS.md), which lists every workflow's run directory and command; add yours there too.
+Add a `## Quick start` section to your workflow README following the standard block (install uv, `uv sync`, `uv run horus run workflow.yaml`) and note which executors the workflow uses (conda, Docker, or both), since that determines the prerequisites.
 
 ### 6. Open a PR
 

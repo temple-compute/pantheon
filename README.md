@@ -29,8 +29,6 @@ uv run horus run workflow.yaml
 
 > **BioExcel workflows** also require a conda-family tool (`micromamba`, `mamba`, or `conda`) on your `PATH`. Their executors build conda environments to provision GROMACS, AMBER, and related simulation tools. More on executors at [docs.templecompute.com](https://docs.templecompute.com/guides/concepts).
 
-For per-workflow run directories and commands, see [docs/WALKTHROUGHS.md](./docs/WALKTHROUGHS.md).
-
 ## Workflows
 
 ### Drug Discovery
