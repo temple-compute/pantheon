@@ -20,24 +20,27 @@ independently resumable, no fan-out.
 ## Pipeline
 
 ```
-download_checkpoint (shell: wget)                 Zenodo drugflow.ckpt (~170 MB)
+download_checkpoint (shell: curl)                 Zenodo drugflow.ckpt (~170 MB)
                                                     ──► drugflow.ckpt
-generate            (shell: docker run igashov/drugflow:0.0.3) kras.pdb + ref_ligand.sdf + drugflow.ckpt
-                                                    ──► samples.sdf
+fetch_source        (shell: git)                  DrugFlow repo @ pinned commit
+                                                    ──► drugflow_src/
+generate            (conda env: conda_env.yaml)   kras.pdb + ref_ligand.sdf + drugflow.ckpt
+                                                    ──► results/samples.sdf
 prepare_inputs      (uv env: rdkit + biopython)   one YAML per molecule + smiles.json
-                                                    ──► boltz_inputs/mol_1.yaml, ...
+                                                    ──► results/boltz_inputs/mol_1.yaml, ...
 predict             (uv env: boltz)               boltz predict --use_msa_server
-                                                    ──► predictions/affinity_*.json
+                                                    ──► results/predictions/affinity_*.json
 rank                (shell, stdlib python3)       parse affinity_*.json, ΔG, sort
-                                                    ──► deltaG_table.csv
+                                                    ──► results/deltaG_table.csv
 ```
 
-`download_checkpoint` fetches the DrugFlow model checkpoint from Zenodo
-automatically (skipped once `drugflow.ckpt` exists in the run dir), so the
-workflow is self-contained apart from the target PDB, the reference ligand, and
-the `igashov/drugflow:0.0.3` Docker image. `prepare_inputs` writes one Boltz
-affinity YAML per molecule into a single folder, which `predict` feeds to a
-single `boltz predict` call.
+`download_checkpoint` and `fetch_source` make the workflow self-contained apart
+from the target PDB and the reference ligand: the first pulls the model
+checkpoint from Zenodo, the second clones DrugFlow at a pinned commit (the code
+is not published as a package, so the conda environment supplies its
+dependencies but not the code itself). Both are skipped once their output
+exists. `prepare_inputs` writes one Boltz affinity YAML per molecule into a
+single folder, which `predict` feeds to a single `boltz predict` call.
 
 ## Quick start
 
@@ -46,14 +49,17 @@ single `boltz predict` call.
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync
 
-# One-time: the DrugFlow container image (the checkpoint is downloaded by the workflow)
-docker pull igashov/drugflow:0.0.3
-
 uv run horus run workflow.yaml
 ```
 
-The checkpoint (~170 MB) is **not** committed to this repo; the
-`download_checkpoint` task fetches it on the first run.
+Needs a conda-family tool (`micromamba`, `mamba`, or `conda`) on `PATH` — the
+`generate` stage builds a conda environment from `conda_env.yaml` (~520 MB,
+built once into `.horus_drugflow_env/` and reused). The checkpoint (~170 MB) is
+**not** committed to this repo; `download_checkpoint` fetches it on the first run.
+
+> **macOS / Apple Silicon:** `conda_env.yaml` does **not** solve on `osx-arm64`
+> — `pyg=2.5.1`, `ProDy=2.4.0` and `pytorch=2.2.1` have no arm64 builds. Use the
+> Docker fallback below for the `generate` stage on a Mac.
 
 ## Inputs / Outputs
 
@@ -61,13 +67,14 @@ The checkpoint (~170 MB) is **not** committed to this repo; the
 - `examples/kras.pdb` — target protein structure.
 - `examples/kras_ref_ligand.sdf` — reference ligand; defines the pocket.
 
-**Outputs**
+**Outputs** (all under the run directory)
 - `drugflow.ckpt` — the DrugFlow checkpoint, downloaded by the workflow.
-- `samples.sdf` — the generated molecules.
-- `boltz_inputs/` — one Boltz affinity YAML per molecule.
-- `smiles.json` — `{molecule_name: canonical_smiles}`.
-- `predictions/` — Boltz-2 output, one `affinity_*.json` per molecule.
-- `deltaG_table.csv` — columns `molecule, smiles, affinity_pred_value,
+- `drugflow_src/` — DrugFlow source at the pinned commit.
+- `results/samples.sdf` — the generated molecules.
+- `results/boltz_inputs/` — one Boltz affinity YAML per molecule.
+- `results/smiles.json` — `{molecule_name: canonical_smiles}`.
+- `results/predictions/` — Boltz-2 output, one `affinity_*.json` per molecule.
+- `results/deltaG_table.csv` — columns `molecule, smiles, affinity_pred_value,
   binding_probability, deltaG_kcal_per_mol`, sorted by ascending ΔG (best first).
 
 ## Parameterization
@@ -75,11 +82,16 @@ The checkpoint (~170 MB) is **not** committed to this repo; the
 | Where | Knob | Default |
 |---|---|---|
 | `download_checkpoint` command | Zenodo URL | `https://zenodo.org/records/14919171/files/drugflow.ckpt` |
+| `fetch_source` command | pinned DrugFlow commit | `ed684167…` |
+| `generate` executor | `environment_file` | `conda_env.yaml` (swap for `conda_env_gpu.yaml` on an NVIDIA node) |
 | `generate` command | `--n_samples` | `10` — number of molecules to generate |
 | `generate` command | `--batch_size` | `32` |
 | `generate` command | `--pocket_distance_cutoff` | `8.0` Å |
 | `generate` command | `--device` | `cpu` (set `cuda:0` on a GPU box) |
 | `generate` command | `--seed` | `42` |
+| `generate` command | `--molecule_size` | unset — max atoms per molecule; add e.g. `--molecule_size 15,20` for a range |
+| `generate` command | `--n_steps` | unset — denoising steps; add to override the model default |
+| `generate` command | `--filter` | off — add the flag to resample until quality filters pass |
 | `predict` command | `--diffusion_samples` | `1` |
 | `predict` command | `--accelerator` | `cpu` |
 | `predict` command | `--use_msa_server` | on (public ColabFold server) |
@@ -87,49 +99,59 @@ The checkpoint (~170 MB) is **not** committed to this repo; the
 
 ## Implementation Notes
 
-**Why `generate` is a shell task that calls `docker run` itself, not a
-`docker_executor` task.** Two things about `igashov/drugflow:0.0.3` and
-`horus_docker` are easy to assume and both turn out to be wrong:
+**Why `generate` runs in conda, not Docker.** DrugFlow does not need a
+container. Upstream ships its own `environment.yaml`, and `gnina` — the only
+external binary in its install instructions — is required solely for optional
+docking-score metrics, not for generation. `conda_env.yaml` here is that file
+with the two CUDA pins relaxed to CPU builds; `conda_env_gpu.yaml` is it
+verbatim. Both were checked with `micromamba create --dry-run` on `linux-64`.
 
-1. The image is *just* the DrugFlow Python dependencies (CUDA base + the pip
-   packages in its own `/requirements.txt` — torch, rdkit, lightning, …). It
-   does **not** contain the DrugFlow git repo, so there's no `src/generate.py`
-   anywhere in the image to run.
-2. `horus_docker`'s `docker_executor` has no automatic input/output mounting.
-   Its `volumes:` map is a plain `dict[str, str]` that is never
-   placeholder-substituted, so there is no way to reference a task's
-   `${protein}`-style artifact paths in it — nothing bind-mounts a task's
-   inputs into the container for you.
+The environment supplies the dependencies but not the code (DrugFlow isn't
+packaged), hence the separate `fetch_source` stage. `generate`'s command
+`cd`s into that checkout because `src/generate.py` uses `from src... import`
+and so needs the repo root as its working directory; every `${...}` resolves to
+an absolute path, so nothing else is affected by the `cd`.
 
-So `generate` uses `executor: {kind: shell}` and drives `docker run` from the
-command string instead. `${protein}`, `${ref_ligand}`, `${checkpoint}`, and
-`${samples}` are substituted by Horus to their **absolute host paths** before
-the shell ever sees the command (this substitution happens for any
-`CommandRuntime`, regardless of executor), so each one is bind-mounted at that
-same absolute path inside the container (`-v ${protein}:${protein}:ro`, …) —
-the path the DrugFlow CLI is given never needs translating between host and
-container. The command also `git init` + `git fetch --depth 1 <sha>` +
-`checkout`s the pinned DrugFlow commit into `/tmp/drugflow` inside the
-container before invoking `generate.py`, since the image doesn't ship it.
+**Docker fallback (macOS / arm64).** `conda_env.yaml` has no `osx-arm64`
+solution, so on a Mac swap `generate`'s executor back to `{kind: shell}` and its
+command to:
 
-**Checkpoint download.** `download_checkpoint` uses `wget`. If `wget` is not on
-the target (macOS ships `curl` by default), swap the command for
-`curl -L -o ${checkpoint} https://zenodo.org/records/14919171/files/drugflow.ckpt`.
-The task skips automatically once `drugflow.ckpt` exists in the run directory.
+```yaml
+command: >-
+  docker run --rm --platform linux/amd64
+  --user "$(id -u):$(id -g)"
+  -v ${drugflow_src}:${drugflow_src}:ro
+  -v ${protein}:${protein}:ro
+  -v ${ref_ligand}:${ref_ligand}:ro
+  -v ${checkpoint}:${checkpoint}:ro
+  -v $(dirname ${samples}):$(dirname ${samples})
+  igashov/drugflow:0.0.3
+  sh -c "cd ${drugflow_src} && python src/generate.py
+  --protein ${protein} --ref_ligand ${ref_ligand}
+  --checkpoint ${checkpoint} --output ${samples}
+  --n_samples 10 --batch_size 32 --pocket_distance_cutoff 8.0
+  --device cpu --seed 42"
+```
+
+after a `docker pull igashov/drugflow:0.0.3`. Two non-obvious points: the image
+holds *only* DrugFlow's pip dependencies and no repo (which is why the mounted
+`${drugflow_src}` is still needed), and `horus_docker`'s `docker_executor`
+cannot be used because its `volumes:` map is a plain `dict[str, str]` that is
+never placeholder-substituted — it can't see per-task artifact paths. A plain
+shell task works because Horus substitutes `${...}` to absolute *host* paths for
+any `CommandRuntime` regardless of executor, so mounting each at its own path
+means the CLI args need no translation. `--user` is not optional: without it the
+container runs as root and leaves root-owned outputs on the host.
+
+**Checkpoint download.** `download_checkpoint` downloads to `drugflow.ckpt.part`
+and only `mv`s it into place on success — a truncated file left at the final
+path would satisfy `skip_if_complete` and be reused as a corrupt checkpoint on
+every later run. The task skips once `drugflow.ckpt` exists in the run directory.
 
 **CPU vs GPU.** Both heavy stages default to CPU so the workflow runs anywhere;
-generation and Boltz prediction are *slow* this way. On a GPU host, add
-`--gpus all` to the `docker run` invocation in `generate`'s command and drop
-`--device cpu` from the `generate.py` args; set `--accelerator gpu` on
-`predict`. This needs the NVIDIA Container Toolkit on the host.
-
-**Docker root ownership.** The container runs as **root** by default, so
-`samples.sdf` ends up root-owned on the host. Add `--user "$(id -u):$(id -g)"`
-to the `docker run` invocation to run as your uid/gid instead. Relatedly,
-`generate`'s output is written at the run-dir root rather than in a
-subdirectory: the task only bind-mounts `$(dirname ${samples})`, and a
-not-yet-existing parent would be created by the daemon (as root) the first
-time Docker sees it.
+generation and Boltz prediction are *slow* this way. On an NVIDIA node, point
+`generate`'s `environment_file:` at `conda_env_gpu.yaml` and change
+`--device cpu` to `--device cuda:0`; set `--accelerator gpu` on `predict`.
 
 **Boltz input naming.** Each molecule's YAML is named after the molecule,
 because the YAML stem becomes Boltz's prediction name (`affinity_<stem>.json`)
@@ -145,9 +167,14 @@ Treating IC50 as a Kd proxy at 298 K:
 This is an approximation, good for **ranking** candidates, not an exact free
 energy.
 
-**MSAs.** The predict stage uses `--use_msa_server` (public ColabFold server),
-so it needs outbound network access. The legacy plugin's local-database MSA mode
-(`colabfold_search`) was not ported.
+**MSAs.** The predict stage uses `--use_msa_server`, i.e. the *public* ColabFold
+server, so it needs outbound network access from wherever `predict` runs and is
+subject to that server's rate limits. The legacy plugin defaulted to the other
+mode: a local `colabfold_search` against an on-disk database. That was not
+ported because it needs a second environment — `boltz` requires `numpy<2`
+while `colabfold` requires `numpy>=2.0.2`, so the two cannot share one env — plus
+a multi-hundred-GB sequence database. On a cluster without outbound access this
+is the stage that will fail.
 
 **Tests.** `scripts/rank.py` is stdlib-only and unit-tested:
 
@@ -159,4 +186,4 @@ uv run --no-project --with pytest pytest scripts/test_rank.py
 
 - [DrugFlow GitHub](https://github.com/LPDI-EPFL/DrugFlow) · checkpoint on [Zenodo](https://zenodo.org/records/14919171)
 - [Boltz-2 GitHub](https://github.com/jwohlwend/boltz)
-- Docker image: `igashov/drugflow:0.0.3`
+- Docker image (macOS fallback only): `igashov/drugflow:0.0.3`

@@ -29,18 +29,51 @@ tasks:
     executor:
       kind: shell
     runtime:
+      # Downloaded to a .part file and moved into place only on success: a
+      # half-finished download left at ${checkpoint} would satisfy
+      # skip_if_complete and be reused as a corrupt checkpoint forever.
       kind: command
       command: >-
-        wget -O ${checkpoint} https://zenodo.org/records/14919171/files/drugflow.ckpt
+        curl -fL --retry 3 -o ${checkpoint}.part
+        https://zenodo.org/records/14919171/files/drugflow.ckpt
+        && mv ${checkpoint}.part ${checkpoint}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: fetch_source
+    name: Fetch the DrugFlow source
+    description: Clones DrugFlow at a pinned commit. The conda environment provides the dependencies but not the code, which is not published as a package.
+    outputs:
+      - id: drugflow_src
+        name: DrugFlow source tree
+        description: DrugFlow repository checked out at the pinned commit.
+        kind: folder
+        path: drugflow_src/
+    executor:
+      kind: shell
+    runtime:
+      kind: command
+      command: >-
+        git init -q ${drugflow_src}
+        && git -C ${drugflow_src} fetch -q --depth 1
+        https://github.com/LPDI-EPFL/DrugFlow.git
+        ed6841677ccf3590000624baa757b61ce0bb20aa
+        && git -C ${drugflow_src} checkout -q FETCH_HEAD
     target:
       kind: local
 
   - kind: horus_task
     id: generate
     name: Generate pocket molecules with DrugFlow
-    description: Runs DrugFlow's generate.py in the igashov/drugflow:0.0.3 container to propose novel molecules for the reference pocket.
+    description: Runs DrugFlow's generate.py to propose novel molecules for the reference pocket.
     skip_if_complete: false
     inputs:
+      - id: drugflow_src
+        name: DrugFlow source tree
+        description: DrugFlow repository checked out by the fetch_source stage.
+        kind: folder
+        path: drugflow_src/
       - id: protein
         name: Target protein
         description: Target protein structure (PDB) defining the system to design against.
@@ -57,46 +90,29 @@ tasks:
         kind: file
         path: drugflow.ckpt
     outputs:
-      # Written at the run-dir root on purpose: it's the parent dir we bind-mount
-      # (see below), and a not-yet-existing parent would be created as root.
       - id: samples
         name: Generated molecules
         description: SDF of the molecules DrugFlow generated for the pocket.
         kind: file
-        path: samples.sdf
+        path: results/samples.sdf
     executor:
-      # `horus_docker`'s docker_executor has no input/output auto-mounting (its
-      # `volumes:` map isn't placeholder-substituted, so it can't see per-task
-      # paths), so this task drives `docker run` itself from a shell executor:
-      # every ${...} placeholder is substituted to its absolute *host* path
-      # first, then each one is bind-mounted into the container at that exact
-      # same path, so the DrugFlow CLI args below need no path translation.
-      #
-      # igashov/drugflow:0.0.3 also only has the DrugFlow *dependencies* baked
-      # in (torch/rdkit/etc, see its /requirements.txt) — no repo, no
-      # src/generate.py. The command clones the actual code at a pinned commit
-      # before running it.
-      kind: shell
+      # DrugFlow's own environment.yaml, CPU-flavoured. See conda_env.yaml for
+      # the GPU variant and the macOS caveat.
+      kind: conda_python_environment
+      conda: micromamba
+      environment_dir: "../.horus_drugflow_env"
+      environment_file: conda_env.yaml
     runtime:
+      # `cd` is required: src/generate.py does `from src... import ...`, so the
+      # repo root has to be the working directory. Every ${...} resolves to an
+      # absolute path, so the inputs and output are unaffected by it.
       kind: command
       command: >-
-        docker run --rm
-        --platform linux/amd64
-        -v ${protein}:${protein}:ro
-        -v ${ref_ligand}:${ref_ligand}:ro
-        -v ${checkpoint}:${checkpoint}:ro
-        -v $(dirname ${samples}):$(dirname ${samples})
-        igashov/drugflow:0.0.3
-        sh -c "
-        git init -q /tmp/drugflow &&
-        git -C /tmp/drugflow fetch -q --depth 1 https://github.com/LPDI-EPFL/DrugFlow.git ed6841677ccf3590000624baa757b61ce0bb20aa &&
-        git -C /tmp/drugflow checkout -q FETCH_HEAD &&
-        python /tmp/drugflow/src/generate.py
+        cd ${drugflow_src} && python src/generate.py
         --protein ${protein} --ref_ligand ${ref_ligand}
         --checkpoint ${checkpoint} --output ${samples}
         --n_samples 10 --batch_size 32 --pocket_distance_cutoff 8.0
         --device cpu --seed 42
-        "
     target:
       kind: local
 
@@ -114,18 +130,18 @@ tasks:
         name: Generated molecules
         description: SDF produced by the generate stage.
         kind: file
-        path: samples.sdf
+        path: results/samples.sdf
     outputs:
       - id: boltz_inputs
         name: Boltz-2 input folder
         description: Folder holding one Boltz affinity YAML per molecule.
         kind: folder
-        path: boltz_inputs/
+        path: results/boltz_inputs/
       - id: smiles
         name: Molecule name to SMILES map
         description: JSON map from molecule name to canonical SMILES, joined against by the ranking stage.
         kind: file
-        path: smiles.json
+        path: results/smiles.json
     executor:
       kind: uv_python_environment
       python: "3.11"
@@ -150,13 +166,13 @@ tasks:
         name: Boltz-2 input folder
         description: Folder holding one Boltz affinity YAML per molecule.
         kind: folder
-        path: boltz_inputs/
+        path: results/boltz_inputs/
     outputs:
       - id: predictions
         name: Boltz-2 predictions
         description: Boltz-2 output folder holding one affinity_*.json per molecule.
         kind: folder
-        path: predictions/
+        path: results/predictions/
     executor:
       kind: uv_python_environment
       python: "3.11"
@@ -180,18 +196,18 @@ tasks:
         name: Boltz-2 predictions
         description: Boltz-2 output folder holding one affinity_*.json per molecule.
         kind: folder
-        path: predictions/
+        path: results/predictions/
       - id: smiles
         name: Molecule name to SMILES map
         description: JSON map from molecule name to canonical SMILES.
         kind: file
-        path: smiles.json
+        path: results/smiles.json
     outputs:
       - id: deltag_table
         name: ΔG table
         description: CSV of molecule, SMILES, predicted affinity and approximate ΔG, ranked best-first.
         kind: file
-        path: deltaG_table.csv
+        path: results/deltaG_table.csv
     executor:
       kind: shell
     runtime:
@@ -207,6 +223,10 @@ edges:
     source_output: checkpoint
     target: generate
     target_input: checkpoint
+  - source: fetch_source
+    source_output: drugflow_src
+    target: generate
+    target_input: drugflow_src
   - source: generate
     source_output: samples
     target: prepare_inputs

@@ -26,3 +26,4 @@ horus_workflow_results/
 results/
 horus_resource_report.json
 .horus_conda_env/
+.horus_drugflow_env/

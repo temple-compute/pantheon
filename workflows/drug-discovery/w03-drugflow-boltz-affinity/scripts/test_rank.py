@@ -4,7 +4,10 @@ Ported from the legacy boltz-drugflow plugin's
 ``tests/backend/test_boltz_affinity.py`` (driver pure-helper cases only).
 """
 
+import sys
 from pathlib import Path
+
+sys.path.insert(0, str(Path(__file__).parent))  # rank.py sits next to this file
 
 import pytest
 from rank import (

@@ -1,0 +1,34 @@
+# DrugFlow's own environment (github.com/LPDI-EPFL/DrugFlow, environment.yaml)
+# with the two CUDA pins relaxed to CPU builds, so the workflow runs without a
+# GPU. For a GPU run, point the `generate` task's `environment_file:` at
+# conda_env_gpu.yaml instead and swap `--device cpu` for `--device cuda:0`.
+#
+# Solves on linux-64 only: pyg 2.5.1, ProDy 2.4.0 and pytorch 2.2.1 have no
+# osx-arm64 builds. See the README's Docker fallback for macOS.
+name: drugflow
+
+channels:
+  - pytorch
+  - pyg
+  - conda-forge
+
+dependencies:
+  - python=3.11.8
+  - pytorch=2.2.1=*cpu*
+  - pytorch-lightning=2.2.1
+  - rdkit=2023.09.6
+  - openbabel=3.1.1
+  - biopython=1.83
+  - scipy=1.12.0
+  - pyg=2.5.1
+  - pytorch-scatter=2.1.2
+  - ProDy=2.4.0
+  - wandb=0.16.3
+  - pandas=2.2.2
+  - pip=24.0
+  - pip:
+      - posebusters==0.3.1
+      - useful_rdkit_utils==0.65
+      - fcd==1.2.2
+      - webdataset==0.2.86
+      - prolif==2.0.3
