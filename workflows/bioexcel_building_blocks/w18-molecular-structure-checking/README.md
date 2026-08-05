@@ -70,7 +70,7 @@ The first run builds the conda environment (this takes a few minutes). Subsequen
 
 This workflow has no file inputs — it fetches 1Z83 from the RCSB PDB automatically.
 
-**Outputs** (all under `results/`):
+**Outputs** (all under `workflow_results/results/`):
 - `downloaded.pdb`, `report.json` — raw structure and its initial quality report
 - `models.pdb`, `chains.pdb`, `altloc.pdb`, `ssbonds.pdb` — model/chain/altloc/disulfide fixes
 - `metals.pdb`, `ligands.pdb`, `hydrogens.pdb`, `water.pdb` — stripped structure after removing hetero content

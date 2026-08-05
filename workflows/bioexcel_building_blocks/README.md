@@ -29,6 +29,8 @@ All building blocks share a unique syntax — requiring input files, output file
 | 19 | [w19-haddock3-protein-protein-docking](w19-haddock3-protein-protein-docking/) | BioExcel HADDOCK — Antibody-Antigen Protein-Protein Docking |
 | 20 | [w20-autoencoders-md-analysis](w20-autoencoders-md-analysis/) | BioExcel Autoencoder — MD Trajectory Analysis with Machine Learning |
 | 21 | [w21-protein-membrane-md-analysis](w21-protein-membrane-md-analysis/) | BioExcel Membrane MD Analysis — GABA-gated Chloride Channel |
+| 22 | [w22-cavity-guided-virtual-screening](w22-cavity-guided-virtual-screening/) | BioExcel Cavity-Guided Virtual Screening — fpocket + AutoDock Vina |
+| 23 | [w23-cavity-analysis](w23-cavity-analysis/) | BioExcel Cavity Analysis — fpocket across a conformational ensemble |
 
 ## macOS ARM64 (Apple Silicon) — Executor Strategy
 
@@ -37,7 +39,7 @@ Several biobb packages have **no osx-arm64 conda package** and cannot be install
 | Package | Workflows affected |
 |---|---|
 | `biobb_amber` | w03, w09, w10, w11, w13, w17, w18 |
-| `biobb_vs` | w06, w07, w08 |
+| `biobb_vs` | w06, w07, w08, w22, w23 |
 | `biobb_pmx` | w05 |
 | `biobb_dna` | w12 |
 | `biobb_flexdyn` | w14 |

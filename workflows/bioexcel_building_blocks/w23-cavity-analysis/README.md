@@ -1,4 +1,4 @@
-# W-29 · Cavity Analysis
+# W-31 · Cavity Analysis
 
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel--building--blocks-blue)
 
@@ -15,10 +15,24 @@ This is a port of the `cavity_analysis` CLI from
 answers the question that comes *before* a virtual screen: a protein is not one
 shape, and a pocket that is closed in the crystal structure may be open in half
 the ensemble. Ranking conformations by cavity quality tells you which one to
-dock into — feed the winner to [W-28](../w22-cavity-guided-virtual-screening/README.md).
+dock into — feed the winner to [W-30](../w22-cavity-guided-virtual-screening/README.md).
 
 The source runs its models in a serial `for` loop; here each model is a
 concurrent map clone, which is the whole point since models are independent.
+
+## Quick start
+
+```bash
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
+cd workflows/bioexcel_building_blocks/w23-cavity-analysis
+uv sync
+# or: pip install horus-runtime horus-environments
+
+# The first run builds the conda environment (takes a few minutes).
+uv run horus run workflow.yaml
+```
 
 ## Compute Pattern
 
@@ -41,7 +55,7 @@ ensemble is 100 independent ~30 s tasks — a natural cluster array job.
 - **conda env** (`conda_env.yaml`): python 3.11, biobb_common,
   biobb_structure_utils, biobb_vs (which supplies fpocket), MDAnalysis, PyYAML
 
-No container: unlike [W-28](../w22-cavity-guided-virtual-screening/README.md),
+No container: unlike [W-30](../w22-cavity-guided-virtual-screening/README.md),
 every step here calls the BioBB python API in-process, so fpocket comes from the
 conda environment.
 
@@ -139,7 +153,7 @@ this ensemble. Tighten them for a larger or better-formed set of structures.
   sandbox under the current directory and shells out unquoted, so the brackets
   are glob-expanded and match nothing. The script runs from
   `analyze.gathered/<i>/work/` instead. See the
-  [W-28 README](../w22-cavity-guided-virtual-screening/README.md#implementation-notes).
+  [W-30 README](../w22-cavity-guided-virtual-screening/README.md#implementation-notes).
 - **osx-arm64 cannot build the conda env**, because `biobb_vs` pins
   `fpocket ==4.1`, which conda-forge builds for linux-64 and osx-64 only. On
   Apple Silicon prefix the run with
@@ -161,7 +175,7 @@ this ensemble. Tighten them for a larger or better-formed set of structures.
   or not at all (`cavity_analysis.py:954-981`).
 - Cluster populations are not carried through, since they only exist on the
   trajectory path. The source adds a `population` key to each model's summary.
-- Should the winning model be handed to W-28 automatically? Today the two
+- Should the winning model be handed to W-30 automatically? Today the two
   workflows are chained by hand.
 
 ## References
@@ -169,5 +183,5 @@ this ensemble. Tighten them for a larger or better-formed set of structures.
 - Source workflow: [bioexcel/biobb_vs_workflows](https://github.com/bioexcel/biobb_vs_workflows)
 - fpocket: Le Guilloux, Schmidtke & Tuffery, *BMC Bioinformatics* (2009)
 - [BioExcel Building Blocks](https://mmb.irbbarcelona.org/biobb/) documentation
-- Downstream: [W-28 Cavity-Guided Virtual Screening](../w22-cavity-guided-virtual-screening/README.md)
+- Downstream: [W-30 Cavity-Guided Virtual Screening](../w22-cavity-guided-virtual-screening/README.md)
 - Related: [W-06 Fan-out / Map / Gather](../../engine-showcases/w01-fanout-map-gather/README.md)

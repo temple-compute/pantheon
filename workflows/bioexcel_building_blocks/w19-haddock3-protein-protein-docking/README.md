@@ -62,7 +62,7 @@ The first run builds the conda environment (this takes a few minutes). Subsequen
 
 This workflow has no file inputs — it fetches 4G6K (antibody), 4I1B (antigen), and 4G6M (reference complex) automatically from the PDBe.
 
-**Outputs** (all under `results/`):
+**Outputs** (all under `workflow_results/results/`):
 - `4G6K_clean.pdb`, `4I1B_clean.pdb` — prepared single-chain antibody and antigen structures
 - `4G6M_clean.pdb` — prepared reference complex, used only for CAPRI scoring
 - `4G6K_actpass.txt`, `4I1B_actpass.txt` — paratope active / epitope passive residue lists

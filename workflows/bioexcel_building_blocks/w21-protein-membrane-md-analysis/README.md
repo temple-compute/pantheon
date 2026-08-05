@@ -54,7 +54,7 @@ The first run builds the conda environment (this takes a few minutes). Subsequen
 
 This workflow has no file inputs — it fetches the structure (`.pdb`), trajectory (`.xtc`), and topology (`.tpr`) for MDDB entry A023K automatically.
 
-**Outputs** (all under `results/`):
+**Outputs** (all under `workflow_results/results/`):
 - `A023K_10.pdb`, `A023K_10.xtc`, `A023K.tpr` — downloaded structure, trajectory, and topology
 - `A023K_fit.xtc`, `A023K_fit2.xtc` — membrane-normal-fitted and protein-XY-fitted trajectories
 - `leaflets.ndx` — FATSLiM leaflet index groups

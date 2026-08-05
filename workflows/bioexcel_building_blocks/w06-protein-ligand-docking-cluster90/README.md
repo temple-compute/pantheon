@@ -64,7 +64,7 @@ The first run builds the conda environment (this takes a few minutes). Subsequen
 
 This workflow has no file inputs — it fetches the 3HEC receptor, its PDB Cluster90 collection, and the Imatinib (STI) ligand automatically.
 
-**Outputs** (all under `results/`):
+**Outputs** (all under `workflow_results/results/`):
 - `download.pdb`, `pdb_protein.pdb` — fetched receptor structure
 - `pdb_cluster.zip` — PDB Cluster90 collection used to locate the binding site
 - `bindingsite.pdb`, `box.pdb` — inferred binding site and docking box

@@ -38,10 +38,10 @@ cd workflows/engine-showcases/w01-fanout-map-gather
 uv sync
 # or: pip install horus-runtime
 
-horus run workflow.yaml
+uv run horus run workflow.yaml
 ```
 
-Outputs land in `workflow_results/`: `batches/` (4 files), `score.gathered/`
+Outputs land in `horus_workflow_results/`: `batches/` (4 files), `score.gathered/`
 (4 subfolders, one per clone), and `results/summary/summary.json` +
 `results/summary/combined_upper.txt`.
 

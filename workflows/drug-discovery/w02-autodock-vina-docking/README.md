@@ -1,4 +1,4 @@
-# W-04 · AutoDock Vina Docking
+# W-02 · AutoDock Vina Docking
 
 ![Domain: Drug Discovery](https://img.shields.io/badge/domain-drug--discovery-blue)
 
@@ -31,27 +31,28 @@ summary (local, CPU)     parse affinities           ──► summary.csv + pose
 ## Quick start
 
 ```bash
+# Install uv if you don't have it
+curl -LsSf https://astral.sh/uv/install.sh | sh
+
 # Install the horus-runtime and plugins (one time)
 uv sync
-# (or: pip install horus-runtime horus-environments)
-
-# You can install UV with this command if you don't have it yet:
-curl -LsSf https://astral.sh/uv/install.sh | sh
+# or: pip install horus-runtime horus-environments
 
 # The prep/dock stages build conda envs from conda-forge, so a conda-family
 # tool must be on PATH. workflow.yaml defaults to `conda:` — set it to `mamba`
 # or `micromamba` in the prep/dock executors if that's what you have.
 
 # Run the workflow
-horus run workflow.yaml
+uv run horus run workflow.yaml
 ```
 
 > Requires a `horus-environments` with conda channel / `conda_requirements`
 > support (temple-compute/horus-environments#3). Until that ships in a release,
 > install it from that branch.
 
-Outputs land in `results/`: `vina_inputs.tar.gz`, `docking_out.tar.gz`, and the
-two energy tables `summary.csv` (ranked best-first) and `poses.csv` (per pose).
+Outputs land in `horus_workflow_results/results/`: `vina_inputs.tar.gz`,
+`docking_out.tar.gz`, and the two energy tables `summary.csv` (ranked best-first)
+and `poses.csv` (per pose).
 
 ## Inputs / Outputs
 

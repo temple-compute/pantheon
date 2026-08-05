@@ -82,7 +82,7 @@ The first run builds the conda environment (this takes a few minutes). Subsequen
 
 This workflow has no file inputs — it fetches 3HTB from the RCSB PDB automatically and extracts both the protein chain and the JZ4 ligand from it.
 
-**Outputs** (all under `results/`):
+**Outputs** (all under `workflow_results/results/`):
 - `downloaded.pdb`, `ligand.pdb`, `protein.pdb`, `fixed.pdb` — fetched and split structures
 - `pdb2gmx.gro`, `pdb2gmx_top.zip` — protein topology
 - `ligand.params.gro`, `ligand.params.itp`, `ligand.params.top` — ligand (GAFF) topology

@@ -31,7 +31,7 @@ cd workflows/engine-showcases/w03-loop-map
 uv sync
 # or: pip install horus-runtime
 
-horus run workflow.yaml
+uv run horus run workflow.yaml
 ```
 
 Outputs land in `horus_workflow_results/`: `iterate.gathered/` (5 subfolders,

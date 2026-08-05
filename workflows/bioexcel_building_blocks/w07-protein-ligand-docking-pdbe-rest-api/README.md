@@ -62,7 +62,7 @@ This workflow has no file inputs — it fetches the 3LFA receptor and the Dasati
 
 > **Note:** `configs/generate_cavity_box.yaml` ships with an empty `resid_list`. The binding-site residue indices are only known after `get_binding_sites` runs and `results/residues.json` can be inspected — populate `resid_list` with the residues for your chosen cavity before (re-)running `generate_cavity_box`. This is a manual, two-pass step inherited from the original tutorial notebook.
 
-**Outputs** (all under `results/`):
+**Outputs** (all under `workflow_results/results/`):
 - `download.pdb`, `pdb_protein.pdb` — fetched receptor structure
 - `residues.json` — PDBe-annotated binding sites for 3LFA
 - `box.pdb` — docking box around the selected cavity
