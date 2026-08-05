@@ -1,25 +1,54 @@
 kind: horus_workflow
 name: DrugFlow Generate + Boltz-2 Affinity
 
+artifacts:
+  - id: checkpoint
+    name: DrugFlow checkpoint
+    description: DrugFlow model checkpoint (.ckpt), downloaded once, see README.
+    path: examples/drugflow.ckpt
+    kind: file
+
+  - id: protein
+    name: Target protein
+    description: Target protein structure (PDB) defining the system to design against.
+    path: examples/kras.pdb
+    kind: file
+
+  - id: ref_ligand
+    name: Reference ligand
+    description: Reference ligand (SDF) whose binding site defines the pocket DrugFlow
+      designs into.
+    path: examples/kras_ref_ligand.sdf
+    kind: file
+
 tasks:
   - kind: horus_task
     id: generate
     name: Generate pocket molecules with DrugFlow
+    description: Runs DrugFlow's generate.py in the igashov/drugflow:0.0.3 container to propose novel molecules for the reference pocket.
     skip_if_complete: false
     inputs:
       - id: protein
+        name: Target protein
+        description: Target protein structure (PDB) defining the system to design against.
         kind: file
         path: examples/kras.pdb
       - id: ref_ligand
+        name: Reference ligand
+        description: Reference ligand (SDF) whose binding site defines the pocket DrugFlow designs into.
         kind: file
         path: examples/kras_ref_ligand.sdf
       - id: checkpoint
+        name: DrugFlow checkpoint
+        description: DrugFlow model checkpoint (.ckpt), downloaded once, see README.
         kind: file
-        path: examples/drugflow.ckpt      # ~170 MB, download once: see README
+        path: examples/drugflow.ckpt
     outputs:
       # Written at the run-dir root on purpose: it's the parent dir we bind-mount
       # (see below), and a not-yet-existing parent would be created as root.
       - id: samples
+        name: Generated molecules
+        description: SDF of the molecules DrugFlow generated for the pocket.
         kind: file
         path: samples.sdf
     executor:
@@ -61,19 +90,28 @@ tasks:
   - kind: horus_task
     id: prepare_inputs
     name: Build one Boltz affinity YAML per molecule
+    description: Extracts the target sequence from the PDB and writes one Boltz affinity input directory per generated molecule, plus a name-to-SMILES JSON map used by the ranking stage.
     inputs:
       - id: protein
+        name: Target protein
+        description: Target protein structure (PDB) used to extract the sequence.
         kind: file
         path: examples/kras.pdb
       - id: samples
+        name: Generated molecules
+        description: SDF produced by the generate stage.
         kind: file
         path: samples.sdf
     outputs:
       # One child directory per molecule: that is what `predict`'s map fans out over.
       - id: boltz_inputs
+        name: Per-molecule Boltz inputs
+        description: Folder holding one zero-padded directory per molecule, each with its Boltz affinity YAML.
         kind: folder
         path: boltz_inputs/
       - id: smiles
+        name: Molecule name to SMILES map
+        description: JSON map from molecule name to canonical SMILES, joined against by the ranking stage.
         kind: file
         path: smiles.json
     executor:
@@ -91,9 +129,33 @@ tasks:
     target:
       kind: local
 
+  # Build the shared Boltz uv-environment once, before any predict clone runs.
+  # The predict clones reuse this exact environment (same `../.horus_boltz_env`
+  # resolved against their per-clone working dirs), so the heavy `boltz`
+  # install happens exactly once instead of racing N concurrent `uv venv`
+  # invocations on the first run. No outputs means the task always runs, but
+  # after the first time it only takes the cheap "reuse existing env" branch.
+  - kind: horus_task
+    id: setup_boltz_env
+    name: Provision the shared Boltz environment
+    description: Creates the uv environment holding Boltz that every predict clone reuses.
+    executor:
+      kind: uv_python_environment
+      python: "3.11"
+      environment_dir: "../.horus_boltz_env"
+      requirements:
+        - boltz
+    runtime:
+      kind: command
+      command: >-
+        python -c "import boltz; print('Boltz environment ready')"
+    target:
+      kind: local
+
   - kind: horus_task
     id: predict
     name: Boltz-2 affinity, one clone per molecule
+    description: Fans out one Boltz-2 affinity prediction per molecule, all clones running concurrently against the shared environment.
     map:
       over:
         source_task: prepare_inputs
@@ -102,18 +164,23 @@ tasks:
       template:
         inputs:
           - id: mol
+            name: Single molecule directory
+            description: One clone's Boltz input directory (copied from prepare_inputs).
             kind: folder
             path: mol/          # overwritten per clone with its molecule dir
         outputs:
           - id: prediction
+            name: Boltz-2 prediction
+            description: Boltz-2 output folder for one molecule.
             kind: folder
             path: prediction/
         executor:
+          # Shared with setup_boltz_env: every clone's working dir is
+          # <run>/predict[N], so `../.horus_boltz_env` resolves to the same
+          # <run>/.horus_boltz_env setup_boltz_env already installed Boltz
+          # into. Clones therefore never reinstall, they just reuse it.
           kind: uv_python_environment
-          python: "3.11"
-          requirements:
-            - boltz
-          environment_dir: "../.horus_boltz_env"   # built once, shared by all clones
+          environment_dir: "../.horus_boltz_env"
         runtime:
           kind: command
           command: >-
@@ -129,16 +196,23 @@ tasks:
   - kind: horus_task
     id: rank
     name: Build the ΔG table
+    description: Walks every gathered prediction, converts Boltz affinity to an approximate ΔG and writes a CSV sorted best-first.
     inputs:
       # Fan-in: one folder holding every clone's prediction/ under predict.gathered/<i>/.
       - id: predictions
+        name: Gathered predictions
+        description: Folder of every clone's Boltz-2 output under predict.gathered/.
         kind: folder
         path: predict.gathered/
       - id: smiles
+        name: Molecule name to SMILES map
+        description: JSON map from molecule name to canonical SMILES.
         kind: file
         path: smiles.json
     outputs:
       - id: deltag_table
+        name: ΔG table
+        description: CSV of molecule, SMILES, predicted affinity and approximate ΔG, ranked best-first.
         kind: file
         path: deltaG_table.csv
     executor:
@@ -160,6 +234,40 @@ edges:
     source_output: smiles
     target: rank
     target_input: smiles
+  # `setup_boltz_env` must be reachable from the trigger (the first task,
+  # `generate`), or the scheduler's run-scope drops it — and with it every
+  # task gated behind it (`predict`). Both edges here are ordering-only.
+  - source: generate
+    target: setup_boltz_env
+  - source: setup_boltz_env
+    target: predict
+  # Explicitly gate the gather task behind the map expander: horus-runtime
+  # >=0.3.2 stopped emitting this edge at load time for YAML-defined maps
+  # (0.2.1 did), so without it `rank` is dispatched alongside the expander
+  # and reads `predict.gathered/` before the expander pins it.
+  - source: predict
+    target: rank
+
+  - source: artifact-checkpoint
+    source_output: checkpoint
+    target: generate
+    target_input: checkpoint
+
+  - source: artifact-protein
+    source_output: protein
+    target: generate
+    target_input: protein
+
+  - source: artifact-protein
+    source_output: protein
+    target: prepare_inputs
+    target_input: protein
+
+  - source: artifact-ref_ligand
+    source_output: ref_ligand
+    target: generate
+    target_input: ref_ligand
+
 
 orchestrator_target:
   kind: local

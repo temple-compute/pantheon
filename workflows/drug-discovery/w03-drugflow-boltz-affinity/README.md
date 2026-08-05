@@ -1,4 +1,4 @@
-# W-28 · DrugFlow + Boltz-2 Affinity
+# W-32 · DrugFlow + Boltz-2 Affinity
 
 ![Domain: Drug Discovery](https://img.shields.io/badge/domain-drug--discovery-blue)
 
@@ -25,8 +25,9 @@ generate       (shell: docker run igashov/drugflow:0.0.3) kras.pdb + ref_ligand.
                                                     ──► samples.sdf
 prepare_inputs (uv env: rdkit + biopython)         one dir per molecule + smiles.json
                                                     ──► boltz_inputs/000_mol_1/mol_1.yaml, ...
-predict        (uv env: boltz, N concurrent clones) boltz predict --use_msa_server
-                                                    ──► predict.gathered/<i>/prediction/
+setup_boltz_env (uv env: boltz, runs once)         provisions <run>/.horus_boltz_env
+predict        (uv env: N concurrent clones,       boltz predict --use_msa_server
+                 sharing the boltz env above)       ──► predict.gathered/<i>/prediction/
 rank           (shell, stdlib python3)              parse affinity_*.json, ΔG, sort
                                                     ──► deltaG_table.csv
 ```
@@ -36,6 +37,14 @@ rank           (shell, stdlib python3)              parse affinity_*.json, ΔG, 
 name (hence the zero-padded `000_`, `001_`, … prefixes — clone order matches SDF
 order), and gathers every clone's `prediction/` folder into `rank`'s
 `predictions` input.
+
+`setup_boltz_env` builds the uv environment that holds Boltz into
+`<run>/.horus_boltz_env`, and every `predict` clone reuses that exact
+environment (each clone's working dir is `<run>/predict[N]`, so its
+`../.horus_boltz_env` resolves to the same path). This makes the expensive
+`boltz` install happen **once**, up front, instead of N clones racing to create
+the same environment on the first run. After the first time it is a fast
+"reuse existing env" no-op.
 
 ## Quick start
 
@@ -77,6 +86,9 @@ before the first run.
 | `generate` command | `--pocket_distance_cutoff` | `8.0` Å |
 | `generate` command | `--device` | `cpu` (set `cuda:0` on a GPU box) |
 | `generate` command | `--seed` | `42` |
+| `setup_boltz_env` executor | `requirements` | `[boltz]` — installed once into the shared env |
+| `setup_boltz_env` executor | `environment_dir` | `../.horus_boltz_env` — shared by all predict clones |
+| `predict` clones | `environment_dir` | `../.horus_boltz_env` — reuses the env from `setup_boltz_env` |
 | `predict` command | `--diffusion_samples` | `1` |
 | `predict` command | `--accelerator` | `cpu` |
 | `predict` command | `--use_msa_server` | on (public ColabFold server) |
@@ -114,6 +126,34 @@ generation and Boltz prediction are *slow* this way. On a GPU host, add
 `--gpus all` to the `docker run` invocation in `generate`'s command and drop
 `--device cpu` from the `generate.py` args; set `--accelerator gpu` on
 `predict`. This needs the NVIDIA Container Toolkit on the host.
+
+**Shared Boltz environment.** The `predict` map fans out N clones that all run
+`boltz predict` concurrently. If each clone built its own uv environment you
+would pay N full `boltz` installs; if they all built the *same* one
+concurrently they would race (`rm -rf` + `uv venv` on one directory from many
+processes), corrupting it on first run. The dedicated `setup_boltz_env` task
+solves both: it installs Boltz once into `<run>/.horus_boltz_env` before the
+map, and the clones reuse that path. `setup_boltz_env` declares no outputs, so
+it always runs, but once the environment exists the executor's reuse branch is
+a no-op. If you ever change the `requirements`, bump `recreate: true` on that
+task (or point `environment_dir` somewhere fresh) to force a rebuild.
+
+**Two ordering edges you must keep.** Both are non-obvious and the workflow
+breaks without them on current horus-runtime (0.3.2):
+
+1. `setup_boltz_env` is chained off `generate` (`generate →
+   setup_boltz_env → predict`) because the scheduler only runs tasks that are
+   ancestors/descendants of the trigger task. Left disconnected, the env-setup
+   task is dropped from the run scope and the map silently never executes.
+2. `predict → rank` explicitly gates the gather task behind the map expander.
+   horus-runtime ≥0.3.2 stopped emitting this edge at load time for
+   YAML-defined maps (0.2.1 did), so without it `rank` is dispatched
+   concurrently with the expander and reads `predict.gathered/` before the
+   expander pins it, failing with `Input artifact 'predictions' does not
+   exist`.
+
+Both edges are ordering-only (`transfer` carries no data); see the comments in
+`workflow.yaml`.
 
 **HPC / remote execution.** On a cluster without Docker, swap the `generate`
 executor for Singularity via the (new, private) `horus-singularity` plugin:
