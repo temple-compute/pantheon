@@ -12,16 +12,74 @@ _docker_executor: &docker_executor
   kind: docker
   image: quay.io/biocontainers/biobb_amber:5.2.1--py312hc5e4ab4_0
 
+artifacts:
+  - id: canonical_fasta_config
+    name: Canonical FASTA config
+    description: Configuration for fetching the canonical FASTA sequence used to model missing backbone atoms.
+    kind: file
+    path: configs/canonical_fasta.yaml
+
+  - id: extract_chain_config
+    name: Chain extraction config
+    description: Configuration specifying which chain to keep when extracting from the structure.
+    kind: file
+    path: configs/extract_chain.yaml
+
+  - id: extract_model_config
+    name: Model selection config
+    description: Configuration specifying which model to keep from the multi-model structure.
+    kind: file
+    path: configs/extract_model.yaml
+
+  - id: fetch_pdb_config
+    name: PDB fetch config
+    description: Configuration setting the PDB code (1Z83) to download from the RCSB.
+    kind: file
+    path: configs/fetch_pdb.yaml
+
+  - id: fix_altlocs_config
+    name: Altloc resolution config
+    description: Configuration specifying which alternate location to keep when resolving altlocs.
+    kind: file
+    path: configs/fix_altlocs.yaml
+
+  - id: leap_gen_top_config
+    name: AMBER topology config
+    description: Configuration controlling AMBER topology and coordinate generation via LEaP.
+    kind: file
+    path: configs/leap_gen_top.yaml
+
+  - id: remove_molecules_ligands_config
+    name: Ligand removal config
+    description: Configuration specifying which ligands (SO4, AP5) to strip from the structure.
+    kind: file
+    path: configs/remove_molecules_ligands.yaml
+
+  - id: remove_molecules_metals_config
+    name: Metal removal config
+    description: Configuration specifying which metal ions (zinc) to strip from the structure.
+    kind: file
+    path: configs/remove_molecules_metals.yaml
+
+  - id: sander_mdrun_config
+    name: Energy minimization config
+    description: Configuration controlling the AMBER sander energy minimization parameters.
+    kind: file
+    path: configs/sander_mdrun.yaml
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Download 1Z83 structure from PDB
+    description: Downloads the human Adenylate Kinase 1A / AP5A inhibitor complex structure (PDB 1Z83) from the RCSB.
     inputs:
       - id: fetch_pdb_config
+        name: PDB fetch config
         kind: file
         path: configs/fetch_pdb.yaml
     outputs:
       - id: downloaded_pdb
+        name: Raw downloaded structure
         kind: file
         path: results/downloaded.pdb
     executor: *executor
@@ -37,12 +95,15 @@ tasks:
   - kind: horus_task
     id: structure_check
     name: Run initial structure quality report
+    description: Generates a structure-quality report on the raw downloaded structure before any fixes are applied.
     inputs:
       - id: downloaded_pdb
+        name: Raw downloaded structure
         kind: file
         path: results/downloaded.pdb
     outputs:
       - id: report
+        name: Initial quality report
         kind: file
         path: results/report.json
     executor: *executor
@@ -58,15 +119,19 @@ tasks:
   - kind: horus_task
     id: extract_model
     name: Select model 1 from multi-model structure
+    description: Selects a single model from the structure using the biobb extract_model tool.
     inputs:
       - id: extract_model_config
+        name: Model selection config
         kind: file
         path: configs/extract_model.yaml
       - id: downloaded_pdb
+        name: Raw downloaded structure
         kind: file
         path: results/downloaded.pdb
     outputs:
       - id: models_pdb
+        name: Model 1 structure
         kind: file
         path: results/models.pdb
     executor: *executor
@@ -83,15 +148,19 @@ tasks:
   - kind: horus_task
     id: extract_chain
     name: Extract chain A from structure
+    description: Extracts chain A from the structure using the biobb extract_chain tool.
     inputs:
       - id: extract_chain_config
+        name: Chain extraction config
         kind: file
         path: configs/extract_chain.yaml
       - id: models_pdb
+        name: Model 1 structure
         kind: file
         path: results/models.pdb
     outputs:
       - id: chains_pdb
+        name: Chain A structure
         kind: file
         path: results/chains.pdb
     executor: *executor
@@ -108,15 +177,19 @@ tasks:
   - kind: horus_task
     id: fix_altlocs
     name: Resolve alternative locations (keep altloc A)
+    description: Resolves alternate atom locations, keeping altloc A, using the biobb fix_altlocs tool.
     inputs:
       - id: fix_altlocs_config
+        name: Altloc resolution config
         kind: file
         path: configs/fix_altlocs.yaml
       - id: chains_pdb
+        name: Chain A structure
         kind: file
         path: results/chains.pdb
     outputs:
       - id: altloc_pdb
+        name: Altloc-resolved structure
         kind: file
         path: results/altloc.pdb
     executor: *executor
@@ -133,12 +206,15 @@ tasks:
   - kind: horus_task
     id: fix_ssbonds
     name: Identify and mark disulfide bridges (CYX)
+    description: Identifies cysteine disulfide bridges and renames them CYX using the biobb fix_ssbonds tool.
     inputs:
       - id: altloc_pdb
+        name: Altloc-resolved structure
         kind: file
         path: results/altloc.pdb
     outputs:
       - id: ssbonds_pdb
+        name: Disulfide-marked structure
         kind: file
         path: results/ssbonds.pdb
     executor: *executor
@@ -154,15 +230,19 @@ tasks:
   - kind: horus_task
     id: remove_molecules_metals
     name: Remove zinc metal ions from structure
+    description: Strips zinc metal ions from the structure using the biobb remove_molecules tool.
     inputs:
       - id: remove_molecules_metals_config
+        name: Metal removal config
         kind: file
         path: configs/remove_molecules_metals.yaml
       - id: ssbonds_pdb
+        name: Disulfide-marked structure
         kind: file
         path: results/ssbonds.pdb
     outputs:
       - id: metals_pdb
+        name: Metal-stripped structure
         kind: file
         path: results/metals.pdb
     executor: *executor
@@ -179,15 +259,19 @@ tasks:
   - kind: horus_task
     id: remove_molecules_ligands
     name: Remove SO4 and AP5 ligands from structure
+    description: Strips the SO4 and AP5 ligands from the structure using the biobb remove_molecules tool.
     inputs:
       - id: remove_molecules_ligands_config
+        name: Ligand removal config
         kind: file
         path: configs/remove_molecules_ligands.yaml
       - id: metals_pdb
+        name: Metal-stripped structure
         kind: file
         path: results/metals.pdb
     outputs:
       - id: ligands_pdb
+        name: Ligand-stripped structure
         kind: file
         path: results/ligands.pdb
     executor: *executor
@@ -204,12 +288,15 @@ tasks:
   - kind: horus_task
     id: reduce_remove_hydrogens
     name: Strip existing hydrogen atoms
+    description: Removes existing hydrogen atoms from the structure using the biobb reduce_remove_hydrogens tool.
     inputs:
       - id: ligands_pdb
+        name: Ligand-stripped structure
         kind: file
         path: results/ligands.pdb
     outputs:
       - id: hydrogens_pdb
+        name: Hydrogen-stripped structure
         kind: file
         path: results/hydrogens.pdb
     executor: *executor
@@ -225,12 +312,15 @@ tasks:
   - kind: horus_task
     id: remove_pdb_water
     name: Remove crystallographic water molecules
+    description: Strips crystallographic water molecules from the structure using the biobb remove_pdb_water tool.
     inputs:
       - id: hydrogens_pdb
+        name: Hydrogen-stripped structure
         kind: file
         path: results/hydrogens.pdb
     outputs:
       - id: water_pdb
+        name: Water-stripped structure
         kind: file
         path: results/water.pdb
     executor: *executor
@@ -246,12 +336,15 @@ tasks:
   - kind: horus_task
     id: fix_amides
     name: Fix incorrect amide group assignments (ASN/GLN)
+    description: Corrects flipped ASN/GLN amide group assignments using the biobb fix_amides tool.
     inputs:
       - id: water_pdb
+        name: Water-stripped structure
         kind: file
         path: results/water.pdb
     outputs:
       - id: amides_pdb
+        name: Amide-fixed structure
         kind: file
         path: results/amides.pdb
     executor: *executor
@@ -267,12 +360,15 @@ tasks:
   - kind: horus_task
     id: fix_chirality
     name: Fix incorrect chirality (THR/ILE side chains)
+    description: Corrects incorrect THR/ILE side-chain chirality using the biobb fix_chirality tool.
     inputs:
       - id: amides_pdb
+        name: Amide-fixed structure
         kind: file
         path: results/amides.pdb
     outputs:
       - id: chiral_pdb
+        name: Chirality-fixed structure
         kind: file
         path: results/chiral.pdb
     executor: *executor
@@ -288,12 +384,15 @@ tasks:
   - kind: horus_task
     id: fix_side_chain
     name: Model missing side-chain atoms
+    description: Rebuilds missing side-chain atoms using the biobb fix_side_chain tool.
     inputs:
       - id: chiral_pdb
+        name: Chirality-fixed structure
         kind: file
         path: results/chiral.pdb
     outputs:
       - id: side_chains_pdb
+        name: Side-chain-modeled structure
         kind: file
         path: results/sidechains.pdb
     executor: *executor
@@ -309,12 +408,15 @@ tasks:
   - kind: horus_task
     id: canonical_fasta
     name: Fetch canonical FASTA sequence for 1Z83
+    description: Fetches the canonical (full-length) FASTA sequence for the structure, used as a reference for backbone modeling.
     inputs:
       - id: canonical_fasta_config
+        name: Canonical FASTA config
         kind: file
         path: configs/canonical_fasta.yaml
     outputs:
       - id: fasta
+        name: Canonical FASTA sequence
         kind: file
         path: results/canonical.fasta
     executor: *executor
@@ -330,15 +432,19 @@ tasks:
   - kind: horus_task
     id: fix_backbone
     name: Model missing backbone atoms with Modeller
+    description: Rebuilds missing backbone atoms against the canonical sequence using Modeller via the biobb fix_backbone tool.
     inputs:
       - id: side_chains_pdb
+        name: Side-chain-modeled structure
         kind: file
         path: results/sidechains.pdb
       - id: fasta
+        name: Canonical FASTA sequence
         kind: file
         path: results/canonical.fasta
     outputs:
       - id: backbone_pdb
+        name: Backbone-modeled structure
         kind: file
         path: results/backbone.pdb
     executor: *executor
@@ -355,21 +461,27 @@ tasks:
   - kind: horus_task
     id: leap_gen_top
     name: Generate AMBER topology and coordinates (LEaP)
+    description: Builds the AMBER topology and coordinates for the structure using the biobb leap_gen_top tool.
     inputs:
       - id: leap_gen_top_config
+        name: AMBER topology config
         kind: file
         path: configs/leap_gen_top.yaml
       - id: backbone_pdb
+        name: Backbone-modeled structure
         kind: file
         path: results/backbone.pdb
     outputs:
       - id: amber_pdb
+        name: AMBER-ready structure
         kind: file
         path: results/amber.pdb
       - id: amber_top
+        name: AMBER topology
         kind: file
         path: results/amber.top
       - id: amber_crd
+        name: AMBER coordinates
         kind: file
         path: results/amber.crd
     executor: *docker_executor
@@ -388,24 +500,31 @@ tasks:
   - kind: horus_task
     id: sander_mdrun
     name: Energy minimization to relieve atomic clashes (AMBER sander)
+    description: Runs a short AMBER sander energy minimization to relieve steric clashes introduced by the modeling steps.
     inputs:
       - id: sander_mdrun_config
+        name: Energy minimization config
         kind: file
         path: configs/sander_mdrun.yaml
       - id: amber_top
+        name: AMBER topology
         kind: file
         path: results/amber.top
       - id: amber_crd
+        name: AMBER coordinates
         kind: file
         path: results/amber.crd
     outputs:
       - id: trj_crd
+        name: Minimization trajectory
         kind: file
         path: results/trj.crd
       - id: trj_rst
+        name: Minimization restart
         kind: file
         path: results/trj.rst
       - id: trj_log
+        name: Minimization log
         kind: file
         path: results/trj.log
     executor: *docker_executor
@@ -425,15 +544,19 @@ tasks:
   - kind: horus_task
     id: amber_to_pdb
     name: Convert minimized AMBER restart to PDB
+    description: Converts the minimized AMBER restart coordinates back to PDB format using the biobb amber_to_pdb tool.
     inputs:
       - id: amber_top
+        name: AMBER topology
         kind: file
         path: results/amber.top
       - id: trj_rst
+        name: Minimization restart
         kind: file
         path: results/trj.rst
     outputs:
       - id: amber_min_pdb
+        name: Minimized structure
         kind: file
         path: results/amber_min.pdb
     executor: *docker_executor
@@ -450,12 +573,15 @@ tasks:
   - kind: horus_task
     id: fix_pdb
     name: Renumber residues and restore chain IDs
+    description: Renumbers residues and restores the original chain IDs on the minimized structure using the biobb fix_pdb tool.
     inputs:
       - id: amber_min_pdb
+        name: Minimized structure
         kind: file
         path: results/amber_min.pdb
     outputs:
       - id: final_pdb
+        name: Final structure
         kind: file
         path: results/final.pdb
     executor: *executor
@@ -471,12 +597,15 @@ tasks:
   - kind: horus_task
     id: structure_check_final
     name: Run final structure quality report
+    description: Generates a structure-quality report on the fully checked and minimized final structure.
     inputs:
       - id: final_pdb
+        name: Final structure
         kind: file
         path: results/final.pdb
     outputs:
       - id: report_final
+        name: Final quality report
         kind: file
         path: results/report_final.json
     executor: *executor
@@ -594,6 +723,52 @@ edges:
     source_output: final_pdb
     target: structure_check_final
     target_input: final_pdb
+
+  - source: artifact-canonical_fasta_config
+    source_output: canonical_fasta_config
+    target: canonical_fasta
+    target_input: canonical_fasta_config
+
+  - source: artifact-extract_chain_config
+    source_output: extract_chain_config
+    target: extract_chain
+    target_input: extract_chain_config
+
+  - source: artifact-extract_model_config
+    source_output: extract_model_config
+    target: extract_model
+    target_input: extract_model_config
+
+  - source: artifact-fetch_pdb_config
+    source_output: fetch_pdb_config
+    target: fetch_pdb
+    target_input: fetch_pdb_config
+
+  - source: artifact-fix_altlocs_config
+    source_output: fix_altlocs_config
+    target: fix_altlocs
+    target_input: fix_altlocs_config
+
+  - source: artifact-leap_gen_top_config
+    source_output: leap_gen_top_config
+    target: leap_gen_top
+    target_input: leap_gen_top_config
+
+  - source: artifact-remove_molecules_ligands_config
+    source_output: remove_molecules_ligands_config
+    target: remove_molecules_ligands
+    target_input: remove_molecules_ligands_config
+
+  - source: artifact-remove_molecules_metals_config
+    source_output: remove_molecules_metals_config
+    target: remove_molecules_metals
+    target_input: remove_molecules_metals_config
+
+  - source: artifact-sander_mdrun_config
+    source_output: sander_mdrun_config
+    target: sander_mdrun
+    target_input: sander_mdrun_config
+
 
 orchestrator_target:
   kind: local

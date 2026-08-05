@@ -11,16 +11,74 @@ _docker_executor: &docker_executor
   kind: docker
   image: quay.io/biocontainers/biobb_vs:5.2.1--pyhdfd78af_0
 
+artifacts:
+  - id: convert_pose_to_pdb_config
+    name: Pose-to-PDB conversion config
+    description: OpenBabel options for converting the top docking pose from PDBQT to PDB format.
+    kind: file
+    path: configs/convert_pose_to_pdb.yaml
+
+  - id: convert_sdf_to_pdb_config
+    name: Ligand SDF-to-PDB conversion config
+    description: OpenBabel options for converting the ligand SDF file to PDB format.
+    kind: file
+    path: configs/convert_sdf_to_pdb.yaml
+
+  - id: download_ligand_sdf_config
+    name: Ligand SDF download config
+    description: Specifies the PDBe ligand code (1N1 / Dasatinib) to fetch the ideal SDF for.
+    kind: file
+    path: configs/download_ligand_sdf.yaml
+
+  - id: download_pdb_config
+    name: PDB download config
+    description: Specifies the PDB code (3LFA) to fetch the receptor structure for.
+    kind: file
+    path: configs/download_pdb.yaml
+
+  - id: extract_docking_pose_config
+    name: Docking pose extraction config
+    description: Specifies which Vina pose (model 1) to extract from the docking output.
+    kind: file
+    path: configs/extract_docking_pose.yaml
+
+  - id: generate_cavity_box_config
+    name: Cavity box generation config
+    description: Specifies the binding-site residue list and box offset used to build the docking cavity.
+    kind: file
+    path: configs/generate_cavity_box.yaml
+
+  - id: get_binding_sites_config
+    name: Binding site query config
+    description: Specifies the PDB code used to query the PDBe REST API for annotated binding sites.
+    kind: file
+    path: configs/get_binding_sites.yaml
+
+  - id: prepare_ligand_pdbqt_config
+    name: Ligand PDBQT preparation config
+    description: OpenBabel options for converting the ligand PDB to PDBQT format for docking.
+    kind: file
+    path: configs/prepare_ligand_pdbqt.yaml
+
+  - id: prepare_receptor_pdbqt_config
+    name: Receptor PDBQT preparation config
+    description: Protonation settings for converting the receptor structure to PDBQT format for docking.
+    kind: file
+    path: configs/prepare_receptor_pdbqt.yaml
+
 tasks:
   - kind: horus_task
     id: download_pdb
     name: Download 3LFA structure from PDB (protein + ligand complex)
+    description: Downloads the 3LFA protein-ligand complex structure from the PDB.
     inputs:
       - id: download_pdb_config
+        name: PDB download config
         kind: file
         path: configs/download_pdb.yaml
     outputs:
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/download.pdb
     executor: *executor
@@ -36,12 +94,15 @@ tasks:
   - kind: horus_task
     id: extract_protein
     name: Extract protein chain (remove ligands, water, ions)
+    description: Removes ligands, waters, and ions from the downloaded structure to isolate the protein chain using biobb extract_molecule.
     inputs:
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/download.pdb
     outputs:
       - id: pdb_protein
+        name: Extracted protein structure
         kind: file
         path: results/pdb_protein.pdb
     executor: *executor
@@ -57,12 +118,16 @@ tasks:
   - kind: horus_task
     id: get_binding_sites
     name: Query PDBe REST-API for binding sites (residues.json)
+    description: Queries the PDBe REST API for annotated ligand-binding site residues of the target structure.
     inputs:
       - id: get_binding_sites_config
+        name: Binding site query config
         kind: file
         path: configs/get_binding_sites.yaml
     outputs:
       - id: residues_json
+        name: Binding site residues
+        description: PDBe-annotated binding-site residues for 3LFA; used to populate resid_list in the cavity box config for the next run.
         kind: file
         path: results/residues.json
     executor: *docker_executor
@@ -78,15 +143,19 @@ tasks:
   - kind: horus_task
     id: generate_cavity_box
     name: Generate docking box around selected binding site cavity
+    description: Builds an AutoDock Vina docking box around the selected binding-site cavity residues.
     inputs:
       - id: generate_cavity_box_config
+        name: Cavity box generation config
         kind: file
         path: configs/generate_cavity_box.yaml
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/download.pdb
     outputs:
       - id: output_box
+        name: Docking box
         kind: file
         path: results/box.pdb
     executor: *docker_executor
@@ -103,12 +172,15 @@ tasks:
   - kind: horus_task
     id: download_ligand_sdf
     name: Download Dasatinib (1N1) ideal SDF from PDBe
+    description: Downloads the ideal SDF structure of the Dasatinib (1N1) ligand from PDBe.
     inputs:
       - id: download_ligand_sdf_config
+        name: Ligand SDF download config
         kind: file
         path: configs/download_ligand_sdf.yaml
     outputs:
       - id: sdf_ideal
+        name: Ligand ideal SDF
         kind: file
         path: results/ideal.sdf
     executor: *executor
@@ -124,15 +196,19 @@ tasks:
   - kind: horus_task
     id: convert_sdf_to_pdb
     name: Convert ligand SDF to PDB format (OpenBabel)
+    description: Converts the ligand SDF file to PDB format using OpenBabel.
     inputs:
       - id: convert_sdf_to_pdb_config
+        name: Ligand SDF-to-PDB conversion config
         kind: file
         path: configs/convert_sdf_to_pdb.yaml
       - id: sdf_ideal
+        name: Ligand ideal SDF
         kind: file
         path: results/ideal.sdf
     outputs:
       - id: ligand_pdb
+        name: Ligand PDB structure
         kind: file
         path: results/ligand.pdb
     executor: *executor
@@ -149,15 +225,19 @@ tasks:
   - kind: horus_task
     id: prepare_ligand_pdbqt
     name: Convert ligand PDB to PDBQT for AutoDock Vina (OpenBabel)
+    description: Converts the ligand PDB file to PDBQT format for AutoDock Vina using OpenBabel.
     inputs:
       - id: prepare_ligand_pdbqt_config
+        name: Ligand PDBQT preparation config
         kind: file
         path: configs/prepare_ligand_pdbqt.yaml
       - id: ligand_pdb
+        name: Ligand PDB structure
         kind: file
         path: results/ligand.pdb
     outputs:
       - id: prep_ligand
+        name: Prepared ligand PDBQT
         kind: file
         path: results/prep_ligand.pdbqt
     executor: *executor
@@ -174,15 +254,19 @@ tasks:
   - kind: horus_task
     id: prepare_receptor_pdbqt
     name: Add hydrogens and convert receptor to PDBQT for AutoDock Vina
+    description: Adds hydrogens and converts the receptor structure to PDBQT format for AutoDock Vina.
     inputs:
       - id: prepare_receptor_pdbqt_config
+        name: Receptor PDBQT preparation config
         kind: file
         path: configs/prepare_receptor_pdbqt.yaml
       - id: pdb_protein
+        name: Extracted protein structure
         kind: file
         path: results/pdb_protein.pdb
     outputs:
       - id: prep_receptor
+        name: Prepared receptor PDBQT
         kind: file
         path: results/prep_receptor.pdbqt
     executor: *executor
@@ -199,21 +283,28 @@ tasks:
   - kind: horus_task
     id: run_docking
     name: Run AutoDock Vina protein-ligand docking
+    description: Runs AutoDock Vina to dock the prepared ligand against the receptor within the generated cavity box.
     inputs:
       - id: prep_ligand
+        name: Prepared ligand PDBQT
         kind: file
         path: results/prep_ligand.pdbqt
       - id: prep_receptor
+        name: Prepared receptor PDBQT
         kind: file
         path: results/prep_receptor.pdbqt
       - id: output_box
+        name: Docking box
         kind: file
         path: results/box.pdb
     outputs:
       - id: output_vina_pdbqt
+        name: Vina docking poses (PDBQT)
         kind: file
         path: results/output_vina.pdbqt
       - id: output_vina_log
+        name: Vina docking log
+        description: Log of the docking run listing binding affinity scores for all generated poses.
         kind: file
         path: results/output_vina.log
     executor: *docker_executor
@@ -232,15 +323,19 @@ tasks:
   - kind: horus_task
     id: extract_docking_pose
     name: Extract best docking pose (model 1) from Vina output
+    description: Extracts the top-ranked (model 1) docking pose from the Vina output PDBQT.
     inputs:
       - id: extract_docking_pose_config
+        name: Docking pose extraction config
         kind: file
         path: configs/extract_docking_pose.yaml
       - id: output_vina_pdbqt
+        name: Vina docking poses (PDBQT)
         kind: file
         path: results/output_vina.pdbqt
     outputs:
       - id: output_pdbqt_model
+        name: Top docking pose (PDBQT)
         kind: file
         path: results/output_model.pdbqt
     executor: *docker_executor
@@ -257,15 +352,19 @@ tasks:
   - kind: horus_task
     id: convert_pose_to_pdb
     name: Convert docking pose PDBQT to PDB format (OpenBabel)
+    description: Converts the extracted docking pose from PDBQT to PDB format using OpenBabel.
     inputs:
       - id: convert_pose_to_pdb_config
+        name: Pose-to-PDB conversion config
         kind: file
         path: configs/convert_pose_to_pdb.yaml
       - id: output_pdbqt_model
+        name: Top docking pose (PDBQT)
         kind: file
         path: results/output_model.pdbqt
     outputs:
       - id: output_pdb_model
+        name: Top docking pose (PDB)
         kind: file
         path: results/output_model.pdb
     executor: *executor
@@ -282,15 +381,20 @@ tasks:
   - kind: horus_task
     id: assemble_complex
     name: Merge receptor and docking pose into final protein-ligand complex PDB
+    description: Merges the original receptor structure with the docked ligand pose into a final protein-ligand complex PDB.
     inputs:
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/download.pdb
       - id: output_pdb_model
+        name: Top docking pose (PDB)
         kind: file
         path: results/output_model.pdb
     outputs:
       - id: output_structure
+        name: Final protein-ligand complex
+        description: The assembled receptor and top-ranked docked ligand pose, the workflow's final output structure.
         kind: file
         path: results/output_structure.pdb
     executor: *executor
@@ -364,6 +468,52 @@ edges:
     source_output: output_pdb_model
     target: assemble_complex
     target_input: output_pdb_model
+
+  - source: artifact-convert_pose_to_pdb_config
+    source_output: convert_pose_to_pdb_config
+    target: convert_pose_to_pdb
+    target_input: convert_pose_to_pdb_config
+
+  - source: artifact-convert_sdf_to_pdb_config
+    source_output: convert_sdf_to_pdb_config
+    target: convert_sdf_to_pdb
+    target_input: convert_sdf_to_pdb_config
+
+  - source: artifact-download_ligand_sdf_config
+    source_output: download_ligand_sdf_config
+    target: download_ligand_sdf
+    target_input: download_ligand_sdf_config
+
+  - source: artifact-download_pdb_config
+    source_output: download_pdb_config
+    target: download_pdb
+    target_input: download_pdb_config
+
+  - source: artifact-extract_docking_pose_config
+    source_output: extract_docking_pose_config
+    target: extract_docking_pose
+    target_input: extract_docking_pose_config
+
+  - source: artifact-generate_cavity_box_config
+    source_output: generate_cavity_box_config
+    target: generate_cavity_box
+    target_input: generate_cavity_box_config
+
+  - source: artifact-get_binding_sites_config
+    source_output: get_binding_sites_config
+    target: get_binding_sites
+    target_input: get_binding_sites_config
+
+  - source: artifact-prepare_ligand_pdbqt_config
+    source_output: prepare_ligand_pdbqt_config
+    target: prepare_ligand_pdbqt
+    target_input: prepare_ligand_pdbqt_config
+
+  - source: artifact-prepare_receptor_pdbqt_config
+    source_output: prepare_receptor_pdbqt_config
+    target: prepare_receptor_pdbqt
+    target_input: prepare_receptor_pdbqt_config
+
 
 orchestrator_target:
   kind: local

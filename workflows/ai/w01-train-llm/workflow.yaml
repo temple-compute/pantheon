@@ -1,0 +1,371 @@
+kind: horus_workflow
+name: LLM From Scratch - Pretrain, SFT & Eval
+
+_executor: &executor
+  kind: conda_python_environment
+  environment_dir: "../.horus_conda_env"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+_shell: &shell
+  kind: shell
+
+tasks:
+  - kind: horus_task
+    id: clone_repo
+    name: Clone train-llm-from-scratch
+    description: Shallow-clones the training repo so its scripts/src modules are on disk.
+    outputs:
+      - id: repo_dir
+        name: Repository checkout
+        kind: folder
+        path: repo
+    executor: *shell
+    runtime:
+      kind: command
+      command: >-
+        git clone --depth 1
+        https://github.com/FareedKhan-dev/train-llm-from-scratch.git
+        $repo_dir
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: prepare_pretrain_val
+    name: Prepare pretraining val split
+    description: Streams the Pile validation shard and batch-tokenizes it into a flat-token HDF5.
+    inputs:
+      - id: repo_dir
+        name: Repository checkout
+        kind: folder
+        path: repo
+    outputs:
+      - id: pile_dev_h5
+        name: Pretraining dev tokens
+        kind: file
+        path: data/pretrain/pile_dev.h5
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        PYTHONPATH=${repo_dir} python ${repo_dir}/scripts/prepare_pretrain_data.py
+        --split val
+        --raw_dir data/pretrain_raw
+        --out $pile_dev_h5
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: prepare_pretrain_train
+    name: Prepare pretraining train split
+    description: Streams N Pile training shards and batch-tokenizes them into a flat-token HDF5.
+    inputs:
+      - id: repo_dir
+        name: Repository checkout
+        kind: folder
+        path: repo
+    outputs:
+      - id: pile_train_h5
+        name: Pretraining train tokens
+        kind: file
+        path: data/pretrain/pile_train.h5
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        PYTHONPATH=${repo_dir} python ${repo_dir}/scripts/prepare_pretrain_data.py
+        --split train
+        --num_shards 1
+        --raw_dir data/pretrain_raw
+        --out $pile_train_h5
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: prepare_sft_data
+    name: Prepare SFT packed dataset
+    description: >-
+      Downloads Alpaca, Dolly and GSM8K via HF datasets, renders the chat template
+      with a loss mask, and writes packed train/dev HDF5 files.
+    inputs:
+      - id: repo_dir
+        name: Repository checkout
+        kind: folder
+        path: repo
+    outputs:
+      - id: sft_train_h5
+        name: SFT packed train rows
+        kind: file
+        path: data/sft/sft_packed.h5
+      - id: sft_dev_h5
+        name: SFT packed dev rows
+        kind: file
+        path: data/sft/sft_dev_packed.h5
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        PYTHONPATH=${repo_dir} HF_HOME=data/hf_cache
+        python ${repo_dir}/scripts/prepare_sft_data.py
+        --context_length 1024
+        --out_dir data/sft
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: prepare_preference_data
+    name: Prepare reward-model / DPO preference pairs
+    description: >-
+      Builds {prompt, chosen, rejected} JSONL from Anthropic HH-RLHF and
+      UltraFeedback, with a held-out test split for reward-accuracy eval.
+    inputs:
+      - id: repo_dir
+        name: Repository checkout
+        kind: folder
+        path: repo
+    outputs:
+      - id: preferences_train
+        name: Preference pairs (train)
+        kind: file
+        path: data/preference/preferences.jsonl
+      - id: preferences_test
+        name: Preference pairs (held-out test)
+        kind: file
+        path: data/preference/preferences_test.jsonl
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        PYTHONPATH=${repo_dir} HF_HOME=data/hf_cache
+        python ${repo_dir}/scripts/prepare_preference_data.py
+        --source both
+        --max_per_source 40000
+        --out_dir data/preference
+    target:
+      kind: local
+
+  # --- Stream 4: RL prompts (GSM8K + arithmetic warm-up) ---------------------
+  # Not consumed by any task in this workflow (pretrain -> SFT -> eval only).
+  # Kept here as an input ready for a follow-up reward/DPO/PPO/GRPO workflow.
+  - kind: horus_task
+    id: prepare_rl_prompts
+    name: Prepare RL prompt sets
+    description: >-
+      Builds {prompt, gold} JSONL for PPO/GRPO: GSM8K train/test plus a
+      programmatic arithmetic curriculum warm-up.
+    inputs:
+      - id: repo_dir
+        name: Repository checkout
+        kind: folder
+        path: repo
+    outputs:
+      - id: rl_prompts_train
+        name: RL prompts (GSM8K train)
+        kind: file
+        path: data/rl/rl_prompts_train.jsonl
+      - id: rl_prompts_test
+        name: RL prompts (GSM8K test)
+        kind: file
+        path: data/rl/rl_prompts_test.jsonl
+      - id: arithmetic_prompts
+        name: Arithmetic curriculum warm-up
+        kind: file
+        path: data/rl/arithmetic_prompts.jsonl
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        PYTHONPATH=${repo_dir} HF_HOME=data/hf_cache
+        python ${repo_dir}/scripts/prepare_rl_prompts.py
+        --out_dir data/rl
+    target:
+      kind: local
+
+  # --- Training: pretrain the base model on the Pile ------------------------
+  - kind: horus_task
+    id: train_pretrain
+    name: Pretrain base model
+    description: >-
+      Trains the from-scratch decoder-only Transformer on tokenized Pile data,
+      using the smoke-scale model/step-count config for a single local GPU/CPU run.
+    inputs:
+      - id: repo_dir
+        name: Repository checkout
+        kind: folder
+        path: repo
+      - id: pile_train_h5
+        name: Pretraining train tokens
+        kind: file
+        path: data/pretrain/pile_train.h5
+      - id: pile_dev_h5
+        name: Pretraining dev tokens
+        kind: file
+        path: data/pretrain/pile_dev.h5
+    outputs:
+      - id: pretrained_ckpt
+        name: Pretrained base checkpoint
+        kind: file
+        path: ckpts/base_pretrained.pt
+      - id: pretrain_log
+        name: Pretraining metrics log
+        kind: file
+        path: logs/pretrain.jsonl
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        PYTHONPATH=${repo_dir} python ${repo_dir}/scripts/pretrain_base.py
+        --config ${repo_dir}/configs/smoke/pretrain.json
+        --train_path $pile_train_h5
+        --dev_path $pile_dev_h5
+        --out_ckpt $pretrained_ckpt
+        --ckpt_dir ckpts
+        --log_dir logs
+    target:
+      kind: local
+
+  # --- Training: instruction-tune the pretrained checkpoint (SFT) -----------
+  - kind: horus_task
+    id: train_sft
+    name: Supervised fine-tune (SFT)
+    description: >-
+      Fine-tunes the pretrained checkpoint on packed Alpaca/Dolly/GSM8K rows
+      with a loss mask, using the smoke-scale step-count config.
+    inputs:
+      - id: repo_dir
+        name: Repository checkout
+        kind: folder
+        path: repo
+      - id: pretrained_ckpt
+        name: Pretrained base checkpoint
+        kind: file
+        path: ckpts/base_pretrained.pt
+      - id: sft_train_h5
+        name: SFT packed train rows
+        kind: file
+        path: data/sft/sft_packed.h5
+    outputs:
+      - id: sft_ckpt
+        name: SFT checkpoint
+        kind: file
+        path: ckpts/sft.pt
+      - id: sft_log
+        name: SFT metrics log
+        kind: file
+        path: logs/sft.jsonl
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        PYTHONPATH=${repo_dir} python ${repo_dir}/scripts/train_sft.py
+        --config ${repo_dir}/configs/smoke/sft.json
+        --pretrained_ckpt $pretrained_ckpt
+        --data_path $sft_train_h5
+        --out_ckpt $sft_ckpt
+        --ckpt_dir ckpts
+        --log_dir logs
+    target:
+      kind: local
+
+  # --- Evaluation: GSM8K accuracy of the SFT checkpoint ----------------------
+  - kind: horus_task
+    id: eval_sft
+    name: Evaluate SFT checkpoint on GSM8K
+    description: >-
+      Greedily decodes the SFT checkpoint against held-out GSM8K questions and
+      appends its accuracy to the cross-stage comparison table.
+    inputs:
+      - id: repo_dir
+        name: Repository checkout
+        kind: folder
+        path: repo
+      - id: sft_ckpt
+        name: SFT checkpoint
+        kind: file
+        path: ckpts/sft.pt
+    outputs:
+      - id: eval_table
+        name: GSM8K accuracy table
+        kind: file
+        path: logs/stage_table.jsonl
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        PYTHONPATH=${repo_dir} python ${repo_dir}/scripts/eval_post_training.py
+        --ckpt $sft_ckpt
+        --label sft
+        --split test
+        --append $eval_table
+    target:
+      kind: local
+
+edges:
+  - source: clone_repo
+    source_output: repo_dir
+    target: prepare_pretrain_val
+    target_input: repo_dir
+
+  - source: clone_repo
+    source_output: repo_dir
+    target: prepare_pretrain_train
+    target_input: repo_dir
+
+  - source: clone_repo
+    source_output: repo_dir
+    target: prepare_sft_data
+    target_input: repo_dir
+
+  - source: clone_repo
+    source_output: repo_dir
+    target: prepare_preference_data
+    target_input: repo_dir
+
+  - source: clone_repo
+    source_output: repo_dir
+    target: prepare_rl_prompts
+    target_input: repo_dir
+
+  - source: clone_repo
+    source_output: repo_dir
+    target: train_pretrain
+    target_input: repo_dir
+
+  - source: prepare_pretrain_train
+    source_output: pile_train_h5
+    target: train_pretrain
+    target_input: pile_train_h5
+
+  - source: prepare_pretrain_val
+    source_output: pile_dev_h5
+    target: train_pretrain
+    target_input: pile_dev_h5
+
+  - source: clone_repo
+    source_output: repo_dir
+    target: train_sft
+    target_input: repo_dir
+
+  - source: train_pretrain
+    source_output: pretrained_ckpt
+    target: train_sft
+    target_input: pretrained_ckpt
+
+  - source: prepare_sft_data
+    source_output: sft_train_h5
+    target: train_sft
+    target_input: sft_train_h5
+
+  - source: clone_repo
+    source_output: repo_dir
+    target: eval_sft
+    target_input: repo_dir
+
+  - source: train_sft
+    source_output: sft_ckpt
+    target: eval_sft
+    target_input: sft_ckpt
+
+orchestrator_target:
+  kind: local
+  working_directory: "./workflow_results"

@@ -1,0 +1,5 @@
+properties:
+  # Extra distance between the last cavity atom and the box boundary.
+  # Vina cannot place a ligand outside the box; keep this small.
+  offset: 5
+  box_coordinates: true

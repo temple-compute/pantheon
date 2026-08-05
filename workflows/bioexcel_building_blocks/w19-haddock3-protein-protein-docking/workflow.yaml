@@ -7,6 +7,127 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+artifacts:
+  - id: actpass_to_ambig_config
+    name: Active/passive to AIR config
+    description: Configuration for converting active/passive residue lists into an ambiguous interaction restraints (AIR) table.
+    kind: file
+    path: configs/actpass_to_ambig.yaml
+
+  - id: ab_chain_config
+    name: Antibody chain-A config
+    description: Configuration setting the antibody chain identifier to A.
+    kind: file
+    path: configs/chain_A.yaml
+
+  - id: ag_chain_config
+    name: Antigen chain-B config
+    description: Configuration setting the antigen chain identifier to B.
+    kind: file
+    path: configs/chain_B.yaml
+
+  - id: clust_fcc_config
+    name: FCC clustering config
+    description: Configuration controlling the fraction-of-common-contacts (FCC) clustering thresholds.
+    kind: file
+    path: configs/clust_fcc.yaml
+
+  - id: em_ref_config
+    name: Energy minimisation config
+    description: Configuration controlling the HADDOCK3 energy-minimisation refinement stage.
+    kind: file
+    path: configs/em_ref.yaml
+
+  - id: fetch_antibody_config
+    name: Antibody fetch config
+    description: Configuration setting the antibody PDB code (4G6K) to download from the PDBe.
+    kind: file
+    path: configs/fetch_antibody.yaml
+
+  - id: fetch_antigen_config
+    name: Antigen fetch config
+    description: Configuration setting the antigen PDB code (4I1B) to download from the PDBe.
+    kind: file
+    path: configs/fetch_antigen.yaml
+
+  - id: fetch_complex_config
+    name: Reference complex fetch config
+    description: Configuration setting the reference complex PDB code (4G6M) to download from the PDBe.
+    kind: file
+    path: configs/fetch_complex.yaml
+
+  - id: flex_ref_config
+    name: Flexible refinement config
+    description: Configuration controlling the HADDOCK3 flexible-refinement docking stage.
+    kind: file
+    path: configs/flex_ref.yaml
+
+  - id: passive_from_active_config
+    name: Passive residues config
+    description: Configuration controlling how epitope passive residues are derived from the antigen active residues.
+    kind: file
+    path: configs/passive_from_active.yaml
+
+  - id: ab_H_tidy_config
+    name: Strict PDB tidy config
+    description: Configuration for strict PDB tidying, reused across antibody, antigen, and reference-complex preparation steps.
+    kind: file
+    path: configs/pdb_tidy_strict.yaml
+
+  - id: ab_reres_config
+    name: Residue renumbering config
+    description: Configuration controlling residue renumbering starting from 1.
+    kind: file
+    path: configs/reres_1.yaml
+
+  - id: rigid_body_config
+    name: Rigid-body docking config
+    description: Configuration controlling the HADDOCK3 rigid-body sampling stage (number of models, force field, restraints).
+    kind: file
+    path: configs/rigid_body.yaml
+
+  - id: cx_ag_selchain_config
+    name: Chain-A selection config
+    description: Configuration specifying chain A (antigen) to extract from the reference complex.
+    kind: file
+    path: configs/selchain_A.yaml
+
+  - id: ab_H_selchain_config
+    name: Chain-H selection config
+    description: Configuration specifying the heavy (H) chain to extract.
+    kind: file
+    path: configs/selchain_H.yaml
+
+  - id: ab_L_selchain_config
+    name: Chain-L selection config
+    description: Configuration specifying the light (L) chain to extract.
+    kind: file
+    path: configs/selchain_L.yaml
+
+  - id: sele_top_config
+    name: Top model selection config
+    description: Configuration controlling selection of the top-scoring rigid-body models.
+    kind: file
+    path: configs/sele_top.yaml
+
+  - id: sele_top_clusts_config
+    name: Top cluster selection config
+    description: Configuration controlling selection of the top-scoring models from each cluster.
+    kind: file
+    path: configs/sele_top_clusts.yaml
+
+  - id: ab_L_selres_config
+    name: VL domain residue range config
+    description: Configuration defining the antibody light-chain variable-domain residue range (1-107).
+    kind: file
+    path: configs/selres_1_107.yaml
+
+  - id: ab_H_selres_config
+    name: VH domain residue range config
+    description: Configuration defining the antibody heavy-chain variable-domain residue range (1-120).
+    kind: file
+    path: configs/selres_1_120.yaml
+
 tasks:
 
   # ── Structure download ────────────────────────────────────────────────────
@@ -14,12 +135,16 @@ tasks:
   - kind: horus_task
     id: fetch_antibody
     name: Download antibody structure 4G6K from PDB
+    description: Downloads the antibody structure (PDB 4G6K) from the PDBe.
     inputs:
       - id: fetch_antibody_config
+        name: Antibody fetch config
+        description: Configuration setting the antibody PDB code (4G6K) to download from the PDBe.
         kind: file
         path: configs/fetch_antibody.yaml
     outputs:
       - id: ab_0_pdb
+        name: Raw antibody structure (4G6K)
         kind: file
         path: results/4G6K_0.pdb
     executor: *executor
@@ -35,12 +160,16 @@ tasks:
   - kind: horus_task
     id: fetch_antigen
     name: Download antigen structure 4I1B from PDB
+    description: Downloads the antigen structure (PDB 4I1B) from the PDBe.
     inputs:
       - id: fetch_antigen_config
+        name: Antigen fetch config
+        description: Configuration setting the antigen PDB code (4I1B) to download from the PDBe.
         kind: file
         path: configs/fetch_antigen.yaml
     outputs:
       - id: ag_0_pdb
+        name: Raw antigen structure (4I1B)
         kind: file
         path: results/4I1B_0.pdb
     executor: *executor
@@ -56,12 +185,16 @@ tasks:
   - kind: horus_task
     id: fetch_complex
     name: Download reference complex structure 4G6M from PDB
+    description: Downloads the known antibody-antigen complex (PDB 4G6M) used as the CAPRI reference from the PDBe.
     inputs:
       - id: fetch_complex_config
+        name: Reference complex fetch config
+        description: Configuration setting the reference complex PDB code (4G6M) to download from the PDBe.
         kind: file
         path: configs/fetch_complex.yaml
     outputs:
       - id: cx_0_pdb
+        name: Raw reference complex structure (4G6M)
         kind: file
         path: results/4G6M_0.pdb
     executor: *executor
@@ -79,15 +212,20 @@ tasks:
   - kind: horus_task
     id: ab_H_tidy
     name: Tidy antibody PDB (strict, pre H-chain extraction)
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the antibody H chain.
     inputs:
       - id: ab_H_tidy_config
+        name: Strict PDB tidy config
+        description: Configuration for strict PDB tidying, reused across antibody, antigen, and reference-complex preparation steps.
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: ab_H_tidy_in
+        name: Raw antibody structure (4G6K)
         kind: file
         path: results/4G6K_0.pdb
     outputs:
       - id: ab_H_tidy_out
+        name: Antibody H chain (tidied)
         kind: file
         path: results/ab_H_tidy.pdb
     executor: *executor
@@ -104,15 +242,20 @@ tasks:
   - kind: horus_task
     id: ab_H_selchain
     name: Extract heavy chain H from antibody
+    description: Runs biobb_pdb_selchain to extract the target chain from the antibody.
     inputs:
       - id: ab_H_selchain_config
+        name: Chain-H selection config
+        description: Configuration specifying the heavy (H) chain to extract.
         kind: file
         path: configs/selchain_H.yaml
       - id: ab_H_selchain_in
+        name: Antibody H chain (tidied)
         kind: file
         path: results/ab_H_tidy.pdb
     outputs:
       - id: ab_H_selchain_out
+        name: Antibody H chain
         kind: file
         path: results/ab_H_selchain.pdb
     executor: *executor
@@ -129,12 +272,15 @@ tasks:
   - kind: horus_task
     id: ab_H_delhetatm
     name: Remove HETATM records from antibody H chain
+    description: Runs biobb_pdb_delhetatm to strip HETATM records from the antibody H chain.
     inputs:
       - id: ab_H_delhetatm_in
+        name: Antibody H chain
         kind: file
         path: results/ab_H_selchain.pdb
     outputs:
       - id: ab_H_delhetatm_out
+        name: Antibody H chain (no HETATM)
         kind: file
         path: results/ab_H_delhetatm.pdb
     executor: *executor
@@ -150,12 +296,15 @@ tasks:
   - kind: horus_task
     id: ab_H_fixinsert
     name: Fix insertion codes in antibody H chain
+    description: Runs biobb_pdb_fixinsert to renumber residues with insertion codes in the antibody H chain.
     inputs:
       - id: ab_H_fixinsert_in
+        name: Antibody H chain (no HETATM)
         kind: file
         path: results/ab_H_delhetatm.pdb
     outputs:
       - id: ab_H_fixinsert_out
+        name: Antibody H chain (insertions fixed)
         kind: file
         path: results/ab_H_fixinsert.pdb
     executor: *executor
@@ -171,12 +320,15 @@ tasks:
   - kind: horus_task
     id: ab_H_selaltloc
     name: Select highest-occupancy alt-locs in antibody H chain
+    description: Runs biobb_pdb_selaltloc to keep only the highest-occupancy alternate location for each atom in the antibody H chain.
     inputs:
       - id: ab_H_selaltloc_in
+        name: Antibody H chain (insertions fixed)
         kind: file
         path: results/ab_H_fixinsert.pdb
     outputs:
       - id: ab_H_selaltloc_out
+        name: Antibody H chain (alt-locs resolved)
         kind: file
         path: results/ab_H_selaltloc.pdb
     executor: *executor
@@ -192,12 +344,15 @@ tasks:
   - kind: horus_task
     id: ab_H_keepcoord
     name: Remove non-coordinate records from antibody H chain
+    description: Runs biobb_pdb_keepcoord to strip non-coordinate records from the antibody H chain.
     inputs:
       - id: ab_H_keepcoord_in
+        name: Antibody H chain (alt-locs resolved)
         kind: file
         path: results/ab_H_selaltloc.pdb
     outputs:
       - id: ab_H_keepcoord_out
+        name: Antibody H chain (coordinates only)
         kind: file
         path: results/ab_H_keepcoord.pdb
     executor: *executor
@@ -213,15 +368,20 @@ tasks:
   - kind: horus_task
     id: ab_H_selres
     name: Select VH domain residues 1-120 from antibody H chain
+    description: Runs biobb_pdb_selres to select the configured residue range from the antibody H chain.
     inputs:
       - id: ab_H_selres_config
+        name: VH domain residue range config
+        description: Configuration defining the antibody heavy-chain variable-domain residue range (1-120).
         kind: file
         path: configs/selres_1_120.yaml
       - id: ab_H_selres_in
+        name: Antibody H chain (coordinates only)
         kind: file
         path: results/ab_H_keepcoord.pdb
     outputs:
       - id: ab_H_selres_out
+        name: Antibody VH domain
         kind: file
         path: results/ab_H_selres.pdb
     executor: *executor
@@ -238,12 +398,15 @@ tasks:
   - kind: horus_task
     id: ab_H_tidy_final
     name: Final tidy of antibody H-chain reduced structure
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the antibody H chain.
     inputs:
       - id: ab_H_tidy_final_in
+        name: Antibody VH domain
         kind: file
         path: results/ab_H_selres.pdb
     outputs:
       - id: ab_H_reduced
+        name: Antibody H chain (reduced)
         kind: file
         path: results/4G6K_H_reduced.pdb
     executor: *executor
@@ -261,15 +424,19 @@ tasks:
   - kind: horus_task
     id: ab_L_tidy
     name: Tidy antibody PDB (strict, pre L-chain extraction)
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the antibody L chain.
     inputs:
       - id: ab_L_tidy_config
+        name: Strict PDB tidy config
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: ab_L_tidy_in
+        name: Raw antibody structure (4G6K)
         kind: file
         path: results/4G6K_0.pdb
     outputs:
       - id: ab_L_tidy_out
+        name: Antibody L chain (tidied)
         kind: file
         path: results/ab_L_tidy.pdb
     executor: *executor
@@ -286,15 +453,20 @@ tasks:
   - kind: horus_task
     id: ab_L_selchain
     name: Extract light chain L from antibody
+    description: Runs biobb_pdb_selchain to extract the target chain from the antibody.
     inputs:
       - id: ab_L_selchain_config
+        name: Chain-L selection config
+        description: Configuration specifying the light (L) chain to extract.
         kind: file
         path: configs/selchain_L.yaml
       - id: ab_L_selchain_in
+        name: Antibody L chain (tidied)
         kind: file
         path: results/ab_L_tidy.pdb
     outputs:
       - id: ab_L_selchain_out
+        name: Antibody L chain
         kind: file
         path: results/ab_L_selchain.pdb
     executor: *executor
@@ -311,12 +483,15 @@ tasks:
   - kind: horus_task
     id: ab_L_delhetatm
     name: Remove HETATM records from antibody L chain
+    description: Runs biobb_pdb_delhetatm to strip HETATM records from the antibody L chain.
     inputs:
       - id: ab_L_delhetatm_in
+        name: Antibody L chain
         kind: file
         path: results/ab_L_selchain.pdb
     outputs:
       - id: ab_L_delhetatm_out
+        name: Antibody L chain (no HETATM)
         kind: file
         path: results/ab_L_delhetatm.pdb
     executor: *executor
@@ -332,12 +507,15 @@ tasks:
   - kind: horus_task
     id: ab_L_fixinsert
     name: Fix insertion codes in antibody L chain
+    description: Runs biobb_pdb_fixinsert to renumber residues with insertion codes in the antibody L chain.
     inputs:
       - id: ab_L_fixinsert_in
+        name: Antibody L chain (no HETATM)
         kind: file
         path: results/ab_L_delhetatm.pdb
     outputs:
       - id: ab_L_fixinsert_out
+        name: Antibody L chain (insertions fixed)
         kind: file
         path: results/ab_L_fixinsert.pdb
     executor: *executor
@@ -353,12 +531,15 @@ tasks:
   - kind: horus_task
     id: ab_L_selaltloc
     name: Select highest-occupancy alt-locs in antibody L chain
+    description: Runs biobb_pdb_selaltloc to keep only the highest-occupancy alternate location for each atom in the antibody L chain.
     inputs:
       - id: ab_L_selaltloc_in
+        name: Antibody L chain (insertions fixed)
         kind: file
         path: results/ab_L_fixinsert.pdb
     outputs:
       - id: ab_L_selaltloc_out
+        name: Antibody L chain (alt-locs resolved)
         kind: file
         path: results/ab_L_selaltloc.pdb
     executor: *executor
@@ -374,12 +555,15 @@ tasks:
   - kind: horus_task
     id: ab_L_keepcoord
     name: Remove non-coordinate records from antibody L chain
+    description: Runs biobb_pdb_keepcoord to strip non-coordinate records from the antibody L chain.
     inputs:
       - id: ab_L_keepcoord_in
+        name: Antibody L chain (alt-locs resolved)
         kind: file
         path: results/ab_L_selaltloc.pdb
     outputs:
       - id: ab_L_keepcoord_out
+        name: Antibody L chain (coordinates only)
         kind: file
         path: results/ab_L_keepcoord.pdb
     executor: *executor
@@ -395,15 +579,20 @@ tasks:
   - kind: horus_task
     id: ab_L_selres
     name: Select VL domain residues 1-107 from antibody L chain
+    description: Runs biobb_pdb_selres to select the configured residue range from the antibody L chain.
     inputs:
       - id: ab_L_selres_config
+        name: VL domain residue range config
+        description: Configuration defining the antibody light-chain variable-domain residue range (1-107).
         kind: file
         path: configs/selres_1_107.yaml
       - id: ab_L_selres_in
+        name: Antibody L chain (coordinates only)
         kind: file
         path: results/ab_L_keepcoord.pdb
     outputs:
       - id: ab_L_selres_out
+        name: Antibody VL domain
         kind: file
         path: results/ab_L_selres.pdb
     executor: *executor
@@ -420,12 +609,15 @@ tasks:
   - kind: horus_task
     id: ab_L_tidy_final
     name: Final tidy of antibody L-chain reduced structure
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the antibody L chain.
     inputs:
       - id: ab_L_tidy_final_in
+        name: Antibody VL domain
         kind: file
         path: results/ab_L_selres.pdb
     outputs:
       - id: ab_L_reduced
+        name: Antibody L chain (reduced)
         kind: file
         path: results/4G6K_L_reduced.pdb
     executor: *executor
@@ -443,15 +635,19 @@ tasks:
   - kind: horus_task
     id: ab_zip_HL
     name: Zip antibody H and L chain PDBs for merge
+    description: Zips the antibody chain PDBs together so biobb_pdb_merge can combine them.
     inputs:
       - id: ab_H_reduced
+        name: Antibody H chain (reduced)
         kind: file
         path: results/4G6K_H_reduced.pdb
       - id: ab_L_reduced
+        name: Antibody L chain (reduced)
         kind: file
         path: results/4G6K_L_reduced.pdb
     outputs:
       - id: ab_HL_zip
+        name: Antibody H+L chains (zipped)
         kind: file
         path: results/4G6K_HL.zip
     executor: *executor
@@ -465,12 +661,15 @@ tasks:
   - kind: horus_task
     id: ab_merge
     name: Merge antibody H and L chains into single PDB
+    description: Runs biobb_pdb_merge to merge the zipped chain PDBs into a single antibody structure.
     inputs:
       - id: ab_HL_zip
+        name: Antibody H+L chains (zipped)
         kind: file
         path: results/4G6K_HL.zip
     outputs:
       - id: ab_clean_merge
+        name: Antibody merged structure
         kind: file
         path: results/4G6K_clean_merge.pdb
     executor: *executor
@@ -486,15 +685,20 @@ tasks:
   - kind: horus_task
     id: ab_reres
     name: Renumber antibody residues starting from 1
+    description: Runs biobb_pdb_reres to renumber antibody residues starting from 1.
     inputs:
       - id: ab_reres_config
+        name: Residue renumbering config
+        description: Configuration controlling residue renumbering starting from 1.
         kind: file
         path: configs/reres_1.yaml
       - id: ab_reres_in
+        name: Antibody merged structure
         kind: file
         path: results/4G6K_clean_merge.pdb
     outputs:
       - id: ab_reres_out
+        name: Antibody structure (renumbered)
         kind: file
         path: results/ab_reres.pdb
     executor: *executor
@@ -511,15 +715,20 @@ tasks:
   - kind: horus_task
     id: ab_chain
     name: Set antibody chain identifier to A
+    description: Runs biobb_pdb_chain to set the antibody chain identifier.
     inputs:
       - id: ab_chain_config
+        name: Antibody chain-A config
+        description: Configuration setting the antibody chain identifier to A.
         kind: file
         path: configs/chain_A.yaml
       - id: ab_chain_in
+        name: Antibody structure (renumbered)
         kind: file
         path: results/ab_reres.pdb
     outputs:
       - id: ab_chain_out
+        name: Antibody structure (chain A)
         kind: file
         path: results/ab_chain.pdb
     executor: *executor
@@ -536,12 +745,15 @@ tasks:
   - kind: horus_task
     id: ab_chainxseg
     name: Swap segment identifier for chain identifier in antibody
+    description: Runs biobb_pdb_chainxseg to copy the chain identifier into the segment ID for the antibody.
     inputs:
       - id: ab_chainxseg_in
+        name: Antibody structure (chain A)
         kind: file
         path: results/ab_chain.pdb
     outputs:
       - id: ab_chainxseg_out
+        name: Antibody structure (chain/seg swapped)
         kind: file
         path: results/ab_chainxseg.pdb
     executor: *executor
@@ -557,15 +769,19 @@ tasks:
   - kind: horus_task
     id: ab_tidy_final
     name: Final strict tidy of prepared antibody structure
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the antibody.
     inputs:
       - id: ab_tidy_final_config
+        name: Strict PDB tidy config
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: ab_tidy_final_in
+        name: Antibody structure (chain/seg swapped)
         kind: file
         path: results/ab_chainxseg.pdb
     outputs:
       - id: antibody_prep
+        name: Prepared antibody structure (4G6K)
         kind: file
         path: results/4G6K_clean.pdb
     executor: *executor
@@ -584,15 +800,19 @@ tasks:
   - kind: horus_task
     id: ag_tidy
     name: Tidy antigen PDB (strict)
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the antigen.
     inputs:
       - id: ag_tidy_config
+        name: Strict PDB tidy config
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: ag_tidy_in
+        name: Raw antigen structure (4I1B)
         kind: file
         path: results/4I1B_0.pdb
     outputs:
       - id: ag_tidy_out
+        name: Antigen structure (tidied)
         kind: file
         path: results/ag_tidy.pdb
     executor: *executor
@@ -609,12 +829,15 @@ tasks:
   - kind: horus_task
     id: ag_delhetatm
     name: Remove HETATM records from antigen
+    description: Runs biobb_pdb_delhetatm to strip HETATM records from the antigen.
     inputs:
       - id: ag_delhetatm_in
+        name: Antigen structure (tidied)
         kind: file
         path: results/ag_tidy.pdb
     outputs:
       - id: ag_delhetatm_out
+        name: Antigen structure (no HETATM)
         kind: file
         path: results/ag_delhetatm.pdb
     executor: *executor
@@ -630,12 +853,15 @@ tasks:
   - kind: horus_task
     id: ag_selaltloc
     name: Select highest-occupancy alt-locs in antigen
+    description: Runs biobb_pdb_selaltloc to keep only the highest-occupancy alternate location for each atom in the antigen.
     inputs:
       - id: ag_selaltloc_in
+        name: Antigen structure (no HETATM)
         kind: file
         path: results/ag_delhetatm.pdb
     outputs:
       - id: ag_selaltloc_out
+        name: Antigen structure (alt-locs resolved)
         kind: file
         path: results/ag_selaltloc.pdb
     executor: *executor
@@ -651,12 +877,15 @@ tasks:
   - kind: horus_task
     id: ag_keepcoord
     name: Remove non-coordinate records from antigen
+    description: Runs biobb_pdb_keepcoord to strip non-coordinate records from the antigen.
     inputs:
       - id: ag_keepcoord_in
+        name: Antigen structure (alt-locs resolved)
         kind: file
         path: results/ag_selaltloc.pdb
     outputs:
       - id: ag_keepcoord_out
+        name: Antigen structure (coordinates only)
         kind: file
         path: results/ag_keepcoord.pdb
     executor: *executor
@@ -672,15 +901,20 @@ tasks:
   - kind: horus_task
     id: ag_chain
     name: Set antigen chain identifier to B
+    description: Runs biobb_pdb_chain to set the antigen chain identifier.
     inputs:
       - id: ag_chain_config
+        name: Antigen chain-B config
+        description: Configuration setting the antigen chain identifier to B.
         kind: file
         path: configs/chain_B.yaml
       - id: ag_chain_in
+        name: Antigen structure (coordinates only)
         kind: file
         path: results/ag_keepcoord.pdb
     outputs:
       - id: ag_chain_out
+        name: Antigen structure (chain B)
         kind: file
         path: results/ag_chain.pdb
     executor: *executor
@@ -697,12 +931,15 @@ tasks:
   - kind: horus_task
     id: ag_chainxseg
     name: Swap segment identifier for chain identifier in antigen
+    description: Runs biobb_pdb_chainxseg to copy the chain identifier into the segment ID for the antigen.
     inputs:
       - id: ag_chainxseg_in
+        name: Antigen structure (chain B)
         kind: file
         path: results/ag_chain.pdb
     outputs:
       - id: ag_chainxseg_out
+        name: Antigen structure (chain/seg swapped)
         kind: file
         path: results/ag_chainxseg.pdb
     executor: *executor
@@ -718,15 +955,19 @@ tasks:
   - kind: horus_task
     id: ag_tidy_final
     name: Final strict tidy of prepared antigen structure
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the antigen.
     inputs:
       - id: ag_tidy_final_config
+        name: Strict PDB tidy config
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: ag_tidy_final_in
+        name: Antigen structure (chain/seg swapped)
         kind: file
         path: results/ag_chainxseg.pdb
     outputs:
       - id: antigen_prep
+        name: Prepared antigen structure (4I1B)
         kind: file
         path: results/4I1B_clean.pdb
     executor: *executor
@@ -745,15 +986,19 @@ tasks:
   - kind: horus_task
     id: cx_H_selchain
     name: Extract heavy chain H from reference complex
+    description: Runs biobb_pdb_selchain to extract the target chain from the reference complex.
     inputs:
       - id: cx_H_selchain_config
+        name: Chain-H selection config
         kind: file
         path: configs/selchain_H.yaml
       - id: cx_H_selchain_in
+        name: Raw reference complex structure (4G6M)
         kind: file
         path: results/4G6M_0.pdb
     outputs:
       - id: cx_H_selchain_out
+        name: Reference complex H chain
         kind: file
         path: results/cx_H_selchain.pdb
     executor: *executor
@@ -770,12 +1015,15 @@ tasks:
   - kind: horus_task
     id: cx_H_delhetatm
     name: Remove HETATM from reference complex H chain
+    description: Runs biobb_pdb_delhetatm to strip HETATM records from the reference complex H chain.
     inputs:
       - id: cx_H_delhetatm_in
+        name: Reference complex H chain
         kind: file
         path: results/cx_H_selchain.pdb
     outputs:
       - id: cx_H_delhetatm_out
+        name: Reference complex H chain (no HETATM)
         kind: file
         path: results/cx_H_delhetatm.pdb
     executor: *executor
@@ -791,12 +1039,15 @@ tasks:
   - kind: horus_task
     id: cx_H_fixinsert
     name: Fix insertion codes in reference complex H chain
+    description: Runs biobb_pdb_fixinsert to renumber residues with insertion codes in the reference complex H chain.
     inputs:
       - id: cx_H_fixinsert_in
+        name: Reference complex H chain (no HETATM)
         kind: file
         path: results/cx_H_delhetatm.pdb
     outputs:
       - id: cx_H_fixinsert_out
+        name: Reference complex H chain (insertions fixed)
         kind: file
         path: results/cx_H_fixinsert.pdb
     executor: *executor
@@ -812,12 +1063,15 @@ tasks:
   - kind: horus_task
     id: cx_H_selaltloc
     name: Select alt-locs in reference complex H chain
+    description: Runs biobb_pdb_selaltloc to keep only the highest-occupancy alternate location for each atom in the reference complex H chain.
     inputs:
       - id: cx_H_selaltloc_in
+        name: Reference complex H chain (insertions fixed)
         kind: file
         path: results/cx_H_fixinsert.pdb
     outputs:
       - id: cx_H_selaltloc_out
+        name: Reference complex H chain (alt-locs resolved)
         kind: file
         path: results/cx_H_selaltloc.pdb
     executor: *executor
@@ -833,12 +1087,15 @@ tasks:
   - kind: horus_task
     id: cx_H_keepcoord
     name: Keep coordinates only in reference complex H chain
+    description: Runs biobb_pdb_keepcoord to strip non-coordinate records from the reference complex H chain.
     inputs:
       - id: cx_H_keepcoord_in
+        name: Reference complex H chain (alt-locs resolved)
         kind: file
         path: results/cx_H_selaltloc.pdb
     outputs:
       - id: cx_H_keepcoord_out
+        name: Reference complex H chain (coordinates only)
         kind: file
         path: results/cx_H_keepcoord.pdb
     executor: *executor
@@ -854,15 +1111,19 @@ tasks:
   - kind: horus_task
     id: cx_H_selres
     name: Select VH domain residues 1-120 from reference complex H chain
+    description: Runs biobb_pdb_selres to select the configured residue range from the reference complex H chain.
     inputs:
       - id: cx_H_selres_config
+        name: VH domain residue range config
         kind: file
         path: configs/selres_1_120.yaml
       - id: cx_H_selres_in
+        name: Reference complex H chain (coordinates only)
         kind: file
         path: results/cx_H_keepcoord.pdb
     outputs:
       - id: cx_H_selres_out
+        name: Reference complex VH domain
         kind: file
         path: results/cx_H_selres.pdb
     executor: *executor
@@ -879,12 +1140,15 @@ tasks:
   - kind: horus_task
     id: cx_H_tidy_final
     name: Final tidy of reference complex H-chain reduced structure
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the reference complex H chain.
     inputs:
       - id: cx_H_tidy_final_in
+        name: Reference complex VH domain
         kind: file
         path: results/cx_H_selres.pdb
     outputs:
       - id: cx_H_reduced
+        name: Reference complex H chain (reduced)
         kind: file
         path: results/4G6M_H_reduced.pdb
     executor: *executor
@@ -902,15 +1166,19 @@ tasks:
   - kind: horus_task
     id: cx_L_selchain
     name: Extract light chain L from reference complex
+    description: Runs biobb_pdb_selchain to extract the target chain from the reference complex.
     inputs:
       - id: cx_L_selchain_config
+        name: Chain-L selection config
         kind: file
         path: configs/selchain_L.yaml
       - id: cx_L_selchain_in
+        name: Raw reference complex structure (4G6M)
         kind: file
         path: results/4G6M_0.pdb
     outputs:
       - id: cx_L_selchain_out
+        name: Reference complex L chain
         kind: file
         path: results/cx_L_selchain.pdb
     executor: *executor
@@ -927,12 +1195,15 @@ tasks:
   - kind: horus_task
     id: cx_L_delhetatm
     name: Remove HETATM from reference complex L chain
+    description: Runs biobb_pdb_delhetatm to strip HETATM records from the reference complex L chain.
     inputs:
       - id: cx_L_delhetatm_in
+        name: Reference complex L chain
         kind: file
         path: results/cx_L_selchain.pdb
     outputs:
       - id: cx_L_delhetatm_out
+        name: Reference complex L chain (no HETATM)
         kind: file
         path: results/cx_L_delhetatm.pdb
     executor: *executor
@@ -948,12 +1219,15 @@ tasks:
   - kind: horus_task
     id: cx_L_fixinsert
     name: Fix insertion codes in reference complex L chain
+    description: Runs biobb_pdb_fixinsert to renumber residues with insertion codes in the reference complex L chain.
     inputs:
       - id: cx_L_fixinsert_in
+        name: Reference complex L chain (no HETATM)
         kind: file
         path: results/cx_L_delhetatm.pdb
     outputs:
       - id: cx_L_fixinsert_out
+        name: Reference complex L chain (insertions fixed)
         kind: file
         path: results/cx_L_fixinsert.pdb
     executor: *executor
@@ -969,12 +1243,15 @@ tasks:
   - kind: horus_task
     id: cx_L_selaltloc
     name: Select alt-locs in reference complex L chain
+    description: Runs biobb_pdb_selaltloc to keep only the highest-occupancy alternate location for each atom in the reference complex L chain.
     inputs:
       - id: cx_L_selaltloc_in
+        name: Reference complex L chain (insertions fixed)
         kind: file
         path: results/cx_L_fixinsert.pdb
     outputs:
       - id: cx_L_selaltloc_out
+        name: Reference complex L chain (alt-locs resolved)
         kind: file
         path: results/cx_L_selaltloc.pdb
     executor: *executor
@@ -990,12 +1267,15 @@ tasks:
   - kind: horus_task
     id: cx_L_keepcoord
     name: Keep coordinates only in reference complex L chain
+    description: Runs biobb_pdb_keepcoord to strip non-coordinate records from the reference complex L chain.
     inputs:
       - id: cx_L_keepcoord_in
+        name: Reference complex L chain (alt-locs resolved)
         kind: file
         path: results/cx_L_selaltloc.pdb
     outputs:
       - id: cx_L_keepcoord_out
+        name: Reference complex L chain (coordinates only)
         kind: file
         path: results/cx_L_keepcoord.pdb
     executor: *executor
@@ -1011,15 +1291,19 @@ tasks:
   - kind: horus_task
     id: cx_L_selres
     name: Select VL domain residues 1-107 from reference complex L chain
+    description: Runs biobb_pdb_selres to select the configured residue range from the reference complex L chain.
     inputs:
       - id: cx_L_selres_config
+        name: VL domain residue range config
         kind: file
         path: configs/selres_1_107.yaml
       - id: cx_L_selres_in
+        name: Reference complex L chain (coordinates only)
         kind: file
         path: results/cx_L_keepcoord.pdb
     outputs:
       - id: cx_L_selres_out
+        name: Reference complex VL domain
         kind: file
         path: results/cx_L_selres.pdb
     executor: *executor
@@ -1036,12 +1320,15 @@ tasks:
   - kind: horus_task
     id: cx_L_tidy_final
     name: Final tidy of reference complex L-chain reduced structure
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the reference complex L chain.
     inputs:
       - id: cx_L_tidy_final_in
+        name: Reference complex VL domain
         kind: file
         path: results/cx_L_selres.pdb
     outputs:
       - id: cx_L_reduced
+        name: Reference complex L chain (reduced)
         kind: file
         path: results/4G6M_L_reduced.pdb
     executor: *executor
@@ -1059,15 +1346,19 @@ tasks:
   - kind: horus_task
     id: cx_zip_HL
     name: Zip reference complex H and L chain PDBs for merge
+    description: Zips the reference complex chain PDBs together so biobb_pdb_merge can combine them.
     inputs:
       - id: cx_H_reduced
+        name: Reference complex H chain (reduced)
         kind: file
         path: results/4G6M_H_reduced.pdb
       - id: cx_L_reduced
+        name: Reference complex L chain (reduced)
         kind: file
         path: results/4G6M_L_reduced.pdb
     outputs:
       - id: cx_HL_zip
+        name: Reference complex H+L chains (zipped)
         kind: file
         path: results/4G6M_HL.zip
     executor: *executor
@@ -1081,12 +1372,15 @@ tasks:
   - kind: horus_task
     id: cx_ab_merge
     name: Merge reference complex H and L chains
+    description: Runs biobb_pdb_merge to merge the zipped chain PDBs into a single reference complex antibody structure.
     inputs:
       - id: cx_HL_zip
+        name: Reference complex H+L chains (zipped)
         kind: file
         path: results/4G6M_HL.zip
     outputs:
       - id: cx_ab_clean_merge
+        name: Reference complex antibody merged structure
         kind: file
         path: results/4G6M_antibody_clean_merge.pdb
     executor: *executor
@@ -1102,15 +1396,19 @@ tasks:
   - kind: horus_task
     id: cx_ab_reres
     name: Renumber reference complex antibody residues from 1
+    description: Runs biobb_pdb_reres to renumber reference complex antibody residues starting from 1.
     inputs:
       - id: cx_ab_reres_config
+        name: Residue renumbering config
         kind: file
         path: configs/reres_1.yaml
       - id: cx_ab_reres_in
+        name: Reference complex antibody merged structure
         kind: file
         path: results/4G6M_antibody_clean_merge.pdb
     outputs:
       - id: cx_ab_reres_out
+        name: Reference complex antibody (renumbered)
         kind: file
         path: results/cx_ab_reres.pdb
     executor: *executor
@@ -1127,15 +1425,19 @@ tasks:
   - kind: horus_task
     id: cx_ab_chain
     name: Set reference complex antibody chain to A
+    description: Runs biobb_pdb_chain to set the reference complex antibody chain identifier.
     inputs:
       - id: cx_ab_chain_config
+        name: Antibody chain-A config
         kind: file
         path: configs/chain_A.yaml
       - id: cx_ab_chain_in
+        name: Reference complex antibody (renumbered)
         kind: file
         path: results/cx_ab_reres.pdb
     outputs:
       - id: cx_ab_chain_out
+        name: Reference complex antibody (chain A)
         kind: file
         path: results/cx_ab_chain.pdb
     executor: *executor
@@ -1152,12 +1454,15 @@ tasks:
   - kind: horus_task
     id: cx_ab_chainxseg
     name: Swap segment for chain identifier in reference complex antibody
+    description: Runs biobb_pdb_chainxseg to copy the chain identifier into the segment ID for the reference complex antibody.
     inputs:
       - id: cx_ab_chainxseg_in
+        name: Reference complex antibody (chain A)
         kind: file
         path: results/cx_ab_chain.pdb
     outputs:
       - id: cx_ab_chainxseg_out
+        name: Reference complex antibody (chain/seg swapped)
         kind: file
         path: results/cx_ab_chainxseg.pdb
     executor: *executor
@@ -1173,15 +1478,19 @@ tasks:
   - kind: horus_task
     id: cx_ab_tidy_final
     name: Final strict tidy of reference complex antibody
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the reference complex antibody.
     inputs:
       - id: cx_ab_tidy_final_config
+        name: Strict PDB tidy config
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: cx_ab_tidy_final_in
+        name: Reference complex antibody (chain/seg swapped)
         kind: file
         path: results/cx_ab_chainxseg.pdb
     outputs:
       - id: cx_antibody_final
+        name: Reference complex antibody (final)
         kind: file
         path: results/4G6M_clean_antibody_final.pdb
     executor: *executor
@@ -1200,15 +1509,19 @@ tasks:
   - kind: horus_task
     id: cx_ag_tidy
     name: Tidy reference complex PDB for antigen extraction (strict)
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the reference complex antigen.
     inputs:
       - id: cx_ag_tidy_config
+        name: Strict PDB tidy config
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: cx_ag_tidy_in
+        name: Raw reference complex structure (4G6M)
         kind: file
         path: results/4G6M_0.pdb
     outputs:
       - id: cx_ag_tidy_out
+        name: Reference complex structure (tidied for antigen)
         kind: file
         path: results/cx_ag_tidy.pdb
     executor: *executor
@@ -1225,15 +1538,20 @@ tasks:
   - kind: horus_task
     id: cx_ag_selchain
     name: Extract chain A (antigen) from reference complex
+    description: Runs biobb_pdb_selchain to extract the target chain from the reference complex antigen.
     inputs:
       - id: cx_ag_selchain_config
+        name: Chain-A selection config
+        description: Configuration specifying chain A (antigen) to extract from the reference complex.
         kind: file
         path: configs/selchain_A.yaml
       - id: cx_ag_selchain_in
+        name: Reference complex structure (tidied for antigen)
         kind: file
         path: results/cx_ag_tidy.pdb
     outputs:
       - id: cx_ag_selchain_out
+        name: Reference complex antigen chain
         kind: file
         path: results/cx_ag_selchain.pdb
     executor: *executor
@@ -1250,15 +1568,19 @@ tasks:
   - kind: horus_task
     id: cx_ag_chain
     name: Rename reference antigen chain to B
+    description: Runs biobb_pdb_chain to set the reference complex antigen chain identifier.
     inputs:
       - id: cx_ag_chain_config
+        name: Antigen chain-B config
         kind: file
         path: configs/chain_B.yaml
       - id: cx_ag_chain_in
+        name: Reference complex antigen chain
         kind: file
         path: results/cx_ag_selchain.pdb
     outputs:
       - id: cx_ag_chain_out
+        name: Reference complex antigen (chain B)
         kind: file
         path: results/cx_ag_chain.pdb
     executor: *executor
@@ -1275,12 +1597,15 @@ tasks:
   - kind: horus_task
     id: cx_ag_chainxseg
     name: Swap segment for chain identifier in reference complex antigen
+    description: Runs biobb_pdb_chainxseg to copy the chain identifier into the segment ID for the reference complex antigen.
     inputs:
       - id: cx_ag_chainxseg_in
+        name: Reference complex antigen (chain B)
         kind: file
         path: results/cx_ag_chain.pdb
     outputs:
       - id: cx_ag_chainxseg_out
+        name: Reference complex antigen (chain/seg swapped)
         kind: file
         path: results/cx_ag_chainxseg.pdb
     executor: *executor
@@ -1296,12 +1621,15 @@ tasks:
   - kind: horus_task
     id: cx_ag_delhetatm
     name: Remove HETATM from reference complex antigen
+    description: Runs biobb_pdb_delhetatm to strip HETATM records from the reference complex antigen.
     inputs:
       - id: cx_ag_delhetatm_in
+        name: Reference complex antigen (chain/seg swapped)
         kind: file
         path: results/cx_ag_chainxseg.pdb
     outputs:
       - id: cx_ag_delhetatm_out
+        name: Reference complex antigen (no HETATM)
         kind: file
         path: results/cx_ag_delhetatm.pdb
     executor: *executor
@@ -1317,12 +1645,15 @@ tasks:
   - kind: horus_task
     id: cx_ag_fixinsert
     name: Fix insertion codes in reference complex antigen
+    description: Runs biobb_pdb_fixinsert to renumber residues with insertion codes in the reference complex antigen.
     inputs:
       - id: cx_ag_fixinsert_in
+        name: Reference complex antigen (no HETATM)
         kind: file
         path: results/cx_ag_delhetatm.pdb
     outputs:
       - id: cx_ag_fixinsert_out
+        name: Reference complex antigen (insertions fixed)
         kind: file
         path: results/cx_ag_fixinsert.pdb
     executor: *executor
@@ -1338,12 +1669,15 @@ tasks:
   - kind: horus_task
     id: cx_ag_selaltloc
     name: Select alt-locs in reference complex antigen
+    description: Runs biobb_pdb_selaltloc to keep only the highest-occupancy alternate location for each atom in the reference complex antigen.
     inputs:
       - id: cx_ag_selaltloc_in
+        name: Reference complex antigen (insertions fixed)
         kind: file
         path: results/cx_ag_fixinsert.pdb
     outputs:
       - id: cx_ag_selaltloc_out
+        name: Reference complex antigen (alt-locs resolved)
         kind: file
         path: results/cx_ag_selaltloc.pdb
     executor: *executor
@@ -1359,12 +1693,15 @@ tasks:
   - kind: horus_task
     id: cx_ag_keepcoord
     name: Keep coordinates only in reference complex antigen
+    description: Runs biobb_pdb_keepcoord to strip non-coordinate records from the reference complex antigen.
     inputs:
       - id: cx_ag_keepcoord_in
+        name: Reference complex antigen (alt-locs resolved)
         kind: file
         path: results/cx_ag_selaltloc.pdb
     outputs:
       - id: cx_ag_keepcoord_out
+        name: Reference complex antigen (coordinates only)
         kind: file
         path: results/cx_ag_keepcoord.pdb
     executor: *executor
@@ -1380,15 +1717,19 @@ tasks:
   - kind: horus_task
     id: cx_ag_tidy_final
     name: Final strict tidy of reference complex antigen
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the reference complex antigen.
     inputs:
       - id: cx_ag_tidy_final_config
+        name: Strict PDB tidy config
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: cx_ag_tidy_final_in
+        name: Reference complex antigen (coordinates only)
         kind: file
         path: results/cx_ag_keepcoord.pdb
     outputs:
       - id: cx_antigen_final
+        name: Reference complex antigen (final)
         kind: file
         path: results/4G6M_clean_antigen_final.pdb
     executor: *executor
@@ -1407,15 +1748,19 @@ tasks:
   - kind: horus_task
     id: cx_zip_AB
     name: Zip reference complex antibody and antigen PDBs for merge
+    description: Zips the reference complex chain PDBs together so biobb_pdb_merge can combine them.
     inputs:
       - id: cx_antibody_final
+        name: Reference complex antibody (final)
         kind: file
         path: results/4G6M_clean_antibody_final.pdb
       - id: cx_antigen_final
+        name: Reference complex antigen (final)
         kind: file
         path: results/4G6M_clean_antigen_final.pdb
     outputs:
       - id: cx_HL_B_zip
+        name: Reference complex antibody+antigen (zipped)
         kind: file
         path: results/4G6M_HL_B.zip
     executor: *executor
@@ -1429,12 +1774,15 @@ tasks:
   - kind: horus_task
     id: cx_merge
     name: Merge reference complex antibody and antigen chains
+    description: Runs biobb_pdb_merge to merge the zipped chain PDBs into a single reference complex structure.
     inputs:
       - id: cx_HL_B_zip
+        name: Reference complex antibody+antigen (zipped)
         kind: file
         path: results/4G6M_HL_B.zip
     outputs:
       - id: cx_clean_merge
+        name: Reference complex merged structure
         kind: file
         path: results/4G6M_clean_merge.pdb
     executor: *executor
@@ -1450,15 +1798,19 @@ tasks:
   - kind: horus_task
     id: cx_tidy_final
     name: Final strict tidy of reference complex structure
+    description: Runs biobb_pdb_tidy to clean up PDB formatting of the reference complex.
     inputs:
       - id: cx_tidy_final_config
+        name: Strict PDB tidy config
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: cx_tidy_final_in
+        name: Reference complex merged structure
         kind: file
         path: results/4G6M_clean_merge.pdb
     outputs:
       - id: complex_prep
+        name: Prepared reference complex structure (4G6M)
         kind: file
         path: results/4G6M_clean.pdb
     executor: *executor
@@ -1477,8 +1829,10 @@ tasks:
   - kind: horus_task
     id: write_ab_actpass
     name: Write antibody paratope active residues file
+    description: Writes the static list of antibody paratope active residues to a text file.
     outputs:
       - id: ab_actpass
+        name: Antibody paratope active residues
         kind: file
         path: results/4G6K_actpass.txt
     executor: *executor
@@ -1493,15 +1847,20 @@ tasks:
   - kind: horus_task
     id: passive_from_active
     name: Compute passive residues around antigen epitope
+    description: Derives epitope passive residues on the antigen surrounding the active residues using haddock3_passive_from_active.
     inputs:
       - id: passive_from_active_config
+        name: Passive residues config
+        description: Configuration controlling how epitope passive residues are derived from the antigen active residues.
         kind: file
         path: configs/passive_from_active.yaml
       - id: antigen_prep
+        name: Prepared antigen structure (4I1B)
         kind: file
         path: results/4I1B_clean.pdb
     outputs:
       - id: ag_actpass
+        name: Antigen epitope passive residues
         kind: file
         path: results/4I1B_actpass.txt
     executor: *executor
@@ -1518,18 +1877,24 @@ tasks:
   - kind: horus_task
     id: actpass_to_ambig
     name: Convert active/passive residues to ambiguous restraints (AIR)
+    description: Converts the antibody/antigen active-passive residue lists into an ambiguous interaction restraints (AIR) table using haddock3_actpass_to_ambig.
     inputs:
       - id: actpass_to_ambig_config
+        name: Active/passive to AIR config
+        description: Configuration for converting active/passive residue lists into an ambiguous interaction restraints (AIR) table.
         kind: file
         path: configs/actpass_to_ambig.yaml
       - id: ab_actpass
+        name: Antibody paratope active residues
         kind: file
         path: results/4G6K_actpass.txt
       - id: ag_actpass
+        name: Antigen epitope passive residues
         kind: file
         path: results/4I1B_actpass.txt
     outputs:
       - id: complex_tbl
+        name: Ambiguous interaction restraints (AIR) table
         kind: file
         path: results/ambig-paratope-NMR-epitope.tbl
     executor: *executor
@@ -1547,12 +1912,15 @@ tasks:
   - kind: horus_task
     id: restrain_bodies
     name: Generate multi-body restraints to tie antibody chains
+    description: Generates multi-body restraints tying the antibody H and L chains together using haddock3_restrain_bodies.
     inputs:
       - id: antibody_prep
+        name: Prepared antibody structure (4G6K)
         kind: file
         path: results/4G6K_clean.pdb
     outputs:
       - id: body_tbl
+        name: Antibody multi-body restraints table
         kind: file
         path: results/antibody-unambig.tbl
     executor: *executor
@@ -1570,21 +1938,27 @@ tasks:
   - kind: horus_task
     id: topology
     name: Build HADDOCK topology for both molecules
+    description: Builds the HADDOCK3 topology for the antibody and antigen molecules.
     inputs:
       - id: antibody_prep
+        name: Prepared antibody structure (4G6K)
         kind: file
         path: results/4G6K_clean.pdb
       - id: antigen_prep
+        name: Prepared antigen structure (4I1B)
         kind: file
         path: results/4I1B_clean.pdb
     outputs:
       - id: mol1_top_zip
+        name: Antibody topology (HADDOCK3)
         kind: file
         path: results/1_top_mol1.zip
       - id: mol2_top_zip
+        name: Antigen topology (HADDOCK3)
         kind: file
         path: results/1_top_mol2.zip
       - id: haddock_wf_data
+        name: HADDOCK3 workflow state
         kind: file
         path: results/haddock_wf_data
     executor: *executor
@@ -1603,24 +1977,32 @@ tasks:
   - kind: horus_task
     id: rigid_body
     name: Rigid-body docking (rigidbody, 10 models)
+    description: Runs HADDOCK3 rigid-body sampling (10 models) using the AIR and multi-body restraints.
     inputs:
       - id: rigid_body_config
+        name: Rigid-body docking config
+        description: Configuration controlling the HADDOCK3 rigid-body sampling stage (number of models, force field, restraints).
         kind: file
         path: configs/rigid_body.yaml
       - id: haddock_wf_data_in
+        name: HADDOCK3 workflow state
         kind: file
         path: results/haddock_wf_data
       - id: complex_tbl
+        name: Ambiguous interaction restraints (AIR) table
         kind: file
         path: results/ambig-paratope-NMR-epitope.tbl
       - id: body_tbl
+        name: Antibody multi-body restraints table
         kind: file
         path: results/antibody-unambig.tbl
     outputs:
       - id: haddock_wf_data_rigid
+        name: HADDOCK3 workflow state (post rigid-body)
         kind: file
         path: results/haddock_wf_data
       - id: docking_zip
+        name: Rigid-body docking model ensemble
         kind: file
         path: results/2_docking.zip
     executor: *executor
@@ -1640,18 +2022,23 @@ tasks:
   - kind: horus_task
     id: capri_eval_1
     name: CAPRI evaluation after rigid-body docking
+    description: Scores the rigid-body docking models against the reference complex with CAPRI evaluation.
     inputs:
       - id: haddock_wf_data_in
+        name: HADDOCK3 workflow state
         kind: file
         path: results/haddock_wf_data
       - id: complex_prep
+        name: Prepared reference complex structure (4G6M)
         kind: file
         path: results/4G6M_clean.pdb
     outputs:
       - id: haddock_wf_data_capri1
+        name: HADDOCK3 workflow state (post CAPRI eval 1)
         kind: file
         path: results/haddock_wf_data
       - id: caprieval1_zip
+        name: CAPRI scores (rigid-body)
         kind: file
         path: results/3_caprieval.zip
     executor: *executor
@@ -1669,18 +2056,24 @@ tasks:
   - kind: horus_task
     id: sele_top
     name: Select top-8 scoring rigid-body models
+    description: Selects the top-8 scoring rigid-body models for refinement.
     inputs:
       - id: sele_top_config
+        name: Top model selection config
+        description: Configuration controlling selection of the top-scoring rigid-body models.
         kind: file
         path: configs/sele_top.yaml
       - id: haddock_wf_data_in
+        name: HADDOCK3 workflow state
         kind: file
         path: results/haddock_wf_data
     outputs:
       - id: haddock_wf_data_sele
+        name: HADDOCK3 workflow state (post selection)
         kind: file
         path: results/haddock_wf_data
       - id: selection_zip
+        name: Top-8 selected models
         kind: file
         path: results/4_selected.zip
     executor: *executor
@@ -1698,24 +2091,32 @@ tasks:
   - kind: horus_task
     id: flex_ref
     name: Flexible refinement of selected models
+    description: Runs HADDOCK3 flexible refinement on the selected models using the AIR and multi-body restraints.
     inputs:
       - id: flex_ref_config
+        name: Flexible refinement config
+        description: Configuration controlling the HADDOCK3 flexible-refinement docking stage.
         kind: file
         path: configs/flex_ref.yaml
       - id: haddock_wf_data_in
+        name: HADDOCK3 workflow state
         kind: file
         path: results/haddock_wf_data
       - id: complex_tbl
+        name: Ambiguous interaction restraints (AIR) table
         kind: file
         path: results/ambig-paratope-NMR-epitope.tbl
       - id: body_tbl
+        name: Antibody multi-body restraints table
         kind: file
         path: results/antibody-unambig.tbl
     outputs:
       - id: haddock_wf_data_flex
+        name: HADDOCK3 workflow state (post flexible refinement)
         kind: file
         path: results/haddock_wf_data
       - id: flexref_zip
+        name: Flexible refinement model ensemble
         kind: file
         path: results/5_flexref.zip
     executor: *executor
@@ -1735,18 +2136,23 @@ tasks:
   - kind: horus_task
     id: capri_eval_2
     name: CAPRI evaluation after flexible refinement
+    description: Scores the flexibly refined models against the reference complex with CAPRI evaluation.
     inputs:
       - id: haddock_wf_data_in
+        name: HADDOCK3 workflow state
         kind: file
         path: results/haddock_wf_data
       - id: complex_prep
+        name: Prepared reference complex structure (4G6M)
         kind: file
         path: results/4G6M_clean.pdb
     outputs:
       - id: haddock_wf_data_capri2
+        name: HADDOCK3 workflow state (post CAPRI eval 2)
         kind: file
         path: results/haddock_wf_data
       - id: caprieval2_zip
+        name: CAPRI scores (flexible refinement)
         kind: file
         path: results/6_caprieval2.zip
     executor: *executor
@@ -1764,24 +2170,32 @@ tasks:
   - kind: horus_task
     id: em_ref
     name: Energy minimisation refinement of selected models
+    description: Runs HADDOCK3 energy-minimisation refinement on the selected models using the AIR and multi-body restraints.
     inputs:
       - id: em_ref_config
+        name: Energy minimisation config
+        description: Configuration controlling the HADDOCK3 energy-minimisation refinement stage.
         kind: file
         path: configs/em_ref.yaml
       - id: haddock_wf_data_in
+        name: HADDOCK3 workflow state
         kind: file
         path: results/haddock_wf_data
       - id: complex_tbl
+        name: Ambiguous interaction restraints (AIR) table
         kind: file
         path: results/ambig-paratope-NMR-epitope.tbl
       - id: body_tbl
+        name: Antibody multi-body restraints table
         kind: file
         path: results/antibody-unambig.tbl
     outputs:
       - id: haddock_wf_data_em
+        name: HADDOCK3 workflow state (post energy minimisation)
         kind: file
         path: results/haddock_wf_data
       - id: emref_zip
+        name: Energy-minimised model ensemble
         kind: file
         path: results/7_emref.zip
     executor: *executor
@@ -1801,18 +2215,23 @@ tasks:
   - kind: horus_task
     id: capri_eval_3
     name: CAPRI evaluation after energy minimisation
+    description: Scores the energy-minimised models against the reference complex with CAPRI evaluation.
     inputs:
       - id: haddock_wf_data_in
+        name: HADDOCK3 workflow state
         kind: file
         path: results/haddock_wf_data
       - id: complex_prep
+        name: Prepared reference complex structure (4G6M)
         kind: file
         path: results/4G6M_clean.pdb
     outputs:
       - id: haddock_wf_data_capri3
+        name: HADDOCK3 workflow state (post CAPRI eval 3)
         kind: file
         path: results/haddock_wf_data
       - id: caprieval3_zip
+        name: CAPRI scores (energy minimisation)
         kind: file
         path: results/8_caprieval3.zip
     executor: *executor
@@ -1830,18 +2249,24 @@ tasks:
   - kind: horus_task
     id: clust_fcc
     name: Cluster refined models by FCC
+    description: Clusters the refined models by fraction of common contacts (FCC).
     inputs:
       - id: clust_fcc_config
+        name: FCC clustering config
+        description: Configuration controlling the fraction-of-common-contacts (FCC) clustering thresholds.
         kind: file
         path: configs/clust_fcc.yaml
       - id: haddock_wf_data_in
+        name: HADDOCK3 workflow state
         kind: file
         path: results/haddock_wf_data
     outputs:
       - id: haddock_wf_data_clust
+        name: HADDOCK3 workflow state (post clustering)
         kind: file
         path: results/haddock_wf_data
       - id: clustfcc_zip
+        name: FCC clusters
         kind: file
         path: results/9_clustfcc.zip
     executor: *executor
@@ -1859,18 +2284,24 @@ tasks:
   - kind: horus_task
     id: sele_top_clusts
     name: Select top 4 models from each cluster
+    description: Selects the top-4 scoring models from each FCC cluster.
     inputs:
       - id: sele_top_clusts_config
+        name: Top cluster selection config
+        description: Configuration controlling selection of the top-scoring models from each cluster.
         kind: file
         path: configs/sele_top_clusts.yaml
       - id: haddock_wf_data_in
+        name: HADDOCK3 workflow state
         kind: file
         path: results/haddock_wf_data
     outputs:
       - id: haddock_wf_data_seletop
+        name: HADDOCK3 workflow state (post cluster selection)
         kind: file
         path: results/haddock_wf_data
       - id: seletopclusts_zip
+        name: Top-4-per-cluster selected models
         kind: file
         path: results/10_seletopclusts.zip
     executor: *executor
@@ -1888,18 +2319,23 @@ tasks:
   - kind: horus_task
     id: capri_eval_4
     name: Final CAPRI evaluation on cluster representatives
+    description: Scores the final cluster representative models against the reference complex with CAPRI evaluation.
     inputs:
       - id: haddock_wf_data_in
+        name: HADDOCK3 workflow state
         kind: file
         path: results/haddock_wf_data
       - id: complex_prep
+        name: Prepared reference complex structure (4G6M)
         kind: file
         path: results/4G6M_clean.pdb
     outputs:
       - id: haddock_wf_data_capri4
+        name: HADDOCK3 workflow state (post CAPRI eval 4)
         kind: file
         path: results/haddock_wf_data
       - id: caprieval4_zip
+        name: CAPRI scores (cluster representatives)
         kind: file
         path: results/11_caprieval4.zip
     executor: *executor
@@ -1917,15 +2353,19 @@ tasks:
   - kind: horus_task
     id: contact_map
     name: Generate contact maps for cluster representatives
+    description: Generates residue-residue contact maps for the final cluster representative models.
     inputs:
       - id: haddock_wf_data_in
+        name: HADDOCK3 workflow state
         kind: file
         path: results/haddock_wf_data
     outputs:
       - id: haddock_wf_data_contact
+        name: HADDOCK3 workflow state (post contact map)
         kind: file
         path: results/haddock_wf_data
       - id: contactmap_zip
+        name: Contact maps (cluster representatives)
         kind: file
         path: results/12_contact_map.zip
     executor: *executor
@@ -2409,6 +2849,182 @@ edges:
     source_output: haddock_wf_data_capri4
     target: contact_map
     target_input: haddock_wf_data_in
+
+  - source: artifact-actpass_to_ambig_config
+    source_output: actpass_to_ambig_config
+    target: actpass_to_ambig
+    target_input: actpass_to_ambig_config
+
+  - source: artifact-ab_chain_config
+    source_output: ab_chain_config
+    target: ab_chain
+    target_input: ab_chain_config
+
+  - source: artifact-ab_chain_config
+    source_output: ab_chain_config
+    target: cx_ab_chain
+    target_input: cx_ab_chain_config
+
+  - source: artifact-ag_chain_config
+    source_output: ag_chain_config
+    target: ag_chain
+    target_input: ag_chain_config
+
+  - source: artifact-ag_chain_config
+    source_output: ag_chain_config
+    target: cx_ag_chain
+    target_input: cx_ag_chain_config
+
+  - source: artifact-clust_fcc_config
+    source_output: clust_fcc_config
+    target: clust_fcc
+    target_input: clust_fcc_config
+
+  - source: artifact-em_ref_config
+    source_output: em_ref_config
+    target: em_ref
+    target_input: em_ref_config
+
+  - source: artifact-fetch_antibody_config
+    source_output: fetch_antibody_config
+    target: fetch_antibody
+    target_input: fetch_antibody_config
+
+  - source: artifact-fetch_antigen_config
+    source_output: fetch_antigen_config
+    target: fetch_antigen
+    target_input: fetch_antigen_config
+
+  - source: artifact-fetch_complex_config
+    source_output: fetch_complex_config
+    target: fetch_complex
+    target_input: fetch_complex_config
+
+  - source: artifact-flex_ref_config
+    source_output: flex_ref_config
+    target: flex_ref
+    target_input: flex_ref_config
+
+  - source: artifact-passive_from_active_config
+    source_output: passive_from_active_config
+    target: passive_from_active
+    target_input: passive_from_active_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: ab_H_tidy
+    target_input: ab_H_tidy_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: ab_L_tidy
+    target_input: ab_L_tidy_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: ab_tidy_final
+    target_input: ab_tidy_final_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: ag_tidy
+    target_input: ag_tidy_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: ag_tidy_final
+    target_input: ag_tidy_final_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: cx_ab_tidy_final
+    target_input: cx_ab_tidy_final_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: cx_ag_tidy
+    target_input: cx_ag_tidy_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: cx_ag_tidy_final
+    target_input: cx_ag_tidy_final_config
+
+  - source: artifact-ab_H_tidy_config
+    source_output: ab_H_tidy_config
+    target: cx_tidy_final
+    target_input: cx_tidy_final_config
+
+  - source: artifact-ab_reres_config
+    source_output: ab_reres_config
+    target: ab_reres
+    target_input: ab_reres_config
+
+  - source: artifact-ab_reres_config
+    source_output: ab_reres_config
+    target: cx_ab_reres
+    target_input: cx_ab_reres_config
+
+  - source: artifact-rigid_body_config
+    source_output: rigid_body_config
+    target: rigid_body
+    target_input: rigid_body_config
+
+  - source: artifact-cx_ag_selchain_config
+    source_output: cx_ag_selchain_config
+    target: cx_ag_selchain
+    target_input: cx_ag_selchain_config
+
+  - source: artifact-ab_H_selchain_config
+    source_output: ab_H_selchain_config
+    target: ab_H_selchain
+    target_input: ab_H_selchain_config
+
+  - source: artifact-ab_H_selchain_config
+    source_output: ab_H_selchain_config
+    target: cx_H_selchain
+    target_input: cx_H_selchain_config
+
+  - source: artifact-ab_L_selchain_config
+    source_output: ab_L_selchain_config
+    target: ab_L_selchain
+    target_input: ab_L_selchain_config
+
+  - source: artifact-ab_L_selchain_config
+    source_output: ab_L_selchain_config
+    target: cx_L_selchain
+    target_input: cx_L_selchain_config
+
+  - source: artifact-sele_top_config
+    source_output: sele_top_config
+    target: sele_top
+    target_input: sele_top_config
+
+  - source: artifact-sele_top_clusts_config
+    source_output: sele_top_clusts_config
+    target: sele_top_clusts
+    target_input: sele_top_clusts_config
+
+  - source: artifact-ab_L_selres_config
+    source_output: ab_L_selres_config
+    target: ab_L_selres
+    target_input: ab_L_selres_config
+
+  - source: artifact-ab_L_selres_config
+    source_output: ab_L_selres_config
+    target: cx_L_selres
+    target_input: cx_L_selres_config
+
+  - source: artifact-ab_H_selres_config
+    source_output: ab_H_selres_config
+    target: ab_H_selres
+    target_input: ab_H_selres_config
+
+  - source: artifact-ab_H_selres_config
+    source_output: ab_H_selres_config
+    target: cx_H_selres
+    target_input: cx_H_selres_config
+
 
 orchestrator_target:
   kind: local

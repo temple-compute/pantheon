@@ -64,6 +64,15 @@ uv run horus run workflow.yaml
 | W-24 | [HADDOCK3 Protein-Protein Docking](workflows/bioexcel_building_blocks/w19-haddock3-protein-protein-docking/README.md) | Antibody-antigen information-driven docking with HADDOCK3, scored against a reference complex |
 | W-25 | [AutoEncoders for MD Analysis](workflows/bioexcel_building_blocks/w20-autoencoders-md-analysis/README.md) | Trains an AutoEncoder on MD trajectories for feature extraction and PLUMED collective-variable export |
 | W-26 | [Protein-Membrane MD Analysis](workflows/bioexcel_building_blocks/w21-protein-membrane-md-analysis/README.md) | Membrane MD analysis: leaflet identification, bilayer thickness, order parameters, area per lipid, pore radius |
+| W-30 | [Cavity-Guided Virtual Screening](workflows/bioexcel_building_blocks/w22-cavity-guided-virtual-screening/README.md) | fpocket cavity detection feeding an AutoDock Vina screen of a ligand library, ranked by affinity |
+| W-31 | [Cavity Analysis](workflows/bioexcel_building_blocks/w23-cavity-analysis/README.md) | fpocket cavity detection and ranking across a conformational ensemble |
+
+### AI
+
+| ID | Workflow | Description |
+|---|---|---|
+| W-28 | [LLM From Scratch - Pretrain, SFT & Eval](workflows/ai/w01-train-llm/README.md) | Clone a from-scratch Transformer repo, tokenize Pile/instruction data, pretrain, SFT, and evaluate GSM8K accuracy |
+| W-29 | [Tiny LLM From Scratch - TinyStories Pretrain & Sample](workflows/ai/w02-tiny-llm/README.md) | Pretrain a small from-scratch Transformer on TinyStories (not the 900GB Pile) and sample a generated story |
 
 ### Engine Showcases
 

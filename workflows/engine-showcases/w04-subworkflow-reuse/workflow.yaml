@@ -1,18 +1,29 @@
 kind: horus_workflow
 name: Subworkflow Reuse Showcase
+artifacts:
+  - id: quotes
+    name: Quote source text
+    description: Text file with two quotes to be split, cleaned by the subworkflow, and combined into a report.
+    kind: file
+    path: examples/quotes.txt
+
 tasks:
   - kind: horus_task
     id: split
     name: Split quotes into per-quote files
+    description: Splits the two-line quotes file into two separate per-quote files.
     inputs:
       - id: quotes
+        name: Quote source text
         kind: file
         path: examples/quotes.txt
     outputs:
       - id: quote_a
+        name: Quote A text
         kind: file
         path: quote_a.txt
       - id: quote_b
+        name: Quote B text
         kind: file
         path: quote_b.txt
     executor:
@@ -37,23 +48,30 @@ tasks:
   # working directory.
   - id: clean_a
     name: Clean quote A (subworkflow)
+    description: Runs the trim-then-shout cleaning subworkflow on quote A.
     sub: &clean_pipeline
       kind: horus_workflow
-      name: clean pipeline
+      name: Clean text pipeline
+      description: Reusable two-stage pipeline that trims whitespace from a text input and then uppercases it.
       artifacts:
         - id: text
+          name: Raw quote text
+          description: The quote text passed in from the parent workflow, before cleaning.
           kind: file
           path: text_in.txt
       tasks:
         - kind: horus_task
           id: trim
-          name: trim
+          name: Trim whitespace
+          description: Trims leading and trailing whitespace from the input text using awk.
           inputs:
             - id: text
+              name: Raw quote text
               kind: file
               path: text_in.txt
           outputs:
             - id: trimmed
+              name: Trimmed text
               kind: file
               path: trimmed.txt
           runtime:
@@ -65,13 +83,16 @@ tasks:
             kind: local
         - kind: horus_task
           id: shout
-          name: shout
+          name: Shout text
+          description: Converts the trimmed text to uppercase using tr.
           inputs:
             - id: trimmed
+              name: Trimmed text
               kind: file
               path: trimmed.txt
           outputs:
             - id: clean
+              name: Cleaned quote text
               kind: file
               path: clean.txt
           runtime:
@@ -93,20 +114,25 @@ tasks:
 
   - id: clean_b
     name: Clean quote B (subworkflow)
+    description: Runs the same trim-then-shout cleaning subworkflow (reused via YAML alias) on quote B.
     sub: *clean_pipeline
 
   - kind: horus_task
     id: combine
     name: Combine cleaned quotes into a report
+    description: Concatenates both cleaned quotes into a single report file.
     inputs:
       - id: a
+        name: Cleaned quote A
         kind: file
         path: clean_a.txt
       - id: b
+        name: Cleaned quote B
         kind: file
         path: clean_b.txt
     outputs:
       - id: report
+        name: Combined report
         kind: file
         path: results/report.txt
     executor:
@@ -136,6 +162,12 @@ edges:
     source_output: clean
     target: combine
     target_input: b
+
+  - source: artifact-quotes
+    source_output: quotes
+    target: split
+    target_input: quotes
+
 
 orchestrator_target:
   kind: local

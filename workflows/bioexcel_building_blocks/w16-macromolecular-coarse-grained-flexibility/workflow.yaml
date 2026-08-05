@@ -11,16 +11,146 @@ _docker_executor_flexserv: &docker_executor_flexserv
   kind: docker
   image: quay.io/biocontainers/biobb_flexserv:5.2.1--py310pl5321ha6fa2df_0
 
+artifacts:
+  - id: md_pcz
+    name: MoDEL reference PCZ trajectory
+    description: Pre-compressed 10 ns all-atom MD trajectory of 1A32 from the MoDEL database, used only as a comparison baseline in the similarity analyses.
+    kind: file
+    path: Files/1a32.MoDEL.pcz
+
+  - id: bd_run_config
+    name: BD run config
+    description: Configuration for the Brownian Dynamics ensemble run (simulation time, write frequency).
+    kind: file
+    path: configs/bd_run.yaml
+
+  - id: cpptraj_convert_proj1_config
+    name: PC1 conversion config
+    description: Configuration for converting the PC1 animation trajectory to XTC.
+    kind: file
+    path: configs/cpptraj_convert_proj1.yaml
+
+  - id: cpptraj_rms_bd_config
+    name: BD RMSD config
+    description: Configuration for the RMSD/XTC conversion of the BD ensemble trajectory.
+    kind: file
+    path: configs/cpptraj_rms.yaml
+
+  - id: extract_atoms_ca_config
+    name: Cα extraction config
+    description: Configuration for reducing the structure to a Cα-only coarse-grained model.
+    kind: file
+    path: configs/extract_atoms_ca.yaml
+
+  - id: fetch_pdb_config
+    name: PDB fetch config
+    description: Configuration setting the PDB code (1A32) to download.
+    kind: file
+    path: configs/fetch_pdb.yaml
+
+  - id: nma_run_config
+    name: NMA run config
+    description: Configuration for the Normal Mode Analysis ensemble run.
+    kind: file
+    path: configs/nma_run.yaml
+
+  - id: pcz_animate_config
+    name: PC1 animation config
+    description: Configuration for animating the NMA PC1 mode.
+    kind: file
+    path: configs/pcz_animate.yaml
+
+  - id: pcz_bfactor_all_config
+    name: All-mode B-factor config
+    description: Configuration for computing B-factors across all NMA principal components.
+    kind: file
+    path: configs/pcz_bfactor_all.yaml
+
+  - id: pcz_bfactor_mode1_config
+    name: PC1 B-factor config
+    description: Configuration for computing B-factors from NMA principal component 1.
+    kind: file
+    path: configs/pcz_bfactor_mode1.yaml
+
+  - id: pcz_bfactor_mode2_config
+    name: PC2 B-factor config
+    description: Configuration for computing B-factors from NMA principal component 2.
+    kind: file
+    path: configs/pcz_bfactor_mode2.yaml
+
+  - id: pcz_bfactor_mode3_config
+    name: PC3 B-factor config
+    description: Configuration for computing B-factors from NMA principal component 3.
+    kind: file
+    path: configs/pcz_bfactor_mode3.yaml
+
+  - id: pcz_bfactor_mode4_config
+    name: PC4 B-factor config
+    description: Configuration for computing B-factors from NMA principal component 4.
+    kind: file
+    path: configs/pcz_bfactor_mode4.yaml
+
+  - id: pcz_bfactor_mode5_config
+    name: PC5 B-factor config
+    description: Configuration for computing B-factors from NMA principal component 5.
+    kind: file
+    path: configs/pcz_bfactor_mode5.yaml
+
+  - id: pcz_collectivity_config
+    name: Collectivity config
+    description: Configuration for the collectivity-index calculation.
+    kind: file
+    path: configs/pcz_collectivity.yaml
+
+  - id: pcz_evecs_config
+    name: Eigenvector extraction config
+    description: Configuration for extracting eigenvectors from the NMA PCZ file.
+    kind: file
+    path: configs/pcz_evecs.yaml
+
+  - id: pcz_hinges_bfactor_config
+    name: Hinge detection config (B-factor method)
+    description: Configuration for hinge-point detection using the B-factor slope method.
+    kind: file
+    path: configs/pcz_hinges_bfactor.yaml
+
+  - id: pcz_hinges_dyndom_config
+    name: Hinge detection config (DynDom method)
+    description: Configuration for hinge-point detection using the dynamic domain (DynDom) method.
+    kind: file
+    path: configs/pcz_hinges_dyndom.yaml
+
+  - id: pcz_hinges_fcte_config
+    name: Hinge detection config (force constant method)
+    description: Configuration for hinge-point detection using the force-constant method.
+    kind: file
+    path: configs/pcz_hinges_fcte.yaml
+
+  - id: pcz_stiffness_config
+    name: Stiffness config
+    description: Configuration for the apparent inter-residue stiffness calculation.
+    kind: file
+    path: configs/pcz_stiffness.yaml
+
+  - id: pcz_zip_bd_config
+    name: PCA compression config
+    description: Configuration for PCA-compressing an ensemble trajectory into PCZ format.
+    kind: file
+    path: configs/pcz_zip.yaml
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Download 1A32 structure from PDB
+    description: Downloads the Ribosomal Protein S15 structure (PDB 1A32) from the RCSB.
     inputs:
       - id: fetch_pdb_config
+        name: PDB fetch config
         kind: file
         path: configs/fetch_pdb.yaml
     outputs:
       - id: downloaded_pdb
+        name: Downloaded structure (1A32)
         kind: file
         path: results/1a32.pdb
     executor: *docker_executor_flexserv
@@ -36,15 +166,19 @@ tasks:
   - kind: horus_task
     id: extract_atoms_ca
     name: Extract C-alpha atoms from structure
+    description: Reduces the structure to a Cα-only coarse-grained representation using the biobb extract_atoms tool.
     inputs:
       - id: extract_atoms_ca_config
+        name: Cα extraction config
         kind: file
         path: configs/extract_atoms_ca.yaml
       - id: downloaded_pdb
+        name: Downloaded structure (1A32)
         kind: file
         path: results/1a32.pdb
     outputs:
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
     executor: *docker_executor_flexserv
@@ -61,18 +195,23 @@ tasks:
   - kind: horus_task
     id: bd_run
     name: Run Brownian Dynamics (BD) conformational ensemble
+    description: Generates a Brownian Dynamics conformational ensemble from the coarse-grained structure with FlexServ.
     inputs:
       - id: bd_run_config
+        name: BD run config
         kind: file
         path: configs/bd_run.yaml
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
     outputs:
       - id: bd_crd
+        name: BD ensemble trajectory
         kind: file
         path: results/bd_ensemble.mdcrd
       - id: bd_log
+        name: BD run log
         kind: file
         path: results/bd_ensemble.log
     executor: *docker_executor_flexserv
@@ -90,21 +229,27 @@ tasks:
   - kind: horus_task
     id: cpptraj_rms_bd
     name: Compute RMSD for BD ensemble trajectory
+    description: Computes RMSD for the BD ensemble and converts the trajectory to XTC with cpptraj.
     inputs:
       - id: cpptraj_rms_bd_config
+        name: BD RMSD config
         kind: file
         path: configs/cpptraj_rms.yaml
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
       - id: bd_crd
+        name: BD ensemble trajectory
         kind: file
         path: results/bd_ensemble.mdcrd
     outputs:
       - id: bd_rmsd
+        name: BD ensemble RMSD
         kind: file
         path: results/bd_ensemble_rmsd.dat
       - id: bd_xtc
+        name: BD ensemble trajectory (XTC)
         kind: file
         path: results/bd_ensemble.xtc
     executor: *docker_executor_flexserv
@@ -124,15 +269,19 @@ tasks:
   - kind: horus_task
     id: dmd_run
     name: Run Discrete Molecular Dynamics (DMD) conformational ensemble
+    description: Generates a Discrete Molecular Dynamics conformational ensemble from the coarse-grained structure with FlexServ.
     inputs:
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
     outputs:
       - id: dmd_crd
+        name: DMD ensemble trajectory
         kind: file
         path: results/dmd_ensemble.mdcrd
       - id: dmd_log
+        name: DMD run log
         kind: file
         path: results/dmd_ensemble.log
     executor: *docker_executor_flexserv
@@ -149,21 +298,27 @@ tasks:
   - kind: horus_task
     id: cpptraj_rms_dmd
     name: Compute RMSD for DMD ensemble trajectory
+    description: Computes RMSD for the DMD ensemble and converts the trajectory to XTC with cpptraj.
     inputs:
       - id: cpptraj_rms_dmd_config
+        name: DMD RMSD config
         kind: file
         path: configs/cpptraj_rms.yaml
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
       - id: dmd_crd
+        name: DMD ensemble trajectory
         kind: file
         path: results/dmd_ensemble.mdcrd
     outputs:
       - id: dmd_rmsd
+        name: DMD ensemble RMSD
         kind: file
         path: results/dmd_ensemble_rmsd.dat
       - id: dmd_xtc
+        name: DMD ensemble trajectory (XTC)
         kind: file
         path: results/dmd_ensemble.xtc
     executor: *docker_executor_flexserv
@@ -183,18 +338,23 @@ tasks:
   - kind: horus_task
     id: nma_run
     name: Run Normal Mode Analysis (NMA) conformational ensemble
+    description: Generates a Normal Mode Analysis conformational ensemble from the coarse-grained structure with FlexServ.
     inputs:
       - id: nma_run_config
+        name: NMA run config
         kind: file
         path: configs/nma_run.yaml
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
     outputs:
       - id: nma_crd
+        name: NMA ensemble trajectory
         kind: file
         path: results/nma_ensemble.mdcrd
       - id: nma_log
+        name: NMA run log
         kind: file
         path: results/nma_ensemble.log
     executor: *docker_executor_flexserv
@@ -212,21 +372,27 @@ tasks:
   - kind: horus_task
     id: cpptraj_rms_nma
     name: Compute RMSD for NMA ensemble trajectory
+    description: Computes RMSD for the NMA ensemble and converts the trajectory to XTC with cpptraj.
     inputs:
       - id: cpptraj_rms_nma_config
+        name: NMA RMSD config
         kind: file
         path: configs/cpptraj_rms.yaml
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
       - id: nma_crd
+        name: NMA ensemble trajectory
         kind: file
         path: results/nma_ensemble.mdcrd
     outputs:
       - id: nma_rmsd
+        name: NMA ensemble RMSD
         kind: file
         path: results/nma_ensemble_rmsd.dat
       - id: nma_xtc
+        name: NMA ensemble trajectory (XTC)
         kind: file
         path: results/nma_ensemble.xtc
     executor: *docker_executor_flexserv
@@ -246,18 +412,23 @@ tasks:
   - kind: horus_task
     id: pcz_zip_bd
     name: Compress BD trajectory with PCA (PCZ format)
+    description: Compresses the BD ensemble trajectory into PCZ format via PCA.
     inputs:
       - id: pcz_zip_bd_config
+        name: PCA compression config
         kind: file
         path: configs/pcz_zip.yaml
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
       - id: bd_crd
+        name: BD ensemble trajectory
         kind: file
         path: results/bd_ensemble.mdcrd
     outputs:
       - id: bd_pcz
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
     executor: *docker_executor_flexserv
@@ -275,18 +446,23 @@ tasks:
   - kind: horus_task
     id: pcz_zip_dmd
     name: Compress DMD trajectory with PCA (PCZ format)
+    description: Compresses the DMD ensemble trajectory into PCZ format via PCA.
     inputs:
       - id: pcz_zip_dmd_config
+        name: PCA compression config
         kind: file
         path: configs/pcz_zip.yaml
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
       - id: dmd_crd
+        name: DMD ensemble trajectory
         kind: file
         path: results/dmd_ensemble.mdcrd
     outputs:
       - id: dmd_pcz
+        name: DMD trajectory (PCZ)
         kind: file
         path: results/dmd_ensemble.pcz
     executor: *docker_executor_flexserv
@@ -304,18 +480,23 @@ tasks:
   - kind: horus_task
     id: pcz_zip_nma
     name: Compress NMA trajectory with PCA (PCZ format)
+    description: Compresses the NMA ensemble trajectory into PCZ format via PCA.
     inputs:
       - id: pcz_zip_nma_config
+        name: PCA compression config
         kind: file
         path: configs/pcz_zip.yaml
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
       - id: nma_crd
+        name: NMA ensemble trajectory
         kind: file
         path: results/nma_ensemble.mdcrd
     outputs:
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     executor: *docker_executor_flexserv
@@ -333,12 +514,15 @@ tasks:
   - kind: horus_task
     id: pcz_unzip_bd
     name: Decompress BD PCZ trajectory back to CRD
+    description: Decompresses the BD PCZ trajectory back to CRD format for quality-check comparisons.
     inputs:
       - id: bd_pcz
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
     outputs:
       - id: bd_crd_uncompressed
+        name: Decompressed BD trajectory
         kind: file
         path: results/bd_ensemble_uncompressed.crd
     executor: *docker_executor_flexserv
@@ -354,12 +538,15 @@ tasks:
   - kind: horus_task
     id: pcz_unzip_dmd
     name: Decompress DMD PCZ trajectory back to CRD
+    description: Decompresses the DMD PCZ trajectory back to CRD format for quality-check comparisons.
     inputs:
       - id: dmd_pcz
+        name: DMD trajectory (PCZ)
         kind: file
         path: results/dmd_ensemble.pcz
     outputs:
       - id: dmd_crd_uncompressed
+        name: Decompressed DMD trajectory
         kind: file
         path: results/dmd_ensemble_uncompressed.crd
     executor: *docker_executor_flexserv
@@ -375,12 +562,15 @@ tasks:
   - kind: horus_task
     id: pcz_unzip_nma
     name: Decompress NMA PCZ trajectory back to CRD
+    description: Decompresses the NMA PCZ trajectory back to CRD format for quality-check comparisons.
     inputs:
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: nma_crd_uncompressed
+        name: Decompressed NMA trajectory
         kind: file
         path: results/nma_ensemble_uncompressed.crd
     executor: *docker_executor_flexserv
@@ -396,21 +586,27 @@ tasks:
   - kind: horus_task
     id: cpptraj_rms_bd_uncompressed
     name: Compute RMSD for decompressed BD trajectory
+    description: Computes RMSD for the decompressed BD trajectory to check PCA-compression quality.
     inputs:
       - id: cpptraj_rms_bd_unc_config
+        name: Decompressed BD RMSD config
         kind: file
         path: configs/cpptraj_rms.yaml
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
       - id: bd_crd_uncompressed
+        name: Decompressed BD trajectory
         kind: file
         path: results/bd_ensemble_uncompressed.crd
     outputs:
       - id: bd_uncompressed_rmsd
+        name: Decompressed BD trajectory RMSD
         kind: file
         path: results/bd_ensemble_uncompressed.rmsd.dat
       - id: bd_xtc_uncompressed
+        name: Decompressed BD trajectory (XTC)
         kind: file
         path: results/bd_ensemble_uncompressed.xtc
     executor: *docker_executor_flexserv
@@ -430,21 +626,27 @@ tasks:
   - kind: horus_task
     id: cpptraj_rms_dmd_uncompressed
     name: Compute RMSD for decompressed DMD trajectory
+    description: Computes RMSD for the decompressed DMD trajectory to check PCA-compression quality.
     inputs:
       - id: cpptraj_rms_dmd_unc_config
+        name: Decompressed DMD RMSD config
         kind: file
         path: configs/cpptraj_rms.yaml
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
       - id: dmd_crd_uncompressed
+        name: Decompressed DMD trajectory
         kind: file
         path: results/dmd_ensemble_uncompressed.crd
     outputs:
       - id: dmd_uncompressed_rmsd
+        name: Decompressed DMD trajectory RMSD
         kind: file
         path: results/dmd_ensemble_uncompressed.rmsd.dat
       - id: dmd_xtc_uncompressed
+        name: Decompressed DMD trajectory (XTC)
         kind: file
         path: results/dmd_ensemble_uncompressed.xtc
     executor: *docker_executor_flexserv
@@ -464,21 +666,27 @@ tasks:
   - kind: horus_task
     id: cpptraj_rms_nma_uncompressed
     name: Compute RMSD for decompressed NMA trajectory
+    description: Computes RMSD for the decompressed NMA trajectory to check PCA-compression quality.
     inputs:
       - id: cpptraj_rms_nma_unc_config
+        name: Decompressed NMA RMSD config
         kind: file
         path: configs/cpptraj_rms.yaml
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
       - id: nma_crd_uncompressed
+        name: Decompressed NMA trajectory
         kind: file
         path: results/nma_ensemble_uncompressed.crd
     outputs:
       - id: nma_uncompressed_rmsd
+        name: Decompressed NMA trajectory RMSD
         kind: file
         path: results/nma_ensemble_uncompressed.rmsd.dat
       - id: nma_xtc_uncompressed
+        name: Decompressed NMA trajectory (XTC)
         kind: file
         path: results/nma_ensemble_uncompressed.xtc
     executor: *docker_executor_flexserv
@@ -498,12 +706,15 @@ tasks:
   - kind: horus_task
     id: pcz_info
     name: Extract PCA information from NMA PCZ file
+    description: Extracts PCA report data (eigenvalues, variance, dimensionality) from the NMA PCZ file.
     inputs:
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: pcz_report
+        name: PCA report
         kind: file
         path: results/pcz_report.json
     executor: *docker_executor_flexserv
@@ -519,15 +730,19 @@ tasks:
   - kind: horus_task
     id: pcz_evecs
     name: Extract eigenvectors from NMA PCZ file
+    description: Extracts eigenvectors for the NMA PC1 mode from the PCZ file.
     inputs:
       - id: pcz_evecs_config
+        name: Eigenvector extraction config
         kind: file
         path: configs/pcz_evecs.yaml
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: pcz_evecs_report
+        name: Eigenvector report
         kind: file
         path: results/pcz_evecs.json
     executor: *docker_executor_flexserv
@@ -544,15 +759,19 @@ tasks:
   - kind: horus_task
     id: pcz_animate
     name: Animate NMA principal component eigenvector 1
+    description: Animates the NMA PC1 eigenvector into a trajectory.
     inputs:
       - id: pcz_animate_config
+        name: PC1 animation config
         kind: file
         path: configs/pcz_animate.yaml
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: proj1_crd
+        name: PC1 animation trajectory
         kind: file
         path: results/pcz_proj1.crd
     executor: *docker_executor_flexserv
@@ -569,18 +788,23 @@ tasks:
   - kind: horus_task
     id: cpptraj_convert_proj1
     name: Convert PC1 animation trajectory to XTC format
+    description: Converts the PC1 animation trajectory to XTC format with cpptraj.
     inputs:
       - id: cpptraj_convert_proj1_config
+        name: PC1 conversion config
         kind: file
         path: configs/cpptraj_convert_proj1.yaml
       - id: ca_pdb
+        name: Cα-reduced structure
         kind: file
         path: results/1a32_ca.pdb
       - id: proj1_crd
+        name: PC1 animation trajectory
         kind: file
         path: results/pcz_proj1.crd
     outputs:
       - id: proj1_xtc
+        name: PC1 animation trajectory (XTC)
         kind: file
         path: results/pcz_proj1.xtc
     executor: *docker_executor_flexserv
@@ -598,18 +822,23 @@ tasks:
   - kind: horus_task
     id: pcz_bfactor_all
     name: Compute B-factors from all NMA principal components
+    description: Computes per-residue B-factors combining all NMA principal components.
     inputs:
       - id: pcz_bfactor_all_config
+        name: All-mode B-factor config
         kind: file
         path: configs/pcz_bfactor_all.yaml
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: bfactor_all_dat
+        name: All-mode B-factors (data)
         kind: file
         path: results/bfactor_all.dat
       - id: bfactor_all_pdb
+        name: All-mode B-factors (structure)
         kind: file
         path: results/bfactor_all.pdb
     executor: *docker_executor_flexserv
@@ -627,18 +856,23 @@ tasks:
   - kind: horus_task
     id: pcz_bfactor_mode1
     name: Compute B-factors from NMA principal component 1
+    description: Computes per-residue B-factors from NMA principal component 1 alone.
     inputs:
       - id: pcz_bfactor_mode1_config
+        name: PC1 B-factor config
         kind: file
         path: configs/pcz_bfactor_mode1.yaml
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: bfactor_mode1_dat
+        name: PC1 B-factors (data)
         kind: file
         path: results/bfactor_mode1.dat
       - id: bfactor_mode1_pdb
+        name: PC1 B-factors (structure)
         kind: file
         path: results/bfactor_mode1.pdb
     executor: *docker_executor_flexserv
@@ -656,18 +890,23 @@ tasks:
   - kind: horus_task
     id: pcz_bfactor_mode2
     name: Compute B-factors from NMA principal component 2
+    description: Computes per-residue B-factors from NMA principal component 2 alone.
     inputs:
       - id: pcz_bfactor_mode2_config
+        name: PC2 B-factor config
         kind: file
         path: configs/pcz_bfactor_mode2.yaml
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: bfactor_mode2_dat
+        name: PC2 B-factors (data)
         kind: file
         path: results/bfactor_mode2.dat
       - id: bfactor_mode2_pdb
+        name: PC2 B-factors (structure)
         kind: file
         path: results/bfactor_mode2.pdb
     executor: *docker_executor_flexserv
@@ -685,18 +924,23 @@ tasks:
   - kind: horus_task
     id: pcz_bfactor_mode3
     name: Compute B-factors from NMA principal component 3
+    description: Computes per-residue B-factors from NMA principal component 3 alone.
     inputs:
       - id: pcz_bfactor_mode3_config
+        name: PC3 B-factor config
         kind: file
         path: configs/pcz_bfactor_mode3.yaml
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: bfactor_mode3_dat
+        name: PC3 B-factors (data)
         kind: file
         path: results/bfactor_mode3.dat
       - id: bfactor_mode3_pdb
+        name: PC3 B-factors (structure)
         kind: file
         path: results/bfactor_mode3.pdb
     executor: *docker_executor_flexserv
@@ -714,18 +958,23 @@ tasks:
   - kind: horus_task
     id: pcz_bfactor_mode4
     name: Compute B-factors from NMA principal component 4
+    description: Computes per-residue B-factors from NMA principal component 4 alone.
     inputs:
       - id: pcz_bfactor_mode4_config
+        name: PC4 B-factor config
         kind: file
         path: configs/pcz_bfactor_mode4.yaml
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: bfactor_mode4_dat
+        name: PC4 B-factors (data)
         kind: file
         path: results/bfactor_mode4.dat
       - id: bfactor_mode4_pdb
+        name: PC4 B-factors (structure)
         kind: file
         path: results/bfactor_mode4.pdb
     executor: *docker_executor_flexserv
@@ -743,18 +992,23 @@ tasks:
   - kind: horus_task
     id: pcz_bfactor_mode5
     name: Compute B-factors from NMA principal component 5
+    description: Computes per-residue B-factors from NMA principal component 5 alone.
     inputs:
       - id: pcz_bfactor_mode5_config
+        name: PC5 B-factor config
         kind: file
         path: configs/pcz_bfactor_mode5.yaml
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: bfactor_mode5_dat
+        name: PC5 B-factors (data)
         kind: file
         path: results/bfactor_mode5.dat
       - id: bfactor_mode5_pdb
+        name: PC5 B-factors (structure)
         kind: file
         path: results/bfactor_mode5.pdb
     executor: *docker_executor_flexserv
@@ -772,15 +1026,19 @@ tasks:
   - kind: horus_task
     id: pcz_hinges_bfactor
     name: Detect hinge regions in BD trajectory (B-factor slope method)
+    description: Detects hinge regions in the BD trajectory using the B-factor slope method.
     inputs:
       - id: pcz_hinges_bfactor_config
+        name: Hinge detection config (B-factor method)
         kind: file
         path: configs/pcz_hinges_bfactor.yaml
       - id: bd_pcz
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
     outputs:
       - id: hinges_bfactor_report
+        name: Hinge report (B-factor method)
         kind: file
         path: results/hinges_bfactor_report.json
     executor: *docker_executor_flexserv
@@ -797,15 +1055,19 @@ tasks:
   - kind: horus_task
     id: pcz_hinges_dyndom
     name: Detect hinge regions in BD trajectory (dynamic domain method)
+    description: Detects hinge regions in the BD trajectory using the DynDom dynamic-domain method.
     inputs:
       - id: pcz_hinges_dyndom_config
+        name: Hinge detection config (DynDom method)
         kind: file
         path: configs/pcz_hinges_dyndom.yaml
       - id: bd_pcz
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
     outputs:
       - id: hinges_dyndom_report
+        name: Hinge report (DynDom method)
         kind: file
         path: results/hinges_dyndom_report.json
     executor: *docker_executor_flexserv
@@ -822,15 +1084,19 @@ tasks:
   - kind: horus_task
     id: pcz_hinges_fcte
     name: Detect hinge regions in BD trajectory (force constant method)
+    description: Detects hinge regions in the BD trajectory using the force-constant method.
     inputs:
       - id: pcz_hinges_fcte_config
+        name: Hinge detection config (force constant method)
         kind: file
         path: configs/pcz_hinges_fcte.yaml
       - id: bd_pcz
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
     outputs:
       - id: hinges_fcte_report
+        name: Hinge report (force constant method)
         kind: file
         path: results/hinges_fcte_report.json
     executor: *docker_executor_flexserv
@@ -847,15 +1113,19 @@ tasks:
   - kind: horus_task
     id: pcz_stiffness
     name: Compute apparent stiffness from NMA PCZ trajectory
+    description: Computes apparent inter-residue stiffness from the NMA PCZ trajectory.
     inputs:
       - id: pcz_stiffness_config
+        name: Stiffness config
         kind: file
         path: configs/pcz_stiffness.yaml
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: stiffness_report
+        name: Stiffness report
         kind: file
         path: results/pcz_stiffness.json
     executor: *docker_executor_flexserv
@@ -872,15 +1142,19 @@ tasks:
   - kind: horus_task
     id: pcz_collectivity
     name: Compute collectivity index from NMA PCZ trajectory
+    description: Computes the collectivity index from the NMA PCZ trajectory.
     inputs:
       - id: pcz_collectivity_config
+        name: Collectivity config
         kind: file
         path: configs/pcz_collectivity.yaml
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: pcz_collectivity_report
+        name: Collectivity report
         kind: file
         path: results/pcz_collectivity.json
     executor: *docker_executor_flexserv
@@ -897,15 +1171,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_bd_bd
     name: Compare PCZ similarity BD vs BD
+    description: Computes the pairwise PCZ similarity index between the BD and BD ensembles.
     inputs:
       - id: bd_pcz_1
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
       - id: bd_pcz_2
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
     outputs:
       - id: similarity_bd_bd
+        name: BD vs BD similarity report
         kind: file
         path: results/pcz_similarity_bd_bd.json
     executor: *docker_executor_flexserv
@@ -922,15 +1200,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_bd_dmd
     name: Compare PCZ similarity BD vs DMD
+    description: Computes the pairwise PCZ similarity index between the BD and DMD ensembles.
     inputs:
       - id: bd_pcz
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
       - id: dmd_pcz
+        name: DMD trajectory (PCZ)
         kind: file
         path: results/dmd_ensemble.pcz
     outputs:
       - id: similarity_bd_dmd
+        name: BD vs DMD similarity report
         kind: file
         path: results/pcz_similarity_bd_dmd.json
     executor: *docker_executor_flexserv
@@ -947,15 +1229,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_bd_nma
     name: Compare PCZ similarity BD vs NMA
+    description: Computes the pairwise PCZ similarity index between the BD and NMA ensembles.
     inputs:
       - id: bd_pcz
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: similarity_bd_nma
+        name: BD vs NMA similarity report
         kind: file
         path: results/pcz_similarity_bd_nma.json
     executor: *docker_executor_flexserv
@@ -972,15 +1258,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_bd_md
     name: Compare PCZ similarity BD vs MD (MoDEL)
+    description: Computes the pairwise PCZ similarity index between the BD and MD (MoDEL) ensembles.
     inputs:
       - id: bd_pcz
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
       - id: md_pcz
+        name: MoDEL reference PCZ trajectory
         kind: file
         path: Files/1a32.MoDEL.pcz
     outputs:
       - id: similarity_bd_md
+        name: BD vs MD (MoDEL) similarity report
         kind: file
         path: results/pcz_similarity_bd_md.json
     executor: *docker_executor_flexserv
@@ -997,15 +1287,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_dmd_bd
     name: Compare PCZ similarity DMD vs BD
+    description: Computes the pairwise PCZ similarity index between the DMD and BD ensembles.
     inputs:
       - id: dmd_pcz
+        name: DMD trajectory (PCZ)
         kind: file
         path: results/dmd_ensemble.pcz
       - id: bd_pcz
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
     outputs:
       - id: similarity_dmd_bd
+        name: DMD vs BD similarity report
         kind: file
         path: results/pcz_similarity_dmd_bd.json
     executor: *docker_executor_flexserv
@@ -1022,15 +1316,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_dmd_dmd
     name: Compare PCZ similarity DMD vs DMD
+    description: Computes the pairwise PCZ similarity index between the DMD and DMD ensembles.
     inputs:
       - id: dmd_pcz_1
+        name: DMD trajectory (PCZ)
         kind: file
         path: results/dmd_ensemble.pcz
       - id: dmd_pcz_2
+        name: DMD trajectory (PCZ)
         kind: file
         path: results/dmd_ensemble.pcz
     outputs:
       - id: similarity_dmd_dmd
+        name: DMD vs DMD similarity report
         kind: file
         path: results/pcz_similarity_dmd_dmd.json
     executor: *docker_executor_flexserv
@@ -1047,15 +1345,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_dmd_nma
     name: Compare PCZ similarity DMD vs NMA
+    description: Computes the pairwise PCZ similarity index between the DMD and NMA ensembles.
     inputs:
       - id: dmd_pcz
+        name: DMD trajectory (PCZ)
         kind: file
         path: results/dmd_ensemble.pcz
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: similarity_dmd_nma
+        name: DMD vs NMA similarity report
         kind: file
         path: results/pcz_similarity_dmd_nma.json
     executor: *docker_executor_flexserv
@@ -1072,15 +1374,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_dmd_md
     name: Compare PCZ similarity DMD vs MD (MoDEL)
+    description: Computes the pairwise PCZ similarity index between the DMD and MD (MoDEL) ensembles.
     inputs:
       - id: dmd_pcz
+        name: DMD trajectory (PCZ)
         kind: file
         path: results/dmd_ensemble.pcz
       - id: md_pcz
+        name: MoDEL reference PCZ trajectory
         kind: file
         path: Files/1a32.MoDEL.pcz
     outputs:
       - id: similarity_dmd_md
+        name: DMD vs MD (MoDEL) similarity report
         kind: file
         path: results/pcz_similarity_dmd_md.json
     executor: *docker_executor_flexserv
@@ -1097,15 +1403,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_nma_bd
     name: Compare PCZ similarity NMA vs BD
+    description: Computes the pairwise PCZ similarity index between the NMA and BD ensembles.
     inputs:
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
       - id: bd_pcz
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
     outputs:
       - id: similarity_nma_bd
+        name: NMA vs BD similarity report
         kind: file
         path: results/pcz_similarity_nma_bd.json
     executor: *docker_executor_flexserv
@@ -1122,15 +1432,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_nma_dmd
     name: Compare PCZ similarity NMA vs DMD
+    description: Computes the pairwise PCZ similarity index between the NMA and DMD ensembles.
     inputs:
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
       - id: dmd_pcz
+        name: DMD trajectory (PCZ)
         kind: file
         path: results/dmd_ensemble.pcz
     outputs:
       - id: similarity_nma_dmd
+        name: NMA vs DMD similarity report
         kind: file
         path: results/pcz_similarity_nma_dmd.json
     executor: *docker_executor_flexserv
@@ -1147,15 +1461,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_nma_nma
     name: Compare PCZ similarity NMA vs NMA
+    description: Computes the pairwise PCZ similarity index between the NMA and NMA ensembles.
     inputs:
       - id: nma_pcz_1
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
       - id: nma_pcz_2
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: similarity_nma_nma
+        name: NMA vs NMA similarity report
         kind: file
         path: results/pcz_similarity_nma_nma.json
     executor: *docker_executor_flexserv
@@ -1172,15 +1490,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_nma_md
     name: Compare PCZ similarity NMA vs MD (MoDEL)
+    description: Computes the pairwise PCZ similarity index between the NMA and MD (MoDEL) ensembles.
     inputs:
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
       - id: md_pcz
+        name: MoDEL reference PCZ trajectory
         kind: file
         path: Files/1a32.MoDEL.pcz
     outputs:
       - id: similarity_nma_md
+        name: NMA vs MD (MoDEL) similarity report
         kind: file
         path: results/pcz_similarity_nma_md.json
     executor: *docker_executor_flexserv
@@ -1197,15 +1519,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_md_bd
     name: Compare PCZ similarity MD (MoDEL) vs BD
+    description: Computes the pairwise PCZ similarity index between the MD (MoDEL) and BD ensembles.
     inputs:
       - id: md_pcz
+        name: MoDEL reference PCZ trajectory
         kind: file
         path: Files/1a32.MoDEL.pcz
       - id: bd_pcz
+        name: BD trajectory (PCZ)
         kind: file
         path: results/bd_ensemble.pcz
     outputs:
       - id: similarity_md_bd
+        name: MD (MoDEL) vs BD similarity report
         kind: file
         path: results/pcz_similarity_md_bd.json
     executor: *docker_executor_flexserv
@@ -1222,15 +1548,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_md_dmd
     name: Compare PCZ similarity MD (MoDEL) vs DMD
+    description: Computes the pairwise PCZ similarity index between the MD (MoDEL) and DMD ensembles.
     inputs:
       - id: md_pcz
+        name: MoDEL reference PCZ trajectory
         kind: file
         path: Files/1a32.MoDEL.pcz
       - id: dmd_pcz
+        name: DMD trajectory (PCZ)
         kind: file
         path: results/dmd_ensemble.pcz
     outputs:
       - id: similarity_md_dmd
+        name: MD (MoDEL) vs DMD similarity report
         kind: file
         path: results/pcz_similarity_md_dmd.json
     executor: *docker_executor_flexserv
@@ -1247,15 +1577,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_md_nma
     name: Compare PCZ similarity MD (MoDEL) vs NMA
+    description: Computes the pairwise PCZ similarity index between the MD (MoDEL) and NMA ensembles.
     inputs:
       - id: md_pcz
+        name: MoDEL reference PCZ trajectory
         kind: file
         path: Files/1a32.MoDEL.pcz
       - id: nma_pcz
+        name: NMA trajectory (PCZ)
         kind: file
         path: results/nma_ensemble.pcz
     outputs:
       - id: similarity_md_nma
+        name: MD (MoDEL) vs NMA similarity report
         kind: file
         path: results/pcz_similarity_md_nma.json
     executor: *docker_executor_flexserv
@@ -1272,15 +1606,19 @@ tasks:
   - kind: horus_task
     id: pcz_similarity_md_md
     name: Compare PCZ similarity MD (MoDEL) vs MD (MoDEL)
+    description: Computes the pairwise PCZ similarity index between the MD (MoDEL) and MD (MoDEL) ensembles.
     inputs:
       - id: md_pcz_1
+        name: MoDEL reference PCZ trajectory
         kind: file
         path: Files/1a32.MoDEL.pcz
       - id: md_pcz_2
+        name: MoDEL reference PCZ trajectory
         kind: file
         path: Files/1a32.MoDEL.pcz
     outputs:
       - id: similarity_md_md
+        name: MD (MoDEL) vs MD (MoDEL) similarity report
         kind: file
         path: results/pcz_similarity_md_md.json
     executor: *docker_executor_flexserv
@@ -1664,6 +2002,182 @@ edges:
     source_output: nma_pcz
     target: pcz_similarity_md_nma
     target_input: nma_pcz
+
+  - source: artifact-md_pcz
+    source_output: md_pcz
+    target: pcz_similarity_bd_md
+    target_input: md_pcz
+
+  - source: artifact-md_pcz
+    source_output: md_pcz
+    target: pcz_similarity_dmd_md
+    target_input: md_pcz
+
+  - source: artifact-md_pcz
+    source_output: md_pcz
+    target: pcz_similarity_nma_md
+    target_input: md_pcz
+
+  - source: artifact-md_pcz
+    source_output: md_pcz
+    target: pcz_similarity_md_bd
+    target_input: md_pcz
+
+  - source: artifact-md_pcz
+    source_output: md_pcz
+    target: pcz_similarity_md_dmd
+    target_input: md_pcz
+
+  - source: artifact-md_pcz
+    source_output: md_pcz
+    target: pcz_similarity_md_nma
+    target_input: md_pcz
+
+  - source: artifact-md_pcz
+    source_output: md_pcz
+    target: pcz_similarity_md_md
+    target_input: md_pcz_1
+
+  - source: artifact-md_pcz
+    source_output: md_pcz
+    target: pcz_similarity_md_md
+    target_input: md_pcz_2
+
+  - source: artifact-bd_run_config
+    source_output: bd_run_config
+    target: bd_run
+    target_input: bd_run_config
+
+  - source: artifact-cpptraj_convert_proj1_config
+    source_output: cpptraj_convert_proj1_config
+    target: cpptraj_convert_proj1
+    target_input: cpptraj_convert_proj1_config
+
+  - source: artifact-cpptraj_rms_bd_config
+    source_output: cpptraj_rms_bd_config
+    target: cpptraj_rms_bd
+    target_input: cpptraj_rms_bd_config
+
+  - source: artifact-cpptraj_rms_bd_config
+    source_output: cpptraj_rms_bd_config
+    target: cpptraj_rms_dmd
+    target_input: cpptraj_rms_dmd_config
+
+  - source: artifact-cpptraj_rms_bd_config
+    source_output: cpptraj_rms_bd_config
+    target: cpptraj_rms_nma
+    target_input: cpptraj_rms_nma_config
+
+  - source: artifact-cpptraj_rms_bd_config
+    source_output: cpptraj_rms_bd_config
+    target: cpptraj_rms_bd_uncompressed
+    target_input: cpptraj_rms_bd_unc_config
+
+  - source: artifact-cpptraj_rms_bd_config
+    source_output: cpptraj_rms_bd_config
+    target: cpptraj_rms_dmd_uncompressed
+    target_input: cpptraj_rms_dmd_unc_config
+
+  - source: artifact-cpptraj_rms_bd_config
+    source_output: cpptraj_rms_bd_config
+    target: cpptraj_rms_nma_uncompressed
+    target_input: cpptraj_rms_nma_unc_config
+
+  - source: artifact-extract_atoms_ca_config
+    source_output: extract_atoms_ca_config
+    target: extract_atoms_ca
+    target_input: extract_atoms_ca_config
+
+  - source: artifact-fetch_pdb_config
+    source_output: fetch_pdb_config
+    target: fetch_pdb
+    target_input: fetch_pdb_config
+
+  - source: artifact-nma_run_config
+    source_output: nma_run_config
+    target: nma_run
+    target_input: nma_run_config
+
+  - source: artifact-pcz_animate_config
+    source_output: pcz_animate_config
+    target: pcz_animate
+    target_input: pcz_animate_config
+
+  - source: artifact-pcz_bfactor_all_config
+    source_output: pcz_bfactor_all_config
+    target: pcz_bfactor_all
+    target_input: pcz_bfactor_all_config
+
+  - source: artifact-pcz_bfactor_mode1_config
+    source_output: pcz_bfactor_mode1_config
+    target: pcz_bfactor_mode1
+    target_input: pcz_bfactor_mode1_config
+
+  - source: artifact-pcz_bfactor_mode2_config
+    source_output: pcz_bfactor_mode2_config
+    target: pcz_bfactor_mode2
+    target_input: pcz_bfactor_mode2_config
+
+  - source: artifact-pcz_bfactor_mode3_config
+    source_output: pcz_bfactor_mode3_config
+    target: pcz_bfactor_mode3
+    target_input: pcz_bfactor_mode3_config
+
+  - source: artifact-pcz_bfactor_mode4_config
+    source_output: pcz_bfactor_mode4_config
+    target: pcz_bfactor_mode4
+    target_input: pcz_bfactor_mode4_config
+
+  - source: artifact-pcz_bfactor_mode5_config
+    source_output: pcz_bfactor_mode5_config
+    target: pcz_bfactor_mode5
+    target_input: pcz_bfactor_mode5_config
+
+  - source: artifact-pcz_collectivity_config
+    source_output: pcz_collectivity_config
+    target: pcz_collectivity
+    target_input: pcz_collectivity_config
+
+  - source: artifact-pcz_evecs_config
+    source_output: pcz_evecs_config
+    target: pcz_evecs
+    target_input: pcz_evecs_config
+
+  - source: artifact-pcz_hinges_bfactor_config
+    source_output: pcz_hinges_bfactor_config
+    target: pcz_hinges_bfactor
+    target_input: pcz_hinges_bfactor_config
+
+  - source: artifact-pcz_hinges_dyndom_config
+    source_output: pcz_hinges_dyndom_config
+    target: pcz_hinges_dyndom
+    target_input: pcz_hinges_dyndom_config
+
+  - source: artifact-pcz_hinges_fcte_config
+    source_output: pcz_hinges_fcte_config
+    target: pcz_hinges_fcte
+    target_input: pcz_hinges_fcte_config
+
+  - source: artifact-pcz_stiffness_config
+    source_output: pcz_stiffness_config
+    target: pcz_stiffness
+    target_input: pcz_stiffness_config
+
+  - source: artifact-pcz_zip_bd_config
+    source_output: pcz_zip_bd_config
+    target: pcz_zip_bd
+    target_input: pcz_zip_bd_config
+
+  - source: artifact-pcz_zip_bd_config
+    source_output: pcz_zip_bd_config
+    target: pcz_zip_dmd
+    target_input: pcz_zip_dmd_config
+
+  - source: artifact-pcz_zip_bd_config
+    source_output: pcz_zip_bd_config
+    target: pcz_zip_nma
+    target_input: pcz_zip_nma_config
+
 
 orchestrator_target:
   kind: local

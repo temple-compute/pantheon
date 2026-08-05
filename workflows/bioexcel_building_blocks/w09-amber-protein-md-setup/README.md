@@ -1,4 +1,4 @@
-# W-09 · AMBER Protein MD Setup
+# W-14 · AMBER Protein MD Setup
 
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel-green)
 
@@ -67,7 +67,7 @@ The first run builds the conda environment (this takes a few minutes). Subsequen
 
 This workflow has no file inputs — it fetches 1AKI from the RCSB PDB automatically.
 
-**Outputs** (all under `results/`):
+**Outputs** (all under `workflow_results/results/`):
 - `1aki.pdb`, `structure.pdb4amber.pdb` — fetched and AMBER-prepared structures
 - `structure.leap.pdb`, `structure.leap.top`, `structure.leap.crd` — protein system topology
 - `sander.h_min.*`, `sander.n_min.*` — in-vacuo minimization outputs and energy traces

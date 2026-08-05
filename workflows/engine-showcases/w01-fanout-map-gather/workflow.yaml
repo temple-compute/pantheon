@@ -4,15 +4,16 @@ tasks:
   - kind: horus_task
     id: split
     name: Split items into batches
+    description: Chunks the input item list into fixed-size batch files for concurrent scoring.
     skip_if_complete: false
     inputs:
       - id: items
-        name: items
+        name: Input item list
         kind: file
         path: examples/items.json
     outputs:
       - id: batches
-        name: batches
+        name: Batch files
         kind: folder
         path: batches/
     executor:
@@ -46,6 +47,7 @@ tasks:
   - kind: horus_task
     id: score
     name: Score each batch concurrently
+    description: Fans out one clone per batch, each word-counting and uppercasing its batch's text.
     map:
       over:
         source_task: split
@@ -54,10 +56,12 @@ tasks:
       template:
         inputs:
           - id: batch
+            name: Single batch
             kind: folder
             path: batch/ # overwritten per-clone with its slice of `batches/`
         outputs:
           - id: scored
+            name: Scored batch output
             kind: folder
             path: scored/
         runtime:
@@ -78,16 +82,17 @@ tasks:
   - kind: horus_task
     id: gather
     name: Aggregate batch scores into one folder
+    description: Sums the per-batch word counts and concatenates the uppercased text into one summary folder.
     inputs:
       # Fed by the map's fan-in: one FolderArtifact containing every clone's
       # `scored/` output under `score.gathered/<i>/`.
       - id: results
-        name: results
+        name: Gathered batch scores
         kind: folder
         path: score.gathered/
     outputs:
       - id: summary
-        name: summary
+        name: Batch score summary
         kind: folder
         path: results/summary/
     executor:

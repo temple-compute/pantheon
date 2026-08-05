@@ -1,0 +1,4 @@
+properties:
+  # Drops water, ions, and the crystal ligand -- only the protein is docked into.
+  # Mirrors vs_autodock's step0_extract_protein / --skip_extraction default.
+  molecule_type: protein

@@ -15,16 +15,128 @@ _docker_executor: &docker_executor
 _target: &target
   kind: local
 
+artifacts:
+  - id: cpptraj_image_config
+    name: Trajectory imaging config
+    description: Configuration for imaging the trajectory and stripping solvent with cpptraj.
+    kind: file
+    path: configs/cpptraj_image.yaml
+
+  - id: cpptraj_rgyr_config
+    name: Radius of gyration config
+    description: Configuration for the cpptraj radius-of-gyration calculation.
+    kind: file
+    path: configs/cpptraj_rgyr.yaml
+
+  - id: cpptraj_rms_exp_config
+    name: RMSd vs experimental config
+    description: Configuration for the cpptraj RMSd calculation against the experimental structure.
+    kind: file
+    path: configs/cpptraj_rms_exp.yaml
+
+  - id: cpptraj_rms_first_config
+    name: RMSd vs first frame config
+    description: Configuration for the cpptraj RMSd calculation against the first trajectory snapshot.
+    kind: file
+    path: configs/cpptraj_rms_first.yaml
+
+  - id: fetch_pdb_config
+    name: PDB download config
+    description: Configuration for downloading the 1AKI structure from the RCSB PDB.
+    kind: file
+    path: configs/fetch_pdb.yaml
+
+  - id: gen_top_config
+    name: Topology generation config
+    description: Configuration for building the AMBER topology and coordinates with LEaP.
+    kind: file
+    path: configs/gen_top.yaml
+
+  - id: leap_add_ions_config
+    name: Ion addition config
+    description: Configuration for neutralizing the system and adding NaCl with LEaP.
+    kind: file
+    path: configs/leap_add_ions.yaml
+
+  - id: leap_solvate_config
+    name: Solvation config
+    description: Configuration for solvating the system in a TIP3P water box with LEaP.
+    kind: file
+    path: configs/leap_solvate.yaml
+
+  - id: process_energy_config
+    name: Energy extraction config
+    description: Configuration for extracting minimization energies from sander logs.
+    kind: file
+    path: configs/process_energy.yaml
+
+  - id: process_npt_config
+    name: NPT processing config
+    description: Configuration for extracting pressure and density from the NPT sander log.
+    kind: file
+    path: configs/process_npt.yaml
+
+  - id: process_temp_config
+    name: Temperature processing config
+    description: Configuration for extracting temperature from sander logs.
+    kind: file
+    path: configs/process_temp.yaml
+
+  - id: sander_free_config
+    name: Free MD config
+    description: Configuration for the free production MD run in sander.
+    kind: file
+    path: configs/sander_free.yaml
+
+  - id: sander_h_min_config
+    name: Hydrogen minimization config
+    description: Configuration for the in-vacuo hydrogen minimization run in sander.
+    kind: file
+    path: configs/sander_h_min.yaml
+
+  - id: sander_heat_config
+    name: Heating config
+    description: Configuration for heating the system from 0 to 300 K in sander.
+    kind: file
+    path: configs/sander_heat.yaml
+
+  - id: sander_min_config
+    name: Solvated minimization config
+    description: Configuration for energy-minimizing the solvated, ionized system in sander.
+    kind: file
+    path: configs/sander_min.yaml
+
+  - id: sander_n_min_config
+    name: System minimization config
+    description: Configuration for the in-vacuo full-system minimization run in sander.
+    kind: file
+    path: configs/sander_n_min.yaml
+
+  - id: sander_npt_config
+    name: NPT equilibration config
+    description: Configuration for NPT pressure equilibration in sander.
+    kind: file
+    path: configs/sander_npt.yaml
+
+  - id: sander_nvt_config
+    name: NVT equilibration config
+    description: Configuration for NVT equilibration in sander.
+    kind: file
+    path: configs/sander_nvt.yaml
+
 tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Download 1AKI structure from PDB
+    description: Downloads the 1AKI hen egg-white lysozyme structure from the RCSB PDB.
     inputs:
       - id: fetch_pdb_config
+        name: PDB download config
         kind: file
         path: configs/fetch_pdb.yaml
     outputs:
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/downloaded.pdb
     executor: *executor
@@ -39,12 +151,15 @@ tasks:
   - kind: horus_task
     id: pdb4amber
     name: Prepare PDB for AMBER (pdb4amber)
+    description: Runs pdb4amber to rename residues and strip waters so the structure is ready for AMBER.
     inputs:
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/downloaded.pdb
     outputs:
       - id: pdb4amber_pdb
+        name: AMBER-prepared PDB
         kind: file
         path: results/structure.pdb4amber.pdb
     executor: *docker_executor
@@ -59,21 +174,29 @@ tasks:
   - kind: horus_task
     id: gen_top
     name: Create protein system topology (leap)
+    description: Builds the AMBER topology and coordinates from the prepared PDB using LEaP and the ff14SB force field.
     inputs:
       - id: gen_top_config
+        name: Topology generation config
         kind: file
         path: configs/gen_top.yaml
       - id: pdb4amber_pdb
+        name: AMBER-prepared PDB
         kind: file
         path: results/structure.pdb4amber.pdb
     outputs:
       - id: top_pdb
+        name: LEaP topology PDB
         kind: file
         path: results/structure.leap.pdb
       - id: top_top
+        name: AMBER topology
+        description: AMBER parameter/topology file generated by LEaP using the ff14SB force field.
         kind: file
         path: results/structure.leap.top
       - id: top_crd
+        name: AMBER coordinates
+        description: AMBER coordinate file generated by LEaP alongside the topology.
         kind: file
         path: results/structure.leap.crd
     executor: *docker_executor
@@ -91,24 +214,31 @@ tasks:
   - kind: horus_task
     id: sander_h_min
     name: Minimize hydrogens in vacuo (sander)
+    description: Runs a short in-vacuo sander minimization restrained to heavy atoms to relax hydrogen positions.
     inputs:
       - id: sander_h_min_config
+        name: Hydrogen minimization config
         kind: file
         path: configs/sander_h_min.yaml
       - id: top_top
+        name: AMBER topology
         kind: file
         path: results/structure.leap.top
       - id: top_crd
+        name: AMBER coordinates
         kind: file
         path: results/structure.leap.crd
     outputs:
       - id: h_min_traj
+        name: Hydrogen minimization trajectory
         kind: file
         path: results/sander.h_min.x
       - id: h_min_rst
+        name: Hydrogen minimization restart
         kind: file
         path: results/sander.h_min.rst
       - id: h_min_log
+        name: Hydrogen minimization log
         kind: file
         path: results/sander.h_min.log
     executor: *docker_executor
@@ -128,15 +258,19 @@ tasks:
   - kind: horus_task
     id: process_h_min
     name: Extract hydrogen minimization energy (process_minout)
+    description: Extracts the energy profile from the hydrogen minimization log using process_minout.
     inputs:
       - id: process_energy_config
+        name: Energy extraction config
         kind: file
         path: configs/process_energy.yaml
       - id: h_min_log
+        name: Hydrogen minimization log
         kind: file
         path: results/sander.h_min.log
     outputs:
       - id: h_min_dat
+        name: Hydrogen minimization energy
         kind: file
         path: results/sander.h_min.energy.dat
     executor: *docker_executor
@@ -152,24 +286,31 @@ tasks:
   - kind: horus_task
     id: sander_n_min
     name: Minimize system in vacuo (sander)
+    description: Runs a full in-vacuo sander minimization of the whole system starting from the hydrogen-minimized structure.
     inputs:
       - id: sander_n_min_config
+        name: System minimization config
         kind: file
         path: configs/sander_n_min.yaml
       - id: top_top
+        name: AMBER topology
         kind: file
         path: results/structure.leap.top
       - id: h_min_rst
+        name: Hydrogen minimization restart
         kind: file
         path: results/sander.h_min.rst
     outputs:
       - id: n_min_traj
+        name: System minimization trajectory
         kind: file
         path: results/sander.n_min.x
       - id: n_min_rst
+        name: System minimization restart
         kind: file
         path: results/sander.n_min.rst
       - id: n_min_log
+        name: System minimization log
         kind: file
         path: results/sander.n_min.log
     executor: *docker_executor
@@ -189,15 +330,19 @@ tasks:
   - kind: horus_task
     id: process_n_min
     name: Extract system minimization energy (process_minout)
+    description: Extracts the energy profile from the system minimization log using process_minout.
     inputs:
       - id: process_energy_config
+        name: Energy extraction config
         kind: file
         path: configs/process_energy.yaml
       - id: n_min_log
+        name: System minimization log
         kind: file
         path: results/sander.n_min.log
     outputs:
       - id: n_min_dat
+        name: System minimization energy
         kind: file
         path: results/sander.n_min.energy.dat
     executor: *docker_executor
@@ -213,15 +358,20 @@ tasks:
   - kind: horus_task
     id: amber_to_pdb
     name: Convert minimized structure to PDB (ambpdb)
+    description: Converts the minimized AMBER topology and coordinates back to PDB format using ambpdb.
     inputs:
       - id: top_top
+        name: AMBER topology
         kind: file
         path: results/structure.leap.top
       - id: n_min_rst
+        name: System minimization restart
         kind: file
         path: results/sander.n_min.rst
     outputs:
       - id: ambpdb_pdb
+        name: Minimized structure PDB
+        description: PDB structure regenerated from the minimized AMBER coordinates using ambpdb.
         kind: file
         path: results/structure.ambpdb.pdb
     executor: *docker_executor
@@ -237,21 +387,27 @@ tasks:
   - kind: horus_task
     id: leap_solvate
     name: Create solvent box and solvate system (leap)
+    description: Builds a TIP3P water box around the minimized structure using LEaP.
     inputs:
       - id: leap_solvate_config
+        name: Solvation config
         kind: file
         path: configs/leap_solvate.yaml
       - id: ambpdb_pdb
+        name: Minimized structure PDB
         kind: file
         path: results/structure.ambpdb.pdb
     outputs:
       - id: solv_pdb
+        name: Solvated structure PDB
         kind: file
         path: results/structure.solv.pdb
       - id: solv_top
+        name: Solvated topology
         kind: file
         path: results/structure.solv.parmtop
       - id: solv_crd
+        name: Solvated coordinates
         kind: file
         path: results/structure.solv.crd
     executor: *docker_executor
@@ -269,21 +425,28 @@ tasks:
   - kind: horus_task
     id: leap_add_ions
     name: Neutralize and add ions (leap)
+    description: Neutralizes the solvated system and adds 0.15 M NaCl using LEaP.
     inputs:
       - id: leap_add_ions_config
+        name: Ion addition config
         kind: file
         path: configs/leap_add_ions.yaml
       - id: solv_pdb
+        name: Solvated structure PDB
         kind: file
         path: results/structure.solv.pdb
     outputs:
       - id: ions_pdb
+        name: Ionized structure PDB
         kind: file
         path: results/structure.ions.pdb
       - id: ions_top
+        name: Ionized system topology
+        description: Neutralized, ion-added AMBER topology (parmtop) used as the reference topology for all downstream MD and analysis stages.
         kind: file
         path: results/structure.ions.parmtop
       - id: ions_crd
+        name: Ionized system coordinates
         kind: file
         path: results/structure.ions.crd
     executor: *docker_executor
@@ -301,24 +464,31 @@ tasks:
   - kind: horus_task
     id: sander_min
     name: Energy minimize the system (sander)
+    description: Energy-minimizes the solvated, ionized system with sander.
     inputs:
       - id: sander_min_config
+        name: Solvated minimization config
         kind: file
         path: configs/sander_min.yaml
       - id: ions_top
+        name: Ionized system topology
         kind: file
         path: results/structure.ions.parmtop
       - id: ions_crd
+        name: Ionized system coordinates
         kind: file
         path: results/structure.ions.crd
     outputs:
       - id: min_traj
+        name: Solvated minimization trajectory
         kind: file
         path: results/sander.min.x
       - id: min_rst
+        name: Solvated minimization restart
         kind: file
         path: results/sander.min.rst
       - id: min_log
+        name: Solvated minimization log
         kind: file
         path: results/sander.min.log
     executor: *docker_executor
@@ -338,15 +508,19 @@ tasks:
   - kind: horus_task
     id: process_min
     name: Extract system minimization energy (process_minout)
+    description: Extracts the energy profile from the solvated-system minimization log using process_minout.
     inputs:
       - id: process_energy_config
+        name: Energy extraction config
         kind: file
         path: configs/process_energy.yaml
       - id: min_log
+        name: Solvated minimization log
         kind: file
         path: results/sander.min.log
     outputs:
       - id: min_dat
+        name: Solvated minimization energy
         kind: file
         path: results/sander.min.energy.dat
     executor: *docker_executor
@@ -362,24 +536,31 @@ tasks:
   - kind: horus_task
     id: sander_heat
     name: Heat the system 0 to 300 K (sander)
+    description: Heats the solvated system from 0 to 300 K over a 2 ns sander run.
     inputs:
       - id: sander_heat_config
+        name: Heating config
         kind: file
         path: configs/sander_heat.yaml
       - id: ions_top
+        name: Ionized system topology
         kind: file
         path: results/structure.ions.parmtop
       - id: min_rst
+        name: Solvated minimization restart
         kind: file
         path: results/sander.min.rst
     outputs:
       - id: heat_traj
+        name: Heating trajectory
         kind: file
         path: results/sander.heat.netcdf
       - id: heat_rst
+        name: Heating restart
         kind: file
         path: results/sander.heat.rst
       - id: heat_log
+        name: Heating log
         kind: file
         path: results/sander.heat.log
     executor: *docker_executor
@@ -399,15 +580,19 @@ tasks:
   - kind: horus_task
     id: process_heat
     name: Extract heating temperature (process_mdout)
+    description: Extracts the temperature profile from the heating log using process_mdout.
     inputs:
       - id: process_temp_config
+        name: Temperature processing config
         kind: file
         path: configs/process_temp.yaml
       - id: heat_log
+        name: Heating log
         kind: file
         path: results/sander.heat.log
     outputs:
       - id: heat_dat
+        name: Heating temperature profile
         kind: file
         path: results/sander.md.temp.dat
     executor: *docker_executor
@@ -423,24 +608,31 @@ tasks:
   - kind: horus_task
     id: sander_nvt
     name: Equilibrate the system NVT (sander)
+    description: Equilibrates the system at constant volume and 300 K using sander.
     inputs:
       - id: sander_nvt_config
+        name: NVT equilibration config
         kind: file
         path: configs/sander_nvt.yaml
       - id: ions_top
+        name: Ionized system topology
         kind: file
         path: results/structure.ions.parmtop
       - id: heat_rst
+        name: Heating restart
         kind: file
         path: results/sander.heat.rst
     outputs:
       - id: nvt_traj
+        name: NVT trajectory
         kind: file
         path: results/sander.nvt.netcdf
       - id: nvt_rst
+        name: NVT restart
         kind: file
         path: results/sander.nvt.rst
       - id: nvt_log
+        name: NVT log
         kind: file
         path: results/sander.nvt.log
     executor: *docker_executor
@@ -460,15 +652,19 @@ tasks:
   - kind: horus_task
     id: process_nvt
     name: Extract NVT temperature (process_mdout)
+    description: Extracts the temperature profile from the NVT equilibration log using process_mdout.
     inputs:
       - id: process_temp_config
+        name: Temperature processing config
         kind: file
         path: configs/process_temp.yaml
       - id: nvt_log
+        name: NVT log
         kind: file
         path: results/sander.nvt.log
     outputs:
       - id: nvt_dat
+        name: NVT temperature profile
         kind: file
         path: results/sander.md.nvt.temp.dat
     executor: *docker_executor
@@ -484,24 +680,31 @@ tasks:
   - kind: horus_task
     id: sander_npt
     name: Equilibrate the system NPT (sander)
+    description: Equilibrates the system at constant pressure using sander with pressure coupling.
     inputs:
       - id: sander_npt_config
+        name: NPT equilibration config
         kind: file
         path: configs/sander_npt.yaml
       - id: ions_top
+        name: Ionized system topology
         kind: file
         path: results/structure.ions.parmtop
       - id: nvt_rst
+        name: NVT restart
         kind: file
         path: results/sander.nvt.rst
     outputs:
       - id: npt_traj
+        name: NPT trajectory
         kind: file
         path: results/sander.npt.netcdf
       - id: npt_rst
+        name: NPT restart
         kind: file
         path: results/sander.npt.rst
       - id: npt_log
+        name: NPT log
         kind: file
         path: results/sander.npt.log
     executor: *docker_executor
@@ -521,15 +724,19 @@ tasks:
   - kind: horus_task
     id: process_npt
     name: Extract NPT pressure and density (process_mdout)
+    description: Extracts the pressure and density profile from the NPT equilibration log using process_mdout.
     inputs:
       - id: process_npt_config
+        name: NPT processing config
         kind: file
         path: configs/process_npt.yaml
       - id: npt_log
+        name: NPT log
         kind: file
         path: results/sander.npt.log
     outputs:
       - id: npt_dat
+        name: NPT pressure and density profile
         kind: file
         path: results/sander.md.npt.dat
     executor: *docker_executor
@@ -545,24 +752,32 @@ tasks:
   - kind: horus_task
     id: sander_free
     name: Free MD simulation (sander)
+    description: Runs the free (unrestrained) production MD simulation with sander.
     inputs:
       - id: sander_free_config
+        name: Free MD config
         kind: file
         path: configs/sander_free.yaml
       - id: ions_top
+        name: Ionized system topology
         kind: file
         path: results/structure.ions.parmtop
       - id: npt_rst
+        name: NPT restart
         kind: file
         path: results/sander.npt.rst
     outputs:
       - id: free_traj
+        name: Production trajectory
+        description: AMBER NetCDF trajectory from the free production MD run, used as input to all post-processing analyses.
         kind: file
         path: results/sander.free.netcdf
       - id: free_rst
+        name: Production restart
         kind: file
         path: results/sander.free.rst
       - id: free_log
+        name: Production MD log
         kind: file
         path: results/sander.free.log
     executor: *docker_executor
@@ -581,18 +796,23 @@ tasks:
   - kind: horus_task
     id: cpptraj_rms_first
     name: RMSd vs first snapshot (cpptraj)
+    description: Computes RMSd of the production trajectory against its first snapshot using cpptraj.
     inputs:
       - id: cpptraj_rms_first_config
+        name: RMSd vs first frame config
         kind: file
         path: configs/cpptraj_rms_first.yaml
       - id: ions_top
+        name: Ionized system topology
         kind: file
         path: results/structure.ions.parmtop
       - id: free_traj
+        name: Production trajectory
         kind: file
         path: results/sander.free.netcdf
     outputs:
       - id: rms_first_dat
+        name: RMSd vs first frame
         kind: file
         path: results/1aki_rms_first.dat
     executor: *executor
@@ -609,21 +829,27 @@ tasks:
   - kind: horus_task
     id: cpptraj_rms_exp
     name: RMSd vs experimental structure (cpptraj)
+    description: Computes RMSd of the production trajectory against the experimental crystal structure using cpptraj.
     inputs:
       - id: cpptraj_rms_exp_config
+        name: RMSd vs experimental config
         kind: file
         path: configs/cpptraj_rms_exp.yaml
       - id: ions_top
+        name: Ionized system topology
         kind: file
         path: results/structure.ions.parmtop
       - id: free_traj
+        name: Production trajectory
         kind: file
         path: results/sander.free.netcdf
       - id: downloaded_pdb
+        name: Downloaded PDB structure
         kind: file
         path: results/downloaded.pdb
     outputs:
       - id: rms_exp_dat
+        name: RMSd vs experimental structure
         kind: file
         path: results/1aki_rms_exp.dat
     executor: *executor
@@ -641,18 +867,23 @@ tasks:
   - kind: horus_task
     id: cpptraj_rgyr
     name: Radius of gyration (cpptraj)
+    description: Computes the radius of gyration over the production trajectory using cpptraj.
     inputs:
       - id: cpptraj_rgyr_config
+        name: Radius of gyration config
         kind: file
         path: configs/cpptraj_rgyr.yaml
       - id: ions_top
+        name: Ionized system topology
         kind: file
         path: results/structure.ions.parmtop
       - id: free_traj
+        name: Production trajectory
         kind: file
         path: results/sander.free.netcdf
     outputs:
       - id: rgyr_dat
+        name: Radius of gyration
         kind: file
         path: results/1aki_rgyr.dat
     executor: *executor
@@ -669,18 +900,23 @@ tasks:
   - kind: horus_task
     id: cpptraj_image
     name: Image trajectory and strip solvent (cpptraj)
+    description: Images the production trajectory and strips solvent using cpptraj.
     inputs:
       - id: cpptraj_image_config
+        name: Trajectory imaging config
         kind: file
         path: configs/cpptraj_image.yaml
       - id: ions_top
+        name: Ionized system topology
         kind: file
         path: results/structure.ions.parmtop
       - id: free_traj
+        name: Production trajectory
         kind: file
         path: results/sander.free.netcdf
     outputs:
       - id: imaged_traj
+        name: Imaged, solvent-stripped trajectory
         kind: file
         path: results/1aki_imaged_traj.trr
     executor: *executor
@@ -869,6 +1105,112 @@ edges:
     source_output: free_traj
     target: cpptraj_image
     target_input: free_traj
+
+  - source: artifact-cpptraj_image_config
+    source_output: cpptraj_image_config
+    target: cpptraj_image
+    target_input: cpptraj_image_config
+
+  - source: artifact-cpptraj_rgyr_config
+    source_output: cpptraj_rgyr_config
+    target: cpptraj_rgyr
+    target_input: cpptraj_rgyr_config
+
+  - source: artifact-cpptraj_rms_exp_config
+    source_output: cpptraj_rms_exp_config
+    target: cpptraj_rms_exp
+    target_input: cpptraj_rms_exp_config
+
+  - source: artifact-cpptraj_rms_first_config
+    source_output: cpptraj_rms_first_config
+    target: cpptraj_rms_first
+    target_input: cpptraj_rms_first_config
+
+  - source: artifact-fetch_pdb_config
+    source_output: fetch_pdb_config
+    target: fetch_pdb
+    target_input: fetch_pdb_config
+
+  - source: artifact-gen_top_config
+    source_output: gen_top_config
+    target: gen_top
+    target_input: gen_top_config
+
+  - source: artifact-leap_add_ions_config
+    source_output: leap_add_ions_config
+    target: leap_add_ions
+    target_input: leap_add_ions_config
+
+  - source: artifact-leap_solvate_config
+    source_output: leap_solvate_config
+    target: leap_solvate
+    target_input: leap_solvate_config
+
+  - source: artifact-process_energy_config
+    source_output: process_energy_config
+    target: process_h_min
+    target_input: process_energy_config
+
+  - source: artifact-process_energy_config
+    source_output: process_energy_config
+    target: process_n_min
+    target_input: process_energy_config
+
+  - source: artifact-process_energy_config
+    source_output: process_energy_config
+    target: process_min
+    target_input: process_energy_config
+
+  - source: artifact-process_npt_config
+    source_output: process_npt_config
+    target: process_npt
+    target_input: process_npt_config
+
+  - source: artifact-process_temp_config
+    source_output: process_temp_config
+    target: process_heat
+    target_input: process_temp_config
+
+  - source: artifact-process_temp_config
+    source_output: process_temp_config
+    target: process_nvt
+    target_input: process_temp_config
+
+  - source: artifact-sander_free_config
+    source_output: sander_free_config
+    target: sander_free
+    target_input: sander_free_config
+
+  - source: artifact-sander_h_min_config
+    source_output: sander_h_min_config
+    target: sander_h_min
+    target_input: sander_h_min_config
+
+  - source: artifact-sander_heat_config
+    source_output: sander_heat_config
+    target: sander_heat
+    target_input: sander_heat_config
+
+  - source: artifact-sander_min_config
+    source_output: sander_min_config
+    target: sander_min
+    target_input: sander_min_config
+
+  - source: artifact-sander_n_min_config
+    source_output: sander_n_min_config
+    target: sander_n_min
+    target_input: sander_n_min_config
+
+  - source: artifact-sander_npt_config
+    source_output: sander_npt_config
+    target: sander_npt
+    target_input: sander_npt_config
+
+  - source: artifact-sander_nvt_config
+    source_output: sander_nvt_config
+    target: sander_nvt
+    target_input: sander_nvt_config
+
 
 orchestrator_target:
   kind: local

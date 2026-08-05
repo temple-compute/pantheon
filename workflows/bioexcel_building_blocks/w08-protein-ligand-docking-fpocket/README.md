@@ -64,7 +64,7 @@ The first run builds the conda environment (this takes a few minutes). Subsequen
 
 This workflow has no file inputs — it fetches the 3HEC receptor and the Imatinib (STI) ligand automatically, and computes candidate binding cavities on the receptor itself with fpocket.
 
-**Outputs** (all under `results/`):
+**Outputs** (all under `workflow_results/results/`):
 - `download.pdb`, `pdb_protein.pdb` — fetched receptor structure
 - `fpocket_all_pockets.zip`, `fpocket_summary.json` — all detected cavities
 - `fpocket_filter_pockets.zip` — cavities filtered by volume

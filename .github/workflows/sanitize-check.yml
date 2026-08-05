@@ -1,0 +1,26 @@
+name: sanitize-check
+on:
+  pull_request:
+    paths: ["workflows/**/workflow.yaml"]
+
+jobs:
+  check:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with: { fetch-depth: 0 }
+      - uses: astral-sh/setup-uv@v5
+      - name: Check changed workflows are sanitized
+        run: |
+          set -euo pipefail
+          base="origin/${{ github.base_ref }}"
+          files=$(git diff --name-only --diff-filter=AM "$base"...HEAD -- 'workflows/**/workflow.yaml')
+          [ -z "$files" ] && { echo "No workflow.yaml changes."; exit 0; }
+          rc=0
+          for f in $files; do
+            dir=$(dirname "$f")
+            echo "== $dir =="
+            ( cd "$dir" && uv sync --quiet && \
+              uv run python "$GITHUB_WORKSPACE/.github/scripts/check_sanitized.py" workflow.yaml ) || rc=1
+          done
+          exit $rc

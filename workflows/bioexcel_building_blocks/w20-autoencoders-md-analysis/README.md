@@ -63,7 +63,7 @@ The first run builds the conda environment (this takes a few minutes). Subsequen
 
 This workflow has no file inputs — it fetches both the apo and holo 6W9C trajectories automatically from the MDDB database.
 
-**Outputs** (all under `results/`):
+**Outputs** (all under `workflow_results/results/`):
 - `6W9C_apo.pdb/.xtc`, `6W9C_apo_fit.xtc` — apo training trajectory, raw and fitted
 - `6W9C_apo.pt`, `6W9C_apo_stats.pt` — featurized apo dataset and statistics
 - `model.pth` — untrained AutoEncoder architecture

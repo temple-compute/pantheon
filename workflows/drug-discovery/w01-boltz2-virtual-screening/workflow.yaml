@@ -1,22 +1,36 @@
 kind: horus_workflow
 name: Boltz2 Virtual Screening
+artifacts:
+  - id: ligands
+    name: Candidate ligand library
+    description: SMILES file listing candidate ligands (one per line) to screen against the target.
+    kind: file
+    path: examples/ligands.smi
+
+  - id: fasta
+    name: Target protein sequence
+    description: FASTA file of the target protein used for structure and affinity prediction.
+    kind: file
+    path: examples/target.fasta
+
 tasks:
   - kind: horus_task
     id: prep
     name: Build Boltz-2 inputs
+    description: Converts the target FASTA and ligand SMILES into Boltz-2 formatted input files, packaged as a tarball.
     skip_if_complete: false
     inputs:
       - id: fasta
-        name: fasta
+        name: Target protein sequence
         kind: file
         path: examples/target.fasta
       - id: ligands
-        name: ligands
+        name: Candidate ligand library
         kind: file
         path: examples/ligands.smi
     outputs:
       - id: boltz_inputs
-        name: boltz_inputs
+        name: Boltz-2 input archive
         path: results/boltz_inputs.tar.gz
         kind: file
     executor:
@@ -30,14 +44,15 @@ tasks:
   - kind: horus_task
     id: predict
     name: Boltz-2 structure + affinity
+    description: Runs Boltz-2 to predict binding structure and affinity for each protein-ligand pair.
     inputs:
       - id: boltz_inputs
-        name: boltz_inputs
+        name: Boltz-2 input archive
         path: results/boltz_inputs.tar.gz
         kind: file
     outputs:
       - id: predictions
-        name: predictions
+        name: Boltz-2 predictions archive
         path: results/predictions.tar.gz
         kind: file
     executor:
@@ -55,14 +70,15 @@ tasks:
   - kind: horus_task
     id: rank
     name: Rank hits
+    description: Parses the Boltz-2 predictions and produces a ranked shortlist of top-scoring hits.
     inputs:
       - id: predictions
-        name: predictions
+        name: Boltz-2 predictions archive
         path: results/predictions.tar.gz
         kind: file
     outputs:
       - id: top_hits
-        name: top_hits
+        name: Ranked hit list
         path: results/top_hits.csv
         kind: file
     executor:
@@ -82,6 +98,17 @@ edges:
     source_output: predictions
     target: rank
     target_input: predictions
+
+  - source: artifact-ligands
+    source_output: ligands
+    target: prep
+    target_input: ligands
+
+  - source: artifact-fasta
+    source_output: fasta
+    target: prep
+    target_input: fasta
+
 orchestrator_target:
   kind: local
   working_directory: horus_workflow_results

@@ -7,17 +7,45 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+artifacts:
+  - id: add_h_config
+    name: Hydrogenation configuration
+    description: Configuration controlling how hydrogen atoms are added to the ligand with OpenBabel (e.g. target pH).
+    kind: file
+    path: configs/add_h.yaml
+
+  - id: fetch_ligand_config
+    name: Ligand fetch configuration
+    description: Configuration specifying the PDB ligand code to fetch from the RCSB.
+    kind: file
+    path: configs/fetch_ligand.yaml
+
+  - id: minimize_h_config
+    name: Minimization configuration
+    description: Configuration controlling energetic minimization of hydrogen positions with OpenBabel and the GAFF force field.
+    kind: file
+    path: configs/minimize_h.yaml
+
+  - id: params_config
+    name: Parameterization configuration
+    description: Configuration for generating GROMACS force-field parameters with ACPype and the GAFF force field.
+    kind: file
+    path: configs/params.yaml
+
 tasks:
   - kind: horus_task
     skip_if_complete: false
     id: fetch_ligand
     name: Fetch ligand structure from PDB
+    description: Fetches the raw ligand structure from the RCSB PDB using the ligand code in the config.
     inputs:
       - id: fetch_ligand_config
+        name: Ligand fetch configuration
         kind: file
         path: configs/fetch_ligand.yaml
     outputs:
       - id: ligand_pdb
+        name: Ligand structure (PDB)
         kind: file
         path: results/ligand.pdb
     executor: *executor
@@ -33,15 +61,19 @@ tasks:
   - kind: horus_task
     id: add_hydrogens
     name: Add hydrogen atoms (OpenBabel)
+    description: Adds hydrogen atoms to the ligand at pH 7.4 using OpenBabel.
     inputs:
       - id: add_h_config
+        name: Hydrogenation configuration
         kind: file
         path: configs/add_h.yaml
       - id: ligand_pdb
+        name: Ligand structure (PDB)
         kind: file
         path: results/ligand.pdb
     outputs:
       - id: ligand_mol2
+        name: Hydrogenated ligand (MOL2)
         kind: file
         path: results/ligand.H.mol2
     executor: *executor
@@ -58,15 +90,19 @@ tasks:
   - kind: horus_task
     id: minimize_hydrogens
     name: Energetically minimize hydrogen atoms (OpenBabel GAFF)
+    description: Energetically minimizes hydrogen atom positions using OpenBabel with the GAFF force field.
     inputs:
       - id: minimize_h_config
+        name: Minimization configuration
         kind: file
         path: configs/minimize_h.yaml
       - id: ligand_mol2
+        name: Hydrogenated ligand (MOL2)
         kind: file
         path: results/ligand.H.mol2
     outputs:
       - id: minimized_pdb
+        name: Minimized ligand (PDB)
         kind: file
         path: results/ligand.H.min.pdb
     executor: *executor
@@ -83,21 +119,28 @@ tasks:
   - kind: horus_task
     id: parameterize
     name: Generate GROMACS parameters (ACPype / GAFF)
+    description: Generates GROMACS-compatible force-field parameters for the ligand using ACPype with the GAFF force field.
     inputs:
       - id: params_config
+        name: Parameterization configuration
         kind: file
         path: configs/params.yaml
       - id: minimized_pdb
+        name: Minimized ligand (PDB)
         kind: file
         path: results/ligand.H.min.pdb
     outputs:
       - id: params_gro
+        name: GROMACS structure file
         kind: file
         path: results/ligand.params.gro
       - id: params_itp
+        name: GROMACS topology (ITP)
+        description: GROMACS include topology file containing the ligand's force-field parameters.
         kind: file
         path: results/ligand.params.itp
       - id: params_top
+        name: GROMACS topology file (TOP)
         kind: file
         path: results/ligand.params.top
     executor: *executor
@@ -128,6 +171,27 @@ edges:
     source_output: minimized_pdb
     target: parameterize
     target_input: minimized_pdb
+
+  - source: artifact-add_h_config
+    source_output: add_h_config
+    target: add_hydrogens
+    target_input: add_h_config
+
+  - source: artifact-fetch_ligand_config
+    source_output: fetch_ligand_config
+    target: fetch_ligand
+    target_input: fetch_ligand_config
+
+  - source: artifact-minimize_h_config
+    source_output: minimize_h_config
+    target: minimize_hydrogens
+    target_input: minimize_h_config
+
+  - source: artifact-params_config
+    source_output: params_config
+    target: parameterize
+    target_input: params_config
+
 
 orchestrator_target:
   kind: local

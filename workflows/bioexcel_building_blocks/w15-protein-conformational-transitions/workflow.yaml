@@ -7,16 +7,68 @@ _executor: &executor
   conda: micromamba
   environment_file: conda_env.yaml
 
+artifacts:
+  - id: cpptraj_convert_config
+    name: Trajectory conversion config
+    description: Configuration controlling how cpptraj converts the GoDMD trajectory to XTC format.
+    kind: file
+    path: configs/cpptraj_convert.yaml
+
+  - id: extract_chain_origin_config
+    name: Origin chain extraction config
+    description: Configuration specifying which chain to keep when extracting from the origin structure.
+    kind: file
+    path: configs/extract_chain_origin.yaml
+
+  - id: extract_chain_target_config
+    name: Target chain extraction config
+    description: Configuration specifying which chain to keep when extracting from the target structure.
+    kind: file
+    path: configs/extract_chain_target.yaml
+
+  - id: fetch_pdb_origin_config
+    name: Origin PDB fetch config
+    description: Configuration setting the origin PDB code (1AKE) to download from the RCSB.
+    kind: file
+    path: configs/fetch_pdb_origin.yaml
+
+  - id: fetch_pdb_target_config
+    name: Target PDB fetch config
+    description: Configuration setting the target PDB code (4AKE) to download from the RCSB.
+    kind: file
+    path: configs/fetch_pdb_target.yaml
+
+  - id: godmd_prep_config
+    name: GoDMD prep config
+    description: Configuration controlling the EMBOSS alignment used to compute the origin-target residue mapping.
+    kind: file
+    path: configs/godmd_prep.yaml
+
+  - id: godmd_run_config
+    name: GoDMD run config
+    description: Configuration controlling the GoDMD simulation parameters (number of trajectories, temperature, sampling steps).
+    kind: file
+    path: configs/godmd_run.yaml
+
+  - id: remove_molecules_origin_config
+    name: Ligand removal config
+    description: Configuration specifying which ligand/heteroatom to strip from the origin structure.
+    kind: file
+    path: configs/remove_molecules_origin.yaml
+
 tasks:
   - kind: horus_task
     id: fetch_pdb_origin
     name: Download origin structure 1AKE (closed state) from PDB
+    description: Downloads the closed-state adenylate kinase structure (PDB 1AKE) from the RCSB.
     inputs:
       - id: fetch_pdb_origin_config
+        name: Origin PDB fetch config
         kind: file
         path: configs/fetch_pdb_origin.yaml
     outputs:
       - id: origin_pdb
+        name: Origin structure (1AKE)
         kind: file
         path: results/1ake.pdb
     executor: *executor
@@ -32,12 +84,15 @@ tasks:
   - kind: horus_task
     id: fetch_pdb_target
     name: Download target structure 4AKE (open state) from PDB
+    description: Downloads the open-state adenylate kinase structure (PDB 4AKE) from the RCSB.
     inputs:
       - id: fetch_pdb_target_config
+        name: Target PDB fetch config
         kind: file
         path: configs/fetch_pdb_target.yaml
     outputs:
       - id: target_pdb
+        name: Target structure (4AKE)
         kind: file
         path: results/4ake.pdb
     executor: *executor
@@ -53,15 +108,19 @@ tasks:
   - kind: horus_task
     id: extract_chain_origin
     name: Extract chain A from origin structure (1AKE)
+    description: Extracts chain A from the origin structure using the biobb extract_chain tool.
     inputs:
       - id: extract_chain_origin_config
+        name: Origin chain extraction config
         kind: file
         path: configs/extract_chain_origin.yaml
       - id: origin_pdb
+        name: Origin structure (1AKE)
         kind: file
         path: results/1ake.pdb
     outputs:
       - id: origin_chain_pdb
+        name: Origin chain A structure
         kind: file
         path: results/1ake.chains.pdb
     executor: *executor
@@ -78,15 +137,19 @@ tasks:
   - kind: horus_task
     id: extract_chain_target
     name: Extract chain A from target structure (4AKE)
+    description: Extracts chain A from the target structure using the biobb extract_chain tool.
     inputs:
       - id: extract_chain_target_config
+        name: Target chain extraction config
         kind: file
         path: configs/extract_chain_target.yaml
       - id: target_pdb
+        name: Target structure (4AKE)
         kind: file
         path: results/4ake.pdb
     outputs:
       - id: target_chain_pdb
+        name: Target chain A structure
         kind: file
         path: results/4ake.chains.pdb
     executor: *executor
@@ -103,15 +166,19 @@ tasks:
   - kind: horus_task
     id: remove_molecules_origin
     name: Remove AP5 inhibitor from origin structure (1AKE)
+    description: Strips the AP5 inhibitor ligand/heteroatom from the origin structure using the biobb remove_molecules tool.
     inputs:
       - id: remove_molecules_origin_config
+        name: Ligand removal config
         kind: file
         path: configs/remove_molecules_origin.yaml
       - id: origin_chain_pdb
+        name: Origin chain A structure
         kind: file
         path: results/1ake.chains.pdb
     outputs:
       - id: origin_nolig_pdb
+        name: Origin structure without ligand
         kind: file
         path: results/1ake.chains.nolig.pdb
     executor: *executor
@@ -128,21 +195,27 @@ tasks:
   - kind: horus_task
     id: godmd_prep
     name: Compute residue mapping between origin and target (EMBOSS water alignment)
+    description: Aligns the origin and target sequences with the EMBOSS water tool to compute the residue mapping GoDMD needs.
     inputs:
       - id: godmd_prep_config
+        name: GoDMD prep config
         kind: file
         path: configs/godmd_prep.yaml
       - id: origin_nolig_pdb
+        name: Origin structure without ligand
         kind: file
         path: results/1ake.chains.nolig.pdb
       - id: target_chain_pdb
+        name: Target chain A structure
         kind: file
         path: results/4ake.chains.pdb
     outputs:
       - id: origin_aln
+        name: Origin sequence alignment
         kind: file
         path: results/1ake.aln
       - id: target_aln
+        name: Target sequence alignment
         kind: file
         path: results/4ake.aln
     executor: *executor
@@ -161,27 +234,35 @@ tasks:
   - kind: horus_task
     id: godmd_run
     name: Run GoDMD conformational transition simulation (1AKE → 4AKE)
+    description: Runs the GoDMD discrete-molecular-dynamics/Maxwell-Demon simulation to generate the transition trajectory from the closed to the open state.
     inputs:
       - id: godmd_run_config
+        name: GoDMD run config
         kind: file
         path: configs/godmd_run.yaml
       - id: origin_nolig_pdb
+        name: Origin structure without ligand
         kind: file
         path: results/1ake.chains.nolig.pdb
       - id: target_chain_pdb
+        name: Target chain A structure
         kind: file
         path: results/4ake.chains.pdb
       - id: origin_aln
+        name: Origin sequence alignment
         kind: file
         path: results/1ake.aln
       - id: target_aln
+        name: Target sequence alignment
         kind: file
         path: results/4ake.aln
     outputs:
       - id: godmd_trj
+        name: GoDMD trajectory (mdcrd)
         kind: file
         path: results/1ake-4ake.godmd.mdcrd
       - id: godmd_pdb
+        name: GoDMD reference structure
         kind: file
         path: results/1ake-4ake.godmd.pdb
     executor: *executor
@@ -204,18 +285,23 @@ tasks:
   - kind: horus_task
     id: cpptraj_convert
     name: Convert GoDMD trajectory from mdcrd to XTC format
+    description: Converts the raw GoDMD mdcrd trajectory to XTC format for visualization using cpptraj.
     inputs:
       - id: cpptraj_convert_config
+        name: Trajectory conversion config
         kind: file
         path: configs/cpptraj_convert.yaml
       - id: godmd_pdb
+        name: GoDMD reference structure
         kind: file
         path: results/1ake-4ake.godmd.pdb
       - id: godmd_trj
+        name: GoDMD trajectory (mdcrd)
         kind: file
         path: results/1ake-4ake.godmd.mdcrd
     outputs:
       - id: godmd_trj_xtc
+        name: GoDMD trajectory (XTC)
         kind: file
         path: results/1ake-4ake.godmd.xtc
     executor: *executor
@@ -285,6 +371,47 @@ edges:
     source_output: godmd_pdb
     target: cpptraj_convert
     target_input: godmd_pdb
+
+  - source: artifact-cpptraj_convert_config
+    source_output: cpptraj_convert_config
+    target: cpptraj_convert
+    target_input: cpptraj_convert_config
+
+  - source: artifact-extract_chain_origin_config
+    source_output: extract_chain_origin_config
+    target: extract_chain_origin
+    target_input: extract_chain_origin_config
+
+  - source: artifact-extract_chain_target_config
+    source_output: extract_chain_target_config
+    target: extract_chain_target
+    target_input: extract_chain_target_config
+
+  - source: artifact-fetch_pdb_origin_config
+    source_output: fetch_pdb_origin_config
+    target: fetch_pdb_origin
+    target_input: fetch_pdb_origin_config
+
+  - source: artifact-fetch_pdb_target_config
+    source_output: fetch_pdb_target_config
+    target: fetch_pdb_target
+    target_input: fetch_pdb_target_config
+
+  - source: artifact-godmd_prep_config
+    source_output: godmd_prep_config
+    target: godmd_prep
+    target_input: godmd_prep_config
+
+  - source: artifact-godmd_run_config
+    source_output: godmd_run_config
+    target: godmd_run
+    target_input: godmd_run_config
+
+  - source: artifact-remove_molecules_origin_config
+    source_output: remove_molecules_origin_config
+    target: remove_molecules_origin
+    target_input: remove_molecules_origin_config
+
 
 orchestrator_target:
   kind: local

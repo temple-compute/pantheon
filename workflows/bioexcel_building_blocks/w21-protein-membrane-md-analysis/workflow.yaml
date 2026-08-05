@@ -14,22 +14,100 @@ _docker_executor_mem: &docker_executor_mem
 _target: &target
   kind: local
 
+artifacts:
+  - id: assign_leaflets_config
+    name: Leaflet assignment config
+    description: Configuration for the Lipyphilic per-frame leaflet assignment, including the lipid headgroup selection.
+    kind: file
+    path: configs/assign_leaflets.yaml
+
+  - id: compute_area_per_lipid_config
+    name: Area-per-lipid config
+    description: Configuration for the FATSLiM area-per-lipid (2D Voronoi tessellation) calculation.
+    kind: file
+    path: configs/compute_area_per_lipid.yaml
+
+  - id: compute_density_profile_config
+    name: Density profile config
+    description: Configuration for the cpptraj membrane density profile calculation.
+    kind: file
+    path: configs/compute_density_profile.yaml
+
+  - id: compute_flip_flop_config
+    name: Flip-flop detection config
+    description: Configuration for the Lipyphilic lipid flip-flop event detection.
+    kind: file
+    path: configs/compute_flip_flop.yaml
+
+  - id: compute_order_parameters_config
+    name: Order parameters config
+    description: Configuration for the deuterium order parameter calculation on acyl tails.
+    kind: file
+    path: configs/compute_order_parameters.yaml
+
+  - id: compute_pore_dimensions_config
+    name: Pore dimensions config
+    description: Configuration for the MDAnalysis HOLE channel pore-radius profile calculation.
+    kind: file
+    path: configs/compute_pore_dimensions.yaml
+
+  - id: compute_zpositions_config
+    name: Z-positions config
+    description: Configuration for the whole-membrane lipid z-position/bilayer-thickness calculation, including the lipid headgroup selection.
+    kind: file
+    path: configs/compute_zpositions.yaml
+
+  - id: compute_zpositions_around_config
+    name: Z-positions (protein region) config
+    description: Configuration for the protein-local lipid z-position/bilayer-thickness calculation, including the lipid headgroup selection.
+    kind: file
+    path: configs/compute_zpositions_around.yaml
+
+  - id: download_trajectory_config
+    name: Trajectory download config
+    description: Configuration setting the MDDB node/project ID (A023K), trajectory format, and frame stride.
+    kind: file
+    path: configs/download_trajectory.yaml
+
+  - id: fit_membrane_config
+    name: Membrane fit config
+    description: Configuration for the GROMACS rot+trans fit that aligns the membrane normal with the z-axis.
+    kind: file
+    path: configs/fit_membrane.yaml
+
+  - id: fit_protein_config
+    name: Protein fit config
+    description: Configuration for the GROMACS XY-translation fit that centers the protein in the membrane plane.
+    kind: file
+    path: configs/fit_protein.yaml
+
+  - id: identify_leaflets_fatslim_config
+    name: FATSLiM leaflet config
+    description: Configuration for the FATSLiM membrane leaflet identification, including the lipid headgroup selection.
+    kind: file
+    path: configs/identify_leaflets_fatslim.yaml
+
 tasks:
   - kind: horus_task
     id: download_trajectory
     name: Download structure and trajectory from MDDB (A023K)
+    description: Fetches the structure, trajectory, and topology for MDDB entry A023K (GABA-gated chloride channel in a DPPC bilayer).
     inputs:
       - id: download_trajectory_config
+        name: Trajectory download config
         kind: file
         path: configs/download_trajectory.yaml
     outputs:
       - id: downloaded_pdb
+        name: Structure (PDB)
         kind: file
         path: results/A023K_10.pdb
       - id: downloaded_xtc
+        name: Trajectory (XTC)
         kind: file
         path: results/A023K_10.xtc
       - id: downloaded_tpr
+        name: Topology (TPR)
         kind: file
         path: results/A023K.tpr
     executor: *executor
@@ -45,18 +123,23 @@ tasks:
   - kind: horus_task
     id: fit_membrane
     name: Fit trajectory to membrane normal (rot+trans, gmx_image)
+    description: Rotates and translates the trajectory with GROMACS so the membrane normal aligns with the z-axis (xy-plane).
     inputs:
       - id: fit_membrane_config
+        name: Membrane fit config
         kind: file
         path: configs/fit_membrane.yaml
       - id: downloaded_pdb
+        name: Structure (PDB)
         kind: file
         path: results/A023K_10.pdb
       - id: downloaded_xtc
+        name: Trajectory (XTC)
         kind: file
         path: results/A023K_10.xtc
     outputs:
       - id: memb_fit_xtc
+        name: Membrane-fitted trajectory
         kind: file
         path: results/A023K_fit.xtc
     executor: *executor
@@ -73,18 +156,23 @@ tasks:
   - kind: horus_task
     id: fit_protein
     name: Fit trajectory to protein XY translation (transxy, gmx_image)
+    description: Further translates the membrane-fitted trajectory with GROMACS to center the protein in the xy-plane.
     inputs:
       - id: fit_protein_config
+        name: Protein fit config
         kind: file
         path: configs/fit_protein.yaml
       - id: downloaded_pdb
+        name: Structure (PDB)
         kind: file
         path: results/A023K_10.pdb
       - id: memb_fit_xtc
+        name: Membrane-fitted trajectory
         kind: file
         path: results/A023K_fit.xtc
     outputs:
       - id: memb_fit_xy_xtc
+        name: Protein-fitted trajectory
         kind: file
         path: results/A023K_fit2.xtc
     executor: *executor
@@ -101,18 +189,23 @@ tasks:
   - kind: horus_task
     id: identify_leaflets_fatslim
     name: Identify membrane leaflets with FATSLiM
+    description: Identifies the upper and lower membrane leaflets using the FATSLiM fatslim_membranes tool.
     inputs:
       - id: identify_leaflets_fatslim_config
+        name: FATSLiM leaflet config
         kind: file
         path: configs/identify_leaflets_fatslim.yaml
       - id: downloaded_pdb
+        name: Structure (PDB)
         kind: file
         path: results/A023K_10.pdb
       - id: downloaded_xtc
+        name: Trajectory (XTC)
         kind: file
         path: results/A023K_10.xtc
     outputs:
       - id: leaflets_ndx
+        name: Leaflet index groups
         kind: file
         path: results/leaflets.ndx
     executor: *docker_executor_mem
@@ -129,18 +222,23 @@ tasks:
   - kind: horus_task
     id: assign_leaflets
     name: Assign leaflets per frame with Lipyphilic (lpp_assign_leaflets)
+    description: Assigns each lipid to a leaflet on a per-frame basis using Lipyphilic.
     inputs:
       - id: assign_leaflets_config
+        name: Leaflet assignment config
         kind: file
         path: configs/assign_leaflets.yaml
       - id: downloaded_pdb
+        name: Structure (PDB)
         kind: file
         path: results/A023K_10.pdb
       - id: memb_fit_xy_xtc
+        name: Protein-fitted trajectory
         kind: file
         path: results/A023K_fit2.xtc
     outputs:
       - id: leaflets_data_csv
+        name: Per-frame leaflet assignment
         kind: file
         path: results/leaflets_data.csv
     executor: *docker_executor_mem
@@ -157,18 +255,23 @@ tasks:
   - kind: horus_task
     id: compute_zpositions
     name: Compute lipid z-positions for whole membrane (lpp_zpositions)
+    description: Computes per-leaflet lipid z-positions and bilayer thickness across the whole membrane using Lipyphilic.
     inputs:
       - id: compute_zpositions_config
+        name: Z-positions config
         kind: file
         path: configs/compute_zpositions.yaml
       - id: downloaded_pdb
+        name: Structure (PDB)
         kind: file
         path: results/A023K_10.pdb
       - id: memb_fit_xy_xtc
+        name: Protein-fitted trajectory
         kind: file
         path: results/A023K_fit2.xtc
     outputs:
       - id: zpositions_csv
+        name: Lipid z-positions (whole membrane)
         kind: file
         path: results/zpositions.csv
     executor: *docker_executor_mem
@@ -185,18 +288,23 @@ tasks:
   - kind: horus_task
     id: compute_zpositions_around
     name: Compute lipid z-positions around protein region (lpp_zpositions)
+    description: Computes per-leaflet lipid z-positions and bilayer thickness restricted to the lipids surrounding the protein using Lipyphilic.
     inputs:
       - id: compute_zpositions_around_config
+        name: Z-positions (protein region) config
         kind: file
         path: configs/compute_zpositions_around.yaml
       - id: downloaded_pdb
+        name: Structure (PDB)
         kind: file
         path: results/A023K_10.pdb
       - id: memb_fit_xy_xtc
+        name: Protein-fitted trajectory
         kind: file
         path: results/A023K_fit2.xtc
     outputs:
       - id: zpositions_around_csv
+        name: Lipid z-positions (protein region)
         kind: file
         path: results/zpositions_around.csv
     executor: *docker_executor_mem
@@ -213,18 +321,23 @@ tasks:
   - kind: horus_task
     id: compute_order_parameters
     name: Compute deuterium order parameters of acyl tails (gorder_aa)
+    description: Computes deuterium order parameters of the lipid acyl tails using gorder.
     inputs:
       - id: compute_order_parameters_config
+        name: Order parameters config
         kind: file
         path: configs/compute_order_parameters.yaml
       - id: downloaded_tpr
+        name: Topology (TPR)
         kind: file
         path: results/A023K.tpr
       - id: downloaded_xtc
+        name: Trajectory (XTC)
         kind: file
         path: results/A023K_10.xtc
     outputs:
       - id: order_csv
+        name: Deuterium order parameters
         kind: file
         path: results/order.csv
     executor: *docker_executor_mem
@@ -241,18 +354,23 @@ tasks:
   - kind: horus_task
     id: compute_area_per_lipid
     name: Compute area per lipid via 2D Voronoi tessellation (fatslim_apl)
+    description: Computes the per-lipid membrane area using FATSLiM's 2D Voronoi tessellation.
     inputs:
       - id: compute_area_per_lipid_config
+        name: Area-per-lipid config
         kind: file
         path: configs/compute_area_per_lipid.yaml
       - id: downloaded_pdb
+        name: Structure (PDB)
         kind: file
         path: results/A023K_10.pdb
       - id: memb_fit_xtc
+        name: Membrane-fitted trajectory
         kind: file
         path: results/A023K_fit.xtc
     outputs:
       - id: apl_csv
+        name: Area per lipid
         kind: file
         path: results/apl.csv
     executor: *docker_executor_mem
@@ -269,18 +387,23 @@ tasks:
   - kind: horus_task
     id: compute_density_profile
     name: Compute membrane density profile along z-axis (cpptraj_density)
+    description: Computes the mass density profile along the membrane normal using cpptraj.
     inputs:
       - id: compute_density_profile_config
+        name: Density profile config
         kind: file
         path: configs/compute_density_profile.yaml
       - id: downloaded_pdb
+        name: Structure (PDB)
         kind: file
         path: results/A023K_10.pdb
       - id: memb_fit_xy_xtc
+        name: Protein-fitted trajectory
         kind: file
         path: results/A023K_fit2.xtc
     outputs:
       - id: density_dat
+        name: Density profile
         kind: file
         path: results/density.dat
     executor: *executor
@@ -297,21 +420,27 @@ tasks:
   - kind: horus_task
     id: compute_pore_dimensions
     name: Compute channel pore radius profile (mda_hole)
+    description: Computes the channel pore-radius profile through the protein using the MDAnalysis HOLE analysis.
     inputs:
       - id: compute_pore_dimensions_config
+        name: Pore dimensions config
         kind: file
         path: configs/compute_pore_dimensions.yaml
       - id: downloaded_pdb
+        name: Structure (PDB)
         kind: file
         path: results/A023K_10.pdb
       - id: memb_fit_xy_xtc
+        name: Protein-fitted trajectory
         kind: file
         path: results/A023K_fit2.xtc
     outputs:
       - id: hole_vmd
+        name: Pore VMD visualization
         kind: file
         path: results/hole.vmd
       - id: hole_profile_csv
+        name: Pore radius profile
         kind: file
         path: results/hole_profile.csv
     executor: *docker_executor_mem
@@ -329,21 +458,27 @@ tasks:
   - kind: horus_task
     id: compute_flip_flop
     name: Detect lipid flip-flop events across leaflets (lpp_flip_flop)
+    description: Detects lipids that flip between leaflets over the trajectory using Lipyphilic.
     inputs:
       - id: compute_flip_flop_config
+        name: Flip-flop detection config
         kind: file
         path: configs/compute_flip_flop.yaml
       - id: downloaded_pdb
+        name: Structure (PDB)
         kind: file
         path: results/A023K_10.pdb
       - id: memb_fit_xy_xtc
+        name: Protein-fitted trajectory
         kind: file
         path: results/A023K_fit2.xtc
       - id: leaflets_data_csv
+        name: Per-frame leaflet assignment
         kind: file
         path: results/leaflets_data.csv
     outputs:
       - id: flip_flop_csv
+        name: Lipid flip-flop events
         kind: file
         path: results/flip_flop.csv
     executor: *docker_executor_mem
@@ -473,6 +608,67 @@ edges:
     source_output: leaflets_data_csv
     target: compute_flip_flop
     target_input: leaflets_data_csv
+
+  - source: artifact-assign_leaflets_config
+    source_output: assign_leaflets_config
+    target: assign_leaflets
+    target_input: assign_leaflets_config
+
+  - source: artifact-compute_area_per_lipid_config
+    source_output: compute_area_per_lipid_config
+    target: compute_area_per_lipid
+    target_input: compute_area_per_lipid_config
+
+  - source: artifact-compute_density_profile_config
+    source_output: compute_density_profile_config
+    target: compute_density_profile
+    target_input: compute_density_profile_config
+
+  - source: artifact-compute_flip_flop_config
+    source_output: compute_flip_flop_config
+    target: compute_flip_flop
+    target_input: compute_flip_flop_config
+
+  - source: artifact-compute_order_parameters_config
+    source_output: compute_order_parameters_config
+    target: compute_order_parameters
+    target_input: compute_order_parameters_config
+
+  - source: artifact-compute_pore_dimensions_config
+    source_output: compute_pore_dimensions_config
+    target: compute_pore_dimensions
+    target_input: compute_pore_dimensions_config
+
+  - source: artifact-compute_zpositions_config
+    source_output: compute_zpositions_config
+    target: compute_zpositions
+    target_input: compute_zpositions_config
+
+  - source: artifact-compute_zpositions_around_config
+    source_output: compute_zpositions_around_config
+    target: compute_zpositions_around
+    target_input: compute_zpositions_around_config
+
+  - source: artifact-download_trajectory_config
+    source_output: download_trajectory_config
+    target: download_trajectory
+    target_input: download_trajectory_config
+
+  - source: artifact-fit_membrane_config
+    source_output: fit_membrane_config
+    target: fit_membrane
+    target_input: fit_membrane_config
+
+  - source: artifact-fit_protein_config
+    source_output: fit_protein_config
+    target: fit_protein
+    target_input: fit_protein_config
+
+  - source: artifact-identify_leaflets_fatslim_config
+    source_output: identify_leaflets_fatslim_config
+    target: identify_leaflets_fatslim
+    target_input: identify_leaflets_fatslim_config
+
 
 orchestrator_target:
   kind: local

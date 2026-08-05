@@ -1,22 +1,36 @@
 kind: horus_workflow
 name: AutoDock Vina Docking
+artifacts:
+  - id: ligands
+    name: Candidate ligand library
+    description: SMILES (or SDF) file listing candidate ligands to dock against the receptor.
+    kind: file
+    path: examples/ligands.smi
+
+  - id: receptor
+    name: Target receptor structure
+    description: PDB file of the target receptor protein to dock ligands into.
+    kind: file
+    path: examples/receptor.pdb
+
 tasks:
   - kind: horus_task
     id: prep
     name: Prepare receptor + ligands + box
+    description: Converts the receptor and ligands to PDBQT format and defines the docking search box for AutoDock Vina.
     skip_if_complete: false
     inputs:
       - id: receptor
-        name: receptor
+        name: Target receptor structure
         kind: file
         path: examples/receptor.pdb
       - id: ligands
-        name: ligands
+        name: Candidate ligand library
         kind: file
         path: examples/ligands.smi
     outputs:
       - id: vina_inputs
-        name: vina_inputs
+        name: Vina input archive
         path: results/vina_inputs.tar.gz
         kind: file
     executor:
@@ -45,14 +59,15 @@ tasks:
   - kind: horus_task
     id: dock
     name: Run AutoDock Vina
+    description: Docks each ligand into the defined search box using AutoDock Vina and records the resulting binding poses.
     inputs:
       - id: vina_inputs
-        name: vina_inputs
+        name: Vina input archive
         path: results/vina_inputs.tar.gz
         kind: file
     outputs:
       - id: docking_out
-        name: docking_out
+        name: Docking results archive
         path: results/docking_out.tar.gz
         kind: file
     executor:
@@ -73,19 +88,20 @@ tasks:
       kind: local
   - kind: horus_task
     id: summary
-    name: Energy tables
+    name: Summarize docking energies
+    description: Parses the Vina docking output into ranked per-ligand and per-pose binding energy tables.
     inputs:
       - id: docking_out
-        name: docking_out
+        name: Docking results archive
         path: results/docking_out.tar.gz
         kind: file
     outputs:
       - id: summary
-        name: summary
+        name: Ranked energy summary
         path: results/summary.csv
         kind: file
       - id: poses
-        name: poses
+        name: Per-pose energy table
         path: results/poses.csv
         kind: file
     executor:
@@ -106,6 +122,17 @@ edges:
     source_output: docking_out
     target: summary
     target_input: docking_out
+
+  - source: artifact-ligands
+    source_output: ligands
+    target: prep
+    target_input: ligands
+
+  - source: artifact-receptor
+    source_output: receptor
+    target: prep
+    target_input: receptor
+
 orchestrator_target:
   kind: local
   working_directory: horus_workflow_results
