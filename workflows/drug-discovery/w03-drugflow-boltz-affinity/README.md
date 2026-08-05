@@ -14,37 +14,30 @@ best-first. It is a full de-novo design loop: propose, then score.
 This **replaces the legacy `boltz-drugflow` Horus plugin**. The science logic
 (sequence extraction, SDF parsing, Boltz YAML generation, affinity → ΔG
 conversion) is lifted verbatim from that plugin's `run_boltz_affinity.py`
-driver; what changes is the orchestration: instead of one monolithic block that
-loops over molecules serially, the scoring stage is a `map:` fan-out with one
-Boltz clone per molecule, running concurrently and independently retryable.
+driver, restaged as a plain linear Horus workflow: one stage per step, each
+independently resumable, no fan-out.
 
 ## Pipeline
 
 ```
-generate       (shell: docker run igashov/drugflow:0.0.3) kras.pdb + ref_ligand.sdf + drugflow.ckpt
+download_checkpoint (shell: wget)                 Zenodo drugflow.ckpt (~170 MB)
+                                                    ──► drugflow.ckpt
+generate            (shell: docker run igashov/drugflow:0.0.3) kras.pdb + ref_ligand.sdf + drugflow.ckpt
                                                     ──► samples.sdf
-prepare_inputs (uv env: rdkit + biopython)         one dir per molecule + smiles.json
-                                                    ──► boltz_inputs/000_mol_1/mol_1.yaml, ...
-setup_boltz_env (uv env: boltz, runs once)         provisions <run>/.horus_boltz_env
-predict        (uv env: N concurrent clones,       boltz predict --use_msa_server
-                 sharing the boltz env above)       ──► predict.gathered/<i>/prediction/
-rank           (shell, stdlib python3)              parse affinity_*.json, ΔG, sort
+prepare_inputs      (uv env: rdkit + biopython)   one YAML per molecule + smiles.json
+                                                    ──► boltz_inputs/mol_1.yaml, ...
+predict             (uv env: boltz)               boltz predict --use_msa_server
+                                                    ──► predictions/affinity_*.json
+rank                (shell, stdlib python3)       parse affinity_*.json, ΔG, sort
                                                     ──► deltaG_table.csv
 ```
 
-`predict` has no static inputs of its own: its `map:` block fans out over the
-**child directories** of `prepare_inputs`'s `boltz_inputs/` folder, sorted by
-name (hence the zero-padded `000_`, `001_`, … prefixes — clone order matches SDF
-order), and gathers every clone's `prediction/` folder into `rank`'s
-`predictions` input.
-
-`setup_boltz_env` builds the uv environment that holds Boltz into
-`<run>/.horus_boltz_env`, and every `predict` clone reuses that exact
-environment (each clone's working dir is `<run>/predict[N]`, so its
-`../.horus_boltz_env` resolves to the same path). This makes the expensive
-`boltz` install happen **once**, up front, instead of N clones racing to create
-the same environment on the first run. After the first time it is a fast
-"reuse existing env" no-op.
+`download_checkpoint` fetches the DrugFlow model checkpoint from Zenodo
+automatically (skipped once `drugflow.ckpt` exists in the run dir), so the
+workflow is self-contained apart from the target PDB, the reference ligand, and
+the `igashov/drugflow:0.0.3` Docker image. `prepare_inputs` writes one Boltz
+affinity YAML per molecule into a single folder, which `predict` feeds to a
+single `boltz predict` call.
 
 ## Quick start
 
@@ -53,27 +46,27 @@ the same environment on the first run. After the first time it is a fast
 curl -LsSf https://astral.sh/uv/install.sh | sh
 uv sync
 
-# One-time: the DrugFlow model checkpoint (~170 MB) and the DrugFlow image
-wget -P examples/ https://zenodo.org/records/14919171/files/drugflow.ckpt
+# One-time: the DrugFlow container image (the checkpoint is downloaded by the workflow)
 docker pull igashov/drugflow:0.0.3
 
 uv run horus run workflow.yaml
 ```
 
-The checkpoint is **not** committed to this repo — download it into `examples/`
-before the first run.
+The checkpoint (~170 MB) is **not** committed to this repo; the
+`download_checkpoint` task fetches it on the first run.
 
 ## Inputs / Outputs
 
 **Inputs**
 - `examples/kras.pdb` — target protein structure.
 - `examples/kras_ref_ligand.sdf` — reference ligand; defines the pocket.
-- `examples/drugflow.ckpt` — DrugFlow model checkpoint (downloaded, see above).
 
 **Outputs**
+- `drugflow.ckpt` — the DrugFlow checkpoint, downloaded by the workflow.
 - `samples.sdf` — the generated molecules.
-- `boltz_inputs/` — one directory per molecule, each with its Boltz affinity YAML.
+- `boltz_inputs/` — one Boltz affinity YAML per molecule.
 - `smiles.json` — `{molecule_name: canonical_smiles}`.
+- `predictions/` — Boltz-2 output, one `affinity_*.json` per molecule.
 - `deltaG_table.csv` — columns `molecule, smiles, affinity_pred_value,
   binding_probability, deltaG_kcal_per_mol`, sorted by ascending ΔG (best first).
 
@@ -81,14 +74,12 @@ before the first run.
 
 | Where | Knob | Default |
 |---|---|---|
+| `download_checkpoint` command | Zenodo URL | `https://zenodo.org/records/14919171/files/drugflow.ckpt` |
 | `generate` command | `--n_samples` | `10` — number of molecules to generate |
 | `generate` command | `--batch_size` | `32` |
 | `generate` command | `--pocket_distance_cutoff` | `8.0` Å |
 | `generate` command | `--device` | `cpu` (set `cuda:0` on a GPU box) |
 | `generate` command | `--seed` | `42` |
-| `setup_boltz_env` executor | `requirements` | `[boltz]` — installed once into the shared env |
-| `setup_boltz_env` executor | `environment_dir` | `../.horus_boltz_env` — shared by all predict clones |
-| `predict` clones | `environment_dir` | `../.horus_boltz_env` — reuses the env from `setup_boltz_env` |
 | `predict` command | `--diffusion_samples` | `1` |
 | `predict` command | `--accelerator` | `cpu` |
 | `predict` command | `--use_msa_server` | on (public ColabFold server) |
@@ -121,52 +112,16 @@ container. The command also `git init` + `git fetch --depth 1 <sha>` +
 `checkout`s the pinned DrugFlow commit into `/tmp/drugflow` inside the
 container before invoking `generate.py`, since the image doesn't ship it.
 
+**Checkpoint download.** `download_checkpoint` uses `wget`. If `wget` is not on
+the target (macOS ships `curl` by default), swap the command for
+`curl -L -o ${checkpoint} https://zenodo.org/records/14919171/files/drugflow.ckpt`.
+The task skips automatically once `drugflow.ckpt` exists in the run directory.
+
 **CPU vs GPU.** Both heavy stages default to CPU so the workflow runs anywhere;
 generation and Boltz prediction are *slow* this way. On a GPU host, add
 `--gpus all` to the `docker run` invocation in `generate`'s command and drop
 `--device cpu` from the `generate.py` args; set `--accelerator gpu` on
 `predict`. This needs the NVIDIA Container Toolkit on the host.
-
-**Shared Boltz environment.** The `predict` map fans out N clones that all run
-`boltz predict` concurrently. If each clone built its own uv environment you
-would pay N full `boltz` installs; if they all built the *same* one
-concurrently they would race (`rm -rf` + `uv venv` on one directory from many
-processes), corrupting it on first run. The dedicated `setup_boltz_env` task
-solves both: it installs Boltz once into `<run>/.horus_boltz_env` before the
-map, and the clones reuse that path. `setup_boltz_env` declares no outputs, so
-it always runs, but once the environment exists the executor's reuse branch is
-a no-op. If you ever change the `requirements`, bump `recreate: true` on that
-task (or point `environment_dir` somewhere fresh) to force a rebuild.
-
-**Two ordering edges you must keep.** Both are non-obvious and the workflow
-breaks without them on current horus-runtime (0.3.2):
-
-1. `setup_boltz_env` is chained off `generate` (`generate →
-   setup_boltz_env → predict`) because the scheduler only runs tasks that are
-   ancestors/descendants of the trigger task. Left disconnected, the env-setup
-   task is dropped from the run scope and the map silently never executes.
-2. `predict → rank` explicitly gates the gather task behind the map expander.
-   horus-runtime ≥0.3.2 stopped emitting this edge at load time for
-   YAML-defined maps (0.2.1 did), so without it `rank` is dispatched
-   concurrently with the expander and reads `predict.gathered/` before the
-   expander pins it, failing with `Input artifact 'predictions' does not
-   exist`.
-
-Both edges are ordering-only (`transfer` carries no data); see the comments in
-`workflow.yaml`.
-
-**HPC / remote execution.** On a cluster without Docker, swap the `generate`
-executor for Singularity via the (new, private) `horus-singularity` plugin:
-
-```yaml
-executor:
-  kind: singularity
-  image: /path/boltz.sif
-  nv: true
-```
-
-and route any stage off the login node with `target: {kind: ssh_target}` or
-`target: {kind: slurm_target}` instead of `target: {kind: local}`.
 
 **Docker root ownership.** The container runs as **root** by default, so
 `samples.sdf` ends up root-owned on the host. Add `--user "$(id -u):$(id -g)"`
@@ -176,10 +131,9 @@ subdirectory: the task only bind-mounts `$(dirname ${samples})`, and a
 not-yet-existing parent would be created by the daemon (as root) the first
 time Docker sees it.
 
-**Boltz input naming.** Each molecule gets its own directory (that is what the
-map fans out over) and the YAML inside is named after the molecule, because the
-YAML stem becomes Boltz's prediction name (`affinity_<stem>.json`) and is the
-key `rank` joins against `smiles.json`.
+**Boltz input naming.** Each molecule's YAML is named after the molecule,
+because the YAML stem becomes Boltz's prediction name (`affinity_<stem>.json`)
+and is the key `rank` joins against `smiles.json`.
 
 **ΔG formula.** Boltz-2's `affinity_pred_value` is ~log10(IC50) with IC50 in µM.
 Treating IC50 as a Kd proxy at 298 K:

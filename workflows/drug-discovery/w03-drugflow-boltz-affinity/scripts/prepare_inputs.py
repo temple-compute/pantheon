@@ -1,12 +1,13 @@
-"""Build one Boltz-2 affinity input directory per generated molecule.
+"""Build the Boltz-2 affinity input folder for the generated molecules.
 
 Reads the DrugFlow SDF, extracts the target sequence from the PDB, and writes
-``<out>/<index>_<name>/<name>.yaml`` for every molecule, plus a ``{name: smiles}``
+one ``<name>.yaml`` per molecule into ``<out>/``, plus a ``{name: smiles}``
 JSON map consumed by the ranking stage.
 
-One *directory* per molecule is deliberate: the `predict` task's ``map:`` block
-fans out over the child directories of ``<out>``, sorted by name, so the
-zero-padded index prefix keeps clone order identical to SDF order.
+The predict stage then runs ``boltz predict <out>`` over the whole folder in a
+single call. The YAML stem becomes Boltz's prediction name
+(``affinity_<stem>.json``), which is the key the ranking stage joins against, so
+it must be the molecule name, not a constant like ``mol.yaml``.
 
 MSAs are not built here: the predict stage runs ``boltz predict
 --use_msa_server``.
@@ -91,12 +92,12 @@ def _safe_name(name: str) -> str:
 
 def main() -> None:
     parser = argparse.ArgumentParser(
-        description="Write one Boltz affinity input directory per molecule."
+        description="Write one Boltz affinity YAML per molecule into a folder."
     )
     parser.add_argument("--protein", required=True, help="Target protein PDB.")
     parser.add_argument("--sdf", required=True, help="Generated molecules SDF.")
     parser.add_argument(
-        "--out", required=True, help="Output folder of per-molecule dirs."
+        "--out", required=True, help="Output folder holding one YAML per molecule."
     )
     parser.add_argument(
         "--smiles-map", required=True, help="Output {name: smiles} JSON path."
@@ -108,22 +109,15 @@ def main() -> None:
 
     os.makedirs(args.out, exist_ok=True)
     smiles_by_name: dict[str, str] = {}
-    for index, (name, smiles) in enumerate(molecules):
+    for name, smiles in molecules:
         safe = _safe_name(name)
         smiles_by_name[safe] = smiles
-        mol_dir = os.path.join(args.out, f"{index:03d}_{safe}")
-        os.makedirs(mol_dir, exist_ok=True)
-        # The YAML stem becomes Boltz's prediction name (affinity_<stem>.json),
-        # which is the key the ranking stage joins on — so it must be the
-        # molecule name, not a constant like "mol.yaml".
-        write_boltz_yaml(
-            os.path.join(mol_dir, f"{safe}.yaml"), sequence, smiles, None
-        )
+        write_boltz_yaml(os.path.join(args.out, f"{safe}.yaml"), sequence, smiles, None)
 
     with open(args.smiles_map, "w", encoding="utf-8") as fh:
         json.dump(smiles_by_name, fh, indent=2)
 
-    print(f"Wrote {len(molecules)} Boltz input directories to {args.out}")
+    print(f"Wrote {len(molecules)} Boltz input YAMLs to {args.out}")
 
 
 if __name__ == "__main__":
