@@ -45,17 +45,25 @@ single folder, which `predict` feeds to a single `boltz predict` call.
 ## Quick start
 
 ```bash
-# One-time: uv, the runtime and plugins
+# Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
-uv sync
 
+# Install the horus-runtime and plugins (one time)
+uv sync
+# or: pip install horus-runtime horus-environments
+
+# Run the workflow
 uv run horus run workflow.yaml
 ```
 
 Needs a conda-family tool (`micromamba`, `mamba`, or `conda`) on `PATH` — the
 `generate` stage builds a conda environment from `conda_env.yaml` (~520 MB,
-built once into `.horus_drugflow_env/` and reused). The checkpoint (~170 MB) is
-**not** committed to this repo; `download_checkpoint` fetches it on the first run.
+built once into `.horus_drugflow_env/` next to `workflow.yaml` and reused). The
+checkpoint (~170 MB) is **not** committed to this repo; `download_checkpoint`
+fetches it on the first run.
+
+Outputs land in `horus_workflow_results/`, `deltaG_table.csv` under its
+`results/`.
 
 > **macOS / Apple Silicon:** `conda_env.yaml` does **not** solve on `osx-arm64`
 > — `pyg=2.5.1`, `ProDy=2.4.0` and `pytorch=2.2.1` have no arm64 builds. Use the
@@ -67,7 +75,7 @@ built once into `.horus_drugflow_env/` and reused). The checkpoint (~170 MB) is
 - `examples/kras.pdb` — target protein structure.
 - `examples/kras_ref_ligand.sdf` — reference ligand; defines the pocket.
 
-**Outputs** (all under the run directory)
+**Outputs** (all under `horus_workflow_results/`)
 - `drugflow.ckpt` — the DrugFlow checkpoint, downloaded by the workflow.
 - `drugflow_src/` — DrugFlow source at the pinned commit.
 - `results/samples.sdf` — the generated molecules.
@@ -133,15 +141,14 @@ command: >-
   --device cpu --seed 42"
 ```
 
-after a `docker pull igashov/drugflow:0.0.3`. Two non-obvious points: the image
-holds *only* DrugFlow's pip dependencies and no repo (which is why the mounted
-`${drugflow_src}` is still needed), and `horus_docker`'s `docker_executor`
-cannot be used because its `volumes:` map is a plain `dict[str, str]` that is
-never placeholder-substituted — it can't see per-task artifact paths. A plain
-shell task works because Horus substitutes `${...}` to absolute *host* paths for
-any `CommandRuntime` regardless of executor, so mounting each at its own path
-means the CLI args need no translation. `--user` is not optional: without it the
-container runs as root and leaves root-owned outputs on the host.
+after a `docker pull igashov/drugflow:0.0.3`. The image holds *only* DrugFlow's
+pip dependencies and no repo, so `${drugflow_src}` still has to be mounted. It is
+a plain shell task rather than `horus_docker`'s `docker_executor` because that
+executor's `volumes:` map is never placeholder-substituted, so it can't see
+per-task artifact paths; a shell task gets absolute *host* paths for every
+`${...}`, so mounting each at its own path means the CLI args need no
+translation. `--user` is not optional: without it the container leaves
+root-owned outputs on the host.
 
 **Checkpoint download.** `download_checkpoint` downloads to `drugflow.ckpt.part`
 and only `mv`s it into place on success — a truncated file left at the final

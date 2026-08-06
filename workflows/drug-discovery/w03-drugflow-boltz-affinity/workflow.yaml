@@ -67,7 +67,6 @@ tasks:
     id: generate
     name: Generate pocket molecules with DrugFlow
     description: Runs DrugFlow's generate.py to propose novel molecules for the reference pocket.
-    skip_if_complete: false
     inputs:
       - id: drugflow_src
         name: DrugFlow source tree

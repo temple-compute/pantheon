@@ -55,21 +55,14 @@ def molecules_from_sdf(sdf_path: str) -> list[tuple[str, str]]:
     return molecules
 
 
-def write_boltz_yaml(
-    path: str, sequence: str, smiles: str, msa_path: str | None
-) -> None:
+def write_boltz_yaml(path: str, sequence: str, smiles: str) -> None:
     """Write a Boltz affinity YAML for a single protein/ligand pair."""
-    protein_lines = [
-        "  - protein:",
-        "      id: A",
-        f'      sequence: "{sequence}"',
-    ]
-    if msa_path:
-        protein_lines.append(f"      msa: {msa_path}")
     lines = [
         "version: 1",
         "sequences:",
-        *protein_lines,
+        "  - protein:",
+        "      id: A",
+        f'      sequence: "{sequence}"',
         "  - ligand:",
         "      id: B",
         f'      smiles: "{smiles}"',
@@ -112,7 +105,7 @@ def main() -> None:
     for name, smiles in molecules:
         safe = _safe_name(name)
         smiles_by_name[safe] = smiles
-        write_boltz_yaml(os.path.join(args.out, f"{safe}.yaml"), sequence, smiles, None)
+        write_boltz_yaml(os.path.join(args.out, f"{safe}.yaml"), sequence, smiles)
 
     with open(args.smiles_map, "w", encoding="utf-8") as fh:
         json.dump(smiles_by_name, fh, indent=2)

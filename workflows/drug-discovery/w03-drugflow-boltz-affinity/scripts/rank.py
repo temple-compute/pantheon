@@ -1,6 +1,6 @@
 """Turn Boltz-2 affinity outputs into a ranked ΔG table.
 
-Walks the gathered predictions folder, parses every ``affinity_*.json`` Boltz
+Walks the predictions folder, parses every ``affinity_*.json`` Boltz
 produced, converts the predicted affinity into an approximate binding free
 energy and writes a CSV sorted by ΔG (best first).
 
@@ -10,6 +10,10 @@ Stdlib-only on purpose: this stage runs under a bare ``python3`` on the target.
 from __future__ import annotations
 
 import argparse
+import csv
+import glob
+import json
+import os
 from typing import Any
 
 # --- Pure, stdlib-only helpers (unit-tested) -----------------------------
@@ -81,8 +85,6 @@ def build_row(
 
 def write_table(rows: list[dict[str, Any]], csv_path: str) -> None:
     """Write ΔG rows to *csv_path* as CSV (sorted by ΔG, ascending)."""
-    import csv
-
     def _sort_key(row: dict[str, Any]) -> float:
         value = row.get("deltaG_kcal_per_mol")
         return float("inf") if value is None else value
@@ -99,10 +101,6 @@ def collect_affinity_rows(
     out_dir: str, smiles_by_name: dict[str, str]
 ) -> list[dict[str, Any]]:
     """Walk Boltz's output tree and build ΔG rows for each prediction."""
-    import glob
-    import json
-    import os
-
     rows = []
     pattern = os.path.join(out_dir, "**", "affinity_*.json")
     for json_path in sorted(glob.glob(pattern, recursive=True)):
@@ -122,11 +120,9 @@ def collect_affinity_rows(
 
 
 def main() -> None:
-    import json
-
     parser = argparse.ArgumentParser(description="Boltz-2 ΔG table builder")
     parser.add_argument(
-        "--predictions", required=True, help="Gathered Boltz predictions dir."
+        "--predictions", required=True, help="Boltz predictions dir."
     )
     parser.add_argument(
         "--smiles", required=True, help="{name: smiles} JSON map."
