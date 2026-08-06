@@ -111,8 +111,13 @@ Outputs land in `horus_workflow_results/`, `deltaG_table.csv` under its
 container. Upstream ships its own `environment.yaml`, and `gnina` — the only
 external binary in its install instructions — is required solely for optional
 docking-score metrics, not for generation. `conda_env.yaml` here is that file
-with the two CUDA pins relaxed to CPU builds; `conda_env_gpu.yaml` is it
-verbatim. Both were checked with `micromamba create --dry-run` on `linux-64`.
+with the two CUDA pins relaxed to CPU builds; `conda_env_gpu.yaml` keeps CUDA
+12.1. Both were checked with `micromamba create --dry-run` on `linux-64`, and
+both add one pin upstream doesn't have: `setuptools<81`. ProDy 2.4.0 does
+`import pkg_resources`, which setuptools removed after deprecating it in 81, so
+an unpinned solve installs a setuptools that makes `import prody` (and
+therefore `src/generate.py`) fail with `ModuleNotFoundError: No module named
+'pkg_resources'`.
 
 The environment supplies the dependencies but not the code (DrugFlow isn't
 packaged), hence the separate `fetch_source` stage. `generate`'s command

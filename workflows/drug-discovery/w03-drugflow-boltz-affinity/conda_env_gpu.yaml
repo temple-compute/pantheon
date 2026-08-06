@@ -25,6 +25,8 @@ dependencies:
   - wandb=0.16.3
   - pandas=2.2.2
   - pip=24.0
+  # ProDy 2.4.0 does `import pkg_resources`, dropped from setuptools 81+.
+  - setuptools<81
   - pip:
       - posebusters==0.3.1
       - useful_rdkit_utils==0.65
