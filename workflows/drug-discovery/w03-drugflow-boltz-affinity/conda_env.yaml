@@ -25,6 +25,9 @@ dependencies:
   - ProDy=2.4.0
   - wandb=0.16.3
   - pandas=2.2.2
+  # torchmetrics imports matplotlib; the pip wheel needs a newer system
+  # libstdc++ than the container has, so take the conda-forge build.
+  - matplotlib-base=3.8.4
   - pip=24.0
   # ProDy 2.4.0 does `import pkg_resources`, dropped from setuptools 81+.
   - setuptools<81
