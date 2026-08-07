@@ -1,0 +1,37 @@
+kind: horus_workflow
+name: Execution Path Coverage - Container Path
+# The container execution path, kept out of workflow.yaml so the main harness
+# stays runnable on a machine with no Docker daemon.
+#
+#   uv sync --extra docker
+#   uv run horus run workflow.docker.yaml
+#
+# The task declares no outputs on purpose: DockerExecutor mounts nothing by
+# default, so the container cannot write into the task working directory
+# unless you add `volumes:` yourself. Burning CPU/RAM inside the container is
+# the whole point here — this is the path where the work is NOT in the process
+# tree the runtime spawned (the `docker run` client is), so it is the one most
+# likely to measure nothing at all.
+tasks:
+  - kind: horus_task
+    id: docker_container
+    name: Docker executor + command runtime
+    description: Container path — the workload runs under the Docker daemon, not in the spawned process tree.
+    skip_if_complete: false
+    resources:
+      cpus: 4
+      memory_gb: 8
+      walltime: "00:05:00"
+    executor:
+      kind: docker
+      image: python:3.13-slim
+    runtime:
+      kind: command
+      command: >-
+        python3 -c "import time;b=bytearray(300<<20);[b.__setitem__(i,1) for i in range(0,len(b),4096)];t=time.monotonic()+4;n=sum(1 for _ in iter(lambda: pow(3,100000,99991) if time.monotonic()<t else None, None));print('docker_container ok',len(b)>>20,'MiB',n,'iterations')"
+    target:
+      kind: local
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
