@@ -24,7 +24,7 @@ download_checkpoint (shell: curl)                 Zenodo drugflow.ckpt (~170 MB)
                                                     ──► drugflow.ckpt
 fetch_source        (shell: git)                  DrugFlow repo @ pinned commit
                                                     ──► drugflow_src/
-generate            (conda env: conda_env.yaml)   kras.pdb + ref_ligand.sdf + drugflow.ckpt
+generate            (singularity on slurm)        kras.pdb + ref_ligand.sdf + drugflow.ckpt
                                                     ──► results/samples.sdf
 prepare_inputs      (uv env: rdkit + biopython)   one YAML per molecule + smiles.json
                                                     ──► results/boltz_inputs/mol_1.yaml, ...
@@ -37,9 +37,8 @@ rank                (shell, stdlib python3)       parse affinity_*.json, ΔG, so
 `download_checkpoint` and `fetch_source` make the workflow self-contained apart
 from the target PDB and the reference ligand: the first pulls the model
 checkpoint from Zenodo, the second clones DrugFlow at a pinned commit (the code
-is not published as a package, so the conda environment supplies its
-dependencies but not the code itself). Both are skipped once their output
-exists. `prepare_inputs` writes one Boltz affinity YAML per molecule into a
+is not published as a package, so the container supplies its dependencies but
+not the code itself). Both are skipped once their output exists. `prepare_inputs` writes one Boltz affinity YAML per molecule into a
 single folder, which `predict` feeds to a single `boltz predict` call.
 
 ## Quick start
@@ -50,24 +49,31 @@ curl -LsSf https://astral.sh/uv/install.sh | sh
 
 # Install the horus-runtime and plugins (one time)
 uv sync
-# or: pip install horus-runtime horus-environments
+# or: pip install horus-runtime horus-environments horus-singularity horus-slurm
+
+# Build the DrugFlow image once, on the cluster
+#   see boltz-drugflow/examples/build_drugflow_sif.sh
+# then point generate's `image:` at the resulting .sif
 
 # Run the workflow
 uv run horus run workflow.yaml
 ```
 
-Needs a conda-family tool (`micromamba`, `mamba`, or `conda`) on `PATH` — the
-`generate` stage builds a conda environment from `conda_env.yaml` (~520 MB,
-built once into `.horus_drugflow_env/` next to `workflow.yaml` and reused). The
-checkpoint (~170 MB) is **not** committed to this repo; `download_checkpoint`
-fetches it on the first run.
+Run this from a Slurm login node: `generate` submits an sbatch job that runs
+`singularity exec --nv`, so you need `sbatch` and `singularity` (or `apptainer`)
+reachable there, plus the `drugflow.sif` built beforehand — the executor has no
+build or pull step. The other stages run locally and still need a conda-family
+tool only if you take the conda fallback below. The checkpoint (~170 MB) is
+**not** committed to this repo; `download_checkpoint` fetches it on the first
+run.
 
 Outputs land in `horus_workflow_results/`, `deltaG_table.csv` under its
 `results/`.
 
-> **macOS / Apple Silicon:** `conda_env.yaml` does **not** solve on `osx-arm64`
-> — `pyg=2.5.1`, `ProDy=2.4.0` and `pytorch=2.2.1` have no arm64 builds. Use the
-> Docker fallback below for the `generate` stage on a Mac.
+> **macOS / Apple Silicon:** neither path runs `generate` locally on a Mac —
+> there is no Singularity, and `conda_env.yaml` does **not** solve on `osx-arm64`
+> (`pyg=2.5.1`, `ProDy=2.4.0` and `pytorch=2.2.1` have no arm64 builds). Use the
+> cluster, or the Docker note under Implementation Notes.
 
 ## Inputs / Outputs
 
@@ -91,11 +97,14 @@ Outputs land in `horus_workflow_results/`, `deltaG_table.csv` under its
 |---|---|---|
 | `download_checkpoint` command | Zenodo URL | `https://zenodo.org/records/14919171/files/drugflow.ckpt` |
 | `fetch_source` command | pinned DrugFlow commit | `ed684167…` |
-| `generate` executor | `environment_file` | `conda_env.yaml` (swap for `conda_env_gpu.yaml` on an NVIDIA node) |
+| `generate` executor | `image` | path to `drugflow.sif` on the cluster — **must be set** |
+| `generate` executor | `exe` | `singularity` (set the cluster's absolute path if it isn't on `PATH`) |
+| `generate` executor | `nv` | `true` — drop to `false` for a CPU-only run |
+| `generate` target | `gres`, `time_limit` | `gpu:1`, `02:00:00`; add `partition`/`account`/`qos` if your Slurm needs them |
 | `generate` command | `--n_samples` | `10` — number of molecules to generate |
 | `generate` command | `--batch_size` | `32` |
 | `generate` command | `--pocket_distance_cutoff` | `8.0` Å |
-| `generate` command | `--device` | `cpu` (set `cuda:0` on a GPU box) |
+| `generate` command | `--device` | `cuda:0` (set `cpu`, and `nv: false`, without a GPU) |
 | `generate` command | `--seed` | `42` |
 | `generate` command | `--molecule_size` | unset — max atoms per molecule; add e.g. `--molecule_size 15,20` for a range |
 | `generate` command | `--n_steps` | unset — denoising steps; add to override the model default |
@@ -107,63 +116,72 @@ Outputs land in `horus_workflow_results/`, `deltaG_table.csv` under its
 
 ## Implementation Notes
 
-**Why `generate` runs in conda, not Docker.** DrugFlow does not need a
-container. Upstream ships its own `environment.yaml`, and `gnina` — the only
-external binary in its install instructions — is required solely for optional
-docking-score metrics, not for generation. `conda_env.yaml` here is that file
-with the two CUDA pins relaxed to CPU builds; `conda_env_gpu.yaml` keeps CUDA
-12.1. Both were checked with `micromamba create --dry-run` on `linux-64`, and
-both add one pin upstream doesn't have: `setuptools<81`. ProDy 2.4.0 does
-`import pkg_resources`, which setuptools removed after deprecating it in 81, so
-an unpinned solve installs a setuptools that makes `import prody` (and
-therefore `src/generate.py`) fail with `ModuleNotFoundError: No module named
-'pkg_resources'`.
+**Why `generate` runs in Singularity, on Slurm.** The heavy stage wants a GPU,
+and GPUs live on the cluster — where the Docker daemon is not available but
+Singularity/Apptainer is. `generate` therefore uses `horus-singularity`'s
+`kind: singularity` executor with a `slurm_target`, so the container runs inside
+an sbatch job. The `.sif` is built once, off-workflow, with
+`boltz-drugflow/examples/build_drugflow_sif.sh`
+(`singularity build drugflow.sif docker://igashov/drugflow:0.0.3`); the executor
+has no build or pull step, so the image must already exist on the cluster.
 
-The environment supplies the dependencies but not the code (DrugFlow isn't
-packaged), hence the separate `fetch_source` stage. `generate`'s command
-`cd`s into that checkout because `src/generate.py` uses `from src... import`
-and so needs the repo root as its working directory; every `${...}` resolves to
-an absolute path, so nothing else is affected by the `cd`.
+Three things about this that are easy to get wrong:
 
-**Docker fallback (macOS / arm64).** `conda_env.yaml` has no `osx-arm64`
-solution, so on a Mac swap `generate`'s executor back to `{kind: shell}` and its
-command to:
+1. **The image ships DrugFlow's dependencies, not its code.** DrugFlow isn't
+   packaged, so `src/generate.py` comes from the separate `fetch_source` stage
+   and the checkout has to be visible inside the container. The executor
+   auto-binds every input/output artifact's parent directory at its own path,
+   which covers it.
+2. **Singularity does no path translation.** Unlike a Docker port of this stage,
+   which would rewrite paths to `/work` and `/checkpoint`, a bound host path is
+   visible inside the container at the same location. So every `${...}` in the
+   command is valid on both sides and needs no rewriting. Add an explicit
+   `binds:` entry only for a path outside the task working directory (a shared
+   checkpoint on `/scratch`, say).
+3. **`cd ${drugflow_src}` is still required**, because `src/generate.py` uses
+   `from src... import` and needs the repo root as its working directory. Don't
+   also set the executor's `working_dir:` (`--pwd`) — the `cd` is enough, and
+   the two interact confusingly.
+
+**Conda fallback (no cluster, or macOS).** The stage previously ran under
+`kind: conda_python_environment`, and that still works anywhere with a GPU or
+enough patience:
 
 ```yaml
-command: >-
-  docker run --rm --platform linux/amd64
-  --user "$(id -u):$(id -g)"
-  -v ${drugflow_src}:${drugflow_src}:ro
-  -v ${protein}:${protein}:ro
-  -v ${ref_ligand}:${ref_ligand}:ro
-  -v ${checkpoint}:${checkpoint}:ro
-  -v $(dirname ${samples}):$(dirname ${samples})
-  igashov/drugflow:0.0.3
-  sh -c "cd ${drugflow_src} && python src/generate.py
-  --protein ${protein} --ref_ligand ${ref_ligand}
-  --checkpoint ${checkpoint} --output ${samples}
-  --n_samples 10 --batch_size 32 --pocket_distance_cutoff 8.0
-  --device cpu --seed 42"
+executor:
+  kind: conda_python_environment
+  conda: micromamba
+  environment_dir: "../.horus_drugflow_env"
+  environment_file: conda_env.yaml     # conda_env_gpu.yaml on an NVIDIA node
+target:
+  kind: local
 ```
 
-after a `docker pull igashov/drugflow:0.0.3`. The image holds *only* DrugFlow's
-pip dependencies and no repo, so `${drugflow_src}` still has to be mounted. It is
-a plain shell task rather than `horus_docker`'s `docker_executor` because that
-executor's `volumes:` map is never placeholder-substituted, so it can't see
-per-task artifact paths; a shell task gets absolute *host* paths for every
-`${...}`, so mounting each at its own path means the CLI args need no
-translation. `--user` is not optional: without it the container leaves
-root-owned outputs on the host.
+`conda_env.yaml` is upstream's own `environment.yaml` with the two CUDA pins
+relaxed to CPU builds; `conda_env_gpu.yaml` keeps CUDA 12.1. Both were checked
+with `micromamba create --dry-run` on `linux-64`, and both add one pin upstream
+doesn't have: `setuptools<81`. ProDy 2.4.0 does `import pkg_resources`, which
+setuptools removed after deprecating it in 81, so an unpinned solve installs a
+setuptools that makes `import prody` (and therefore `src/generate.py`) fail with
+`ModuleNotFoundError: No module named 'pkg_resources'`.
+
+Note `conda_env.yaml` has **no `osx-arm64` solution** (`pyg=2.5.1`, `ProDy=2.4.0`
+and `pytorch=2.2.1` have no arm64 builds), so on Apple Silicon neither the conda
+nor the Singularity path works locally — use the cluster, or Docker with
+`--platform linux/amd64` via `horus-docker`'s `kind: docker` executor (its
+`volumes:` map *is* placeholder-substituted, so it can mount `${protein}` and
+friends directly; set `user:` or the container leaves root-owned outputs behind).
 
 **Checkpoint download.** `download_checkpoint` downloads to `drugflow.ckpt.part`
 and only `mv`s it into place on success — a truncated file left at the final
 path would satisfy `skip_if_complete` and be reused as a corrupt checkpoint on
 every later run. The task skips once `drugflow.ckpt` exists in the run directory.
 
-**CPU vs GPU.** Both heavy stages default to CPU so the workflow runs anywhere;
-generation and Boltz prediction are *slow* this way. On an NVIDIA node, point
-`generate`'s `environment_file:` at `conda_env_gpu.yaml` and change
-`--device cpu` to `--device cuda:0`; set `--accelerator gpu` on `predict`.
+**CPU vs GPU.** `generate` defaults to GPU (`nv: true`, `--device cuda:0`,
+`gres: gpu:1`); `--nv` and `--device` must agree, or the container either can't
+see the driver stack or won't ask for it. `predict` still defaults to
+`--accelerator cpu` so it runs anywhere — set `gpu` there too if you move it
+onto the cluster. Both stages are *slow* on CPU.
 
 **Boltz input naming.** Each molecule's YAML is named after the molecule,
 because the YAML stem becomes Boltz's prediction name (`affinity_<stem>.json`)

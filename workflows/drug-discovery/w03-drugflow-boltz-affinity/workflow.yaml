@@ -95,25 +95,37 @@ tasks:
         kind: file
         path: results/samples.sdf
     executor:
-      # DrugFlow's own environment.yaml, CPU-flavoured. See conda_env.yaml for
-      # the GPU variant and the macOS caveat.
-      kind: conda_python_environment
-      conda: micromamba
-      environment_dir: "../.horus_drugflow_env"
-      environment_file: conda_env.yaml
+      # The .sif ships DrugFlow's dependencies, not its code: src/generate.py
+      # comes from the fetch_source clone, so the repo has to be visible inside
+      # the container. The executor auto-binds every artifact's parent dir at
+      # its own path, which covers it. Build the image with
+      # boltz-drugflow/examples/build_drugflow_sif.sh; there is no build step
+      # here. Set nv: false and --device cpu below for a CPU-only run.
+      kind: singularity
+      image: /scratch/molbiomed/CHANGEME/drugflow.sif
+      nv: true
     runtime:
       # `cd` is required: src/generate.py does `from src... import ...`, so the
       # repo root has to be the working directory. Every ${...} resolves to an
-      # absolute path, so the inputs and output are unaffected by it.
+      # absolute path that is valid both inside and outside the container
+      # (Singularity does no path translation), so the inputs and output are
+      # unaffected by it. Do not also set the executor's working_dir/--pwd.
       kind: command
       command: >-
         cd ${drugflow_src} && python src/generate.py
         --protein ${protein} --ref_ligand ${ref_ligand}
         --checkpoint ${checkpoint} --output ${samples}
         --n_samples 10 --batch_size 32 --pocket_distance_cutoff 8.0
-        --device cpu --seed 42
+        --device cuda:0 --seed 42
+    resources:
+      gpus: 1
+      cpus: 8
     target:
-      kind: local
+      kind: slurm
+      inner:
+        kind: local
+      gres: gpu:1
+      time_limit: "02:00:00"
 
   - kind: horus_task
     id: prepare_inputs
