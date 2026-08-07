@@ -31,6 +31,7 @@ Usage:
 from __future__ import annotations  # portable across python3 (>=3.9)
 
 import argparse
+import importlib.util
 import json
 import shutil
 import subprocess
@@ -195,7 +196,9 @@ def prepare_ligands(ligands: Path, staging: Path) -> int:
             print(f"prep.py: embedded {n} SMILES to 3D")
         _run(
             [
-                "mk_prepare_ligand.py",
+                # Not the console script: its /bin/sh shim execs an unquoted
+                # interpreter path, which breaks when the env dir has a space.
+                sys.executable, "-m", "meeko.cli.mk_prepare_ligand",
                 "-i", str(sdf),
                 "--multimol_outdir", str(lig_dir),
             ]
@@ -330,9 +333,10 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if not (args.receptor and args.ligands and args.out):
         parser.error("--receptor, --ligands and --out are required")
-    for tool in ("obabel", "mk_prepare_ligand.py"):
-        if shutil.which(tool) is None:
-            parser.error(f"'{tool}' not on PATH — run inside the stage's uv env")
+    if shutil.which("obabel") is None:
+        parser.error("'obabel' not on PATH — run inside the stage's uv env")
+    if importlib.util.find_spec("meeko.cli.mk_prepare_ligand") is None:
+        parser.error("meeko not importable — run inside the stage's uv env")
 
     build_inputs(args)
     return 0
