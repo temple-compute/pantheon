@@ -15,6 +15,23 @@ artifacts:
     path: examples/kras_ref_ligand.sdf
     kind: file
 
+  # Build it once with boltz-drugflow/examples/build_drugflow_sif.sh -- the
+  # singularity executor has no build or pull step, so the image must already
+  # exist on the target.
+  #
+  # The default is relative, so it resolves inside the run directory next to
+  # drugflow.ckpt and works as-is if you build the image there. Point it at an
+  # absolute path (a shared /scratch image, say) to reuse one build across runs;
+  # that path is site-specific, which is exactly why it is declared here rather
+  # than inline on the executor -- every path an operator has to supply lives in
+  # this one block. `generate` reads it as ${drugflow_sif}.
+  - id: drugflow_sif
+    name: DrugFlow Singularity image
+    description: Singularity/Apptainer image holding DrugFlow's dependencies. Built
+      from docker://igashov/drugflow:0.0.3; supplies the environment, not the code.
+    path: drugflow.sif
+    kind: file
+
 tasks:
   - kind: horus_task
     id: download_checkpoint
@@ -88,6 +105,12 @@ tasks:
         description: DrugFlow model checkpoint downloaded by the download_checkpoint stage.
         kind: file
         path: drugflow.ckpt
+      - id: drugflow_sif
+        name: DrugFlow Singularity image
+        description: Singularity image supplying DrugFlow's dependencies. Declared as
+          an input so its path lives in the workflow's artifacts block.
+        kind: file
+        path: drugflow.sif
     outputs:
       - id: samples
         name: Generated molecules
@@ -95,25 +118,41 @@ tasks:
         kind: file
         path: results/samples.sdf
     executor:
-      # DrugFlow's own environment.yaml, CPU-flavoured. See conda_env.yaml for
-      # the GPU variant and the macOS caveat.
-      kind: conda_python_environment
-      conda: micromamba
-      environment_dir: "../.horus_drugflow_env"
-      environment_file: conda_env.yaml
+      # The .sif ships DrugFlow's dependencies, not its code: src/generate.py
+      # comes from the fetch_source clone, so the repo has to be visible inside
+      # the container. The executor auto-binds every artifact's parent dir at
+      # its own path, which covers it. Set nv: false and --device cpu below for
+      # a CPU-only run.
+      #
+      # ${drugflow_sif} resolves to the image path declared in the artifacts
+      # block at the top of this file -- set it there, not here. Requires
+      # horus-singularity >= 0.2.0, which added placeholder substitution on
+      # executor fields.
+      kind: singularity
+      image: ${drugflow_sif}
+      nv: true
     runtime:
       # `cd` is required: src/generate.py does `from src... import ...`, so the
       # repo root has to be the working directory. Every ${...} resolves to an
-      # absolute path, so the inputs and output are unaffected by it.
+      # absolute path that is valid both inside and outside the container
+      # (Singularity does no path translation), so the inputs and output are
+      # unaffected by it. Do not also set the executor's working_dir/--pwd.
       kind: command
       command: >-
         cd ${drugflow_src} && python src/generate.py
         --protein ${protein} --ref_ligand ${ref_ligand}
         --checkpoint ${checkpoint} --output ${samples}
         --n_samples 10 --batch_size 32 --pocket_distance_cutoff 8.0
-        --device cpu --seed 42
+        --device cuda:0 --seed 42
+    resources:
+      gpus: 1
+      cpus: 8
     target:
-      kind: local
+      kind: slurm
+      inner:
+        kind: local
+      gres: gpu:1
+      time_limit: "02:00:00"
 
   - kind: horus_task
     id: prepare_inputs
@@ -257,6 +296,11 @@ edges:
     source_output: ref_ligand
     target: generate
     target_input: ref_ligand
+
+  - source: artifact-drugflow_sif
+    source_output: drugflow_sif
+    target: generate
+    target_input: drugflow_sif
 
 
 orchestrator_target:
