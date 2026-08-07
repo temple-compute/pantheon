@@ -15,6 +15,19 @@ artifacts:
     path: examples/kras_ref_ligand.sdf
     kind: file
 
+  # Set this to your own .sif before running: the path is site-specific and
+  # there is no sensible default. Build it once with
+  # boltz-drugflow/examples/build_drugflow_sif.sh -- the singularity executor
+  # has no build or pull step, so the image must already exist on the target.
+  # Declared here rather than inline on the executor so every path an operator
+  # has to supply lives in one block; `generate` reads it as ${drugflow_sif}.
+  - id: drugflow_sif
+    name: DrugFlow Singularity image
+    description: Singularity/Apptainer image holding DrugFlow's dependencies. Built
+      from docker://igashov/drugflow:0.0.3; supplies the environment, not the code.
+    path: /path/to/drugflow.sif
+    kind: file
+
 tasks:
   - kind: horus_task
     id: download_checkpoint
@@ -88,6 +101,12 @@ tasks:
         description: DrugFlow model checkpoint downloaded by the download_checkpoint stage.
         kind: file
         path: drugflow.ckpt
+      - id: drugflow_sif
+        name: DrugFlow Singularity image
+        description: Singularity image supplying DrugFlow's dependencies. Declared as
+          an input so its path lives in the workflow's artifacts block.
+        kind: file
+        path: /path/to/drugflow.sif
     outputs:
       - id: samples
         name: Generated molecules
@@ -98,11 +117,15 @@ tasks:
       # The .sif ships DrugFlow's dependencies, not its code: src/generate.py
       # comes from the fetch_source clone, so the repo has to be visible inside
       # the container. The executor auto-binds every artifact's parent dir at
-      # its own path, which covers it. Build the image with
-      # boltz-drugflow/examples/build_drugflow_sif.sh; there is no build step
-      # here. Set nv: false and --device cpu below for a CPU-only run.
+      # its own path, which covers it. Set nv: false and --device cpu below for
+      # a CPU-only run.
+      #
+      # ${drugflow_sif} resolves to the image path declared in the artifacts
+      # block at the top of this file -- set it there, not here. Requires
+      # horus-singularity >= 0.2.0, which added placeholder substitution on
+      # executor fields.
       kind: singularity
-      image: /scratch/molbiomed/CHANGEME/drugflow.sif
+      image: ${drugflow_sif}
       nv: true
     runtime:
       # `cd` is required: src/generate.py does `from src... import ...`, so the
@@ -269,6 +292,11 @@ edges:
     source_output: ref_ligand
     target: generate
     target_input: ref_ligand
+
+  - source: artifact-drugflow_sif
+    source_output: drugflow_sif
+    target: generate
+    target_input: drugflow_sif
 
 
 orchestrator_target:

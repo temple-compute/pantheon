@@ -6,6 +6,6 @@ dependencies = [
   "horus-environments>=0.1.2",
   "horus-runtime>=0.3.0",
   # generate runs in a Singularity container submitted through Slurm.
-  "horus-singularity>=0.0.1",
+  "horus-singularity>=0.3.0",
   "horus-slurm>=0.0.1",
 ]
