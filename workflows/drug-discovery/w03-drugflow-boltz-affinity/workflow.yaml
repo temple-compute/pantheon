@@ -15,17 +15,21 @@ artifacts:
     path: examples/kras_ref_ligand.sdf
     kind: file
 
-  # Set this to your own .sif before running: the path is site-specific and
-  # there is no sensible default. Build it once with
-  # boltz-drugflow/examples/build_drugflow_sif.sh -- the singularity executor
-  # has no build or pull step, so the image must already exist on the target.
-  # Declared here rather than inline on the executor so every path an operator
-  # has to supply lives in one block; `generate` reads it as ${drugflow_sif}.
+  # Build it once with boltz-drugflow/examples/build_drugflow_sif.sh -- the
+  # singularity executor has no build or pull step, so the image must already
+  # exist on the target.
+  #
+  # The default is relative, so it resolves inside the run directory next to
+  # drugflow.ckpt and works as-is if you build the image there. Point it at an
+  # absolute path (a shared /scratch image, say) to reuse one build across runs;
+  # that path is site-specific, which is exactly why it is declared here rather
+  # than inline on the executor -- every path an operator has to supply lives in
+  # this one block. `generate` reads it as ${drugflow_sif}.
   - id: drugflow_sif
     name: DrugFlow Singularity image
     description: Singularity/Apptainer image holding DrugFlow's dependencies. Built
       from docker://igashov/drugflow:0.0.3; supplies the environment, not the code.
-    path: /path/to/drugflow.sif
+    path: drugflow.sif
     kind: file
 
 tasks:
@@ -106,7 +110,7 @@ tasks:
         description: Singularity image supplying DrugFlow's dependencies. Declared as
           an input so its path lives in the workflow's artifacts block.
         kind: file
-        path: /path/to/drugflow.sif
+        path: drugflow.sif
     outputs:
       - id: samples
         name: Generated molecules

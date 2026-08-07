@@ -53,7 +53,8 @@ uv sync
 
 # Build the DrugFlow image once, on the cluster
 #   see boltz-drugflow/examples/build_drugflow_sif.sh
-# then set the `drugflow_sif` artifact's `path:` at the top of workflow.yaml
+# the default `drugflow_sif` path is relative to the run dir; set it to an
+#   absolute path in workflow.yaml to reuse a shared image
 
 # Run the workflow
 uv run horus run workflow.yaml
@@ -97,7 +98,7 @@ Outputs land in `horus_workflow_results/`, `deltaG_table.csv` under its
 |---|---|---|
 | `download_checkpoint` command | Zenodo URL | `https://zenodo.org/records/14919171/files/drugflow.ckpt` |
 | `fetch_source` command | pinned DrugFlow commit | `ed684167…` |
-| `drugflow_sif` artifact | `path` | path to `drugflow.sif` on the cluster — **must be set**; `generate` reads it as `${drugflow_sif}` |
+| `drugflow_sif` artifact | `path` | `drugflow.sif`, relative to the run dir — point at an absolute path to reuse a shared image; `generate` reads it as `${drugflow_sif}` |
 | `generate` executor | `exe` | `singularity` (set the cluster's absolute path if it isn't on `PATH`) |
 | `generate` executor | `nv` | `true` — drop to `false` for a CPU-only run |
 | `generate` target | `gres`, `time_limit` | `gpu:1`, `02:00:00`; add `partition`/`account`/`qos` if your Slurm needs them |
@@ -130,7 +131,10 @@ sits in the `artifacts:` block at the top of `workflow.yaml`, alongside `protein
 and `ref_ligand`, and `generate` reads it as `image: ${drugflow_sif}`. Its
 location is site-specific, so committing it inside the task would mean the
 workflow always carries a path that is wrong for everyone but its author; this
-way every path an operator has to set lives in one block. (Needs
+way every path an operator has to set lives in one block. The default is
+*relative* (`drugflow.sif`), so it resolves in the run directory next to
+`drugflow.ckpt` and works unedited if you build the image there — point it at an
+absolute path to share one build across runs. (Needs
 `horus-singularity >= 0.3.0`, which added placeholder substitution on `image` —
 a Docker image is a registry tag with nothing to substitute, a Singularity image
 is a file.)
