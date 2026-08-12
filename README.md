@@ -5,11 +5,11 @@
 [![Stars](https://img.shields.io/github/stars/temple-compute/pantheon?style=social)](https://github.com/temple-compute/pantheon/stargazers)
 [![Horus Runtime](https://img.shields.io/badge/runtime-horus--runtime-4B32C3)](https://github.com/temple-compute/horus-runtime)
 
-> Production-ready scientific workflows for the **Horus Runtime** — molecular dynamics, virtual screening, docking, LLM training, and more. Each workflow is a multi-stage pipeline that routes every stage to the right cluster type automatically: HPC, cloud, or local.
+> Production-ready scientific workflows for the **Horus Runtime**. Molecular dynamics, virtual screening, docking, LLM training, and more. Each workflow is a multi-stage pipeline that routes every stage to the right cluster type automatically: HPC, cloud, or local.
 
-**Why Pantheon?** Stop writing glue code. Declare your pipeline once — Horus runs it across heterogeneous compute, streams logs live, retries failures, and produces typed artifacts you can trace.
+**Why Pantheon?** Stop writing glue code. Declare your pipeline once and Horus runs it across heterogeneous compute, streams logs live, retries failures, and produces typed artifacts you can trace.
 
-**Star the repo** ⭐ if you build scientific pipelines — it helps more people find these workflows.
+**Star the repo** ⭐ if you build scientific pipelines, it helps more people find these workflows.
 
 Each workflow directory contains:
 - `README.md`: purpose, pipeline, install steps, and configuration guide
