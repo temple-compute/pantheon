@@ -1,0 +1,74 @@
+{
+  "target": "recombinant lipase (secreted enzyme)",
+  "objective": "net_usd_per_kg",
+  "best_known": {
+    "expected_usd_per_kg": 49.891107452020826,
+    "lower_usd_per_kg": 47.385925194275,
+    "upper_usd_per_kg": 52.48347150975536,
+    "prob_meets_target": 1.0,
+    "target_usd_per_kg": 200.0
+  },
+  "recommended": [
+    {
+      "expected_cost_reduction_usd_per_kg": 2.9151771846104833,
+      "feed_rate": 0.05849273816368147,
+      "feed_start": 4.253315472555707,
+      "Sf": 446.71369759655573,
+      "induction_time": 8.400898280211965,
+      "S0": 21.22810164183729
+    },
+    {
+      "expected_cost_reduction_usd_per_kg": 2.387831631677855,
+      "feed_rate": 0.05119081487143104,
+      "feed_start": 3.25968678740443,
+      "Sf": 438.604638122176,
+      "induction_time": 8.234218319327393,
+      "S0": 28.918806308408985
+    },
+    {
+      "expected_cost_reduction_usd_per_kg": 1.7713244072095342,
+      "feed_rate": 0.058636863973143764,
+      "feed_start": 4.020701378560345,
+      "Sf": 425.3718316406897,
+      "induction_time": 9.428740326993351,
+      "S0": 6.947177527475832
+    },
+    {
+      "expected_cost_reduction_usd_per_kg": 1.7538664668851782,
+      "feed_rate": 0.05706489525672136,
+      "feed_start": 5.054420597914456,
+      "Sf": 430.2582170673539,
+      "induction_time": 7.360646667344232,
+      "S0": 27.131125068801584
+    }
+  ],
+  "reactor": {
+    "v0": 1.0,
+    "vmax": 2.5,
+    "t_end": 48.0,
+    "dt": 0.05,
+    "x0": 0.2,
+    "knob_bounds": {
+      "feed_rate": [
+        0.0,
+        0.06
+      ],
+      "feed_start": [
+        3.0,
+        20.0
+      ],
+      "Sf": [
+        150.0,
+        450.0
+      ],
+      "induction_time": [
+        3.0,
+        26.0
+      ],
+      "S0": [
+        5.0,
+        30.0
+      ]
+    }
+  }
+}
