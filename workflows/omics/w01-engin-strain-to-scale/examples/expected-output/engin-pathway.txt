@@ -1,0 +1,21 @@
+target: recombinant lipase (secreted enzyme)
+
+rank  route                     manufacturability  90% interval
+   1  route-A                               0.643  [0.532, 0.754]
+   2  route-B                               0.636  [0.524, 0.747]
+
+The intervals for route-A and route-B overlap, so this
+ranking does not separate them. Treat the order as a shortlist, not a winner.
+
+  !! The model was trained on this package's own synthetic route
+     generator, not on real routes — you supplied 0 measured
+     route(s) and 40 are needed to train on your own data.
+     Its published margin over step-count may be an artifact of that
+     generator (issue #124). The step features you entered are also your
+     own judgement: nothing computes them from structure yet (issue #140).
+     This orders your routes by a model of a different world. Read it as
+     a prompt for discussion, not as a measurement.
+
+--- stderr (calibration note) ---
+/tmp/engin-suite/packages/engin-graph/src/engin_graph/rank.py:51: UserWarning: calibration set of 40 gives a 90% interval whose true coverage lies in roughly [0.82, 0.97] (central 90%, Beta(n+1-l, l)). The multiplier is honest on average and noisy here. Pass `warn_below_slack=None` to silence, or see `conformal_coverage_interval` for the size you need.
+  self.q = split_conformal_multiplier(y, mean, sd, level=level)

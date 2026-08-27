@@ -1,0 +1,19 @@
+{
+  "target": "recombinant lipase (secreted enzyme)",
+  "ranking": [
+    {
+      "route_id": "route-A",
+      "manufacturability": 0.6430937906428049,
+      "lo": 0.5319574436285082,
+      "hi": 0.7542301376571017
+    },
+    {
+      "route_id": "route-B",
+      "manufacturability": 0.6356324510475709,
+      "lo": 0.5244961040332741,
+      "hi": 0.7467687980618678
+    }
+  ],
+  "trained_on": "synthetic generator",
+  "n_labelled_supplied": 0
+}
