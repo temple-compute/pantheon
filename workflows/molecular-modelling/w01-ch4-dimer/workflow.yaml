@@ -1,0 +1,148 @@
+kind: horus_workflow
+name: CH4-He Dimer PES with Psi4 pt. 2
+_executor:
+  kind: conda_python_environment
+  environment_dir: /tmp/psi4_horus_conda_env
+  conda: micromamba
+  environment_file: ${src_conda_env_yaml}
+tasks:
+- kind: horus_task
+  id: generate_dimers
+  name: Generate CH4-He dimer geometries
+  description: Builds the rotated methane-helium dimer set (methane rotated around
+    Z, helium around X) and writes one sub-directory per geometry for fan-out.
+  outputs:
+  - id: dimers
+    name: Dimer XYZ folder
+    kind: folder
+    path: dimers/
+  executor:
+    kind: conda_python_environment
+    environment_dir: /tmp/psi4_horus_conda_env
+    conda: micromamba
+    environment_file: ${src_conda_env_yaml}
+  runtime:
+    kind: python_script
+    script: ${src_scripts_generate_dimers_py}
+    args: --out ${dimers}
+  target:
+    kind: local
+  inputs:
+  - id: src_scripts_generate_dimers_py
+    kind: file
+    path: scripts/generate_dimers.py
+  - id: src_conda_env_yaml
+    kind: file
+    path: conda_env.yaml
+- kind: horus_map
+  id: compute_energy
+  name: Compute psi4 single-point energies
+  description: Fans one SCF/sto-3g energy + gradient calculation out over every
+    dimer geometry, each running in a clone under the provisioned conda (psi4)
+    environment.
+  over:
+    input_id: dimers
+    as: dimer
+  inputs:
+  - id: dimers
+    name: Dimer geometries
+    kind: folder
+    path: dimers/
+  - id: src_scripts_compute_energy_py
+    kind: file
+    path: scripts/compute_energy.py
+  - id: src_conda_env_yaml
+    kind: file
+    path: conda_env.yaml
+  outputs:
+  - id: results
+    name: Energy results
+    kind: folder
+    path: results/
+  executor:
+    kind: conda_python_environment
+    environment_dir: /tmp/psi4_horus_conda_env
+    conda: micromamba
+    environment_file: ${src_conda_env_yaml}
+  runtime:
+    kind: python_script
+    script: ${src_scripts_compute_energy_py}
+    args: --xyz ${dimer}/molecule.xyz --out ${results}/result.json
+  target:
+    kind: local
+  resources:
+    cpus: 1
+    memory_gb: 2
+- kind: horus_task
+  id: assemble_pes
+  name: Assemble PES summary
+  description: Rolls every clone's result.json into one PES summary CSV.
+  inputs:
+  - id: results
+    name: Gathered energy results
+    kind: folder
+    path: results_in/
+  - id: src_scripts_assemble_pes_py
+    kind: file
+    path: scripts/assemble_pes.py
+  outputs:
+  - id: pes
+    name: PES summary
+    kind: folder
+    path: pes/
+  executor:
+    kind: shell
+  runtime:
+    kind: python_script
+    script: ${src_scripts_assemble_pes_py}
+    python: python3
+    args: --results ${results} --out ${pes}
+  target:
+    kind: local
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
+artifacts:
+- id: src_scripts_generate_dimers_py
+  kind: file
+  path: scripts/generate_dimers.py
+- id: src_scripts_compute_energy_py
+  kind: file
+  path: scripts/compute_energy.py
+- id: src_scripts_assemble_pes_py
+  kind: file
+  path: scripts/assemble_pes.py
+- id: src_conda_env_yaml
+  kind: file
+  path: conda_env.yaml
+edges:
+- source: artifact-src_scripts_generate_dimers_py
+  source_output: src_scripts_generate_dimers_py
+  target: generate_dimers
+  target_input: src_scripts_generate_dimers_py
+- source: artifact-src_scripts_compute_energy_py
+  source_output: src_scripts_compute_energy_py
+  target: compute_energy
+  target_input: src_scripts_compute_energy_py
+- source: artifact-src_scripts_assemble_pes_py
+  source_output: src_scripts_assemble_pes_py
+  target: assemble_pes
+  target_input: src_scripts_assemble_pes_py
+- source: artifact-src_conda_env_yaml
+  source_output: src_conda_env_yaml
+  target: generate_dimers
+  target_input: src_conda_env_yaml
+- source: artifact-src_conda_env_yaml
+  source_output: src_conda_env_yaml
+  target: compute_energy
+  target_input: src_conda_env_yaml
+- source: generate_dimers
+  source_output: dimers
+  target: compute_energy
+  target_input: dimers
+- source: compute_energy
+  source_output: results
+  target: assemble_pes
+  target_input: results
+id: 314cdb2c-9ad2-4ae3-8c9e-b998963e8b24
+workflow_slug: ch4-he-dimer-pes-with-psi4-pt-2-314cdb

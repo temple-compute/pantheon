@@ -1,0 +1,14 @@
+[project]
+name = "w01-ch4-dimer"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "horus-environments>=0.1.2",
+  "horus-runtime>=0.1.6",
+]
+
+# horus_map is not released yet (horus-runtime's refactor/map-iterable
+# branch): point at the local checkout until it ships, then drop this in
+# favor of the plain version pin above.
+[tool.uv.sources]
+horus-runtime = { path = "../../../../horus-runtime", editable = true }

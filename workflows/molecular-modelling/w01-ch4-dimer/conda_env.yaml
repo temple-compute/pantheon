@@ -1,0 +1,8 @@
+name: horus-psi4-pes
+channels:
+  - conda-forge
+  - nodefaults
+dependencies:
+  - python=3.11
+  - psi4
+  - numpy
