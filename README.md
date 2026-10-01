@@ -78,6 +78,12 @@ uv run horus run workflow.yaml
 | W-30 | [Cavity-Guided Virtual Screening](workflows/bioexcel_building_blocks/w22-cavity-guided-virtual-screening/README.md) | fpocket cavity detection feeding an AutoDock Vina screen of a ligand library, ranked by affinity |
 | W-31 | [Cavity Analysis](workflows/bioexcel_building_blocks/w23-cavity-analysis/README.md) | fpocket cavity detection and ranking across a conformational ensemble |
 
+### Bioinformatics
+
+| ID | Workflow | Description |
+|---|---|---|
+| W-35 | [Influenza Segments Starter](workflows/bioinformatics/w01-flu-segments-starter/README.md) | Influenza segment FASTA → header parsing, QC, longest-ORF translation and an HTML report; fully local, runs in seconds. |
+
 ### AI
 
 | ID | Workflow | Description |

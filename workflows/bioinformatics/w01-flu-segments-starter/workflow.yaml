@@ -1,0 +1,178 @@
+kind: horus_workflow
+name: Influenza Segments Starter
+# Influenza segment FASTA in -> QC + protein translation + HTML report out.
+# Everything runs locally in seconds; no network after `uv sync`.
+
+# ARTIFACTS: named, typed files/folders that tasks consume and produce. The two
+# below are workflow-level inputs; edges reference them as `artifact-<id>`.
+artifacts:
+  - id: fasta
+    name: Influenza segment FASTA
+    description: Segment sequences, headers like >Sample01_HA_2024_Spain or >Sample01|NA|x.
+    kind: file
+    path: examples/segments.fasta
+
+  - id: metadata
+    name: Sample metadata (synthetic)
+    description: Optional per-sample table merged into the report by sample ID.
+    kind: file
+    path: examples/metadata.csv
+
+tasks:
+  # TASK 1 -- shell executor: runs the script with the host's python3 (stdlib only).
+  # `${id}` in `args` expands to the path of the input/output artifact with that id.
+  - kind: horus_task
+    id: organize_by_sample
+    name: Organize segments by sample
+    description: Parses FASTA headers, writes segments.csv and one FASTA per sample; malformed headers go to errors.log.
+    skip_if_complete: false
+    inputs:
+      - id: fasta
+        name: Influenza segment FASTA
+        kind: file
+        path: examples/segments.fasta
+    outputs:
+      - id: segments
+        name: Segment table
+        kind: file
+        path: results/segments.csv
+      - id: samples
+        name: Per-sample FASTA files
+        kind: folder
+        path: results/samples/
+      - id: errors
+        name: Error log
+        kind: file
+        path: results/errors.log
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/organize_by_sample.py
+      python: python3 # stdlib-only
+      args: --fasta ${fasta} --segments ${segments} --samples-dir ${samples} --errors ${errors}
+    target:
+      kind: local
+
+  # TASK 2 -- QC thresholds are plain CLI flags in `args`: edit and re-run.
+  - kind: horus_task
+    id: qc_segments
+    name: QC segments
+    description: Flags segments by length range, N/ambiguous fraction and codon multiple; writes PASS/FAIL per segment.
+    skip_if_complete: false
+    inputs:
+      - id: samples
+        name: Per-sample FASTA files
+        kind: folder
+        path: results/samples/
+    outputs:
+      - id: qc
+        name: QC table
+        kind: file
+        path: results/qc.csv
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/qc_segments.py
+      python: python3 # stdlib-only
+      args: --samples-dir ${samples} --out ${qc} --max-n-frac 0.01
+    target:
+      kind: local
+
+  # TASK 3 -- uv environment executor: Horus builds a venv with Biopython and runs
+  # the script in it. No `python:` override in the runtime: the default routes
+  # through the venv.
+  - kind: horus_task
+    id: translate_cds
+    name: Translate longest ORF
+    description: Translates the longest ORF of every QC-passing segment into protein FASTA plus a summary table.
+    skip_if_complete: false
+    inputs:
+      - id: samples
+        name: Per-sample FASTA files
+        kind: folder
+        path: results/samples/
+      - id: qc
+        name: QC table
+        kind: file
+        path: results/qc.csv
+    outputs:
+      - id: proteins_faa
+        name: Protein FASTA
+        kind: file
+        path: results/proteins.faa
+      - id: proteins_csv
+        name: Protein table
+        kind: file
+        path: results/proteins.csv
+    executor:
+      kind: uv_python_environment
+      python: "3.11"
+      requirements:
+        - biopython
+    runtime:
+      kind: python_script
+      script: scripts/translate_cds.py
+      args: --samples-dir ${samples} --qc ${qc} --faa ${proteins_faa} --csv ${proteins_csv}
+    target:
+      kind: local
+
+  # TASK 4 -- the join point: four upstream outputs plus the metadata artifact.
+  # Drop `--metadata ${metadata}` to skip the metadata merge.
+  - kind: horus_task
+    id: summary_report
+    name: Build HTML report
+    description: Merges segments, QC, proteins and optional metadata into a sample x segment HTML grid.
+    skip_if_complete: false
+    inputs:
+      - id: segments
+        name: Segment table
+        kind: file
+        path: results/segments.csv
+      - id: qc
+        name: QC table
+        kind: file
+        path: results/qc.csv
+      - id: proteins_csv
+        name: Protein table
+        kind: file
+        path: results/proteins.csv
+      - id: errors
+        name: Error log
+        kind: file
+        path: results/errors.log
+      - id: metadata
+        name: Sample metadata (synthetic)
+        kind: file
+        path: examples/metadata.csv
+    outputs:
+      - id: report
+        name: HTML report
+        kind: file
+        path: results/report.html
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/summary_report.py
+      python: python3 # stdlib-only
+      args: --segments ${segments} --qc ${qc} --proteins ${proteins_csv} --errors ${errors} --metadata ${metadata} --out ${report}
+    target:
+      kind: local
+
+# EDGES: the DAG. Each edge copies one task/artifact output into a downstream input.
+edges:
+  - {source: artifact-fasta, source_output: fasta, target: organize_by_sample, target_input: fasta}
+  - {source: organize_by_sample, source_output: samples, target: qc_segments, target_input: samples}
+  - {source: organize_by_sample, source_output: samples, target: translate_cds, target_input: samples}
+  - {source: qc_segments, source_output: qc, target: translate_cds, target_input: qc}
+  - {source: organize_by_sample, source_output: segments, target: summary_report, target_input: segments}
+  - {source: organize_by_sample, source_output: errors, target: summary_report, target_input: errors}
+  - {source: qc_segments, source_output: qc, target: summary_report, target_input: qc}
+  - {source: translate_cds, source_output: proteins_csv, target: summary_report, target_input: proteins_csv}
+  - {source: artifact-metadata, source_output: metadata, target: summary_report, target_input: metadata}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results

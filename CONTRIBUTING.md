@@ -14,7 +14,7 @@ Each workflow also has a global **W-number** (`W-01` through `W-31`, unique acro
 mkdir -p workflows/{domain}/wXX-your-workflow-name
 ```
 
-Domains: `ai`, `bioexcel_building_blocks`, `drug-discovery`, `engine-showcases`. Add a new domain directory if yours doesn't fit, and list it in the root `README.md`.
+Domains: `ai`, `bioexcel_building_blocks`, `bioinformatics`, `drug-discovery`, `engine-showcases`. Add a new domain directory if yours doesn't fit, and list it in the root `README.md`.
 
 ### 3. Write the README.md
 
