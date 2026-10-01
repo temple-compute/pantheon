@@ -1,0 +1,110 @@
+kind: horus_workflow
+name: Lacuna Cryptic Pocket Discovery
+
+# lacuna-pockets is a plain pip package (hatchling, pure Python + numpy/scipy for
+# the default NMA backend and both detectors) -- no conda or container toolchain
+# needed, unlike the fpocket-based BioBB workflows. uv_python_environment installs
+# it into a venv with `uv pip install` and runs the `lacuna` CLI entrypoint directly.
+_executor: &executor
+  kind: uv_python_environment
+  environment_dir: "../.horus_uv_env_lacuna"
+  python: "3.11"
+  requirements:
+    - "lacuna-pockets>=1.1.0"
+
+artifacts:
+  - id: receptor
+    name: Target receptor structure
+    description: Unbound (apo) PDB/mmCIF structure to search for cryptic pockets.
+    kind: file
+    path: examples/structures/receptor.pdb
+
+tasks:
+  # Runs the full pipeline in one CLI call: ensemble generation, per-conformer
+  # detection with the pooled alpha + learned-surface detector, cross-ensemble
+  # clustering, and ranking. --detector surface-fusion is 1.1.0's headline
+  # addition: the alpha detector only proposes where there is already a
+  # concavity, which is exactly the wrong assumption for a cryptic site.
+  - kind: horus_task
+    id: discover
+    name: Discover cryptic pockets across a conformational ensemble
+    description: Generates a conformational ensemble, detects pockets in every conformer with the pooled alpha + learned surface detector, clusters them across the ensemble, and ranks the surviving sites with the fitted model.
+    skip_if_complete: false
+    inputs:
+      - id: receptor
+        name: Target receptor structure
+        kind: file
+        path: examples/structures/receptor.pdb
+    outputs:
+      - id: pockets
+        name: Ranked pocket report + pocket PDBs
+        kind: folder
+        path: results/pockets/
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        lacuna discover ${receptor}
+        --conformers 20
+        --detector surface-fusion
+        --rank-by learned
+        --top 10
+        --emit-pocket-pdbs
+        --output ${pockets}
+    target:
+      kind: local
+
+  # Turns the JSON report into files the Horus UI renders on its own: a .html
+  # file shows as a live page and a .csv as a sortable table, whereas the
+  # `pockets` folder only opens as a file explorer.
+  - kind: horus_task
+    id: report
+    name: Render the pocket report
+    description: Builds a self-contained HTML report (with a Mol* 3D view of the receptor and pockets) and a CSV table from pocket_report.json.
+    inputs:
+      - id: pockets
+        name: Ranked pocket report + pocket PDBs
+        kind: folder
+        path: pockets/
+      - id: receptor
+        name: Target receptor structure
+        kind: file
+        path: examples/structures/receptor.pdb
+    outputs:
+      - id: report
+        name: Pocket report (HTML)
+        kind: file
+        path: results/report.html
+      - id: table
+        name: Pocket table (CSV)
+        kind: file
+        path: results/pockets.csv
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/report.py
+      python: python3 # stdlib-only; use the target's python3
+      args: --pockets ${pockets} --receptor ${receptor} --report ${report} --table ${table}
+    target:
+      kind: local
+
+edges:
+  - source: artifact-receptor
+    source_output: receptor
+    target: discover
+    target_input: receptor
+
+  - source: discover
+    source_output: pockets
+    target: report
+    target_input: pockets
+
+  - source: artifact-receptor
+    source_output: receptor
+    target: report
+    target_input: receptor
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results

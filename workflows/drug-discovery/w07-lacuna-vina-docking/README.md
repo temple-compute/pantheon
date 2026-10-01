@@ -1,4 +1,4 @@
-# W-33 · Lacuna Cryptic Pocket Discovery
+# W-34 · Lacuna + AutoDock Vina Docking
 
 ![Domain: Drug Discovery](https://img.shields.io/badge/domain-drug--discovery-blue)
 
@@ -33,7 +33,7 @@ pocket atoms 1.5 Å from the nearest ligand atom, opening nine-fold across the
 ensemble). Every site ranked above them is the GDP pocket, a real pocket with a
 real ligand already bound.
 
-The workflow doesn't stop at discovery: it boxes Lacuna's top-ranked pocket,
+For discovery only (no docking), see [Lacuna Cryptic Pocket Discovery](../w06-lacuna-cryptic-pocket-discovery/README.md). This workflow doesn't stop at discovery: it boxes Lacuna's top-ranked pocket,
 preps a small ligand library, and docks every ligand concurrently with real
 AutoDock Vina using a `horus_map` fan-out (one clone per ligand), so the
 output is ranked binding poses, not just a pocket report.
@@ -44,7 +44,7 @@ output is ranked binding poses, not just a pocket report.
 # Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
-cd workflows/drug-discovery/w04-lacuna-cryptic-pocket-discovery
+cd workflows/drug-discovery/w07-lacuna-vina-docking
 uv sync
 # or: pip install horus-runtime horus-environments
 
@@ -65,6 +65,7 @@ tool on `PATH` for OpenBabel/Meeko/RDKit/Vina, the same prerequisite as
 | Docking-input export | `dock_prep` | uv venv | serial | <1 s |
 | Receptor/ligand prep, boxed on the top pocket | `prep` | conda | serial | ~15 s (+ first-run env build) |
 | **AutoDock Vina docking** | `dock[00..NN]` | conda | **N clones in parallel** | ~1 min total for 3 demo ligands, CPU-only |
+| HTML report + CSV table | `report` | shell (stdlib) | serial | <1 s |
 | Ranked energy tables | `summary` | shell (stdlib) | serial | <1 s |
 
 `dock` is a `kind: horus_map` task: it runs `scripts/dock_one.py` once per
@@ -144,6 +145,8 @@ separate per-clone template to configure.
   persistence (fraction of conformers it appears in), crypticity (how much it opens
   relative to the input), contact residues, and per-conformer detail
 - `pockets/pocket_*.pdb` — pseudoatom PDB files per pocket, for visualization
+- `report.html` — single-file ranked-pocket report (stats plus a sortable, filterable AG Grid table) with an interactive Mol* view of the receptor; each row's View button selects that pocket's lining residues and moves the camera to them. Mol* and AG Grid are loaded from the jsDelivr CDN, so the report needs internet access
+- `pockets.csv` — the same ranking as a flat table
 - `docking_inputs/` — for the top 5 ranked pockets: AutoDock Vina box configs,
   Boltz-2 YAML constraints, and pocket PDBs
 - `receptor_box/` — the receptor PDBQT and the resolved box, boxed on
