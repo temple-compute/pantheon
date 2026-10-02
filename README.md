@@ -49,6 +49,7 @@ uv run horus run workflow.yaml
 | W-32 | [DrugFlow + Boltz-2 Affinity](workflows/drug-discovery/w03-drugflow-boltz-affinity/README.md) | Generate pocket-conditioned molecules with DrugFlow, then score each one for binding affinity (ΔG) with Boltz-2 |
 | W-33 | [Lacuna Cryptic Pocket Discovery](workflows/drug-discovery/w06-lacuna-cryptic-pocket-discovery/README.md) | Find cryptic binding pockets across a conformational ensemble with Lacuna's pooled geometric + learned-surface detector |
 | W-34 | [Lacuna + AutoDock Vina Docking](workflows/drug-discovery/w07-lacuna-vina-docking/README.md) | Lacuna cryptic pocket discovery, then box the top pocket and dock a ligand library with AutoDock Vina |
+| W-36 | [OpenDDE Co-folding Screen](workflows/drug-discovery/w08-opendde-cofolding-screen/README.md) | Co-fold a protein–ligand library with OpenDDE (optional MSA toggle) and rank complexes by interface confidence |
 
 ### BioExcel Building Blocks
 

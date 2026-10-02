@@ -1,0 +1,4 @@
+# SMILES [name] — one ligand per line. Names become the ranked-output ids.
+c1ccccc1 benzene
+CCO ethanol
+CC(=O)Oc1ccccc1C(=O)O aspirin

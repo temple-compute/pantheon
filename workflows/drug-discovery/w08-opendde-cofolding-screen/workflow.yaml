@@ -1,0 +1,153 @@
+kind: horus_workflow
+name: OpenDDE Co-folding Screen
+artifacts:
+  - id: ligands
+    name: Candidate ligand library
+    description: SMILES file listing candidate ligands (one per line) to co-fold against the target.
+    kind: file
+    path: examples/ligands.smi
+
+  - id: fasta
+    name: Target protein sequence
+    description: FASTA file of the target protein co-folded with each ligand.
+    kind: file
+    path: examples/target.fasta
+
+  - id: use_msa
+    name: Use protein MSA
+    description: >-
+      Fetch a protein MSA (ColabFold MMseqs2 public API) before co-folding.
+      Better poses on real targets but needs internet and adds minutes; turn
+      off for a fast offline smoke test.
+    kind: boolean
+    path: params/use_msa.json
+    value: true
+
+tasks:
+  - kind: horus_task
+    id: prep
+    name: Build OpenDDE inputs
+    description: Converts the target FASTA and ligand SMILES into an OpenDDE jobs.json (one protein+ligand job per ligand), packaged as a tarball.
+    skip_if_complete: false
+    inputs:
+      - id: fasta
+        name: Target protein sequence
+        kind: file
+        path: examples/target.fasta
+      - id: ligands
+        name: Candidate ligand library
+        kind: file
+        path: examples/ligands.smi
+    outputs:
+      - id: opendde_inputs
+        name: OpenDDE input archive
+        path: results/opendde_inputs.tar.gz
+        kind: file
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/prep.py
+      args: --fasta ${fasta} --ligands ${ligands} --out ${opendde_inputs}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: predict
+    name: OpenDDE co-folding
+    description: >-
+      Runs OpenDDE to co-fold each protein-ligand pair. With use_msa on, first
+      fetches the protein MSA with `opendde msa` and predicts from the updated
+      JSON. Device is auto-selected (CUDA, then Apple MPS, then CPU).
+    inputs:
+      - id: opendde_inputs
+        name: OpenDDE input archive
+        path: results/opendde_inputs.tar.gz
+        kind: file
+      - id: use_msa
+        name: Use protein MSA
+        kind: boolean
+        path: params/use_msa.json
+        value: true
+    outputs:
+      - id: predictions
+        name: OpenDDE predictions archive
+        path: results/predictions.tar.gz
+        kind: file
+    executor:
+      kind: uv_python_environment
+      python: "3.11"
+      requirements:
+        - opendde
+    runtime:
+      kind: command
+      # OpenDDE's checkpoint download prints a \r-only progress bar; Horus' line
+      # reader fails on those long newline-less chunks, so all OpenDDE output
+      # goes to a log and only its tail is shown on failure.
+      command: >-
+        tar xzf ${opendde_inputs} -C . &&
+        { {
+        if [ "${use_msa}" = "true" ]; then
+        opendde msa -i inputs/jobs.json -o out &&
+        IN=$(ls out/.opendde_preprocessed/*/*-updated.json | head -1);
+        else IN=inputs/jobs.json; fi &&
+        opendde pred -i "$IN" -o out -n opendde_v1
+        --use_msa ${use_msa} --use_template false --use_rna_msa false
+        --device auto --sample 1;
+        } > opendde.log 2>&1
+        || { tr '\r' '\n' < opendde.log | tail -n 40; exit 1; }; } &&
+        COPYFILE_DISABLE=1 tar czf ${predictions} --exclude .opendde_preprocessed -C out .
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: rank
+    name: Rank hits
+    description: Parses the OpenDDE summary-confidence JSONs and produces a ranked shortlist (by interface pTM).
+    inputs:
+      - id: predictions
+        name: OpenDDE predictions archive
+        path: results/predictions.tar.gz
+        kind: file
+    outputs:
+      - id: top_hits
+        name: Ranked hit list
+        path: results/top_hits.csv
+        kind: file
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/rank.py
+      args: --predictions ${predictions} --out ${top_hits}
+    target:
+      kind: local
+
+edges:
+  - source: prep
+    source_output: opendde_inputs
+    target: predict
+    target_input: opendde_inputs
+  - source: predict
+    source_output: predictions
+    target: rank
+    target_input: predictions
+
+  - source: artifact-ligands
+    source_output: ligands
+    target: prep
+    target_input: ligands
+
+  - source: artifact-fasta
+    source_output: fasta
+    target: prep
+    target_input: fasta
+
+  - source: artifact-use_msa
+    source_output: use_msa
+    target: predict
+    target_input: use_msa
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
