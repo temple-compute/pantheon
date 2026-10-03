@@ -49,6 +49,7 @@ uv run horus run workflow.yaml
 | W-32 | [DrugFlow + Boltz-2 Affinity](workflows/drug-discovery/w03-drugflow-boltz-affinity/README.md) | Generate pocket-conditioned molecules with DrugFlow, then score each one for binding affinity (ΔG) with Boltz-2 |
 | W-33 | [Lacuna Cryptic Pocket Discovery](workflows/drug-discovery/w06-lacuna-cryptic-pocket-discovery/README.md) | Find cryptic binding pockets across a conformational ensemble with Lacuna's pooled geometric + learned-surface detector |
 | W-34 | [Lacuna + AutoDock Vina Docking](workflows/drug-discovery/w07-lacuna-vina-docking/README.md) | Lacuna cryptic pocket discovery, then box the top pocket and dock a ligand library with AutoDock Vina |
+| W-35 | [cMD Replicas (AMBER)](workflows/drug-discovery/w04-cmd/README.md) | Conventional MD with AMBER (pmemd/pmemd.cuda): minimize, heat, equilibrate, then run production MD across N parallel replicas |
 | W-36 | [OpenDDE Co-folding Screen](workflows/drug-discovery/w08-opendde-cofolding-screen/README.md) | Co-fold a protein–ligand library with OpenDDE (optional MSA toggle) and rank complexes by interface confidence |
 
 ### BioExcel Building Blocks
@@ -91,6 +92,12 @@ uv run horus run workflow.yaml
 |---|---|---|
 | W-28 | [LLM From Scratch - Pretrain, SFT & Eval](workflows/ai/w01-train-llm/README.md) | Clone a from-scratch Transformer repo, tokenize Pile/instruction data, pretrain, SFT, and evaluate GSM8K accuracy |
 | W-29 | [Tiny LLM From Scratch - TinyStories Pretrain & Sample](workflows/ai/w02-tiny-llm/README.md) | Pretrain a small from-scratch Transformer on TinyStories (not the 900GB Pile) and sample a generated story |
+
+### Omics
+
+| ID | Workflow | Description |
+|---|---|---|
+| W-33 | [Engin Strain-to-Scale](workflows/omics/w01-engin-strain-to-scale/README.md) | Which host, which route, and what to run next for a bioprocess target, via Engin's three independent decision-aid CLIs, merged into one calibrated decision brief |
 
 ### Engine Showcases
 

@@ -1,0 +1,321 @@
+kind: horus_workflow
+name: cMD Replicas (AMBER)
+
+# --- reusable blocks -------------------------------------------------------
+# The site-specific parts of MolBioMedUAB/protocols/MD/cMD/create_md_custom.sh
+# (the `#SBATCH` header it picks per `-m csuc|local|picard|slurm`, and the
+# `module load` line) become configuration instead of bash: these two target
+# anchors plus env/amber.sh. Save this block (and a matching env/amber.sh) as
+# a tc-os library item per cluster; swapping clusters is then editing these,
+# not the workflow.
+#
+# Two anchors, not one: equilibration and production are separate SLURM jobs
+# (see the `equilibrate`/`produce` tasks below), each with its own walltime
+# envelope instead of sharing one job's budget the way the original script
+# did. Fill in partition/account for your site.
+_gpu_equilibrate: &gpu_equilibrate
+  kind: slurm
+  inner:
+    kind: local
+  partition: "" # <- set per site
+  account: "" # <- set per site
+  ntasks: 1
+  gres: gpu:1
+  # Equilibration is a fixed ~7 ns of MD regardless of production length --
+  # tune to your system size, not to params.json's length_ns.
+  time_limit: "04:00:00"
+
+_gpu_produce: &gpu_produce
+  kind: slurm
+  inner:
+    kind: local
+  partition: "" # <- set per site
+  account: "" # <- set per site
+  ntasks: 1
+  gres: gpu:1
+  # Scales with params.json's length_ns; 10 days covers the 200 ns default.
+  time_limit: "10-00:00:00"
+
+_shell: &shell
+  kind: shell
+
+_local: &local
+  kind: local
+
+artifacts:
+  - id: params
+    name: Replica parameters
+    description: last_residue, temperature (K), length_ns and replica count.
+      Script flags -r/-t/-l plus the replica fan-out count. last_residue has
+      no sensible default -- set it before running.
+    kind: file
+    path: examples/params.json
+
+  - id: parameters
+    name: Parameter file (.prmtop)
+    description: The system's AMBER topology. Script flag -p.
+    kind: file
+    path: examples/system.prmtop
+
+  - id: coordinates
+    name: Coordinate file (.inpcrd)
+    description: The system's AMBER coordinates. Script flag -c.
+    kind: file
+    path: examples/system.inpcrd
+
+  - id: amber_env
+    name: AMBER environment script
+    description: Sourced before every pmemd/pmemd.cuda call. Replaces the
+      -m machine flag's module-load branch -- swap this file (or point it
+      elsewhere) to retarget a different cluster's AMBER module.
+    kind: file
+    path: env/amber.sh
+
+  - id: equilibrate_script
+    name: Equilibration driver (workflow helper script)
+    description: Runs the 10 preproduction steps (minimize/heat/equilibrate)
+      for one replica, in place on its slot. Copied into every replica slot.
+    kind: file
+    path: scripts/equilibrate.sh
+
+  - id: production_script
+    name: Production chunk loop (workflow helper script)
+    description: Runs the production .in file cntmax times, chaining each
+      chunk's restart file into the next. Copied into every replica slot.
+    kind: file
+    path: scripts/production.sh
+
+  - id: templates
+    name: AMBER .mdin templates
+    description: The 10 preproduction steps plus prod_1/prod, with
+      ${temperature}/${last_residue} placeholders, rendered once per replica.
+      Archived (not a folder artifact) because tc-os's workflow import does
+      not support folder artifacts yet; the individual .in files live under
+      templates/ for reading/diffing, this is `tar -czf templates.tar.gz
+      -C templates .` -- regenerate it if you edit a template.
+    kind: file
+    path: templates.tar.gz
+
+tasks:
+  - kind: horus_task
+    id: prepare_replicas
+    name: 1. Generate replica slots
+    description: >-
+      Generation only, one call for all replicas: renders the AMBER .mdin
+      templates and writes one self-contained slot per replica (system
+      files, env/driver scripts, rendered inputs, chunk count). Does not
+      run AMBER -- see equilibrate/produce.
+    inputs:
+      - id: params_in
+        kind: file
+        path: examples/params.json
+      - id: templates_in
+        kind: file
+        path: templates.tar.gz
+      - id: parameters_in
+        kind: file
+        path: examples/system.prmtop
+      - id: coordinates_in
+        kind: file
+        path: examples/system.inpcrd
+      - id: amber_env_in
+        kind: file
+        path: env/amber.sh
+      - id: equilibrate_script_in
+        kind: file
+        path: scripts/equilibrate.sh
+      - id: production_script_in
+        kind: file
+        path: scripts/production.sh
+    outputs:
+      - id: replicas
+        name: Replica slots
+        kind: folder
+        path: replicas/
+    executor: *shell
+    runtime:
+      kind: python_script
+      script: scripts/prepare_replicas.py
+      python: python3 # stdlib-only; use the target's python3
+      args: >-
+        --params ${params_in} --templates ${templates_in}
+        --prmtop ${parameters_in} --inpcrd ${coordinates_in}
+        --amber-env ${amber_env_in} --equilibrate-script ${equilibrate_script_in}
+        --production-script ${production_script_in} --out ${replicas}
+    target: *local
+    skip_if_complete: true
+
+  # Fans out one clone per replica, each equilibrating (10 preproduction
+  # steps, scripts/equilibrate.sh) inside its own SLURM job. Two map stages
+  # (this one, then `produce` below) instead of one so equilibration and
+  # production are independent jobs with their own walltime, and so a
+  # workflow re-run can skip a replica's finished equilibration without
+  # having to re-check/rerun its production too.
+  #
+  # `kind: horus_map` is an ordinary, self-dispatching DAG node (>= 0.4): it
+  # iterates `over.input_id` (an IterableArtifact -- a folder iterates its
+  # children, sorted by name) and clones itself once per item as a plain
+  # horus_task, binding each item under `over.as` and rebinding the single
+  # declared output to that clone's own slot directory. Its per-item body is
+  # always flat (one runtime), so it cannot itself chain equilibrate+produce
+  # as separate steps -- hence two chained map tasks instead of one.
+  #
+  # Each clone's command copies its whole `slot` into its own output first
+  # (`cp -r ${slot}/. ${equilibrated}/`), so `produce` below -- which maps
+  # over *this* task's output -- receives an equally self-contained item
+  # (system files, production.sh, plus this stage's preprod/10_nvt.rst),
+  # exactly like `equilibrate` does mapping over `prepare_replicas`.
+  #
+  # NOTE on granularity: an earlier version of this workflow gave each AMBER
+  # step its own Horus task (a `subworkflow` chaining 11 tasks used as a
+  # map's per-item body). That composition doesn't exist any more:
+  # horus_map only ever runs a flat, single-runtime body per item. It
+  # replaced the old map:/gather: sugar (source_task/source_output/
+  # item_input + subworkflow-body templates) specifically because that
+  # composition let the gather task race ahead of the subworkflow's real
+  # inner tasks. Two-phase (this file) is as fine-grained as the current
+  # primitive allows without that problem; per-AMBER-step granularity would
+  # need horus-runtime to add multi-step map bodies.
+  - kind: horus_map
+    id: equilibrate
+    name: 2. Equilibrate each replica (parallel)
+    description: Fans out one clone per replica over prepare_replicas'
+      output; each clone runs the 10 preproduction steps (minimize, heat,
+      equilibrate) inside one SLURM allocation.
+    over:
+      input_id: replicas_in
+      as: slot
+    # max_concurrency left unset: horus_map applies a built-in cap (8 by
+    # default -- horus_builtin.workflow.scheduler.DEFAULT_MAX_CONCURRENCY)
+    # rather than dispatching every replica at once. Set this explicitly
+    # if params.json's `replicas` exceeds 8.
+    inputs:
+      - id: replicas_in
+        name: Replica slots
+        description: Produced by prepare_replicas; each child directory
+          becomes one replica clone's slot (bound to `slot` per over.as).
+        kind: folder
+        path: replicas/
+    outputs:
+      - id: equilibrated
+        name: Equilibrated replicas
+        description: Each replica's slot, copied forward, plus its
+          preprod/*.{out,rst,nc,info} equilibration results.
+        kind: folder
+        path: equilibrated_out/
+    executor: *shell
+    target: *gpu_equilibrate
+    runtime:
+      kind: command
+      command: >-
+        cp -r ${slot}/. ${equilibrated}/ &&
+        . ${equilibrated}/amber.sh &&
+        bash ${equilibrated}/equilibrate.sh ${equilibrated}
+    resources:
+      gpus: 1
+
+  # Fans out one clone per replica over `equilibrate`'s output: each item is
+  # already a self-contained slot (see the note on `equilibrate` above), so
+  # this only needs to run the production chunk loop.
+  - kind: horus_map
+    id: produce
+    name: 3. Run production MD per replica (parallel)
+    description: Fans out one clone per replica over equilibrate's output;
+      each clone runs the chunked production loop (scripts/production.sh)
+      inside one SLURM allocation.
+    over:
+      input_id: equilibrated_in
+      as: slot
+    inputs:
+      - id: equilibrated_in
+        name: Equilibrated replicas
+        description: Produced by equilibrate; each child directory becomes
+          one replica clone's slot (bound to `slot` per over.as).
+        kind: folder
+        path: equilibrated_out/
+    outputs:
+      - id: produced
+        name: Production outputs
+        description: Production chunk files (prod_N.rst/.nc/.mdout/.mdinf),
+          one subfolder per replica.
+        kind: folder
+        path: produced_out/
+    executor: *shell
+    target: *gpu_produce
+    runtime:
+      kind: command
+      command: >-
+        . ${slot}/amber.sh &&
+        bash ${slot}/production.sh ${slot} ${slot}/preprod ${produced}
+    resources:
+      gpus: 1
+
+  - kind: horus_task
+    id: collect
+    name: 4. Summarize replicas
+    description: Walks every replica's production output and writes a
+      one-row-per-replica CSV (chunks completed, last restart file,
+      trajectory file count/size).
+    inputs:
+      - id: produced_in
+        name: Production outputs
+        kind: folder
+        path: produced_out/
+    outputs:
+      - id: summary
+        name: Replica summary
+        kind: file
+        path: results/summary.csv
+    executor: *shell
+    runtime:
+      kind: python_script
+      script: scripts/collect.py
+      python: python3 # stdlib-only; use the target's python3
+      args: --results ${produced_in} --out ${summary}
+    target: *local
+
+edges:
+  - source: artifact-params
+    source_output: params
+    target: prepare_replicas
+    target_input: params_in
+  - source: artifact-templates
+    source_output: templates
+    target: prepare_replicas
+    target_input: templates_in
+  - source: artifact-parameters
+    source_output: parameters
+    target: prepare_replicas
+    target_input: parameters_in
+  - source: artifact-coordinates
+    source_output: coordinates
+    target: prepare_replicas
+    target_input: coordinates_in
+  - source: artifact-amber_env
+    source_output: amber_env
+    target: prepare_replicas
+    target_input: amber_env_in
+  - source: artifact-equilibrate_script
+    source_output: equilibrate_script
+    target: prepare_replicas
+    target_input: equilibrate_script_in
+  - source: artifact-production_script
+    source_output: production_script
+    target: prepare_replicas
+    target_input: production_script_in
+  - source: prepare_replicas
+    source_output: replicas
+    target: equilibrate
+    target_input: replicas_in
+  - source: equilibrate
+    source_output: equilibrated
+    target: produce
+    target_input: equilibrated_in
+  - source: produce
+    source_output: produced
+    target: collect
+    target_input: produced_in
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
