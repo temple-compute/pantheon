@@ -1,0 +1,18 @@
+target: recombinant lipase (secreted enzyme)
+vessel: 1 L -> 2.5 L over 48 h   (40 simulated runs)
+
+best cost so far : $50/kg  [$47, $52] (90%)
+clears $200/kg target with probability 1.00
+
+next 4 runs, by expected cost reduction:
+  1. E[saving]=$3/kg   feed_rate=0.0585  feed_start=4.25  Sf=447  induction_time=8.4  S0=21.2
+  2. E[saving]=$2/kg   feed_rate=0.0512  feed_start=3.26  Sf=439  induction_time=8.23  S0=28.9
+  3. E[saving]=$2/kg   feed_rate=0.0586  feed_start=4.02  Sf=425  induction_time=9.43  S0=6.95
+  4. E[saving]=$2/kg   feed_rate=0.0571  feed_start=5.05  Sf=430  induction_time=7.36  S0=27.1
+
+Optimizes net $/kg rather than titer (D13), so it will look worse than a
+titer-chasing tool on the number most teams report — that is the intended
+trade, and --titer runs the comparison.
+
+It cannot read your actual run history yet: the runs above were simulated
+from the vessel in your project file, so this is only as good as that model.

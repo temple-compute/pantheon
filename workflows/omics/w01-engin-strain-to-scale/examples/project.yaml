@@ -1,0 +1,89 @@
+# ---------------------------------------------------------------------------
+#  Engin project file
+#
+#  Every section is optional. Run whichever stage you have filled in:
+#
+#      engin-host     --config project.yaml     # which chassis?
+#      engin-pathway  --config project.yaml     # which route?
+#      engin-process  --config project.yaml     # what to run next?
+#
+#  Numbers here are illustrative. Nothing in this file has been validated
+#  against your molecule -- see docs.engin.bio/en/latest/limitations.html
+# ---------------------------------------------------------------------------
+
+target: "recombinant lipase (secreted enzyme)"
+
+
+# --------------------------------------------------------------- stage [4]
+# Which host organism to build in.
+host:
+  # How much each capability matters. Any positive numbers -- they are
+  # renormalised, so 2/1 and 20/10 mean the same thing.
+  #
+  #   secretion  exports product rather than holding it inside the cell
+  #   glyco      attaches sugar groups (needed for most therapeutic proteins)
+  #   titer      how much product per litre it tends to reach
+  #   speed      how fast it grows, and how fast you can iterate
+  #   tools      how mature the genetic toolkit is
+  #   scaleup    how well it behaves in a large vessel
+  #   cost       how cheap it is to feed and run
+  #   gras       generally-recognised-as-safe status (food//cosmetic routes)
+  #   smallmol   suited to small-molecule products
+  #   protein    suited to protein products
+  weights:
+    secretion: 1.0
+    titer: 1.0
+    scaleup: 0.7
+    cost: 0.7
+
+  # Minimums. A host scoring below one of these is ranked below every host
+  # that clears them, however good its overall score -- use this for things
+  # that are not tradeable, like glycosylation for a therapeutic protein.
+  hard:
+    secretion: 0.40
+
+
+# --------------------------------------------------------------- stage [3]
+# Which biosynthetic route to build. Each step is scored 0-1, higher = better.
+#
+#   g_thermo    is the reaction thermodynamically downhill?
+#   g_enzyme    is there a characterised, fast enough enzyme?
+#   g_cofactor  does it balance with what the cell can supply?
+#   g_tox       is the intermediate non-toxic to the host?
+#   g_expr      does the enzyme express and fold in this host?
+#
+# NOTE: today these are your judgement, entered by hand -- nothing computes
+# them from structure yet. See github.com/enginbio/engin-suite/issues/140.
+pathway:
+  routes:
+    - id: "route-A"
+      steps:
+        - {g_thermo: 0.80, g_enzyme: 0.70, g_cofactor: 0.90, g_tox: 0.95, g_expr: 0.60}
+        - {g_thermo: 0.60, g_enzyme: 0.85, g_cofactor: 0.75, g_tox: 0.90, g_expr: 0.70}
+    - id: "route-B"
+      steps:
+        - {g_thermo: 0.95, g_enzyme: 0.60, g_cofactor: 0.80, g_tox: 0.40, g_expr: 0.65}
+        - {g_thermo: 0.70, g_enzyme: 0.75, g_cofactor: 0.85, g_tox: 0.90, g_expr: 0.80}
+        - {g_thermo: 0.85, g_enzyme: 0.80, g_cofactor: 0.70, g_tox: 0.95, g_expr: 0.75}
+
+
+# --------------------------------------------------------------- stage [1]
+# Your vessel and your economics. Both default to a 1 L -> 2.5 L, 48 h
+# bench fed-batch, which is almost certainly not yours -- change them.
+process:
+  reactor:
+    v0: 1.0          # starting volume, litres
+    vmax: 2.5        # full working volume; feeding stops here. v0 == vmax is a
+                     # plain batch (no feed) reactor, which is allowed.
+    t_end: 48.0      # run length, hours
+    x0: 0.2          # inoculum biomass, g/L
+
+  cost:
+    substrate_usd_per_kg: 0.55        # what you pay for feedstock
+    reactor_usd_per_L_h: 0.045        # vessel occupancy: capital, utilities, labour
+    downstream_base_usd_per_kg: 46.0  # recovery cost at the reference titer below
+    downstream_reference_titer_g_L: 40.0
+    target_usd_per_kg: 200.0          # the price you need to beat
+
+  batch_size: 4      # how many designs to recommend
+  seed: 0            # same seed, same answer
