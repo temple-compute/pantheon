@@ -1,0 +1,146 @@
+{
+  "target": "recombinant lipase (secreted enzyme)",
+  "decision": {
+    "host": "P. pastoris",
+    "feasible": true,
+    "score": 0.8294117647058824,
+    "band90": 0.06852446980058381,
+    "confidence": 0.6810662159538993,
+    "key_drivers": [
+      "secretion",
+      "titer",
+      "scaleup"
+    ],
+    "alternatives": [
+      "B. subtilis",
+      "S. cerevisiae",
+      "CHO (mammalian)"
+    ],
+    "capability_profile": {
+      "secretion": 0.85,
+      "glyco": 0.5,
+      "titer": 0.85,
+      "speed": 0.6,
+      "tools": 0.75,
+      "scaleup": 0.8,
+      "cost": 0.8,
+      "smallmol": 0.6,
+      "protein": 0.85
+    }
+  },
+  "ranking": [
+    {
+      "host": "P. pastoris",
+      "score": 0.8294117647058824,
+      "sd": 0.0416562126447318,
+      "band90": 0.06852446980058381,
+      "contributions": [
+        [
+          "secretion",
+          0.25
+        ],
+        [
+          "titer",
+          0.25
+        ],
+        [
+          "scaleup",
+          0.16470588235294117
+        ]
+      ],
+      "flags": [],
+      "feasible": true,
+      "provenance": "illustrative",
+      "qps": {
+        "status": "listed",
+        "taxonomic_unit": "Komagataella phaffii",
+        "qualifications": [],
+        "source": "2026-efsa-qps-list",
+        "note": "Listed with no qualification, which is why `qualifications` is empty rather than absent -- the empty list is the fact. Filed under the current name; 'P. pastoris' is this KB's colloquial label for the same species."
+      },
+      "unsourced": [
+        "cost",
+        "scaleup",
+        "secretion",
+        "titer"
+      ]
+    },
+    {
+      "host": "B. subtilis",
+      "score": 0.7999999999999999,
+      "sd": 0.04657732761866964,
+      "band90": 0.07661970393271156,
+      "contributions": [
+        [
+          "secretion",
+          0.2647058823529412
+        ],
+        [
+          "titer",
+          0.20588235294117646
+        ],
+        [
+          "cost",
+          0.175
+        ]
+      ],
+      "flags": [],
+      "feasible": true,
+      "provenance": "illustrative",
+      "qps": {
+        "status": "listed",
+        "taxonomic_unit": "Bacillus subtilis",
+        "qualifications": [
+          "The strains should not harbour any acquired antimicrobial resistance genes to clinically relevant antimicrobials."
+        ],
+        "source": "2026-efsa-qps-list",
+        "note": ""
+      },
+      "unsourced": [
+        "cost",
+        "scaleup",
+        "secretion",
+        "titer"
+      ]
+    },
+    {
+      "host": "S. cerevisiae",
+      "score": 0.7176470588235293,
+      "sd": 0.029932702776423816,
+      "band90": 0.04923929606721718,
+      "contributions": [
+        [
+          "titer",
+          0.22058823529411764
+        ],
+        [
+          "scaleup",
+          0.175
+        ],
+        [
+          "cost",
+          0.175
+        ]
+      ],
+      "flags": [],
+      "feasible": true,
+      "provenance": "illustrative",
+      "qps": {
+        "status": "listed",
+        "taxonomic_unit": "Saccharomyces cerevisiae",
+        "qualifications": [
+          "When used as active agents (viable cells): Absence of resistance to antimycotics used for medical treatment of yeast infections in cases where viable cells are added to the food or feed chain."
+        ],
+        "source": "2026-efsa-qps-list",
+        "note": ""
+      },
+      "unsourced": [
+        "cost",
+        "scaleup",
+        "secretion",
+        "titer"
+      ]
+    }
+  ],
+  "kb_provenance": "illustrative"
+}

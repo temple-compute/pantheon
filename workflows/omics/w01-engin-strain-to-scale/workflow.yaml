@@ -1,0 +1,203 @@
+kind: horus_workflow
+name: Engin Strain-to-Scale
+
+artifacts:
+  - id: project
+    name: Engin project file
+    description: Single project.yaml read by all three Engin stages -- host
+      weights, candidate routes, and vessel/cost economics.
+    kind: file
+    path: examples/project.yaml
+
+tasks:
+  # `summary` is listed first, even though it depends on the other three,
+  # because `horus run` with no --trigger defaults to `tasks[0]`, and its
+  # scope is ancestors(trigger) | descendants(trigger). host/pathway/process
+  # share no task-to-task edge (each is an independent read of `project`),
+  # so no single one of them has the other two in its ancestors or
+  # descendants -- only `summary`, their common descendant, does. Triggering
+  # anywhere else runs just that one branch plus `summary` (which then
+  # blocks forever on the missing inputs). List order otherwise doesn't
+  # matter; edges below define the real dependency graph.
+  - kind: horus_task
+    id: summary
+    name: Build the decision brief
+    description: Merges the three stage JSONs into one summary.json and a
+      summary.md brief that keeps each stage's interval and its
+      illustrative/synthetic/judgement caveats visible.
+    inputs:
+      - id: host_json
+        name: Host ranking (JSON)
+        kind: file
+        path: results/host.json
+      - id: pathway_json
+        name: Pathway ranking (JSON)
+        kind: file
+        path: results/pathway.json
+      - id: process_json
+        name: Process plan (JSON)
+        kind: file
+        path: results/process.json
+    outputs:
+      - id: summary_json
+        name: Decision brief (JSON)
+        kind: file
+        path: results/summary.json
+      - id: summary_md
+        name: Decision brief (Markdown)
+        kind: file
+        path: results/summary.md
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/summary.py
+      python: python3 # stdlib-only; use the target's python3
+      args: >-
+        --host ${host_json} --pathway ${pathway_json} --process ${process_json}
+        --out-json ${summary_json} --out-md ${summary_md}
+    target:
+      kind: local
+
+  # host, pathway and process all read the same project.yaml and answer their
+  # own independent question -- none consumes another's output. So this is
+  # one input artifact fanning out to three parallel tasks, not a pipeline.
+  # Each stage writes both --json (for `summary` and for scripting) and the
+  # plain report (for a human to read the caveats in).
+  - kind: horus_task
+    id: host
+    name: engin-host -- which chassis?
+    description: Ranks candidate host organisms against project.yaml's capability
+      weights and hard constraints.
+    inputs:
+      - id: project
+        name: Engin project file
+        kind: file
+        path: examples/project.yaml
+    outputs:
+      - id: host_json
+        name: Host ranking (JSON)
+        kind: file
+        path: results/host.json
+      - id: host_txt
+        name: Host ranking (report)
+        kind: file
+        path: results/host.txt
+    resources:
+      cpus: 1
+      memory_gb: 2
+    executor:
+      kind: uv_python_environment
+      python: "3.11"
+      requirements:
+        - engin-host[cli]==0.1.1
+    runtime:
+      kind: command
+      command: >-
+        engin-host --config ${project} --json > ${host_json}
+        && engin-host --config ${project} > ${host_txt}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: pathway
+    name: engin-pathway -- which route?
+    description: Ranks candidate biosynthetic routes from project.yaml by
+      predicted manufacturability, with a 90% interval.
+    inputs:
+      - id: project
+        name: Engin project file
+        kind: file
+        path: examples/project.yaml
+    outputs:
+      - id: pathway_json
+        name: Pathway ranking (JSON)
+        kind: file
+        path: results/pathway.json
+      - id: pathway_txt
+        name: Pathway ranking (report)
+        kind: file
+        path: results/pathway.txt
+    resources:
+      cpus: 1
+      memory_gb: 2
+    executor:
+      kind: uv_python_environment
+      python: "3.11"
+      requirements:
+        - engin-pathway[cli]==0.1.1
+    runtime:
+      kind: command
+      command: >-
+        engin-pathway --config ${project} --json > ${pathway_json}
+        && engin-pathway --config ${project} > ${pathway_txt}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: process
+    name: engin-process -- what to run next?
+    description: Costs the current process against project.yaml's vessel and
+      economics, and proposes the next runs by expected cost reduction.
+    inputs:
+      - id: project
+        name: Engin project file
+        kind: file
+        path: examples/project.yaml
+    outputs:
+      - id: process_json
+        name: Process plan (JSON)
+        kind: file
+        path: results/process.json
+      - id: process_txt
+        name: Process plan (report)
+        kind: file
+        path: results/process.txt
+    resources:
+      cpus: 1
+      memory_gb: 2
+    executor:
+      kind: uv_python_environment
+      python: "3.11"
+      # engin-process ships as part of engin-core; engin-host[cli] pulls in
+      # engin-core[cli] (see w01-engin-strain-to-scale/README.md).
+      requirements:
+        - engin-host[cli]==0.1.1
+    runtime:
+      kind: command
+      command: >-
+        engin-process --config ${project} --json > ${process_json}
+        && engin-process --config ${project} > ${process_txt}
+    target:
+      kind: local
+
+edges:
+  - source: artifact-project
+    source_output: project
+    target: host
+    target_input: project
+  - source: artifact-project
+    source_output: project
+    target: pathway
+    target_input: project
+  - source: artifact-project
+    source_output: project
+    target: process
+    target_input: project
+
+  - source: host
+    source_output: host_json
+    target: summary
+    target_input: host_json
+  - source: pathway
+    source_output: pathway_json
+    target: summary
+    target_input: pathway_json
+  - source: process
+    source_output: process_json
+    target: summary
+    target_input: process_json
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results

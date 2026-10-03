@@ -1,0 +1,29 @@
+# Host recommendation — recombinant lipase (secreted enzyme)
+_engin-host first-slice. Some capability values are **illustrative** -- hand-assigned, not sourced. Score in [0,1]; ± is a 90% band from KB confidence, which is a separate question from whether the value was sourced._
+
+| rank | host | score (90% band) | top drivers | flags | basis |
+|---|---|---|---|---|---|
+| 1 | P. pastoris | 0.83 ± 0.07 | secretion 0.25, titer 0.25, scaleup 0.16 | — | illustrative |
+| 2 | B. subtilis | 0.80 ± 0.08 | secretion 0.26, titer 0.21, cost 0.17 | — | illustrative |
+| 3 | S. cerevisiae | 0.72 ± 0.05 | titer 0.22, scaleup 0.17, cost 0.17 | — | illustrative |
+
+## EFSA QPS status (displayed, not scored)
+
+_QPS covers microorganisms **intentionally added to food or feed**. It does not speak to an enzyme, a pharmaceutical intermediate or a material, which is what most of these hosts are used for. `excluded` means assessed and refused; `out_of_scope` means the scheme never reached it. The two are not points on one scale, and neither affects the ranking above._
+
+- **P. pastoris** (Komagataella phaffii) — `listed`
+- **B. subtilis** (Bacillus subtilis) — `listed`
+  - qualification: The strains should not harbour any acquired antimicrobial resistance genes to clinically relevant antimicrobials.
+- **S. cerevisiae** (Saccharomyces cerevisiae) — `listed`
+  - qualification: When used as active agents (viable cells): Absence of resistance to antimycotics used for medical treatment of yeast infections in cases where viable cells are added to the food or feed chain.
+
+**Recommendation:** P. pastoris (score 0.83 ± 0.07). Driven by secretion, titer, scaleup. No hard-constraint conflicts.
+
+**This recommendation rests on unsourced values.** 4 of the capabilities it weighs are illustrative: cost, scaleup, secretion, titer. Treat the ranking as a demonstration of the scoring machinery rather than as evidence about these organisms.
+
+
+confidence: 0.68  — P(P. pastoris really is the best feasible host here)
+
+The capability knowledge base is illustrative: 60 hand-assigned values
+with no citations behind them (issue #146). Treat this as a structured
+way to argue about the choice, not as evidence for it.
