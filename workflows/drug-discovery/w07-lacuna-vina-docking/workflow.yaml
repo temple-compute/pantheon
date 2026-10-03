@@ -1,0 +1,333 @@
+kind: horus_workflow
+name: Lacuna + AutoDock Vina Docking
+
+# lacuna-pockets is a plain pip package (hatchling, pure Python + numpy/scipy for
+# the default NMA backend and both detectors) -- no conda or container toolchain
+# needed, unlike the fpocket-based BioBB workflows. uv_python_environment installs
+# it into a venv with `uv pip install` and runs the `lacuna` CLI entrypoint directly.
+_executor: &executor
+  kind: uv_python_environment
+  environment_dir: "../.horus_uv_env_lacuna"
+  python: "3.11"
+  requirements:
+    - "lacuna-pockets>=1.1.0"
+
+_docking_executor: &docking_executor
+  kind: conda_python_environment
+  conda: micromamba # set to mamba/conda if that's what's on PATH
+  python_version: "3.11"
+  channels:
+    - conda-forge
+
+artifacts:
+  - id: receptor
+    name: Target receptor structure
+    description: Unbound (apo) PDB/mmCIF structure to search for cryptic pockets.
+    kind: file
+    path: examples/structures/receptor.pdb
+
+  - id: ligands
+    name: Candidate ligand library
+    description: SMILES (or SDF) file listing candidate ligands to dock into the discovered pocket. The bundled example is a generic 3-compound demo set, not a curated screening library.
+    kind: file
+    path: examples/ligands.smi
+
+tasks:
+  # Runs the full pipeline in one CLI call: ensemble generation, per-conformer
+  # detection with the pooled alpha + learned-surface detector, cross-ensemble
+  # clustering, and ranking. --detector surface-fusion is 1.1.0's headline
+  # addition: the alpha detector only proposes where there is already a
+  # concavity, which is exactly the wrong assumption for a cryptic site.
+  - kind: horus_task
+    id: discover
+    name: Discover cryptic pockets across a conformational ensemble
+    description: Generates a conformational ensemble, detects pockets in every conformer with the pooled alpha + learned surface detector, clusters them across the ensemble, and ranks the surviving sites with the fitted model.
+    skip_if_complete: false
+    inputs:
+      - id: receptor
+        name: Target receptor structure
+        kind: file
+        path: examples/structures/receptor.pdb
+    outputs:
+      - id: pockets
+        name: Ranked pocket report + pocket PDBs
+        kind: folder
+        path: results/pockets/
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        lacuna discover ${receptor}
+        --conformers 20
+        --detector surface-fusion
+        --rank-by learned
+        --top 10
+        --emit-pocket-pdbs
+        --output ${pockets}
+    target:
+      kind: local
+
+  # The bridge to downstream docking, mirroring the role select_pocket/box play
+  # in W-30: turns the ranked report into per-pocket AutoDock Vina boxes and
+  # Boltz-2 YAML constraints. Kept as a separate task (rather than baking
+  # --emit-vina-boxes/--emit-boltz-constraints into discover) so --top/--format
+  # can be changed without rerunning ensemble generation and detection.
+  - kind: horus_task
+    id: dock_prep
+    name: Generate docking inputs for the top-ranked pockets
+    description: Converts the top-ranked pockets into AutoDock Vina boxes and Boltz-2 YAML constraints, ready to hand to W-01 or W-02.
+    inputs:
+      - id: pockets
+        name: Ranked pocket report + pocket PDBs
+        kind: folder
+        path: pockets/
+      - id: receptor
+        name: Target receptor structure
+        kind: file
+        path: examples/structures/receptor.pdb
+    outputs:
+      - id: docking_inputs
+        name: Docking-ready inputs (Vina boxes + Boltz constraints + pocket PDBs)
+        kind: folder
+        path: results/docking_inputs/
+    executor: *executor
+    runtime:
+      kind: command
+      command: >-
+        lacuna dock-prep ${pockets}/pocket_report.json ${receptor}
+        --format all
+        --top 5
+        --output ${docking_inputs}
+    target:
+      kind: local
+
+  # Boxes and prepares the top-ranked pocket for real docking. --box-config
+  # points at pocket_0 (rank 1, Lacuna's top-ranked site); repoint it at
+  # pocket_3_vina.conf to dock into the switch-II cryptic pocket from the
+  # README's KRAS validation instead. Two separate output folders, not one
+  # nested tree: the dock map below needs one input shared by every clone
+  # (receptor + box) and a second, disjoint folder to map over, one PDBQT
+  # per ligand -- a FolderArtifact's items are its own immediate children,
+  # so the mapped-over folder cannot also contain the receptor.
+  - kind: horus_task
+    id: prep
+    name: Prepare receptor + ligands + box for the top-ranked pocket
+    description: Converts the receptor and ligand library to PDBQT format and boxes the search on Lacuna's top-ranked pocket.
+    inputs:
+      - id: receptor
+        name: Target receptor structure
+        kind: file
+        path: examples/structures/receptor.pdb
+      - id: ligands
+        name: Candidate ligand library
+        kind: file
+        path: examples/ligands.smi
+      - id: docking_inputs
+        name: Docking-ready inputs
+        kind: folder
+        path: docking_inputs/
+    outputs:
+      - id: receptor_box
+        name: Prepared receptor + docking box
+        kind: folder
+        path: results/receptor_box/
+      - id: ligands_pdbqt
+        name: Prepared ligand PDBQTs (one file per ligand)
+        kind: folder
+        path: results/ligands_pdbqt/
+    resources:
+      cpus: 2
+      memory_gb: 4
+    executor:
+      <<: *docking_executor
+      conda_requirements:
+        - openbabel # receptor -> rigid PDBQT (obabel)
+        - meeko # ligand -> PDBQT (mk_prepare_ligand.py)
+        - rdkit # 3D embedding of SMILES + Meeko's typing
+        - numpy
+        - scipy
+        - gemmi
+    runtime:
+      kind: python_script
+      script: scripts/prep.py
+      args: >-
+        --receptor ${receptor}
+        --ligands ${ligands}
+        --box-config ${docking_inputs}/pocket_0_vina.conf
+        --out-receptor ${receptor_box}
+        --out-ligands ${ligands_pdbqt}
+    target:
+      kind: local
+
+  # horus_map: runs its own body once per child of `ligands_pdbqt` (the
+  # iterable input named by `over.input_id`), each ligand bound to `over.as`
+  # on that clone. Every clone also gets a copy of this task's other declared
+  # input, `receptor_box`, since a map clone receives the whole set of the
+  # map task's own inputs plus the one item -- so `${receptor_box}` and
+  # `${ligand}` are both valid inside the body below. The single folder
+  # output holds one numbered slot per ligand (docked/0/, docked/1/, ...)
+  # once every clone has run; no separate gather task or edge is needed to
+  # collect them, `summary` reads that folder directly.
+  - kind: horus_map
+    id: dock
+    name: Dock each ligand concurrently
+    description: Runs one AutoDock Vina docking per ligand, concurrently, into the boxed pocket.
+    over:
+      input_id: ligands_pdbqt
+      as: ligand
+    inputs:
+      - id: receptor_box
+        name: Prepared receptor + docking box
+        kind: folder
+        path: receptor_box/
+      - id: ligands_pdbqt
+        name: Prepared ligand PDBQTs
+        kind: folder
+        path: ligands_pdbqt/
+    outputs:
+      - id: docked
+        name: Per-ligand docking results
+        kind: folder
+        path: results/docked/
+    resources:
+      cpus: 2
+      memory_gb: 4
+    executor:
+      <<: *docking_executor
+      conda_requirements:
+        - vina # AutoDock Vina + Python bindings (conda-forge)
+        - numpy
+    runtime:
+      kind: python_script
+      script: scripts/dock_one.py
+      args: >-
+        --receptor ${receptor_box}/receptor.pdbqt
+        --box ${receptor_box}/box.json
+        --ligand ${ligand}
+        --out ${docked}
+        --exhaustiveness 8 --n-poses 9 --cpu 1
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: summary
+    name: Summarize docking energies
+    description: Collects every ligand's docking output and writes ranked per-ligand and per-pose binding energy tables.
+    inputs:
+      - id: docked
+        name: Per-ligand docking results
+        kind: folder
+        path: docked/
+    outputs:
+      - id: scores
+        name: Ranked energy summary
+        kind: file
+        path: results/scores.csv
+      - id: poses
+        name: Per-pose energy table
+        kind: file
+        path: results/poses.csv
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/summary.py
+      python: python3 # summary is stdlib-only; use the target's python3
+      args: --results ${docked} --summary ${scores} --poses ${poses}
+    target:
+      kind: local
+
+  # Turns the JSON report into files the Horus UI renders on its own: a .html
+  # file shows as a live page and a .csv as a sortable table, whereas the
+  # `pockets` folder only opens as a file explorer.
+  - kind: horus_task
+    id: report
+    name: Render the pocket report
+    description: Builds a self-contained HTML report (with a Mol* 3D view of the receptor and pockets) and a CSV table from pocket_report.json.
+    inputs:
+      - id: pockets
+        name: Ranked pocket report + pocket PDBs
+        kind: folder
+        path: pockets/
+      - id: receptor
+        name: Target receptor structure
+        kind: file
+        path: examples/structures/receptor.pdb
+    outputs:
+      - id: report
+        name: Pocket report (HTML)
+        kind: file
+        path: results/report.html
+      - id: table
+        name: Pocket table (CSV)
+        kind: file
+        path: results/pockets.csv
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/report.py
+      python: python3 # stdlib-only; use the target's python3
+      args: --pockets ${pockets} --receptor ${receptor} --report ${report} --table ${table}
+    target:
+      kind: local
+
+edges:
+  - source: artifact-receptor
+    source_output: receptor
+    target: discover
+    target_input: receptor
+
+  - source: discover
+    source_output: pockets
+    target: dock_prep
+    target_input: pockets
+
+  - source: artifact-receptor
+    source_output: receptor
+    target: dock_prep
+    target_input: receptor
+
+  - source: artifact-receptor
+    source_output: receptor
+    target: prep
+    target_input: receptor
+
+  - source: artifact-ligands
+    source_output: ligands
+    target: prep
+    target_input: ligands
+
+  - source: dock_prep
+    source_output: docking_inputs
+    target: prep
+    target_input: docking_inputs
+
+  - source: prep
+    source_output: receptor_box
+    target: dock
+    target_input: receptor_box
+
+  - source: prep
+    source_output: ligands_pdbqt
+    target: dock
+    target_input: ligands_pdbqt
+
+  - source: discover
+    source_output: pockets
+    target: report
+    target_input: pockets
+
+  - source: artifact-receptor
+    source_output: receptor
+    target: report
+    target_input: receptor
+
+  - source: dock
+    source_output: docked
+    target: summary
+    target_input: docked
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
