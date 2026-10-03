@@ -50,6 +50,7 @@ uv run horus run workflow.yaml
 | W-33 | [Lacuna Cryptic Pocket Discovery](workflows/drug-discovery/w06-lacuna-cryptic-pocket-discovery/README.md) | Find cryptic binding pockets across a conformational ensemble with Lacuna's pooled geometric + learned-surface detector |
 | W-34 | [Lacuna + AutoDock Vina Docking](workflows/drug-discovery/w07-lacuna-vina-docking/README.md) | Lacuna cryptic pocket discovery, then box the top pocket and dock a ligand library with AutoDock Vina |
 | W-35 | [cMD Replicas (AMBER)](workflows/drug-discovery/w04-cmd/README.md) | Conventional MD with AMBER (pmemd/pmemd.cuda): minimize, heat, equilibrate, then run production MD across N parallel replicas |
+| W-36 | [OpenDDE Co-folding Screen](workflows/drug-discovery/w08-opendde-cofolding-screen/README.md) | Co-fold a protein–ligand library with OpenDDE (optional MSA toggle) and rank complexes by interface confidence |
 
 ### BioExcel Building Blocks
 
