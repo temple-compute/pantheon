@@ -5,8 +5,7 @@
 ## Overview
 
 End-to-end conventional molecular dynamics (cMD) with AMBER: from a PDB ID
-(or an uploaded PDB, or a ready prmtop/inpcrd) to a protonated, parameterized,
-solvated system, N parallel replicas of a 10-step equilibration and chunked
+to a protonated, solvated system with an optional GAFF2 ligand, N parallel replicas of a 10-step equilibration and chunked
 production on GPUs, per-replica trajectory analysis, and one HTML report with
 clustering. The MD protocol is ported from
 [MolBioMedUAB/protocols](https://github.com/MolBioMedUAB/protocols)'
@@ -21,18 +20,35 @@ Horus's `horus_map`, one SLURM job per replica per phase.
 ## Pipeline
 
 ```
-prepare_system   (SLURM CPU)   PDB ID | PDB file | prmtop+inpcrd
-      |                         clean -> PROPKA -> pdb4amber -> ligands (GAFF2/AM1-BCC)
-      |                         -> tleap solvate + SLTCAP salt -> optional HMR
-      |                         --> system.prmtop/.inpcrd/.pdb, prep_report.json
-prepare_replicas (local)        renders min/md templates from the MD settings
-      |                         --> replicas/<i>/ (one self-contained slot each)
-horus_map equilibrate (N x GPU) 10 steps: min, heat, restrained NPT, min, NPT, free NPT/NVT
-horus_map produce     (N x GPU) chunked production (NVT or NPT)
-horus_map analyze     (N x CPU) cpptraj: RMSD, RMSF, Rg, H-bonds, ligand RMSD/contacts
-report                (CPU)     k-means clustering over all replicas
-                                --> results/report.html, summary.csv, clusters/
+fetch_pdb (local)            PDB ID --> structure.pdb
+  |-- extract_ligand (local)      structure + residue name --> ligand pose .pdb
+  |     parameterize_ligand (CPU) pose --> ligand.mol2 + ligand.frcmod (GAFF2, AM1-BCC)
+  |-- build_complex (CPU)    structure + ligand --> system.prmtop/.inpcrd/.pdb, prep_report.json
+  '-- build_system (CPU)     protein-only alternative (outputs unused in the default graph)
+prepare_replicas (local)     renders min/md templates from the MD settings --> replicas/<i>/
+horus_map equilibrate (N x GPU)  10 steps: min, heat, restrained NPT, min, NPT, free NPT/NVT
+horus_map produce     (N x GPU)  chunked production (NVT or NPT)
+horus_map analyze     (N x CPU)  cpptraj: RMSD, RMSF, Rg, H-bonds, ligand RMSD/contacts
+report                (CPU)      k-means over all replicas --> report.html, summary.csv, clusters/
 ```
+
+### Swapping blocks
+
+Blocks exchange plain files, so any block can be replaced by connecting
+your own file to the next block's input:
+
+| You have | Delete | Connect to |
+|---|---|---|
+| your own PDB | `fetch_pdb` | `structure_in` of the build block (and `extract_ligand`) |
+| a docked/prepared ligand pose (.pdb/.sdf/.mol2) | `extract_ligand` | `ligand_in` of `parameterize_ligand` |
+| ligand.mol2 + ligand.frcmod you parameterized | `extract_ligand`, `parameterize_ligand` | `ligand_mol2_in` / `ligand_frcmod_in` of `build_complex` |
+| a protein-only system | the ligand blocks and `build_complex` | `build_system`'s `protein_prmtop`/`protein_inpcrd` to `prepare_replicas` |
+| a ready prmtop/inpcrd | everything before `prepare_replicas` | `system_prmtop_in` / `system_inpcrd_in` of `prepare_replicas` |
+
+`examples/` has a protein PDB (`1aki.pdb`) and a ready 1AKI system
+(`system.prmtop`/`.inpcrd`) to try the last rows. The report needs nothing
+from the build blocks: `analyze` reads the system composition from the
+topology.
 
 ## Prerequisites
 
@@ -58,22 +74,22 @@ or import the folder into tc-os and set the inputs in the UI. Uses the
 
 ## Inputs
 
-**System preparation**
+**Structure, ligand and system build**
 
-| Input | Default | Meaning |
-|---|---|---|
-| `input_mode` | PDB ID | PDB ID (RCSB download) / Uploaded PDB (`structure`) / AMBER prmtop/inpcrd (`parameters` + `coordinates`) |
-| `pdb_id` | `1AKI` | RCSB ID; needs a PDB-format file |
-| `chains` | all | e.g. `A,B` |
-| `ligands` | none | residue names to keep and parameterize, e.g. `JZ4`; all other hetero groups are removed (MSE becomes MET) |
-| `ligand_charges` | 0 | e.g. `JZ4:0,HEM:-2` |
-| `keep_waters` | off | keep crystal waters |
-| `protonation` / `ph` | PROPKA / 7.0 | PROPKA sets HIS (HIE/HIP), ASP (ASH), GLU (GLH), LYS (LYN); `reduce` = HIS tautomers only |
-| `forcefield` / `water` | ff14SB / TIP3P | ff19SB should go with OPC |
-| `box` / `padding` | truncated octahedron / 12 Å | |
-| `salt_mM` | 150 | NaCl by SLTCAP on top of neutralization |
-| `hmr` | off | hydrogen mass repartitioning (allows 4 fs) |
-| `amber_env` | Picard | module line for the cluster |
+| Input | Default | Used by | Meaning |
+|---|---|---|---|
+| `pdb_id` | `3HTB` | fetch_pdb | RCSB ID; needs a PDB-format file |
+| `ligand_resname` / `ligand_chain` | `JZ4` / first copy | extract_ligand, parameterize_ligand | ligand to extract; name it keeps in the system |
+| `ligand_charge` | 0 | parameterize_ligand | net formal charge (AM1-BCC) |
+| `protonate_ligand` | on | parameterize_ligand | Open Babel hydrogens at the pH; off keeps the file's hydrogens |
+| `chains` | all | build | e.g. `A,B`; every hetero group is removed (MSE becomes MET) |
+| `keep_waters` | off | build | keep crystal waters |
+| `protonation` / `ph` | PROPKA / 7.0 | build | PROPKA sets HIS (HIE/HIP), ASP (ASH), GLU (GLH), LYS (LYN); `reduce` = HIS tautomers only |
+| `forcefield` / `water` | ff14SB / TIP3P | build | ff19SB should go with OPC |
+| `box` / `padding` | truncated octahedron / 12 Å | build | |
+| `salt_mM` | 150 | build | NaCl by SLTCAP on top of neutralization |
+| `hmr` | off | build | hydrogen mass repartitioning (allows 4 fs) |
+| `amber_env` | Picard | cluster blocks | module line for the cluster |
 
 **MD protocol**
 
@@ -100,8 +116,9 @@ draw new velocities) is the `PROTOCOL` table in `scripts/prepare_replicas.py`;
 the namelists are `templates/min.in` and `templates/md.in` (archived as
 `templates.tar.gz`; rebuild with `tar -czf templates.tar.gz -C templates .`).
 
-Example ligand system: `pdb_id = 3HTB`, `ligands = JZ4`,
-`ligand_charges = JZ4:0` (T4 lysozyme L99A with 2-propylphenol).
+The default inputs build T4 lysozyme L99A with 2-propylphenol (3HTB + JZ4).
+One ligand per `build_complex`; for a protein-only system see
+[Swapping blocks](#swapping-blocks).
 
 ## Outputs
 
@@ -109,13 +126,15 @@ Example ligand system: `pdb_id = 3HTB`, `ligands = JZ4`,
   (backbone RMSD vs first frame and vs the built structure, CA RMSF, Rg,
   H-bond count, ligand RMSD and contacts, potential energy, temperature,
   density for NPT), cluster populations per replica with Mol* views of the
-  representatives, top H-bonds and ligand contacts, and every warning from
-  preparation.
+  representatives, top H-bonds and ligand contacts, the system composition
+  and every MD setting.
 - `results/summary.csv`: one row per replica (chunks, ns, frames, mean RMSD,
   Rg, H-bonds, ligand RMSD).
 - `results/clusters/`: representative PDBs and the per-frame assignment.
 - `system/`: `system.prmtop`, `system.inpcrd`, `system.pdb`,
-  `prep_report.json` (protonation changes, disulfides, ions, box, warnings).
+  `prep_report.json` (removed hetero groups, protonation changes,
+  disulfides, ligand charge, ions, box, warnings).
+- `ligand/`: extracted pose, `ligand.mol2`, `ligand.frcmod`.
 - Per replica: `equilibrated_out/<i>/`, `produced_out/<i>/` (chunks) and
   `analyzed_out/<i>/` (cpptraj `.dat` files, dry trajectory).
 
@@ -162,16 +181,18 @@ in each replica's **side products** in the UI:
 
 ## Verification
 
-- Self-checks (no AMBER needed): `python3 scripts/prepare_system.py --self-test`,
+- Self-checks (no AMBER needed): `--self-test` on `scripts/fetch_pdb.py`,
+  `extract_ligand.py`, `parameterize_ligand.py`, `build_system.py`,
   `scripts/prepare_replicas.py --self-test` (rendered nstlim/dt/cut/restraints
   per step, HMR at 4 fs, NPT production, seeds), `scripts/analyze.py --self-test`,
   `scripts/report.py --self-test`, `bash scripts/live_monitor.sh --selftest`.
 - `env/amber-stub.sh` is a drop-in for the AMBER module that writes fake
   pmemd outputs (including the completion line the resume check reads), to
   exercise `equilibrate.sh`/`production.sh` without a GPU.
-- Real end-to-end test with conda-forge AmberTools (`sander` standing in
-  for pmemd): 3HTB + JZ4, 2 replicas with `equil_scale` and `chunk_ns` cut
-  to picoseconds, through `analyze.py` and `report.py`.
+- Real tests with conda-forge AmberTools: fetch 3HTB -> extract JZ4 ->
+  parameterize -> build_complex and build_system; then (`sander` standing
+  in for pmemd) 2 replicas with `equil_scale` and `chunk_ns` cut to
+  picoseconds through `analyze.py` and `report.py`.
 
 ## References
 

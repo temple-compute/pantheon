@@ -275,23 +275,26 @@ def top_contacts(replicas: list[dict], n: int = 15) -> list[list]:
     return [[name(a), name(b), f] for (a, b), f in sorted(occ.items(), key=lambda kv: -kv[1])[:n]]
 
 
-def render(prep: dict, replicas: list[dict], clusters: dict | None) -> str:
+def render(replicas: list[dict], clusters: dict | None) -> str:
     proto = replicas[0]["info"]["protocol"]
+    system = replicas[0]["info"].get("system", {})
+    ligands = replicas[0]["info"].get("ligands", [])
     names = [r["name"] for r in replicas]
     stat = lambda k, v: f"<div class=stat><b>{html.escape(fmt(v))}</b><span>{html.escape(k)}</span></div>"
     cards = "".join([
         stat("Replicas", len(replicas)),
         stat("Total simulated (ns)", sum(r["info"]["simulated_ns"] for r in replicas)),
-        stat("Atoms", prep.get("atoms", "?")),
+        stat("Atoms", system.get("atoms", "?")),
         stat("Temperature (K)", proto["temperature"]),
         stat("Timestep (fs)", proto["timestep_fs"]),
         stat("Ensemble", proto["prod_ensemble"]),
     ])
-    warn = "".join(f"<div class=warn>{html.escape(w)}</div>" for w in prep.get("warnings", []))
+    warn = ""
     incomplete = [r["name"] for r in replicas if r["info"]["chunks_completed"] < r["info"]["chunks_planned"]]
     if incomplete:
         warn += f"<div class=warn>Incomplete production: {html.escape(', '.join(incomplete))}</div>"
-    prep_rows = [[k, json.dumps(v) if isinstance(v, (dict, list)) else v] for k, v in prep.items() if k != "warnings"]
+    system_rows = [[k, json.dumps(v) if isinstance(v, (dict, list)) else v] for k, v in system.items()]
+    system_rows.append(["ligands", ", ".join(ligands) or "none"])
     proto_rows = [[k, v] for k, v in proto.items() if k not in ("replica",)]
 
     s = lambda key: [(n, r[key]) for n, r in zip(names, replicas)]
@@ -330,19 +333,19 @@ def render(prep: dict, replicas: list[dict], clusters: dict | None) -> str:
     ct_html = f"<h2>Ligand contacts</h2>{table(['ligand', 'protein residue', 'contact score'], ct)}<p class=sub>Contact score: atom-pair contact fractions (4.5 Å) summed per residue pair, mean over replicas.</p>" if ct else ""
 
     data = json.dumps({"reps": reps}).replace("</", "<\\/")
-    title = f"cMD report: {prep.get('source', 'system')}"
+    title = "cMD report" + (f": {', '.join(ligands)} complex" if ligands else "")
     return (
         "<!doctype html><html><head><meta charset=utf-8>"
         f"<title>{html.escape(title)}</title><style>{CSS}</style>"
         f"<link rel=stylesheet href={MOLSTAR}/molstar.css></head><body>"
         f"<h1>{html.escape(title)}</h1><div class=sub>{len(replicas)} replica(s), "
-        f"{html.escape(str(prep.get('forcefield', '')))} / {html.escape(str(prep.get('water', '')))}</div>"
+        f"{html.escape(str(system.get('atoms', '?')))} atoms, {proto['temperature']} K</div>"
         f"<div class=stats>{cards}</div>{warn}"
         f"<h2>Replicas</h2>{summary}"
         f"<h2>Trajectory analysis</h2><div class=grid>{plot_html}</div>"
         f"<h2>Clusters (k-means, backbone)</h2>{cl_html}"
         f"<h2>Top hydrogen bonds</h2>{hb_html}{ct_html}"
-        f"<h2>System preparation</h2>{table(['setting', 'value'], prep_rows)}"
+        f"<h2>System</h2>{table(['property', 'value'], system_rows)}"
         f"<h2>MD protocol</h2>{table(['setting', 'value'], proto_rows)}"
         f"<script id=data type=application/json>{data}</script>"
         f"<script src={MOLSTAR}/molstar.js></script><script>{VIEWER_JS}</script></body></html>"
@@ -357,7 +360,6 @@ def whole(text: str) -> int:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("--analyses", type=Path, required=True, help="folder of per-replica analyze.py outputs")
-    ap.add_argument("--prep-report", type=Path, required=True)
     ap.add_argument("--n-clusters", type=whole, default=5)
     ap.add_argument("--out", type=Path, required=True, help="output folder")
     a = ap.parse_args()
@@ -366,10 +368,9 @@ def main() -> None:
     if not dirs:
         raise SystemExit(f"No replica analyses (info.json) under {a.analyses}.")
     replicas = [load_replica(d) for d in dirs]
-    prep = json.loads(a.prep_report.read_text())
     (a.out / "clusters").mkdir(parents=True, exist_ok=True)  # declared output, even when skipped
     clusters = cluster(replicas, a.n_clusters, a.out / "clusters") if a.n_clusters > 0 else None
-    (a.out / "report.html").write_text(render(prep, replicas, clusters))
+    (a.out / "report.html").write_text(render(replicas, clusters))
     rows = summary_rows(replicas)
     with (a.out / "summary.csv").open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
@@ -393,7 +394,9 @@ def demo() -> None:
             (d / "info.json").write_text(json.dumps({
                 "replica": rep, "chunks_planned": 2, "chunks_completed": 2 - rep, "simulated_ns": 20.0 - 10 * rep,
                 "frames": 50, "frame_ps": 10.0, "trajectory_bytes": 1000, "last_solute_residue": 130,
-                "ligands": ["JZ4130"], "protocol": proto}))
+                "ligands": ["JZ4130"], "protocol": proto,
+                "system": {"atoms": 38218, "residues": 9000, "solute_residues": 130, "waters": 8800,
+                           "ions": {"Na+": 21, "Cl-": 28}}}))
             dat = lambda name, f: (d / name).write_text("#Frame X\n" + "".join(f"{i:8d} {f(i):10.4f}\n" for i in range(1, 51)))
             dat("rmsd_first.dat", lambda i: 1 + math.sin(i / 5) + rep)
             dat("rmsd_start.dat", lambda i: 2 + i / 50)
@@ -411,12 +414,9 @@ def demo() -> None:
                 "".join(f" NSTEP = {s}   TIME(PS) = {s / 500:.3f}  TEMP(K) = 300.{s % 9}  PRESS = 0.0\n"
                         f" Etot = -1  EKtot = 1  EPtot = {-5000 - s / 1000:.1f}\n Density = 1.01\n" for s in range(500, 5001, 500))
                 + "      A V E R A G E S   O V E R\n NSTEP = 5000 TIME(PS) = 999 TEMP(K) = 1 EPtot = 0\n")
-        prep = tmp / "prep_report.json"
-        prep.write_text(json.dumps({"source": "RCSB 3HTB", "atoms": 38218, "forcefield": "ff19SB",
-                                    "water": "opc", "warnings": ["example warning"]}))
         out = tmp / "report"
         import sys
-        old, sys.argv = sys.argv, ["report.py", "--analyses", str(tmp / "an"), "--prep-report", str(prep),
+        old, sys.argv = sys.argv, ["report.py", "--analyses", str(tmp / "an"),
                                    "--n-clusters", "0", "--out", str(out)]
         try:
             main()
@@ -424,7 +424,7 @@ def demo() -> None:
             sys.argv = old
         page = (out / "report.html").read_text()
         assert page.count("<svg") == 9, page.count("<svg")  # 5 core + 2 ligand + 2 energy (NVT: no density)
-        assert "Incomplete production: replica 1" in page and "example warning" in page
+        assert "Incomplete production: replica 1" in page and "38218" in page and "JZ4130 complex" in page
         assert "ASN46@ND2" in page and "LEU84" in page and "Clustering skipped" in page
         assert "A V E R A G E S" not in page
         rows = list(csv.DictReader((out / "summary.csv").open()))

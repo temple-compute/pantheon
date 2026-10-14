@@ -1,25 +1,20 @@
 #!/usr/bin/env python3
 """
-System preparation for the cMD workflow: PDB -> solvated, ionized AMBER system.
+Build a solvated, ionized AMBER system from a protein PDB, optionally with
+one parameterized ligand (build_complex = with --ligand-mol2/--ligand-frcmod,
+build_system = without).
 
-Runs on the cluster with the AMBER module loaded (AmberTools: pdb4amber,
-tleap, antechamber, parmchk2, parmed, ambpdb) plus PROPKA for pH-dependent
-protonation. Stdlib Python; every AmberTools call is a subprocess.
-
-Input modes:
-  pdb_id    download https://files.rcsb.org/download/<ID>.pdb
-  pdb_file  an uploaded .pdb
-  amber     an existing prmtop/inpcrd (only HMR and the report apply)
-
-PDB pipeline: first model, first altloc -> keep chains -> drop waters (unless
-kept) and every hetero group except the named ligands (MSE becomes MET) ->
-PROPKA states at the pH (HIS -> HIE/HIP, ASP -> ASH, GLU -> GLH, LYS -> LYN)
--> pdb4amber (disulfides -> CYX) -> each ligand: add H, antechamber AM1-BCC
-GAFF2 with the given net charge, parmchk2 -> tleap: force field, water,
-box, padding -> salt by SLTCAP (counts from the solvated box) -> optional
-hydrogen mass repartitioning.
+Protein: first model, first altloc, chosen chains, MSE -> MET; every hetero
+group is removed (crystal waters optionally kept); the ligand comes only
+from ligand.mol2 (its pose and GAFF2 parameters, see parameterize_ligand).
+Protonation: PROPKA states at the pH (HIS -> HIE/HIP, ASP -> ASH, GLU ->
+GLH, LYS -> LYN), or reduce, or none; pdb4amber finds disulfides. tleap:
+force field, water, box, padding; NaCl by SLTCAP on top of neutralization;
+optional hydrogen mass repartitioning (ParmEd).
 
 Outputs: system.prmtop, system.inpcrd, system.pdb, prep_report.json.
+Needs the AMBER module (pdb4amber, tleap, parmed) and PROPKA for
+protonation=propka. Stdlib Python.
 """
 
 from __future__ import annotations
@@ -30,9 +25,6 @@ import math
 import re
 import shutil
 import subprocess
-import time
-import urllib.error
-import urllib.request
 from collections import Counter
 from pathlib import Path
 
@@ -50,14 +42,9 @@ def res_key(line: str) -> tuple[str, str]:
     return line[21], line[22:27].strip()
 
 
-def clean_pdb(text: str, chains: set[str], ligands: set[str], keep_waters: bool):
-    """Split a PDB into protein lines, ligand residues and waters.
-
-    Returns (protein, {resname: [[lines of one copy], ...]}, waters, dropped)
-    where dropped counts residues of hetero groups that were removed.
-    """
+def clean_pdb(text: str, chains: set[str], keep_waters: bool):
+    """Protein lines, crystal-water lines, and a count of removed hetero residues."""
     protein, waters, removed = [], [], set()
-    ligand_res: dict[str, dict[tuple, list[str]]] = {}
     for line in text.splitlines():
         record = line[:6].strip()
         if record == "ENDMDL":
@@ -74,25 +61,19 @@ def clean_pdb(text: str, chains: set[str], ligands: set[str], keep_waters: bool)
         element = line[76:78].strip() or line[12:14].strip().lstrip("0123456789")[:1]
         if record == "HETATM" and resname in MODIFIED:
             name = " SD " if line[12:16].strip() == "SE" else line[12:16]
-            line = "ATOM  " + line[6:12] + name + line[16:17] + MODIFIED[resname] + line[20:76] + (" S" if name == " SD " else line[76:78]) + line[78:]
-            record, resname = "ATOM", MODIFIED[resname]
+            line = ("ATOM  " + line[6:12] + name + line[16:17] + MODIFIED[resname] + line[20:76]
+                    + (" S" if name == " SD " else line[76:78]) + line[78:])
+            record = "ATOM"
         if record == "ATOM":
             protein.append(line.rstrip())
         elif resname in WATERS:
             if keep_waters and element != "H":
-                waters.append(line.rstrip())
-        elif resname in ligands:
-            if element != "H":  # hydrogens are re-added consistently later
-                ligand_res.setdefault(resname, {}).setdefault(res_key(line), []).append(line.rstrip())
+                waters.append(line[:17] + "WAT" + line[20:].rstrip())
         else:
             removed.add((resname, res_key(line)))
-    missing = ligands - set(ligand_res)
-    if missing:
-        raise SystemExit(f"Ligand residue(s) not found in the structure: {', '.join(sorted(missing))}")
     if not protein:
         raise SystemExit("No protein atoms left after filtering (check `chains`).")
-    dropped = Counter(name for name, _ in removed)
-    return protein, {k: list(v.values()) for k, v in ligand_res.items()}, waters, dropped
+    return protein, waters, Counter(name for name, _ in removed)
 
 
 def with_ter(lines: list[str]) -> list[str]:
@@ -107,10 +88,9 @@ def with_ter(lines: list[str]) -> list[str]:
 
 
 def propka_states(pka_text: str, ph: float) -> dict[tuple[str, str], str]:
-    """AMBER residue names for titratable residues whose state differs at pH.
+    """AMBER residue names for titratable residues at pH, from PROPKA's summary.
 
-    Parses PROPKA's 'SUMMARY OF THIS PREDICTION' table. HIS always gets a
-    name (HIP when protonated, else HIE, tleap's default tautomer).
+    HIS always gets a name (HIP when protonated, else HIE, tleap's default).
     """
     states, in_summary = {}, False
     for line in pka_text.splitlines():
@@ -162,22 +142,28 @@ def sltcap(n_water: int, charge: int, conc_mM: float) -> tuple[int, int]:
     return n_pos, n_neg
 
 
-def parse_charges(spec: str) -> dict[str, int]:
-    """'JZ4:0,HEM:-2' -> {'JZ4': 0, 'HEM': -2}."""
-    out = {}
-    for item in filter(None, (s.strip() for s in spec.split(","))):
-        name, _, q = item.partition(":")
-        out[name.strip().upper()] = int(q or 0)
-    return out
+def mol2_info(text: str) -> tuple[str, float]:
+    """(residue name, net charge) of a parameterized ligand mol2."""
+    block = text.split("@<TRIPOS>ATOM")[1].split("@<TRIPOS>")[0]
+    rows = [line.split() for line in block.splitlines() if len(line.split()) >= 9]
+    return rows[0][7], sum(float(r[8]) for r in rows)
 
 
-def tleap_input(*, forcefield, water, box, padding, ligands, disulfides, out, ions=(0, 0), charge_cmd=False) -> str:
+def tleap_input(*, forcefield, water, box, padding, ligand, waters, disulfides, out,
+                ions=(0, 0), charge_cmd=False) -> str:
+    """Protein first, then the ligand, then crystal waters: residue numbers of
+    the protein match pdb4amber's (disulfide bonds), and the ligand is the
+    last solute residue (restraint masks, analysis)."""
     lines = [f"source leaprc.protein.{forcefield}", f"source leaprc.water.{water}"]
-    if ligands:
-        lines.append("source leaprc.gaff2")
-    for name in ligands:
-        lines += [f"{name} = loadmol2 {name}.mol2", f"loadamberparams {name}.frcmod"]
-    lines.append("m = loadpdb complex.pdb")
+    parts = ["prot"]
+    if ligand:
+        lines += ["source leaprc.gaff2", "lig = loadmol2 ligand.mol2", "loadamberparams ligand.frcmod"]
+        parts.append("lig")
+    lines.append("prot = loadpdb protein_amber.pdb")
+    if waters:
+        lines.append("xwat = loadpdb waters.pdb")
+        parts.append("xwat")
+    lines.append(f"m = combine {{{' '.join(parts)}}}")
     lines += [f"bond m.{a}.SG m.{b}.SG" for a, b in disulfides]
     lines.append(f"{BOX_CMD[box]} m {WATER_BOX[water]} {padding}")
     if charge_cmd:
@@ -210,14 +196,12 @@ def atom_count(prmtop_text: str) -> int:
 
 # --- AmberTools calls ---------------------------------------------------------
 
-def run(cmd: list[str], cwd: Path, log: Path, ok_codes=(0,), stdout: Path | None = None) -> str:
+def run(cmd: list[str], cwd: Path, log: Path) -> str:
     print("+", " ".join(cmd), flush=True)
     proc = subprocess.run(cmd, cwd=cwd, capture_output=True, text=True)
     with log.open("a") as f:
         f.write(f"\n$ {' '.join(cmd)}\n{proc.stdout}\n{proc.stderr}")
-    if stdout is not None:
-        stdout.write_text(proc.stdout)
-    if proc.returncode not in ok_codes:
+    if proc.returncode != 0:
         tail = "\n".join((proc.stdout + proc.stderr).splitlines()[-30:])
         raise SystemExit(f"{cmd[0]} failed (exit {proc.returncode}):\n{tail}")
     return proc.stdout + proc.stderr
@@ -230,74 +214,12 @@ def need(tool: str, hint: str = "") -> str:
     return path
 
 
-def fetch_pdb(pdb_id: str, dest: Path) -> None:
-    if not re.fullmatch(r"[0-9][A-Za-z0-9]{3}", pdb_id):
-        raise SystemExit(f"Not a PDB ID: {pdb_id!r} (expected 4 characters, e.g. 1AKI).")
-    url = f"https://files.rcsb.org/download/{pdb_id.upper()}.pdb"
-    for attempt in range(3):
-        try:
-            with urllib.request.urlopen(url, timeout=60) as r:
-                dest.write_bytes(r.read())
-            print(f"Downloaded {url}")
-            return
-        except urllib.error.HTTPError as e:
-            if e.code == 404:
-                raise SystemExit(f"{pdb_id} has no PDB-format file at RCSB (large entries are mmCIF-only); upload a .pdb instead.")
-            err = e
-        except OSError as e:
-            err = e
-        time.sleep(5 * (attempt + 1))
-    raise SystemExit(f"Could not download {url}: {err}")
-
-
-def protonate_ligand(name: str, heavy: Path, ph: float, cwd: Path, log: Path) -> tuple[str, str]:
-    """Heavy-atom ligand PDB -> file with hydrogens; returns (file, antechamber format).
-
-    Open Babel (protonation at the pH, bond orders perceived) writes mol2:
-    its PDB output has CONECT records without bond orders, which antechamber
-    reads as all-single bonds (aromatic rings typed sp3). reduce is the
-    fallback (plain PDB, antechamber perceives bonds itself).
-    """
-    if shutil.which("obabel"):
-        out = f"{name}_h.mol2"
-        run(["obabel", "-ipdb", heavy.name, "-omol2", "-O", out, "-p", str(ph)], cwd, log)
-        fmt = "mol2"
-    elif shutil.which("reduce"):
-        out = f"{name}_h.pdb"
-        # reduce exits non-zero on warnings; judge by the output instead.
-        run(["reduce", "-BUILD", "-NUC", heavy.name], cwd, log, ok_codes=range(256), stdout=cwd / out)
-        fmt = "pdb"
-    else:
-        raise SystemExit("Adding ligand hydrogens needs `obabel` or `reduce` on PATH.")
-    if not re.search(r"\sH\d*\s", (cwd / out).read_text()):
-        raise SystemExit(f"Adding hydrogens to {name} produced no hydrogens; see prep.log.")
-    return out, fmt
-
-
-def hmr(prmtop: Path, cwd: Path, log: Path) -> None:
-    need("parmed")
-    (cwd / "hmr.in").write_text(f"HMassRepartition\noutparm {prmtop.name}.hmr\nquit\n")
-    run(["parmed", "-O", "-p", prmtop.name, "-i", "hmr.in"], cwd, log)
-    (cwd / f"{prmtop.name}.hmr").replace(prmtop)
-
-
-def prepare_from_pdb(a: argparse.Namespace, work: Path, log: Path, report: dict) -> None:
-    raw = work / "raw.pdb"
-    if a.input_mode == "pdb_id":
-        fetch_pdb(a.pdb_id.strip(), raw)
-        report["source"] = f"RCSB {a.pdb_id.strip().upper()}"
-    else:
-        shutil.copy(a.structure, raw)
-        report["source"] = f"uploaded {a.structure.name}"
-
+def build(a: argparse.Namespace, work: Path, log: Path, report: dict) -> None:
     chains = {c.strip() for c in a.chains.split(",") if c.strip()}
-    ligands = [x.strip().upper() for x in a.ligands.split(",") if x.strip()]
-    charges = parse_charges(a.ligand_charges)
-    protein, lig_res, waters, dropped = clean_pdb(raw.read_text(), chains, set(ligands), a.keep_waters)
-    report.update(chains=sorted({l[21] for l in protein}), removed_hetero=dict(dropped),
-                  crystal_waters_kept=len({res_key(w) for w in waters}))
+    protein, waters, dropped = clean_pdb(a.structure.read_text(), chains, a.keep_waters)
+    report.update(source=a.structure.name, chains=sorted({l[21] for l in protein}),
+                  removed_hetero=dict(dropped), crystal_waters_kept=len({res_key(w) for w in waters}))
 
-    # Protonation of the protein.
     (work / "protein.pdb").write_text("\n".join(with_ter(protein)) + "\nEND\n")
     p4a = ["pdb4amber", "-i", "protein_prot.pdb", "-o", "protein_amber.pdb"]
     if a.protonation == "propka":
@@ -317,56 +239,41 @@ def prepare_from_pdb(a: argparse.Namespace, work: Path, log: Path, report: dict)
         report["protonation"] = {"method": a.protonation}
     need("pdb4amber")
     p4a_log = run(p4a, work, log)
-    gaps = [l.strip() for l in p4a_log.splitlines() if "gap" in l.lower() and "A between" in l]
-    report["warnings"] += [f"pdb4amber: {g}" for g in gaps]
+    report["warnings"] += [f"pdb4amber: {l.strip()}" for l in p4a_log.splitlines()
+                           if "gap" in l.lower() and "A between" in l]
     sslink = work / "protein_amber_sslink"
     disulfides = []
     if sslink.exists():
         disulfides = [tuple(int(x) for x in l.split()[:2]) for l in sslink.read_text().splitlines() if l.strip()]
-    report["disulfides"] = [f"{a_}-{b}" for a_, b in disulfides]
+    report["disulfides"] = [f"{x}-{y}" for x, y in disulfides]
 
-    # Ligands: parameterize one copy, place every copy.
-    lig_report = []
-    for name in ligands:
-        q = charges.get(name)
-        if q is None:
-            q = 0
-            report["warnings"].append(f"No net charge given for {name}; assumed 0 (set ligand_charges, e.g. {name}:0).")
-        (work / f"{name}_heavy.pdb").write_text("\n".join(lig_res[name][0]) + "\nEND\n")
-        lig_file, lig_fmt = protonate_ligand(name, work / f"{name}_heavy.pdb", a.ph, work, log)
-        need("antechamber")
-        run(["antechamber", "-i", lig_file, "-fi", lig_fmt, "-o", f"{name}.mol2", "-fo", "mol2",
-             "-c", "bcc", "-at", "gaff2", "-nc", str(q), "-rn", name, "-s", "2", "-pf", "y"], work, log)
-        run(["parmchk2", "-i", f"{name}.mol2", "-f", "mol2", "-o", f"{name}.frcmod", "-s", "gaff2"], work, log)
-        lig_report.append({"name": name, "charge": q, "copies": len(lig_res[name])})
-    report["ligands"] = lig_report
-
-    # Complex: protein, each ligand copy, crystal waters.
-    body = [l for l in (work / "protein_amber.pdb").read_text().splitlines() if l.startswith(("ATOM", "HETATM", "TER"))]
-    for name in ligands:
-        for copy in lig_res[name]:
-            body += copy + ["TER"]
-    body += [w[:17] + "WAT" + w[20:] for w in waters]
-    (work / "complex.pdb").write_text("\n".join(body) + "\nEND\n")
+    ligand = a.ligand_mol2 is not None
+    if ligand:
+        shutil.copy(a.ligand_mol2, work / "ligand.mol2")
+        shutil.copy(a.ligand_frcmod, work / "ligand.frcmod")
+        name, q = mol2_info((work / "ligand.mol2").read_text())
+        report["ligand"] = {"name": name, "charge": round(q, 3)}
+    if waters:
+        (work / "waters.pdb").write_text("\n".join(waters) + "\nEND\n")
 
     # tleap twice: solvate to count waters and the net charge, then add ions.
     need("tleap")
     ff = dict(forcefield=a.forcefield, water=a.water, box=a.box, padding=a.padding,
-              ligands=ligands, disulfides=disulfides)
+              ligand=ligand, waters=bool(waters), disulfides=disulfides)
     (work / "leap_solvate.in").write_text(tleap_input(**ff, out="solvated", charge_cmd=True))
     out = run(["tleap", "-f", "leap_solvate.in"], work, log)
     m = re.search(r"Total (?:unperturbed )?charge:\s*(-?\d+\.\d+)", out)
     if not m:
-        raise SystemExit("tleap did not report the system charge; see prep.log.")
+        raise SystemExit("tleap did not report the system charge; see build.log.")
     charge = float(m.group(1))
     if abs(charge - round(charge)) > 0.01:
-        report["warnings"].append(f"Non-integer net charge {charge:.3f}: check ligand_charges / missing atoms.")
+        report["warnings"].append(f"Non-integer net charge {charge:.3f}: check the ligand charge / missing atoms.")
     n_water = residue_labels((work / "solvated.prmtop").read_text()).count("WAT")
     ions = sltcap(n_water, round(charge), a.salt_mM)
     (work / "leap_final.in").write_text(tleap_input(**ff, out="system", ions=ions))
     out = run(["tleap", "-f", "leap_final.in"], work, log)
     if not (work / "system.prmtop").exists():
-        raise SystemExit("tleap did not write system.prmtop; see prep.log.")
+        raise SystemExit("tleap did not write system.prmtop; see build.log.")
     report["warnings"] += [l.strip() for l in out.splitlines() if l.strip().startswith("WARNING")][:20]
     report.update(forcefield=a.forcefield, water=a.water, box=a.box, padding_A=a.padding,
                   salt_mM=a.salt_mM, net_charge_before_ions=round(charge, 3),
@@ -375,14 +282,10 @@ def prepare_from_pdb(a: argparse.Namespace, work: Path, log: Path, report: dict)
 
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
-    ap.add_argument("--input-mode", choices=["pdb_id", "pdb_file", "amber"], required=True)
-    ap.add_argument("--pdb-id", default="")
-    ap.add_argument("--structure", type=Path, help="uploaded .pdb (pdb_file mode)")
-    ap.add_argument("--prmtop", type=Path, help="amber mode")
-    ap.add_argument("--inpcrd", type=Path, help="amber mode")
+    ap.add_argument("--structure", type=Path, required=True, help="protein .pdb")
+    ap.add_argument("--ligand-mol2", type=Path, help="parameterized ligand (build_complex)")
+    ap.add_argument("--ligand-frcmod", type=Path)
     ap.add_argument("--chains", default="", help="comma list; empty = all")
-    ap.add_argument("--ligands", default="", help="residue names to keep and parameterize, e.g. JZ4,HEM")
-    ap.add_argument("--ligand-charges", default="", help="e.g. JZ4:0,HEM:-2")
     ap.add_argument("--keep-waters", default="false")
     ap.add_argument("--protonation", choices=["propka", "reduce", "none"], default="propka")
     ap.add_argument("--ph", type=float, default=7.0)
@@ -392,35 +295,31 @@ def main() -> None:
     ap.add_argument("--padding", type=float, default=12.0)
     ap.add_argument("--salt-mM", type=float, default=150.0)
     ap.add_argument("--hmr", default="false")
-    ap.add_argument("--work", type=Path, default=Path("prep"))
+    ap.add_argument("--work", type=Path, default=Path("build"))
     ap.add_argument("--out-prmtop", type=Path, required=True)
     ap.add_argument("--out-inpcrd", type=Path, required=True)
     ap.add_argument("--out-pdb", type=Path, required=True)
     ap.add_argument("--out-report", type=Path, required=True)
     a = ap.parse_args()
+    if (a.ligand_mol2 is None) != (a.ligand_frcmod is None):
+        raise SystemExit("Pass both --ligand-mol2 and --ligand-frcmod, or neither.")
     a.keep_waters = a.keep_waters.lower() in ("true", "1", "yes")
-    a.hmr = a.hmr.lower() in ("true", "1", "yes")
+    hmr = a.hmr.lower() in ("true", "1", "yes")
 
     work = a.work.resolve()
     work.mkdir(parents=True, exist_ok=True)
-    log = work / "prep.log"
-    report: dict = {"input_mode": a.input_mode, "warnings": []}
+    log = work / "build.log"
+    report: dict = {"warnings": []}
     if a.forcefield == "ff19SB" and a.water != "opc":
         report["warnings"].append("ff19SB is parameterized for OPC water; consider water=opc.")
+    build(a, work, log, report)
 
-    if a.input_mode == "amber":
-        shutil.copy(a.prmtop, work / "system.prmtop")
-        shutil.copy(a.inpcrd, work / "system.inpcrd")
-        report["source"] = f"uploaded {a.prmtop.name} / {a.inpcrd.name}"
-    else:
-        prepare_from_pdb(a, work, log, report)
-
-    if a.hmr:
-        hmr(work / "system.prmtop", work, log)
-    report["hmr"] = a.hmr
-    if a.input_mode == "amber" or a.hmr:
-        need("ambpdb")
-        run(["ambpdb", "-p", "system.prmtop", "-c", "system.inpcrd"], work, log, stdout=work / "system.pdb")
+    if hmr:
+        need("parmed")
+        (work / "hmr.in").write_text("HMassRepartition\noutparm system.prmtop.hmr\nquit\n")
+        run(["parmed", "-O", "-p", "system.prmtop", "-i", "hmr.in"], work, log)
+        (work / "system.prmtop.hmr").replace(work / "system.prmtop")
+    report["hmr"] = hmr
 
     prmtop_text = (work / "system.prmtop").read_text()
     labels = residue_labels(prmtop_text)
@@ -429,7 +328,7 @@ def main() -> None:
     report.update(
         atoms=atom_count(prmtop_text), residues=len(labels),
         solute_residues=sum(1 for x in labels if x not in SOLVENT_RESIDUES),
-        waters=counts.get("WAT", 0) + counts.get("HOH", 0) + counts.get("OPC", 0),
+        waters=counts.get("WAT", 0),
         ions={k: counts[k] for k in ("Na+", "Cl-", "K+") if counts.get(k)},
         box_A=[float(x) for x in box[:3]] if len(box) >= 6 else None,
     )
@@ -443,35 +342,29 @@ def main() -> None:
 
 def demo() -> None:
     """Self-check of the pure-Python parts (no AmberTools needed)."""
-    def atom(rec, serial, name, alt, res, chain, num, el, x=0.0):
-        return f"{rec:<6}{serial:5d} {name:<4}{alt}{res:>3} {chain}{num:>4}    {x:8.3f}{0:8.3f}{0:8.3f}  1.00  0.00          {el:>2}"
+    def atom(rec, serial, name, alt, res, chain, num, el):
+        return f"{rec:<6}{serial:5d} {name:<4}{alt}{res:>3} {chain}{num:>4}    {0:8.3f}{0:8.3f}{0:8.3f}  1.00  0.00          {el:>2}"
     pdb = "\n".join([
         atom("ATOM", 1, " N", " ", "ALA", "A", "1", "N"),
         atom("ATOM", 2, " CA", "A", "HIS", "A", "2", "C"),
         atom("ATOM", 3, " CA", "B", "HIS", "A", "2", "C"),       # altloc B dropped
         atom("HETATM", 4, "SE", " ", "MSE", "A", "3", "SE"),     # -> MET SD
         atom("ATOM", 5, " CA", " ", "GLY", "B", "1", "C"),       # chain B filtered
-        atom("HETATM", 6, " C1", " ", "JZ4", "A", "201", "C"),
-        atom("HETATM", 7, " H1", " ", "JZ4", "A", "201", "H"),   # ligand H dropped
-        atom("HETATM", 8, " C1", " ", "JZ4", "A", "202", "C"),   # second copy
-        atom("HETATM", 9, " O", " ", "HOH", "A", "301", "O"),
-        atom("HETATM", 10, " S", " ", "SO4", "A", "401", "S"),
+        atom("HETATM", 6, " C1", " ", "JZ4", "A", "201", "C"),   # hetero removed
+        atom("HETATM", 7, " C2", " ", "JZ4", "A", "201", "C"),
+        atom("HETATM", 8, " O", " ", "HOH", "A", "301", "O"),
+        atom("HETATM", 9, " S", " ", "SO4", "A", "401", "S"),
         "ENDMDL",
-        atom("ATOM", 11, " CA", " ", "ALA", "A", "9", "C"),      # model 2 ignored
+        atom("ATOM", 10, " CA", " ", "ALA", "A", "9", "C"),      # model 2 ignored
     ])
-    protein, ligs, waters, dropped = clean_pdb(pdb, {"A"}, {"JZ4"}, keep_waters=True)
+    protein, waters, dropped = clean_pdb(pdb, {"A"}, keep_waters=True)
     assert [l[17:20] for l in protein] == ["ALA", "HIS", "MET"], protein
     assert protein[2][12:16] == " SD " and protein[2].startswith("ATOM") and protein[1][16] == " "
-    assert len(ligs["JZ4"]) == 2 and len(ligs["JZ4"][0]) == 1
-    assert len(waters) == 1 and dropped["SO4"] == 1
-    assert len(clean_pdb(pdb, set(), {"JZ4"}, False)[2]) == 0
-    try:
-        clean_pdb(pdb, {"A"}, {"XYZ"}, False)
-    except SystemExit as e:
-        assert "XYZ" in str(e)
-    else:
-        raise AssertionError("missing ligand must fail")
-    assert with_ter([atom("ATOM", 1, " N", " ", "ALA", "A", "1", "N"), atom("ATOM", 2, " N", " ", "ALA", "B", "1", "N")]).count("TER") == 2
+    assert len(waters) == 1 and waters[0][17:20] == "WAT"
+    assert dropped == {"JZ4": 1, "SO4": 1}, dropped
+    assert clean_pdb(pdb, set(), False)[1] == []
+    assert with_ter([atom("ATOM", 1, " N", " ", "ALA", "A", "1", "N"),
+                     atom("ATOM", 2, " N", " ", "ALA", "B", "1", "N")]).count("TER") == 2
 
     pka = """
 SUMMARY OF THIS PREDICTION
@@ -489,26 +382,29 @@ SUMMARY OF THIS PREDICTION
     states = propka_states(pka, 7.0)
     assert states == {("A", "52"): "ASH", ("A", "15"): "HIE", ("A", "20"): "HIE", ("A", "96"): "LYN"}, states
     assert propka_states(pka, 6.0)[("A", "15")] == "HIP" and propka_states(pka, 6.0)[("A", "35")] == "GLH"
-    renamed = apply_states([atom("ATOM", 1, " CB", " ", "ASP", "A", "52", "C")], states)
-    assert renamed[0][17:20] == "ASH"
+    assert apply_states([atom("ATOM", 1, " CB", " ", "ASP", "A", "52", "C"), "TER"], states)[0][17:20] == "ASH"
 
     for nw, q, c in ((10000, -8, 150), (10000, 5, 150), (3000, 0, 0), (3000, -3, 0), (50, -20, 150)):
         pos, neg = sltcap(nw, q, c)
         assert pos - neg == -q and pos >= 0 and neg >= 0, (nw, q, c, pos, neg)
-    pos, neg = sltcap(10000, 0, 150)
-    assert pos == neg == 27  # 10000 * 0.15 / 55.5
+    assert sltcap(10000, 0, 150) == (27, 27)  # 10000 * 0.15 / 55.5
 
-    assert parse_charges("JZ4:0, hem:-2,") == {"JZ4": 0, "HEM": -2}
-    leap = tleap_input(forcefield="ff19SB", water="opc", box="cubic", padding=10.0,
-                       ligands=["JZ4"], disulfides=[(6, 127)], out="system", ions=(30, 22))
+    mol2 = ("@<TRIPOS>MOLECULE\nJZ4\n@<TRIPOS>ATOM\n"
+            "      1 C1   0.0 0.0 0.0 c3   1 JZ4  -0.25\n"
+            "      2 H1   0.0 0.0 1.0 hc   1 JZ4   0.25\n@<TRIPOS>BOND\n")
+    assert mol2_info(mol2)[0] == "JZ4" and abs(mol2_info(mol2)[1]) < 1e-9
+    leap = tleap_input(forcefield="ff19SB", water="opc", box="cubic", padding=10.0, ligand=True,
+                       waters=True, disulfides=[(6, 127)], out="system", ions=(30, 22))
     for want in ("source leaprc.protein.ff19SB", "source leaprc.water.opc", "source leaprc.gaff2",
-                 "JZ4 = loadmol2 JZ4.mol2", "bond m.6.SG m.127.SG", "solvatebox m OPCBOX 10.0",
-                 "addIonsRand m Na+ 30 Cl- 22", "saveamberparm m system.prmtop system.inpcrd"):
+                 "lig = loadmol2 ligand.mol2", "m = combine {prot lig xwat}", "bond m.6.SG m.127.SG",
+                 "solvatebox m OPCBOX 10.0", "addIonsRand m Na+ 30 Cl- 22",
+                 "saveamberparm m system.prmtop system.inpcrd"):
         assert want in leap, want
-    assert "gaff2" not in tleap_input(forcefield="ff14SB", water="tip3p", box="octahedral", padding=12,
-                                       ligands=[], disulfides=[], out="x")
+    plain = tleap_input(forcefield="ff14SB", water="tip3p", box="octahedral", padding=12, ligand=False,
+                        waters=False, disulfides=[], out="x")
+    assert "gaff2" not in plain and "m = combine {prot}" in plain and "solvateoct m TIP3PBOX 12" in plain
     assert residue_labels("%FLAG RESIDUE_LABEL\n%FORMAT(20a4)\nALA WAT Na+ \n%FLAG X\n") == ["ALA", "WAT", "Na+"]
-    print("prepare_system.py: self-check OK")
+    print("build_system.py: self-check OK")
 
 
 if __name__ == "__main__":

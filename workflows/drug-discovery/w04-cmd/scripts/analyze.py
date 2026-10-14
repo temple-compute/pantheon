@@ -46,6 +46,18 @@ def residue_labels(prmtop_text: str) -> list[str]:
     return [x for x in labels if x]
 
 
+def system_summary(prmtop_text: str, labels: list[str], last: int) -> dict:
+    """Composition of the simulated system, read from its topology."""
+    lines = prmtop_text.splitlines()
+    atoms = next((int(lines[i + 2].split()[0]) for i, l in enumerate(lines) if l.startswith("%FLAG POINTERS")), 0)
+    tail = labels[last:]
+    return {
+        "atoms": atoms, "residues": len(labels), "solute_residues": last,
+        "waters": sum(1 for x in tail if x in ("WAT", "HOH", "OPC")),
+        "ions": {x: tail.count(x) for x in sorted(set(tail)) if x not in ("WAT", "HOH", "OPC")},
+    }
+
+
 def ligand_residues(labels: list[str], last: int) -> list[int]:
     """1-based solute residues that aren't amino acids (N/C-terminal names included)."""
     def amino(name: str) -> bool:
@@ -118,7 +130,8 @@ def main() -> None:
     out.mkdir(parents=True, exist_ok=True)
     protocol = json.loads((item / "protocol.json").read_text())
     last = int(protocol["last_solute_residue"])
-    labels = residue_labels((item / "system.prmtop").read_text())
+    prmtop_text = (item / "system.prmtop").read_text()
+    labels = residue_labels(prmtop_text)
     ligands = ligand_residues(labels, last)
     stride = a.stride or int(protocol.get("analysis_stride", 1))
     trajs = chunk_files(item)
@@ -149,6 +162,7 @@ def main() -> None:
         "trajectory_bytes": sum(t.stat().st_size for t in trajs),
         "last_solute_residue": last,
         "ligands": [f"{labels[i - 1]}{i}" for i in ligands],
+        "system": system_summary(prmtop_text, labels, last),
         "protocol": protocol,
     }
     (out / "info.json").write_text(json.dumps(info, indent=2))
@@ -161,6 +175,9 @@ def demo() -> None:
 
     labels = ["NALA", "GLY", "HIE", "CLYS", "JZ4", "WAT", "Na+"]
     assert ligand_residues(labels, 5) == [5]
+    top = "%FLAG POINTERS\n%FORMAT(10I8)\n     123\n%FLAG X\n"
+    assert system_summary(top, labels, 5) == {"atoms": 123, "residues": 7, "solute_residues": 5,
+                                              "waters": 1, "ions": {"Na+": 1}}
     assert ligand_residues(["ACE", "ALA", "NME"], 3) == []
     strip, main_in = cpptraj_inputs(last=5, ligands=[5], dry_topology=False, trajs=[Path("prod_1.nc")], stride=2)
     assert "parmstrip !(:1-5)" in strip
