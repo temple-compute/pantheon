@@ -1,0 +1,11 @@
+${title}
+ &cntrl
+  imin = 0, nstlim = ${nstlim}, dt = ${dt},
+  irest = ${irest}, ntx = ${ntx}, ig = ${ig},
+  ${tempi}temp0 = ${temperature},
+  ntc = 2, ntf = 2, tol = 0.00001,
+  ntwx = ${ntwx}, ntwe = 0, ntwr = ${ntwr}, ntpr = ${ntpr},${ntwprt}
+  cut = ${cut}, iwrap = 1, nscm = ${nscm},
+  ntt = 3, gamma_ln = ${gamma_ln}, ntb = ${ntb}, ntp = ${ntp},${barostat}
+${restraint}  ioutfm = 1, ntxo = 1,
+ /

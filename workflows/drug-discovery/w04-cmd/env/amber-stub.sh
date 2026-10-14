@@ -12,7 +12,7 @@
 # shell. Idempotent: safe to source repeatedly/concurrently.
 #
 # Parses just enough of the real pmemd/pmemd.cuda CLI (-o/-r/-x/-inf) to
-# touch the declared output files; every other flag is ignored.
+# write the declared output files; every other flag is ignored.
 
 _stub_bin="${TMPDIR:-/tmp}/horus-w04-cmd-amber-stub/bin"
 mkdir -p "$_stub_bin"
@@ -31,9 +31,12 @@ while [ $# -gt 0 ]; do
     *) shift 1 ;;
   esac
 done
-for f in "$out" "$rst" "$nc" "$inf"; do
-  [ -n "$f" ] && : > "$f"
+for f in "$rst" "$nc" "$inf"; do
+  [ -n "$f" ] && echo stub > "$f"
 done
+# Closing section real pmemd/sander print; equilibrate.sh/production.sh use it to
+# tell finished steps from interrupted ones.
+[ -n "$out" ] && printf "   5.  TIMINGS\n" > "$out"
 echo "stub pmemd: wrote ${rst:-<none>}"
 PMEMD_STUB
 chmod +x "$_stub_bin/pmemd"
