@@ -19,6 +19,13 @@ preprod="$dir/preprod"
 prmtop="$dir/system.prmtop"
 inpcrd="$dir/system.inpcrd"
 
+# Live digest for the UI while pmemd runs (no-op outside Horus); the EXIT
+# trap publishes one last pass, so a failed step's mdout is visible too.
+if [ -f "$dir/live_monitor.sh" ]; then
+    bash "$dir/live_monitor.sh" "$preprod" "$prmtop" & mon=$!
+    trap 'set +e; kill $mon 2>/dev/null; wait $mon 2>/dev/null; bash "$dir/live_monitor.sh" --once "$preprod" "$prmtop"' EXIT
+fi
+
 run_step() {
     local exe="$1" name="$2" c_src="$3" ref_src="$4"
     echo "starting $name"
