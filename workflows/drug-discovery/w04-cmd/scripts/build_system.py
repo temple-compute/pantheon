@@ -13,8 +13,8 @@ force field, water, box, padding; NaCl by SLTCAP on top of neutralization;
 optional hydrogen mass repartitioning (ParmEd).
 
 Outputs: system.prmtop, system.inpcrd, system.pdb, prep_report.json.
-Needs the AMBER module (pdb4amber, tleap, parmed) and PROPKA for
-protonation=propka. Stdlib Python.
+Needs AmberTools (pdb4amber, tleap, parmed) and PROPKA for
+protonation=propka: the workflow's tools conda environment provides them. Stdlib Python.
 """
 
 from __future__ import annotations
@@ -210,7 +210,7 @@ def run(cmd: list[str], cwd: Path, log: Path) -> str:
 def need(tool: str, hint: str = "") -> str:
     path = shutil.which(tool)
     if not path:
-        raise SystemExit(f"`{tool}` not found on PATH. {hint or 'Is the AMBER module loaded (amber_env)?'}")
+        raise SystemExit(f"`{tool}` not found on PATH. {hint or "Is the workflow's tools conda environment (_tools: ambertools, propka, openbabel) in use?"}")
     return path
 
 
@@ -225,8 +225,8 @@ def build(a: argparse.Namespace, work: Path, log: Path, report: dict) -> None:
     if a.protonation == "propka":
         exe = shutil.which("propka3")
         if not exe:
-            raise SystemExit("protonation=propka needs PROPKA: `python3 -m pip install --user propka` "
-                             "with the cluster's python, or choose protonation=reduce/none.")
+            raise SystemExit("protonation=propka needs PROPKA (propka3), which the workflow's tools "
+                             "conda environment provides; or choose protonation=reduce/none.")
         run([exe, "--pH", str(a.ph), "protein.pdb"], work, log)
         states = propka_states((work / "protein.pka").read_text(), a.ph)
         (work / "protein_prot.pdb").write_text("\n".join(apply_states(with_ter(protein), states)) + "\nEND\n")

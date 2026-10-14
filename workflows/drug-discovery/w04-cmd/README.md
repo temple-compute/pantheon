@@ -12,9 +12,10 @@ clustering. The MD protocol is ported from
 `MD/cMD/create_md_custom.sh`; preparation, analysis and the parameters around
 it are added here.
 
-Every heavy step runs on the cluster with the AMBER module (`amber_env`):
-AmberTools provides pdb4amber, tleap, antechamber, parmchk2, parmed and
-cpptraj, so there is one environment and no Docker. Replicas fan out with
+Preparation and analysis run on the cluster in one conda-forge environment
+(AmberTools 26: pdb4amber, tleap, antechamber, parmchk2, parmed, cpptraj;
+PROPKA; Open Babel), built on first use and reused. Only `pmemd.cuda` comes
+from the cluster's AMBER module (`amber_env`). Replicas fan out with
 Horus's `horus_map`, one SLURM job per replica per phase.
 
 ## Pipeline
@@ -52,14 +53,13 @@ topology.
 
 ## Prerequisites
 
-- A SLURM cluster with an AMBER module that includes AmberTools (pmemd.cuda,
-  tleap, antechamber, cpptraj) and `python3`. Set the three target anchors
-  at the top of `workflow.yaml` (partition/account) and pick or add the
-  module line in `amber_env`.
-- PROPKA for `protonation = propka`, installed once for the module's python:
-  `ml <amber module> && python3 -m pip install --user propka`.
-- Ligands need `obabel` (preferred: protonates at the pH and keeps bond
-  orders) or `reduce` on PATH after the module loads.
+- A SLURM cluster with an AMBER module providing `pmemd.cuda` (pick or add
+  its line in `amber_env`) and conda on the nodes. Set the three target
+  anchors at the top of `workflow.yaml` (partition/account) and the `_tools`
+  executor's `conda` and `environment_dir` (an absolute path, so the
+  environment is built once and shared by every task and run; the first
+  build takes a few minutes). The defaults are picard's: Miniconda is on the
+  gorn1 nodes' `/shared`, so run the CPU blocks there too.
 - `prepare_replicas` runs on the orchestrator and needs only `python3`.
 
 ## Quick start
@@ -89,7 +89,7 @@ or import the folder into tc-os and set the inputs in the UI. Uses the
 | `box` / `padding` | truncated octahedron / 12 Å | build | |
 | `salt_mM` | 150 | build | NaCl by SLTCAP on top of neutralization |
 | `hmr` | off | build | hydrogen mass repartitioning (allows 4 fs) |
-| `amber_env` | Picard | cluster blocks | module line for the cluster |
+| `amber_env` | Picard | equilibrate, produce | module line that provides `pmemd.cuda` |
 
 **MD protocol**
 
@@ -177,7 +177,8 @@ in each replica's **side products** in the UI:
   jobs, and the final digest is still uploaded.
 - **Self-check:** `bash scripts/live_monitor.sh --selftest` checks the mdout
   parser and the plot. Trajectory frames need `cpptraj`, which AmberTools
-  provides once the AMBER module is loaded.
+  provides once the AMBER module is loaded (live monitor) and the tools
+  environment provides (analysis).
 
 ## Verification
 

@@ -124,7 +124,7 @@ def main() -> None:
     ap.add_argument("--stride", type=whole, default=0, help="every Nth saved frame; 0 = protocol.json's analysis_stride")
     a = ap.parse_args()
     if not shutil.which("cpptraj"):
-        raise SystemExit("`cpptraj` not found on PATH. Is the AMBER module loaded (amber_env)?")
+        raise SystemExit("`cpptraj` not found on PATH. Is the workflow's tools conda environment (_tools: ambertools, propka, openbabel) in use?")
 
     item, out = a.item.resolve(), a.out.resolve()
     out.mkdir(parents=True, exist_ok=True)

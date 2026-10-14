@@ -63,6 +63,21 @@ _gpu_produce: &gpu_produce
 _shell: &shell
   kind: shell
 
+# Preparation and analysis tools (AmberTools: pdb4amber, tleap, antechamber,
+# parmchk2, parmed, cpptraj; PROPKA; Open Babel) come from one conda-forge
+# environment, built on the cluster the first time a block needs it and
+# reused afterwards: environment_dir is absolute so every task and run shares
+# it. Set both paths per site (below: picard, where Miniconda lives on the
+# gorn1 nodes' /shared mount). Only pmemd.cuda (equilibrate/produce) still
+# comes from the cluster's AMBER module (amber_env).
+_tools: &tools
+  kind: conda_python_environment
+  conda: /shared/software/easybuild/x86_64/software/Miniconda3/23.10.0-1/bin/conda # <- set per site
+  environment_dir: /scratch/molbiomed/soft/w04-cmd-ambertools # <- set per site (absolute = shared)
+  channels: [conda-forge]
+  python_version: "3.11"
+  conda_requirements: [ambertools=26, propka=3.5, openbabel=3.2]
+
 _local: &local
   kind: local
 
@@ -204,8 +219,9 @@ artifacts:
   - &amber_env
     id: amber_env
     name: AMBER environment
-    description: Shell line that loads AMBER/AmberTools (pmemd.cuda, tleap,
-      antechamber, cpptraj) on the cluster.
+    description: Shell line that puts pmemd.cuda on PATH on the cluster
+      (equilibrate/produce). Preparation and analysis tools come from the
+      conda environment instead.
     kind: choice
     path: values/amber_env
     value: ml Amber/24-foss-2023a-AmberTools-24-CUDA-11.8.0
@@ -444,16 +460,14 @@ tasks:
       - {id: ligand_charge_in, kind: number, path: values/ligand_charge}
       - {id: protonate_ligand_in, kind: boolean, path: values/protonate_ligand}
       - {id: ph_in, kind: number, path: values/ph}
-      - {<<: *amber_env, id: amber_env_in}
       - {id: parameterize_ligand_script_in, kind: file, path: scripts/parameterize_ligand.py}
     outputs:
       - {id: ligand_mol2, name: Ligand (GAFF2 mol2), kind: file, path: ligand/ligand.mol2}
       - {id: ligand_frcmod, name: Ligand parameters (frcmod), kind: file, path: ligand/ligand.frcmod}
-    executor: *shell
+    executor: *tools
     runtime:
       kind: command
       command: >-
-        eval ${amber_env_in} &&
         python3 ${parameterize_ligand_script_in} --ligand ${ligand_in}
         --resname=${ligand_resname_in} --charge=${ligand_charge_in}
         --ph ${ph_in} --protonate ${protonate_ligand_in}
@@ -481,7 +495,6 @@ tasks:
       - {id: padding_in, kind: number, path: values/padding}
       - {id: salt_mM_in, kind: number, path: values/salt_mM}
       - {id: hmr_in, kind: boolean, path: values/hmr}
-      - {<<: *amber_env, id: amber_env_in}
       - {id: build_system_script_in, kind: file, path: scripts/build_system.py}
       - {id: ligand_mol2_in, kind: file, path: ligand/ligand.mol2}
       - {id: ligand_frcmod_in, kind: file, path: ligand/ligand.frcmod}
@@ -490,11 +503,10 @@ tasks:
       - {id: system_inpcrd, name: System coordinates, kind: file, path: system/system.inpcrd}
       - {id: system_pdb, name: System structure, kind: file, path: system/system.pdb}
       - {id: system_report, name: Build report, kind: file, path: system/prep_report.json}
-    executor: *shell
+    executor: *tools
     runtime:
       kind: command
       command: >-
-        eval ${amber_env_in} &&
         python3 ${build_system_script_in} --structure ${structure_in}
         --ligand-mol2 ${ligand_mol2_in} --ligand-frcmod ${ligand_frcmod_in}
         --chains=${chains_in} --keep-waters ${keep_waters_in}
@@ -526,18 +538,16 @@ tasks:
       - {id: padding_in, kind: number, path: values/padding}
       - {id: salt_mM_in, kind: number, path: values/salt_mM}
       - {id: hmr_in, kind: boolean, path: values/hmr}
-      - {<<: *amber_env, id: amber_env_in}
       - {id: build_system_script_in, kind: file, path: scripts/build_system.py}
     outputs:
       - {id: protein_prmtop, name: System topology, kind: file, path: system_protein/system.prmtop}
       - {id: protein_inpcrd, name: System coordinates, kind: file, path: system_protein/system.inpcrd}
       - {id: protein_pdb, name: System structure, kind: file, path: system_protein/system.pdb}
       - {id: protein_report, name: Build report, kind: file, path: system_protein/prep_report.json}
-    executor: *shell
+    executor: *tools
     runtime:
       kind: command
       command: >-
-        eval ${amber_env_in} &&
         python3 ${build_system_script_in} --structure ${structure_in}
         --chains=${chains_in} --keep-waters ${keep_waters_in}
         --protonation ${protonation_in} --ph ${ph_in}
@@ -697,12 +707,11 @@ tasks:
         name: Replica analyses
         kind: folder
         path: analyzed_out/
-    executor: *shell
+    executor: *tools
     target: *cpu
     runtime:
       kind: command
       command: >-
-        . ${slot}/amber.sh &&
         python3 ${slot}/analyze.py --item ${slot} --out ${analyzed}
 
   - kind: horus_task
@@ -714,17 +723,15 @@ tasks:
     inputs:
       - {id: analyzed_in, kind: folder, path: analyzed_out/}
       - {id: n_clusters_in, kind: number, path: values/n_clusters}
-      - {<<: *amber_env, id: amber_env_in}
       - {id: report_script_in, kind: file, path: scripts/report.py}
     outputs:
       - {id: report_html, name: Report, kind: file, path: results/report.html}
       - {id: summary_csv, name: Replica summary, kind: file, path: results/summary.csv}
       - {id: clusters, name: Cluster representatives, kind: folder, path: results/clusters/}
-    executor: *shell
+    executor: *tools
     runtime:
       kind: command
       command: >-
-        eval ${amber_env_in} &&
         python3 ${report_script_in} --analyses ${analyzed_in}
         --n-clusters ${n_clusters_in}
         --out "$(dirname ${report_html})"
@@ -741,9 +748,11 @@ edges:
   - {source: artifact-ligand_charge, source_output: ligand_charge, target: parameterize_ligand, target_input: ligand_charge_in}
   - {source: artifact-protonate_ligand, source_output: protonate_ligand, target: parameterize_ligand, target_input: protonate_ligand_in}
   - {source: artifact-ph, source_output: ph, target: parameterize_ligand, target_input: ph_in}
-  - {source: artifact-amber_env, source_output: amber_env, target: parameterize_ligand, target_input: amber_env_in}
   - {source: artifact-parameterize_ligand_script, source_output: parameterize_ligand_script, target: parameterize_ligand, target_input: parameterize_ligand_script_in}
-  # system builds
+  # system builds. The ordering-only edge stops build_system from creating
+  # the shared tools env concurrently with parameterize_ligand on a first run
+  # (drop it with the ligand blocks in a protein-only graph).
+  - {source: parameterize_ligand, target: build_system, transfer: false}
   - {source: fetch_pdb, source_output: structure, target: build_complex, target_input: structure_in}
   - {source: artifact-chains, source_output: chains, target: build_complex, target_input: chains_in}
   - {source: artifact-keep_waters, source_output: keep_waters, target: build_complex, target_input: keep_waters_in}
@@ -755,7 +764,6 @@ edges:
   - {source: artifact-padding, source_output: padding, target: build_complex, target_input: padding_in}
   - {source: artifact-salt_mM, source_output: salt_mM, target: build_complex, target_input: salt_mM_in}
   - {source: artifact-hmr, source_output: hmr, target: build_complex, target_input: hmr_in}
-  - {source: artifact-amber_env, source_output: amber_env, target: build_complex, target_input: amber_env_in}
   - {source: artifact-build_system_script, source_output: build_system_script, target: build_complex, target_input: build_system_script_in}
   - {source: parameterize_ligand, source_output: ligand_mol2, target: build_complex, target_input: ligand_mol2_in}
   - {source: parameterize_ligand, source_output: ligand_frcmod, target: build_complex, target_input: ligand_frcmod_in}
@@ -770,7 +778,6 @@ edges:
   - {source: artifact-padding, source_output: padding, target: build_system, target_input: padding_in}
   - {source: artifact-salt_mM, source_output: salt_mM, target: build_system, target_input: salt_mM_in}
   - {source: artifact-hmr, source_output: hmr, target: build_system, target_input: hmr_in}
-  - {source: artifact-amber_env, source_output: amber_env, target: build_system, target_input: amber_env_in}
   - {source: artifact-build_system_script, source_output: build_system_script, target: build_system, target_input: build_system_script_in}
   # replica generation inputs
   - {source: build_complex, source_output: system_prmtop, target: prepare_replicas, target_input: system_prmtop_in}
@@ -804,7 +811,6 @@ edges:
   - {source: produce, source_output: produced, target: analyze, target_input: produced_in}
   - {source: analyze, source_output: analyzed, target: report, target_input: analyzed_in}
   - {source: artifact-n_clusters, source_output: n_clusters, target: report, target_input: n_clusters_in}
-  - {source: artifact-amber_env, source_output: amber_env, target: report, target_input: amber_env_in}
   - {source: artifact-report_script, source_output: report_script, target: report, target_input: report_script_in}
 
 orchestrator_target:

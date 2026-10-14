@@ -8,7 +8,7 @@ Combines every replica's analysis (scripts/analyze.py output) into:
   summary.csv  one row per replica
   clusters/    cpptraj k-means over all replicas' dry trajectories
                (representative PDBs, per-frame assignment)
-Clustering needs cpptraj (the AMBER module); everything else is stdlib.
+Clustering needs cpptraj (the tools conda environment); everything else is stdlib.
 """
 
 from __future__ import annotations

@@ -12,7 +12,8 @@ Hydrogens: Open Babel at the pH (keeps bond orders by writing mol2; its PDB
 output's CONECT records would read as all-single bonds), else reduce for
 PDB input. --protonate false keeps the file's own hydrogens.
 
-Needs the AMBER module (antechamber, parmchk2) plus obabel or reduce.
+Needs AmberTools (antechamber, parmchk2) plus obabel or reduce: the
+workflow's tools conda environment provides them.
 """
 
 from __future__ import annotations
@@ -41,7 +42,7 @@ def run(cmd: list[str], cwd: Path, log: Path, ok_codes=(0,), stdout: Path | None
 
 def need(tool: str) -> None:
     if not shutil.which(tool):
-        raise SystemExit(f"`{tool}` not found on PATH. Is the AMBER module loaded (amber_env)?")
+        raise SystemExit(f"`{tool}` not found on PATH. Is the workflow's tools conda environment (_tools: ambertools, propka, openbabel) in use?")
 
 
 def mol2_charge(text: str) -> float:
