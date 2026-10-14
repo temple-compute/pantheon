@@ -1,0 +1,8 @@
+${title}
+ &cntrl
+  imin = 1, maxcyc = ${maxcyc}, ncyc = ${ncyc}, ntx = 1,
+  ntwe = 0, ntwr = ${maxcyc}, ntpr = 100,
+  ntc = 2, ntf = 2, ntb = 1, ntp = 0,
+  cut = ${cut},
+${restraint}  ioutfm = 1, ntxo = 1,
+ /

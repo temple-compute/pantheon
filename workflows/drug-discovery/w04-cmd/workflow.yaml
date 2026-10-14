@@ -1,18 +1,30 @@
 kind: horus_workflow
 name: cMD Replicas (AMBER)
 
-# --- reusable blocks -------------------------------------------------------
-# The site-specific parts of MolBioMedUAB/protocols/MD/cMD/create_md_custom.sh
-# (the `#SBATCH` header it picks per `-m csuc|local|picard|slurm`, and the
-# `module load` line) become configuration instead of bash: these two target
-# anchors plus the amber_env dropdown. Save this block as
-# a tc-os library item per cluster; swapping clusters is then editing these,
-# not the workflow.
+# PDB (or prmtop) -> protonated, parameterized, solvated system -> N replicas
+# of a 10-step equilibration + chunked production on GPUs -> per-replica
+# cpptraj analysis -> clustering + HTML report. Ported from
+# MolBioMedUAB/protocols/MD/cMD/create_md_custom.sh and extended.
 #
-# Two anchors, not one: equilibration and production are separate SLURM jobs
-# (see the `equilibrate`/`produce` tasks below), each with its own walltime
-# envelope instead of sharing one job's budget the way the original script
-# did. Fill in partition/account for your site.
+# Every input below is a value or file artifact, editable in the tc-os UI.
+# Value artifacts reach map clones only through the slot (prepare_replicas
+# bakes them into each replica's mdin files and protocol.json).
+
+# --- reusable blocks -------------------------------------------------------
+# Cluster-specific parts: these target anchors plus the amber_env dropdown.
+# Fill in partition/account for your site, or save these blocks as tc-os
+# library items per cluster. A bare `mem` number is MB to Slurm.
+_cpu: &cpu
+  kind: slurm
+  inner:
+    kind: local
+  partition: "" # <- set per site
+  account: "" # <- set per site
+  ntasks: 1
+  cpus_per_task: 4
+  mem: 8G
+  time_limit: "04:00:00"
+
 _gpu_equilibrate: &gpu_equilibrate
   kind: slurm
   inner:
@@ -21,11 +33,10 @@ _gpu_equilibrate: &gpu_equilibrate
   account: "" # <- set per site
   ntasks: 1
   cpus_per_task: 4
-  mem: 16G # a bare number is MB to Slurm
+  mem: 16G
   gres: gpu:1
-  # Equilibration is a fixed ~7 ns of MD regardless of production length --
-  # tune to your system size, not to length_ns. ~2 h for the example on an
-  # RTX 4090.
+  # 15 ns of MD at equil_scale=1 (~2 h for the 18k-atom example on an
+  # RTX 4090); scale with system size and equil_scale.
   time_limit: "05:00:00"
 
 _gpu_produce: &gpu_produce
@@ -36,7 +47,7 @@ _gpu_produce: &gpu_produce
   account: "" # <- set per site
   ntasks: 1
   cpus_per_task: 4
-  mem: 16G # a bare number is MB to Slurm
+  mem: 16G
   gres: gpu:1
   # Scales with length_ns; 10 days covers the 200 ns default.
   time_limit: "10-00:00:00"
@@ -48,55 +59,167 @@ _local: &local
   kind: local
 
 artifacts:
-  - id: last_residue
-    name: Last residue (0 = auto)
-    description: Last residue of protein + substrate (restraint mask :1-N).
-      Leave at 0 to read it from the prmtop (last residue that isn't water or
-      a monovalent ion; the task log shows the value and residue name). Set a
-      number to override. Script flag -r.
-    kind: number
-    path: values/last_residue
-    value: 0
+  # --- 1. system preparation ------------------------------------------------
+  - &input_mode
+    id: input_mode
+    name: Input
+    description: Where the system comes from. PDB ID fetches from RCSB;
+      Uploaded PDB uses `structure`; AMBER files uses `parameters` +
+      `coordinates` as-is (only HMR applies).
+    kind: choice
+    path: values/input_mode
+    value: pdb_id
+    options:
+      - value: pdb_id
+        label: PDB ID (RCSB)
+      - value: pdb_file
+        label: Uploaded PDB
+      - value: amber
+        label: AMBER prmtop/inpcrd
 
-  - id: temperature
-    name: Temperature (K)
-    description: Simulation temperature in Kelvin. Script flag -t.
-    kind: number
-    path: values/temperature
-    value: 300
+  - id: pdb_id
+    name: PDB ID
+    description: Four-character RCSB ID (input = PDB ID). Must have a
+      PDB-format file (very large entries are mmCIF-only; upload those).
+    kind: string
+    path: values/pdb_id
+    value: 1AKI
 
-  - id: length_ns
-    name: Production length (ns)
-    description: Production length per replica, run in 10 ns chunks. Script
-      flag -l.
-    kind: number
-    path: values/length_ns
-    value: 200
-
-  - id: n_replicas
-    name: Replicas
-    description: Number of independent replicas to fan out.
-    kind: number
-    path: values/n_replicas
-    value: 3
+  - id: structure
+    name: Structure (.pdb)
+    description: Used when input = Uploaded PDB.
+    kind: file
+    path: examples/1aki.pdb
 
   - id: parameters
     name: Parameter file (.prmtop)
-    description: The system's AMBER topology. Script flag -p.
+    description: Used when input = AMBER prmtop/inpcrd.
     kind: file
     path: examples/system.prmtop
 
   - id: coordinates
     name: Coordinate file (.inpcrd)
-    description: The system's AMBER coordinates. Script flag -c.
+    description: Used when input = AMBER prmtop/inpcrd.
     kind: file
     path: examples/system.inpcrd
 
-  - id: amber_env
+  - id: chains
+    name: Chains
+    description: Comma-separated chain IDs to keep (e.g. A,B). Empty = all.
+    kind: string
+    path: values/chains
+    value: ""
+
+  - id: ligands
+    name: Ligands
+    description: Comma-separated residue names of ligands to keep and
+      parameterize with GAFF2/AM1-BCC (e.g. JZ4). Every other hetero group
+      is removed. Empty = protein only.
+    kind: string
+    path: values/ligands
+    value: ""
+
+  - id: ligand_charges
+    name: Ligand net charges
+    description: NAME:charge pairs (e.g. JZ4:0,HEM:-2). Missing = 0, with
+      a warning in the report.
+    kind: string
+    path: values/ligand_charges
+    value: ""
+
+  - id: keep_waters
+    name: Keep crystal waters
+    kind: boolean
+    path: values/keep_waters
+    value: false
+
+  - &protonation
+    id: protonation
+    name: Protonation
+    description: PROPKA assigns HIS/ASP/GLU/LYS states at the pH (needs
+      `pip install --user propka` on the cluster); reduce picks HIS
+      tautomers only; none leaves standard states.
+    kind: choice
+    path: values/protonation
+    value: propka
+    options:
+      - value: propka
+        label: PROPKA at pH
+      - value: reduce
+        label: reduce (HIS only)
+      - value: none
+        label: None
+
+  - id: ph
+    name: pH
+    description: Used by PROPKA and for ligand protonation (Open Babel).
+    kind: number
+    path: values/ph
+    value: 7.0
+
+  - &forcefield
+    id: forcefield
+    name: Protein force field
+    kind: choice
+    path: values/forcefield
+    value: ff14SB
+    options:
+      - value: ff14SB
+        label: ff14SB
+      - value: ff19SB
+        label: ff19SB (use OPC water)
+
+  - &water
+    id: water
+    name: Water model
+    kind: choice
+    path: values/water
+    value: tip3p
+    options:
+      - value: tip3p
+        label: TIP3P
+      - value: opc
+        label: OPC
+
+  - &box
+    id: box
+    name: Box shape
+    kind: choice
+    path: values/box
+    value: octahedral
+    options:
+      - value: octahedral
+        label: Truncated octahedron
+      - value: cubic
+        label: Rectangular box
+
+  - id: padding
+    name: Box padding (Å)
+    description: Minimum solute-to-box-edge distance.
+    kind: number
+    path: values/padding
+    value: 12.0
+
+  - id: salt_mM
+    name: Salt (mM NaCl)
+    description: Added by SLTCAP on top of neutralization. 0 = neutralize only.
+    kind: number
+    path: values/salt_mM
+    value: 150
+
+  - id: hmr
+    name: Hydrogen mass repartitioning
+    description: Repartitions H masses (ParmEd) so production can run at
+      4 fs (timestep 0 = auto picks 4 fs).
+    kind: boolean
+    path: values/hmr
+    value: false
+
+  - &amber_env
+    id: amber_env
     name: AMBER environment
-    description: Shell line sourced before every pmemd/pmemd.cuda call; pick
-      the cluster's AMBER module. Replaces the -m machine flag's module-load
-      branch.
+    description: Shell line that loads AMBER/AmberTools (pmemd.cuda, tleap,
+      antechamber, cpptraj) on the cluster.
     kind: choice
     path: values/amber_env
     value: ml Amber/24-foss-2023a-AmberTools-24-CUDA-11.8.0
@@ -108,84 +231,258 @@ artifacts:
       - value: module load Amber
         label: Local
 
+  # --- 2. MD protocol ---------------------------------------------------------
+  - id: n_replicas
+    name: Replicas
+    description: Independent replicas (different random velocities/seeds).
+    kind: number
+    path: values/n_replicas
+    value: 3
+
+  - id: temperature
+    name: Temperature (K)
+    kind: number
+    path: values/temperature
+    value: 300
+
+  - id: length_ns
+    name: Production length (ns)
+    description: Per replica, rounded up to whole chunks.
+    kind: number
+    path: values/length_ns
+    value: 200
+
+  - id: timestep_fs
+    name: Timestep (fs)
+    description: 0 = auto (4 fs with HMR, else 2 fs). Above 2 fs requires HMR.
+    kind: number
+    path: values/timestep_fs
+    value: 0
+
+  - &prod_ensemble
+    id: prod_ensemble
+    name: Production ensemble
+    kind: choice
+    path: values/prod_ensemble
+    value: NVT
+    options:
+      - value: NVT
+        label: NVT
+      - value: NPT
+        label: NPT (Monte Carlo barostat)
+
+  - id: chunk_ns
+    name: Chunk length (ns)
+    description: Production runs as consecutive pmemd calls of this length.
+    kind: number
+    path: values/chunk_ns
+    value: 10
+
+  - id: save_every_ps
+    name: Save frame every (ps)
+    kind: number
+    path: values/save_every_ps
+    value: 10
+
+  - id: write_solvent
+    name: Save solvent in trajectories
+    description: Off writes solute-only production trajectories (ntwprt),
+      roughly 10x smaller; analysis does not need the solvent.
+    kind: boolean
+    path: values/write_solvent
+    value: true
+
+  - id: equil_scale
+    name: Equilibration length scale
+    description: Multiplies every equilibration step length (1 = 15 ns
+      total). 0.1 for quick tests.
+    kind: number
+    path: values/equil_scale
+    value: 1.0
+
+  - id: restraint_scale
+    name: Restraint strength scale
+    description: Multiplies the equilibration restraint schedule
+      (250/100/100/10 kcal/mol/Å² on solute, then 10/10/1/0.1 on backbone).
+    kind: number
+    path: values/restraint_scale
+    value: 1.0
+
+  - id: restraint_mask
+    name: Solute restraint mask
+    description: Amber mask for the solute-restrained steps; auto = every
+      heavy atom of the protein and ligands.
+    kind: string
+    path: values/restraint_mask
+    value: auto
+
+  - id: heat_start_k
+    name: Heating start (K)
+    kind: number
+    path: values/heat_start_k
+    value: 100
+
+  - id: cutoff
+    name: Nonbonded cutoff (Å)
+    kind: number
+    path: values/cutoff
+    value: 9.0
+
+  - id: gamma_ln
+    name: Langevin collision frequency (ps⁻¹)
+    kind: number
+    path: values/gamma_ln
+    value: 3.0
+
+  - id: pressure_bar
+    name: Pressure (bar)
+    kind: number
+    path: values/pressure_bar
+    value: 1.0
+
+  - id: seed
+    name: Random seed
+    description: -1 = random each run. A number makes runs reproducible
+      (each replica and step gets its own derived seed).
+    kind: number
+    path: values/seed
+    value: -1
+
+  # --- 3. analysis ----------------------------------------------------------------
+  - id: analysis_stride
+    name: Analysis stride
+    description: Analyze every Nth saved frame.
+    kind: number
+    path: values/analysis_stride
+    value: 1
+
+  - id: n_clusters
+    name: Clusters
+    description: k-means clusters over all replicas (backbone). 0 = skip.
+    kind: number
+    path: values/n_clusters
+    value: 5
+
+  # --- helper scripts (copied to the cluster) ---------------------------------
+  - id: prepare_system_script
+    name: System preparation script
+    kind: file
+    path: scripts/prepare_system.py
   - id: equilibrate_script
-    name: Equilibration driver (workflow helper script)
-    description: Runs the 10 preproduction steps (minimize/heat/equilibrate)
-      for one replica, in place on its slot. Copied into every replica slot.
+    name: Equilibration driver
     kind: file
     path: scripts/equilibrate.sh
-
   - id: production_script
-    name: Production chunk loop (workflow helper script)
-    description: Runs the production .in file cntmax times, chaining each
-      chunk's restart file into the next. Copied into every replica slot.
+    name: Production chunk loop
     kind: file
     path: scripts/production.sh
-
   - id: live_monitor_script
-    name: Live monitor (workflow helper script)
-    description: Runs beside pmemd in equilibrate/produce and keeps a small
-      digest (mdout/mdinfo, energies.csv/.svg, stripped trajectory.pdb) in
-      the task's side products, which Horus uploads every ~30 s -- so a
-      running or failed replica is inspectable before the task ends.
-      Copied into every replica slot.
+    name: Live monitor
+    description: Runs beside pmemd and keeps a small digest (mdout/mdinfo,
+      energies, stripped trajectory) in the task's side products, uploaded
+      every ~30 s.
     kind: file
     path: scripts/live_monitor.sh
-
+  - id: analyze_script
+    name: Per-replica analysis
+    kind: file
+    path: scripts/analyze.py
+  - id: report_script
+    name: Report builder
+    kind: file
+    path: scripts/report.py
   - id: templates
     name: AMBER .mdin templates
-    description: The 10 preproduction steps plus prod_1/prod, with
-      ${temperature}/${last_residue} placeholders, rendered once per replica.
-      Archived (not a folder artifact) because tc-os's workflow import does
-      not support folder artifacts yet; the individual .in files live under
-      templates/ for reading/diffing, this is `tar -czf templates.tar.gz
-      -C templates .` -- regenerate it if you edit a template.
+    description: templates/min.in + md.in, archived because tc-os's import
+      does not take folder artifacts yet (`tar -czf templates.tar.gz -C
+      templates .`).
     kind: file
     path: templates.tar.gz
 
 tasks:
   - kind: horus_task
-    id: prepare_replicas
-    name: 1. Generate replica slots
+    id: prepare_system
+    name: 1. Prepare system
     description: >-
-      Generation only, one call for all replicas: renders the AMBER .mdin
-      templates and writes one self-contained slot per replica (system
-      files, env/driver scripts, rendered inputs, chunk count). Does not
-      run AMBER -- see equilibrate/produce.
+      Fetches or reads the structure, keeps the chosen chains and ligands,
+      protonates at the pH (PROPKA), parameterizes ligands (GAFF2/AM1-BCC),
+      solvates, adds NaCl (SLTCAP) and optionally repartitions H masses.
+      Writes prep_report.json with every choice and warning.
     inputs:
-      - id: last_residue_in
-        kind: number
-        path: values/last_residue
-      - id: temperature_in
-        kind: number
-        path: values/temperature
-      - id: length_ns_in
-        kind: number
-        path: values/length_ns
-      - id: n_replicas_in
-        kind: number
-        path: values/n_replicas
-      - id: templates_in
-        kind: file
-        path: templates.tar.gz
-      - id: parameters_in
-        kind: file
-        path: examples/system.prmtop
-      - id: coordinates_in
-        kind: file
-        path: examples/system.inpcrd
-      - id: amber_env_in
-        kind: choice
-        path: values/amber_env
-      - id: equilibrate_script_in
-        kind: file
-        path: scripts/equilibrate.sh
-      - id: production_script_in
-        kind: file
-        path: scripts/production.sh
-      - id: live_monitor_script_in
-        kind: file
-        path: scripts/live_monitor.sh
+      - {<<: *input_mode, id: input_mode_in}
+      - {id: pdb_id_in, kind: string, path: values/pdb_id}
+      - {id: structure_in, kind: file, path: examples/1aki.pdb}
+      - {id: parameters_in, kind: file, path: examples/system.prmtop}
+      - {id: coordinates_in, kind: file, path: examples/system.inpcrd}
+      - {id: chains_in, kind: string, path: values/chains}
+      - {id: ligands_in, kind: string, path: values/ligands}
+      - {id: ligand_charges_in, kind: string, path: values/ligand_charges}
+      - {id: keep_waters_in, kind: boolean, path: values/keep_waters}
+      - {<<: *protonation, id: protonation_in}
+      - {id: ph_in, kind: number, path: values/ph}
+      - {<<: *forcefield, id: forcefield_in}
+      - {<<: *water, id: water_in}
+      - {<<: *box, id: box_in}
+      - {id: padding_in, kind: number, path: values/padding}
+      - {id: salt_mM_in, kind: number, path: values/salt_mM}
+      - {id: hmr_in, kind: boolean, path: values/hmr}
+      - {<<: *amber_env, id: amber_env_in}
+      - {id: prepare_system_script_in, kind: file, path: scripts/prepare_system.py}
+    outputs:
+      - {id: system_prmtop, name: System topology, kind: file, path: system/system.prmtop}
+      - {id: system_inpcrd, name: System coordinates, kind: file, path: system/system.inpcrd}
+      - {id: system_pdb, name: System structure, kind: file, path: system/system.pdb}
+      - {id: prep_report, name: Preparation report, kind: file, path: system/prep_report.json}
+    executor: *shell
+    runtime:
+      kind: command
+      command: >-
+        eval ${amber_env_in} &&
+        python3 ${prepare_system_script_in}
+        --input-mode ${input_mode_in} --pdb-id=${pdb_id_in}
+        --structure ${structure_in} --prmtop ${parameters_in} --inpcrd ${coordinates_in}
+        --chains=${chains_in} --ligands=${ligands_in} --ligand-charges=${ligand_charges_in}
+        --keep-waters ${keep_waters_in} --protonation ${protonation_in} --ph ${ph_in}
+        --forcefield ${forcefield_in} --water ${water_in} --box ${box_in}
+        --padding ${padding_in} --salt-mM ${salt_mM_in} --hmr ${hmr_in}
+        --out-prmtop ${system_prmtop} --out-inpcrd ${system_inpcrd}
+        --out-pdb ${system_pdb} --out-report ${prep_report}
+    target: *cpu
+    skip_if_complete: true
+
+  - kind: horus_task
+    id: prepare_replicas
+    name: 2. Generate replica slots
+    description: >-
+      Renders the equilibration and production .mdin files from the MD
+      settings and writes one self-contained slot per replica (system,
+      scripts, inputs, protocol.json). Does not run AMBER.
+    inputs:
+      - {id: n_replicas_in, kind: number, path: values/n_replicas}
+      - {id: temperature_in, kind: number, path: values/temperature}
+      - {id: length_ns_in, kind: number, path: values/length_ns}
+      - {id: timestep_fs_in, kind: number, path: values/timestep_fs}
+      - {<<: *prod_ensemble, id: prod_ensemble_in}
+      - {id: chunk_ns_in, kind: number, path: values/chunk_ns}
+      - {id: save_every_ps_in, kind: number, path: values/save_every_ps}
+      - {id: write_solvent_in, kind: boolean, path: values/write_solvent}
+      - {id: equil_scale_in, kind: number, path: values/equil_scale}
+      - {id: restraint_scale_in, kind: number, path: values/restraint_scale}
+      - {id: restraint_mask_in, kind: string, path: values/restraint_mask}
+      - {id: heat_start_k_in, kind: number, path: values/heat_start_k}
+      - {id: cutoff_in, kind: number, path: values/cutoff}
+      - {id: gamma_ln_in, kind: number, path: values/gamma_ln}
+      - {id: pressure_bar_in, kind: number, path: values/pressure_bar}
+      - {id: seed_in, kind: number, path: values/seed}
+      - {id: analysis_stride_in, kind: number, path: values/analysis_stride}
+      - {<<: *amber_env, id: amber_env_in}
+      - {id: system_prmtop_in, kind: file, path: system/system.prmtop}
+      - {id: system_inpcrd_in, kind: file, path: system/system.inpcrd}
+      - {id: templates_in, kind: file, path: templates.tar.gz}
+      - {id: equilibrate_script_in, kind: file, path: scripts/equilibrate.sh}
+      - {id: production_script_in, kind: file, path: scripts/production.sh}
+      - {id: live_monitor_script_in, kind: file, path: scripts/live_monitor.sh}
+      - {id: analyze_script_in, kind: file, path: scripts/analyze.py}
     outputs:
       - id: replicas
         name: Replica slots
@@ -197,72 +494,48 @@ tasks:
       script: scripts/prepare_replicas.py
       python: python3 # stdlib-only; use the target's python3
       args: >-
-        --last-residue ${last_residue_in} --temperature ${temperature_in}
-        --length-ns ${length_ns_in} --replicas ${n_replicas_in}
+        --replicas ${n_replicas_in} --temperature ${temperature_in}
+        --length-ns ${length_ns_in} --timestep-fs ${timestep_fs_in}
+        --prod-ensemble ${prod_ensemble_in} --chunk-ns ${chunk_ns_in}
+        --save-every-ps ${save_every_ps_in} --write-solvent ${write_solvent_in}
+        --equil-scale ${equil_scale_in} --restraint-scale ${restraint_scale_in}
+        --restraint-mask=${restraint_mask_in} --heat-start-k ${heat_start_k_in}
+        --cutoff ${cutoff_in} --gamma-ln ${gamma_ln_in}
+        --pressure-bar ${pressure_bar_in} --seed=${seed_in}
+        --analysis-stride ${analysis_stride_in} --amber-env ${amber_env_in}
+        --prmtop ${system_prmtop_in} --inpcrd ${system_inpcrd_in}
         --templates ${templates_in}
-        --prmtop ${parameters_in} --inpcrd ${coordinates_in}
-        --amber-env ${amber_env_in} --equilibrate-script ${equilibrate_script_in}
+        --equilibrate-script ${equilibrate_script_in}
         --production-script ${production_script_in}
-        --live-monitor-script ${live_monitor_script_in} --out ${replicas}
+        --live-monitor-script ${live_monitor_script_in}
+        --analyze-script ${analyze_script_in} --out ${replicas}
     target: *local
     skip_if_complete: true
 
-  # Fans out one clone per replica, each equilibrating (10 preproduction
-  # steps, scripts/equilibrate.sh) inside its own SLURM job. Two map stages
-  # (this one, then `produce` below) instead of one so equilibration and
-  # production are independent jobs with their own walltime, and so a
-  # workflow re-run can skip a replica's finished equilibration without
-  # having to re-check/rerun its production too.
-  #
-  # `kind: horus_map` is an ordinary, self-dispatching DAG node (>= 0.4): it
-  # iterates `over.input_id` (an IterableArtifact -- a folder iterates its
-  # children, sorted by name) and clones itself once per item as a plain
-  # horus_task, binding each item under `over.as` and rebinding the single
-  # declared output to that clone's own slot directory. Its per-item body is
-  # always flat (one runtime), so it cannot itself chain equilibrate+produce
-  # as separate steps -- hence two chained map tasks instead of one.
-  #
-  # Each clone's command copies its whole `slot` into its own output first
-  # (`cp -r ${slot}/. ${equilibrated}/`), so `produce` below -- which maps
-  # over *this* task's output -- receives an equally self-contained item
-  # (system files, production.sh, plus this stage's preprod/10_nvt.rst),
-  # exactly like `equilibrate` does mapping over `prepare_replicas`.
-  #
-  # NOTE on granularity: an earlier version of this workflow gave each AMBER
-  # step its own Horus task (a `subworkflow` chaining 11 tasks used as a
-  # map's per-item body). That composition doesn't exist any more:
-  # horus_map only ever runs a flat, single-runtime body per item. It
-  # replaced the old map:/gather: sugar (source_task/source_output/
-  # item_input + subworkflow-body templates) specifically because that
-  # composition let the gather task race ahead of the subworkflow's real
-  # inner tasks. Two-phase (this file) is as fine-grained as the current
-  # primitive allows without that problem; per-AMBER-step granularity would
-  # need horus-runtime to add multi-step map bodies.
+  # Fans out one clone per replica over prepare_replicas' output. A
+  # horus_map clone gets exactly one item (its slot) and runs one flat
+  # command, so equilibration and production are two chained map stages,
+  # each copying the slot forward so the next stage's items are
+  # self-contained too. max_concurrency is unset: horus_map caps at 8 by
+  # default; set it if n_replicas exceeds 8.
   - kind: horus_map
     id: equilibrate
-    name: 2. Equilibrate each replica (parallel)
-    description: Fans out one clone per replica over prepare_replicas'
-      output; each clone runs the 10 preproduction steps (minimize, heat,
-      equilibrate) inside one SLURM allocation.
+    name: 3. Equilibrate each replica (parallel)
+    description: Fans out one clone per replica; each runs the 10-step
+      equilibration (minimize, heat, restrained NPT, free NPT/NVT) in one
+      SLURM GPU job.
     over:
       input_id: replicas_in
       as: slot
-    # max_concurrency left unset: horus_map applies a built-in cap (8 by
-    # default -- horus_builtin.workflow.scheduler.DEFAULT_MAX_CONCURRENCY)
-    # rather than dispatching every replica at once. Set this explicitly
-    # if n_replicas exceeds 8.
     inputs:
       - id: replicas_in
         name: Replica slots
-        description: Produced by prepare_replicas; each child directory
-          becomes one replica clone's slot (bound to `slot` per over.as).
         kind: folder
         path: replicas/
     outputs:
       - id: equilibrated
         name: Equilibrated replicas
-        description: Each replica's slot, copied forward, plus its
-          preprod/*.{out,rst,nc,info} equilibration results.
+        description: Each slot copied forward plus its preprod/ results.
         kind: folder
         path: equilibrated_out/
     executor: *shell
@@ -276,30 +549,25 @@ tasks:
     resources:
       gpus: 1
 
-  # Fans out one clone per replica over `equilibrate`'s output: each item is
-  # already a self-contained slot (see the note on `equilibrate` above), so
-  # this only needs to run the production chunk loop.
   - kind: horus_map
     id: produce
-    name: 3. Run production MD per replica (parallel)
-    description: Fans out one clone per replica over equilibrate's output;
-      each clone runs the chunked production loop (scripts/production.sh)
-      inside one SLURM allocation.
+    name: 4. Run production MD per replica (parallel)
+    description: Fans out one clone per replica; each runs the chunked
+      production loop in one SLURM GPU job and carries the slot's small
+      files (topology, settings, scripts) forward for analysis.
     over:
       input_id: equilibrated_in
       as: slot
     inputs:
       - id: equilibrated_in
         name: Equilibrated replicas
-        description: Produced by equilibrate; each child directory becomes
-          one replica clone's slot (bound to `slot` per over.as).
         kind: folder
         path: equilibrated_out/
     outputs:
       - id: produced
         name: Production outputs
-        description: Production chunk files (prod_N.rst/.nc/.mdout/.mdinf),
-          one subfolder per replica.
+        description: prod_N.{nc,rst,mdout,mdinf} per replica plus topology,
+          protocol.json and equilibration mdouts.
         kind: folder
         path: produced_out/
     executor: *shell
@@ -312,87 +580,115 @@ tasks:
     resources:
       gpus: 1
 
-  - kind: horus_task
-    id: collect
-    name: 4. Summarize replicas
-    description: Walks every replica's production output and writes a
-      one-row-per-replica CSV (chunks completed, last restart file,
-      trajectory file count/size).
+  - kind: horus_map
+    id: analyze
+    name: 5. Analyze each replica (parallel)
+    description: cpptraj per replica on the cluster (next to the
+      trajectories) - backbone RMSD, CA RMSF, Rg, H-bonds, ligand RMSD and
+      contacts, plus a dry strided trajectory for clustering.
+    over:
+      input_id: produced_in
+      as: slot
     inputs:
       - id: produced_in
         name: Production outputs
         kind: folder
         path: produced_out/
     outputs:
-      - id: summary
-        name: Replica summary
-        kind: file
-        path: results/summary.csv
+      - id: analyzed
+        name: Replica analyses
+        kind: folder
+        path: analyzed_out/
+    executor: *shell
+    target: *cpu
+    runtime:
+      kind: command
+      command: >-
+        . ${slot}/amber.sh &&
+        python3 ${slot}/analyze.py --item ${slot} --out ${analyzed}
+
+  - kind: horus_task
+    id: report
+    name: 6. Cluster and report
+    description: k-means clustering over all replicas, then report.html
+      (plots, clusters with Mol* representatives, H-bonds, ligand contacts,
+      every setting) and summary.csv.
+    inputs:
+      - {id: analyzed_in, kind: folder, path: analyzed_out/}
+      - {id: prep_report_in, kind: file, path: system/prep_report.json}
+      - {id: n_clusters_in, kind: number, path: values/n_clusters}
+      - {<<: *amber_env, id: amber_env_in}
+      - {id: report_script_in, kind: file, path: scripts/report.py}
+    outputs:
+      - {id: report_html, name: Report, kind: file, path: results/report.html}
+      - {id: summary_csv, name: Replica summary, kind: file, path: results/summary.csv}
+      - {id: clusters, name: Cluster representatives, kind: folder, path: results/clusters/}
     executor: *shell
     runtime:
-      kind: python_script
-      script: scripts/collect.py
-      python: python3 # stdlib-only; use the target's python3
-      args: --results ${produced_in} --out ${summary}
-    target: *local
+      kind: command
+      command: >-
+        eval ${amber_env_in} &&
+        python3 ${report_script_in} --analyses ${analyzed_in}
+        --prep-report ${prep_report_in} --n-clusters ${n_clusters_in}
+        --out "$(dirname ${report_html})"
+    target: *cpu
 
 edges:
-  - source: artifact-last_residue
-    source_output: last_residue
-    target: prepare_replicas
-    target_input: last_residue_in
-  - source: artifact-temperature
-    source_output: temperature
-    target: prepare_replicas
-    target_input: temperature_in
-  - source: artifact-length_ns
-    source_output: length_ns
-    target: prepare_replicas
-    target_input: length_ns_in
-  - source: artifact-n_replicas
-    source_output: n_replicas
-    target: prepare_replicas
-    target_input: n_replicas_in
-  - source: artifact-templates
-    source_output: templates
-    target: prepare_replicas
-    target_input: templates_in
-  - source: artifact-parameters
-    source_output: parameters
-    target: prepare_replicas
-    target_input: parameters_in
-  - source: artifact-coordinates
-    source_output: coordinates
-    target: prepare_replicas
-    target_input: coordinates_in
-  - source: artifact-amber_env
-    source_output: amber_env
-    target: prepare_replicas
-    target_input: amber_env_in
-  - source: artifact-equilibrate_script
-    source_output: equilibrate_script
-    target: prepare_replicas
-    target_input: equilibrate_script_in
-  - source: artifact-production_script
-    source_output: production_script
-    target: prepare_replicas
-    target_input: production_script_in
-  - source: artifact-live_monitor_script
-    source_output: live_monitor_script
-    target: prepare_replicas
-    target_input: live_monitor_script_in
-  - source: prepare_replicas
-    source_output: replicas
-    target: equilibrate
-    target_input: replicas_in
-  - source: equilibrate
-    source_output: equilibrated
-    target: produce
-    target_input: equilibrated_in
-  - source: produce
-    source_output: produced
-    target: collect
-    target_input: produced_in
+  # system preparation inputs
+  - {source: artifact-input_mode, source_output: input_mode, target: prepare_system, target_input: input_mode_in}
+  - {source: artifact-pdb_id, source_output: pdb_id, target: prepare_system, target_input: pdb_id_in}
+  - {source: artifact-structure, source_output: structure, target: prepare_system, target_input: structure_in}
+  - {source: artifact-parameters, source_output: parameters, target: prepare_system, target_input: parameters_in}
+  - {source: artifact-coordinates, source_output: coordinates, target: prepare_system, target_input: coordinates_in}
+  - {source: artifact-chains, source_output: chains, target: prepare_system, target_input: chains_in}
+  - {source: artifact-ligands, source_output: ligands, target: prepare_system, target_input: ligands_in}
+  - {source: artifact-ligand_charges, source_output: ligand_charges, target: prepare_system, target_input: ligand_charges_in}
+  - {source: artifact-keep_waters, source_output: keep_waters, target: prepare_system, target_input: keep_waters_in}
+  - {source: artifact-protonation, source_output: protonation, target: prepare_system, target_input: protonation_in}
+  - {source: artifact-ph, source_output: ph, target: prepare_system, target_input: ph_in}
+  - {source: artifact-forcefield, source_output: forcefield, target: prepare_system, target_input: forcefield_in}
+  - {source: artifact-water, source_output: water, target: prepare_system, target_input: water_in}
+  - {source: artifact-box, source_output: box, target: prepare_system, target_input: box_in}
+  - {source: artifact-padding, source_output: padding, target: prepare_system, target_input: padding_in}
+  - {source: artifact-salt_mM, source_output: salt_mM, target: prepare_system, target_input: salt_mM_in}
+  - {source: artifact-hmr, source_output: hmr, target: prepare_system, target_input: hmr_in}
+  - {source: artifact-amber_env, source_output: amber_env, target: prepare_system, target_input: amber_env_in}
+  - {source: artifact-prepare_system_script, source_output: prepare_system_script, target: prepare_system, target_input: prepare_system_script_in}
+  # replica generation inputs
+  - {source: prepare_system, source_output: system_prmtop, target: prepare_replicas, target_input: system_prmtop_in}
+  - {source: prepare_system, source_output: system_inpcrd, target: prepare_replicas, target_input: system_inpcrd_in}
+  - {source: artifact-n_replicas, source_output: n_replicas, target: prepare_replicas, target_input: n_replicas_in}
+  - {source: artifact-temperature, source_output: temperature, target: prepare_replicas, target_input: temperature_in}
+  - {source: artifact-length_ns, source_output: length_ns, target: prepare_replicas, target_input: length_ns_in}
+  - {source: artifact-timestep_fs, source_output: timestep_fs, target: prepare_replicas, target_input: timestep_fs_in}
+  - {source: artifact-prod_ensemble, source_output: prod_ensemble, target: prepare_replicas, target_input: prod_ensemble_in}
+  - {source: artifact-chunk_ns, source_output: chunk_ns, target: prepare_replicas, target_input: chunk_ns_in}
+  - {source: artifact-save_every_ps, source_output: save_every_ps, target: prepare_replicas, target_input: save_every_ps_in}
+  - {source: artifact-write_solvent, source_output: write_solvent, target: prepare_replicas, target_input: write_solvent_in}
+  - {source: artifact-equil_scale, source_output: equil_scale, target: prepare_replicas, target_input: equil_scale_in}
+  - {source: artifact-restraint_scale, source_output: restraint_scale, target: prepare_replicas, target_input: restraint_scale_in}
+  - {source: artifact-restraint_mask, source_output: restraint_mask, target: prepare_replicas, target_input: restraint_mask_in}
+  - {source: artifact-heat_start_k, source_output: heat_start_k, target: prepare_replicas, target_input: heat_start_k_in}
+  - {source: artifact-cutoff, source_output: cutoff, target: prepare_replicas, target_input: cutoff_in}
+  - {source: artifact-gamma_ln, source_output: gamma_ln, target: prepare_replicas, target_input: gamma_ln_in}
+  - {source: artifact-pressure_bar, source_output: pressure_bar, target: prepare_replicas, target_input: pressure_bar_in}
+  - {source: artifact-seed, source_output: seed, target: prepare_replicas, target_input: seed_in}
+  - {source: artifact-analysis_stride, source_output: analysis_stride, target: prepare_replicas, target_input: analysis_stride_in}
+  - {source: artifact-amber_env, source_output: amber_env, target: prepare_replicas, target_input: amber_env_in}
+  - {source: artifact-templates, source_output: templates, target: prepare_replicas, target_input: templates_in}
+  - {source: artifact-equilibrate_script, source_output: equilibrate_script, target: prepare_replicas, target_input: equilibrate_script_in}
+  - {source: artifact-production_script, source_output: production_script, target: prepare_replicas, target_input: production_script_in}
+  - {source: artifact-live_monitor_script, source_output: live_monitor_script, target: prepare_replicas, target_input: live_monitor_script_in}
+  - {source: artifact-analyze_script, source_output: analyze_script, target: prepare_replicas, target_input: analyze_script_in}
+  # MD and analysis chain
+  - {source: prepare_replicas, source_output: replicas, target: equilibrate, target_input: replicas_in}
+  - {source: equilibrate, source_output: equilibrated, target: produce, target_input: equilibrated_in}
+  - {source: produce, source_output: produced, target: analyze, target_input: produced_in}
+  - {source: analyze, source_output: analyzed, target: report, target_input: analyzed_in}
+  - {source: prepare_system, source_output: prep_report, target: report, target_input: prep_report_in}
+  - {source: artifact-n_clusters, source_output: n_clusters, target: report, target_input: n_clusters_in}
+  - {source: artifact-amber_env, source_output: amber_env, target: report, target_input: amber_env_in}
+  - {source: artifact-report_script, source_output: report_script, target: report, target_input: report_script_in}
 
 orchestrator_target:
   kind: local
