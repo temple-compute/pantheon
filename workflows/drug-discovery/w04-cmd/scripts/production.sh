@@ -20,6 +20,13 @@ mkdir -p "$out_dir"
 cntmax=$(cat "$slot_dir/steps.txt")
 prmtop="$slot_dir/system.prmtop"
 
+# Live digest for the UI while pmemd runs (no-op outside Horus); the EXIT
+# trap publishes one last pass, so a failed step's mdout is visible too.
+if [ -f "$slot_dir/live_monitor.sh" ]; then
+    bash "$slot_dir/live_monitor.sh" "$out_dir" "$prmtop" & mon=$!
+    trap 'set +e; kill $mon 2>/dev/null; wait $mon 2>/dev/null; bash "$slot_dir/live_monitor.sh" --once "$out_dir" "$prmtop"' EXIT
+fi
+
 cnt=1
 while [ "$cnt" -le "$cntmax" ]; do
     istep="prod_${cnt}"

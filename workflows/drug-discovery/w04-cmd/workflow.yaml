@@ -5,7 +5,7 @@ name: cMD Replicas (AMBER)
 # The site-specific parts of MolBioMedUAB/protocols/MD/cMD/create_md_custom.sh
 # (the `#SBATCH` header it picks per `-m csuc|local|picard|slurm`, and the
 # `module load` line) become configuration instead of bash: these two target
-# anchors plus env/amber.sh. Save this block (and a matching env/amber.sh) as
+# anchors plus the amber_env dropdown. Save this block as
 # a tc-os library item per cluster; swapping clusters is then editing these,
 # not the workflow.
 #
@@ -20,10 +20,13 @@ _gpu_equilibrate: &gpu_equilibrate
   partition: "" # <- set per site
   account: "" # <- set per site
   ntasks: 1
+  cpus_per_task: 4
+  mem: 16G # a bare number is MB to Slurm
   gres: gpu:1
   # Equilibration is a fixed ~7 ns of MD regardless of production length --
-  # tune to your system size, not to params.json's length_ns.
-  time_limit: "04:00:00"
+  # tune to your system size, not to length_ns. ~2 h for the example on an
+  # RTX 4090.
+  time_limit: "05:00:00"
 
 _gpu_produce: &gpu_produce
   kind: slurm
@@ -32,8 +35,10 @@ _gpu_produce: &gpu_produce
   partition: "" # <- set per site
   account: "" # <- set per site
   ntasks: 1
+  cpus_per_task: 4
+  mem: 16G # a bare number is MB to Slurm
   gres: gpu:1
-  # Scales with params.json's length_ns; 10 days covers the 200 ns default.
+  # Scales with length_ns; 10 days covers the 200 ns default.
   time_limit: "10-00:00:00"
 
 _shell: &shell
@@ -43,13 +48,37 @@ _local: &local
   kind: local
 
 artifacts:
-  - id: params
-    name: Replica parameters
-    description: last_residue, temperature (K), length_ns and replica count.
-      Script flags -r/-t/-l plus the replica fan-out count. last_residue has
-      no sensible default -- set it before running.
-    kind: file
-    path: examples/params.json
+  - id: last_residue
+    name: Last residue (0 = auto)
+    description: Last residue of protein + substrate (restraint mask :1-N).
+      Leave at 0 to read it from the prmtop (last residue that isn't water or
+      a monovalent ion; the task log shows the value and residue name). Set a
+      number to override. Script flag -r.
+    kind: number
+    path: values/last_residue
+    value: 0
+
+  - id: temperature
+    name: Temperature (K)
+    description: Simulation temperature in Kelvin. Script flag -t.
+    kind: number
+    path: values/temperature
+    value: 300
+
+  - id: length_ns
+    name: Production length (ns)
+    description: Production length per replica, run in 10 ns chunks. Script
+      flag -l.
+    kind: number
+    path: values/length_ns
+    value: 200
+
+  - id: n_replicas
+    name: Replicas
+    description: Number of independent replicas to fan out.
+    kind: number
+    path: values/n_replicas
+    value: 3
 
   - id: parameters
     name: Parameter file (.prmtop)
@@ -64,12 +93,20 @@ artifacts:
     path: examples/system.inpcrd
 
   - id: amber_env
-    name: AMBER environment script
-    description: Sourced before every pmemd/pmemd.cuda call. Replaces the
-      -m machine flag's module-load branch -- swap this file (or point it
-      elsewhere) to retarget a different cluster's AMBER module.
-    kind: file
-    path: env/amber.sh
+    name: AMBER environment
+    description: Shell line sourced before every pmemd/pmemd.cuda call; pick
+      the cluster's AMBER module. Replaces the -m machine flag's module-load
+      branch.
+    kind: choice
+    path: values/amber_env
+    value: ml Amber/24-foss-2023a-AmberTools-24-CUDA-11.8.0
+    options:
+      - value: ml Amber/24-foss-2023a-AmberTools-24-CUDA-11.8.0
+        label: Picard
+      - value: module load amber/24
+        label: CSUC
+      - value: module load Amber
+        label: Local
 
   - id: equilibrate_script
     name: Equilibration driver (workflow helper script)
@@ -84,6 +121,16 @@ artifacts:
       chunk's restart file into the next. Copied into every replica slot.
     kind: file
     path: scripts/production.sh
+
+  - id: live_monitor_script
+    name: Live monitor (workflow helper script)
+    description: Runs beside pmemd in equilibrate/produce and keeps a small
+      digest (mdout/mdinfo, energies.csv/.svg, stripped trajectory.pdb) in
+      the task's side products, which Horus uploads every ~30 s -- so a
+      running or failed replica is inspectable before the task ends.
+      Copied into every replica slot.
+    kind: file
+    path: scripts/live_monitor.sh
 
   - id: templates
     name: AMBER .mdin templates
@@ -106,9 +153,18 @@ tasks:
       files, env/driver scripts, rendered inputs, chunk count). Does not
       run AMBER -- see equilibrate/produce.
     inputs:
-      - id: params_in
-        kind: file
-        path: examples/params.json
+      - id: last_residue_in
+        kind: number
+        path: values/last_residue
+      - id: temperature_in
+        kind: number
+        path: values/temperature
+      - id: length_ns_in
+        kind: number
+        path: values/length_ns
+      - id: n_replicas_in
+        kind: number
+        path: values/n_replicas
       - id: templates_in
         kind: file
         path: templates.tar.gz
@@ -119,14 +175,17 @@ tasks:
         kind: file
         path: examples/system.inpcrd
       - id: amber_env_in
-        kind: file
-        path: env/amber.sh
+        kind: choice
+        path: values/amber_env
       - id: equilibrate_script_in
         kind: file
         path: scripts/equilibrate.sh
       - id: production_script_in
         kind: file
         path: scripts/production.sh
+      - id: live_monitor_script_in
+        kind: file
+        path: scripts/live_monitor.sh
     outputs:
       - id: replicas
         name: Replica slots
@@ -138,10 +197,13 @@ tasks:
       script: scripts/prepare_replicas.py
       python: python3 # stdlib-only; use the target's python3
       args: >-
-        --params ${params_in} --templates ${templates_in}
+        --last-residue ${last_residue_in} --temperature ${temperature_in}
+        --length-ns ${length_ns_in} --replicas ${n_replicas_in}
+        --templates ${templates_in}
         --prmtop ${parameters_in} --inpcrd ${coordinates_in}
         --amber-env ${amber_env_in} --equilibrate-script ${equilibrate_script_in}
-        --production-script ${production_script_in} --out ${replicas}
+        --production-script ${production_script_in}
+        --live-monitor-script ${live_monitor_script_in} --out ${replicas}
     target: *local
     skip_if_complete: true
 
@@ -188,7 +250,7 @@ tasks:
     # max_concurrency left unset: horus_map applies a built-in cap (8 by
     # default -- horus_builtin.workflow.scheduler.DEFAULT_MAX_CONCURRENCY)
     # rather than dispatching every replica at once. Set this explicitly
-    # if params.json's `replicas` exceeds 8.
+    # if n_replicas exceeds 8.
     inputs:
       - id: replicas_in
         name: Replica slots
@@ -275,10 +337,22 @@ tasks:
     target: *local
 
 edges:
-  - source: artifact-params
-    source_output: params
+  - source: artifact-last_residue
+    source_output: last_residue
     target: prepare_replicas
-    target_input: params_in
+    target_input: last_residue_in
+  - source: artifact-temperature
+    source_output: temperature
+    target: prepare_replicas
+    target_input: temperature_in
+  - source: artifact-length_ns
+    source_output: length_ns
+    target: prepare_replicas
+    target_input: length_ns_in
+  - source: artifact-n_replicas
+    source_output: n_replicas
+    target: prepare_replicas
+    target_input: n_replicas_in
   - source: artifact-templates
     source_output: templates
     target: prepare_replicas
@@ -303,6 +377,10 @@ edges:
     source_output: production_script
     target: prepare_replicas
     target_input: production_script_in
+  - source: artifact-live_monitor_script
+    source_output: live_monitor_script
+    target: prepare_replicas
+    target_input: live_monitor_script_in
   - source: prepare_replicas
     source_output: replicas
     target: equilibrate
