@@ -1,0 +1,255 @@
+kind: horus_workflow
+name: OpenFF Protein-Ligand MD (Toolkit Showcase)
+
+# One pinned conda env (conda_env.yaml) shared by every task. The path is
+# relative to each task's working dir (<results>/<task-id>/<run-id>), so
+# ../../ puts a single env in the results folder instead of one per task.
+_conda: &conda
+  kind: conda_python_environment
+  conda: micromamba
+  environment_file: conda_env.yaml
+  environment_dir: "../../.horus_conda_env"
+
+_shell: &shell
+  kind: shell
+
+_local: &local
+  kind: local
+
+# GPU target for the simulate map (profile=full). Fill in partition/account
+# for your site and set `target: *gpu` on the simulate task. CPUs and
+# gres=gpu:1 come from simulate.resources. REQUIRE_GPU=1 makes simulate.py fail
+# instead of falling back to CPU when no GPU platform works.
+_gpu: &gpu
+  kind: slurm
+  inner:
+    kind: local
+  partition: "" # <- set per site
+  account: "" # <- set per site
+  ntasks: 1
+  time_limit: "04:00:00"
+  extra_sbatch_args: ["--export=ALL,REQUIRE_GPU=1"]
+
+artifacts:
+  - id: profile
+    name: Run profile
+    description: >-
+      smoke: 2 replicas x 5 ps on CPU (minutes). full: 3 replicas x 1 ns,
+      meant for the GPU target.
+    kind: choice
+    path: params/profile.txt
+    options:
+      - value: smoke
+        label: Smoke (2 x 5 ps, CPU)
+      - value: full
+        label: Full (3 x 1 ns, GPU)
+    value: smoke
+
+tasks:
+  - kind: horus_task
+    id: fetch_inputs
+    name: 1. Fetch receptor and ligand
+    description: Downloads 5tbm_prepared.pdb (HIF-2a PAS-B) and PT2385.sdf from
+      the openff-toolkit 0.19.0 toolkit_showcase example.
+    outputs:
+      - id: receptor
+        name: Prepared receptor
+        kind: file
+        path: inputs/5tbm_prepared.pdb
+      - id: ligand
+        name: Ligand pose
+        kind: file
+        path: inputs/PT2385.sdf
+    executor: *shell
+    runtime:
+      kind: command
+      command: >-
+        mkdir -p "$(dirname ${receptor})" &&
+        curl -fL --retry 3 -o ${receptor}.part
+        https://raw.githubusercontent.com/openforcefield/openff-toolkit/0.19.0/examples/toolkit_showcase/5tbm_prepared.pdb
+        && mv ${receptor}.part ${receptor} &&
+        curl -fL --retry 3 -o ${ligand}.part
+        https://raw.githubusercontent.com/openforcefield/openff-toolkit/0.19.0/examples/toolkit_showcase/PT2385.sdf
+        && mv ${ligand}.part ${ligand}
+    target: *local
+
+  - kind: horus_task
+    id: build_system
+    name: 2. Solvate and insert ligand
+    description: PDBFixer adds a 1 nm water box with 0.15 M NaCl, the ligand is
+      inserted and clashing waters are removed. Writes an OpenFF Topology.
+    inputs:
+      - id: receptor
+        name: Prepared receptor
+        kind: file
+        path: inputs/5tbm_prepared.pdb
+      - id: ligand
+        name: Ligand pose
+        kind: file
+        path: inputs/PT2385.sdf
+    outputs:
+      - id: topology
+        name: OpenFF topology
+        kind: file
+        path: system/topology.json
+    resources:
+      cpus: 1
+      memory_gb: 4
+    executor: *conda
+    runtime:
+      kind: python_script
+      script: scripts/build_system.py
+      args: --receptor ${receptor} --ligand ${ligand} --out ${topology}
+    target: *local
+
+  - kind: horus_task
+    id: parameterize
+    name: 3. Parameterize (Sage 2.3.0 + ff14SB)
+    description: Applies openff-2.3.0 and ff14sb_off_impropers_0.0.4 with
+      Interchange, exports an OpenMM system, and writes one slot per replica
+      (2 for smoke, 3 for full).
+    inputs:
+      - id: topology
+        name: OpenFF topology
+        kind: file
+        path: system/topology.json
+      - id: profile
+        name: Run profile
+        kind: choice
+        path: params/profile.txt
+        options:
+          - value: smoke
+          - value: full
+    outputs:
+      - id: replicas
+        name: Replica slots
+        kind: folder
+        path: replicas/
+    resources:
+      cpus: 2
+      memory_gb: 4
+    executor: *conda
+    runtime:
+      kind: python_script
+      script: scripts/parameterize.py
+      args: --topology ${topology} --out ${replicas} --profile ${profile}
+    target: *local
+
+  # One clone per replica slot. CUDA, then OpenCL, then the CPU platform with
+  # --threads, whichever first creates a context. For the full profile switch the target
+  # to *gpu (one field); nothing else changes.
+  - kind: horus_map
+    id: simulate
+    name: 4. Run MD per replica (parallel)
+    description: Minimizes, then runs NVT Langevin dynamics at 300 K with a
+      2 fs step and writes a DCD trajectory (5 ps smoke, 1 ns full).
+    over:
+      input_id: replicas_in
+      as: slot
+    inputs:
+      - id: replicas_in
+        name: Replica slots
+        kind: folder
+        path: replicas/
+      - id: profile
+        name: Run profile
+        kind: choice
+        path: params/profile.txt
+        options:
+          - value: smoke
+          - value: full
+    outputs:
+      - id: trajectories
+        name: Trajectories
+        description: One folder per replica with trajectory.dcd, log.csv,
+          complex.pdb and seed.
+        kind: folder
+        path: trajectories/
+    resources:
+      cpus: 2
+      gpus: 1
+      memory_gb: 4
+    executor: *conda
+    runtime:
+      kind: python_script
+      script: scripts/simulate.py
+      args: --slot ${slot} --out ${trajectories} --profile ${profile} --threads 2
+    target: *local
+
+  - kind: horus_task
+    id: analyze
+    name: 5. RMSD and report
+    description: Protein C-alpha and ligand RMSD per replica (mdtraj), the
+      final frame as PDB, and an HTML report with a Mol* view.
+    inputs:
+      - id: trajectories
+        name: Trajectories
+        kind: folder
+        path: trajectories/
+      # only the current slots are analyzed; trajectories/ can keep stale ones
+      - id: replicas
+        name: Replica slots
+        kind: folder
+        path: replicas/
+    outputs:
+      - id: rmsd
+        name: RMSD table
+        kind: file
+        path: results/rmsd.csv
+      - id: final_frame
+        name: Final frame (protein + ligand)
+        kind: file
+        path: results/final_frame.pdb
+      - id: report
+        name: Report
+        kind: file
+        path: results/report.html
+    resources:
+      cpus: 1
+      memory_gb: 4
+    executor: *conda
+    runtime:
+      kind: python_script
+      script: scripts/analyze.py
+      args: >-
+        --trajectories ${trajectories} --replicas ${replicas} --table ${rmsd}
+        --final-frame ${final_frame} --report ${report}
+    target: *local
+
+edges:
+  - source: fetch_inputs
+    source_output: receptor
+    target: build_system
+    target_input: receptor
+  - source: fetch_inputs
+    source_output: ligand
+    target: build_system
+    target_input: ligand
+  - source: build_system
+    source_output: topology
+    target: parameterize
+    target_input: topology
+  - source: artifact-profile
+    source_output: profile
+    target: parameterize
+    target_input: profile
+  - source: parameterize
+    source_output: replicas
+    target: simulate
+    target_input: replicas_in
+  - source: artifact-profile
+    source_output: profile
+    target: simulate
+    target_input: profile
+  - source: simulate
+    source_output: trajectories
+    target: analyze
+    target_input: trajectories
+  - source: parameterize
+    source_output: replicas
+    target: analyze
+    target_input: replicas
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
