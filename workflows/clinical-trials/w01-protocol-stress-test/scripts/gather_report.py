@@ -46,7 +46,14 @@ def load_metrics(evaluated: Path) -> pl.DataFrame:
     files = sorted(evaluated.glob("*/metrics.csv"))
     if not files:
         raise SystemExit(f"gather_report: no */metrics.csv under {evaluated}")
-    return pl.concat([pl.read_csv(f, infer_schema_length=None) for f in files], how="diagonal_relaxed").sort("variant_id")
+    df = pl.concat([pl.read_csv(f, infer_schema_length=0) for f in files], how="diagonal")
+    # Read as text and cast once: an all-empty column in one batch would otherwise infer as String.
+    text = {"variant_id", "hash", "kind", "label", "params"}
+    ints = [c for c in df.columns if c.startswith(("n_", "fail_", "sole_"))]
+    return df.with_columns(
+        [pl.col(c).cast(pl.Int64) for c in ints]
+        + [pl.col(c).cast(pl.Float64) for c in df.columns if c not in text and c not in ints]
+    ).sort("variant_id")
 
 
 def pareto(df: pl.DataFrame) -> pl.DataFrame:
@@ -70,7 +77,7 @@ def analyse(df: pl.DataFrame, rules: dict) -> dict:
         loo = loo.row(0, named=True) if loo.height else base  # dropped as a duplicate of baseline
         gs0, gs1 = base["gini_simpson"], loo["gini_simpson"]
         per.append({
-            "id": c["id"], "type": c["type"], "text": c["text"], "reason": c.get("reason", ""),
+            "id": c["id"], "short": c.get("short", c["id"]), "type": c["type"], "text": c["text"], "reason": c.get("reason", ""),
             "fail": base[f"fail_{c['id']}"], "sole_cause": base[f"sole_{c['id']}"],
             "n_eligible_removed": loo["n_eligible"],
             "delta_eligible": loo["n_eligible"] - base["n_eligible"],
@@ -97,14 +104,14 @@ def analyse(df: pl.DataFrame, rules: dict) -> dict:
         "n_variants": df.height,
         "variants_by_kind": dict(sorted(df["kind"].value_counts().iter_rows())),
         "headline": {
-            "criterion": lead["id"], "text": lead["text"],
+            "criterion": lead["id"], "short": lead["short"], "text": lead["text"],
             "baseline_eligible": base["n_eligible"], "removed_eligible": lead["n_eligible_removed"],
             "baseline_sf_proxy": round(base["sf_proxy"], 6), "removed_sf_proxy": round(base["sf_proxy"] + lead["delta_sf_proxy"], 6),
             "sole_cause": lead["sole_cause"],
         },
         "best_sweep_variant": {k: best_sweep[k] for k in ("variant_id", "hash", "label", "n_eligible", "sf_proxy", "gini_simpson")},
         "criteria": per,
-        "non_computable": [{"id": c["id"], "type": c["type"], "text": c["text"], "reason": c.get("reason", "")} for c in rules["criteria"] if not c.get("computable")],
+        "non_computable": [{"id": c["id"], "short": c.get("short", c["id"]), "type": c["type"], "text": c["text"], "reason": c.get("reason", "")} for c in rules["criteria"] if not c.get("computable")],
         "threshold_curves": curves,
         "pareto_size": front.height,
         "pareto_top": top,
@@ -113,7 +120,7 @@ def analyse(df: pl.DataFrame, rules: dict) -> dict:
 
 def headline_text(s: dict) -> str:
     h = s["headline"]
-    return (f"Removing {h['criterion']} lifts the eligible pool from {h['baseline_eligible']} to {h['removed_eligible']} "
+    return (f"Removing {h['criterion']} ({h['short']}) lifts the eligible pool from {h['baseline_eligible']} to {h['removed_eligible']} "
             f"of {s['baseline']['n_prescreened']} prescreened patients; the screen-failure proxy falls from "
             f"{h['baseline_sf_proxy']:.1%} to {h['removed_sf_proxy']:.1%}.")
 
@@ -130,7 +137,7 @@ def hero(s: dict, nct: str, path: Path) -> None:
     rows = [r for r in s["criteria"] if r["delta_eligible"] > 0][:8][::-1]
     fig = plt.figure(figsize=(12, 6.3), dpi=100, facecolor="white")
     ax = fig.add_axes([0.26, 0.14, 0.68, 0.58])
-    labels = [f"{r['id']}  {r['text'][:34]}{'…' if len(r['text']) > 34 else ''}" for r in rows]
+    labels = [f"{r['id']} · {r['short']}" for r in rows]
     vals = [r["delta_eligible"] for r in rows]
     ax.barh(labels, vals, color=GOLD, height=0.62)
     for y, v in enumerate(vals):
@@ -143,11 +150,14 @@ def hero(s: dict, nct: str, path: Path) -> None:
     ax.tick_params(axis="x", colors=MUTED, labelsize=10)
     ax.set_xlabel("Eligible patients gained when the criterion is removed", color=MUTED, fontsize=11)
     h = s["headline"]
-    fig.text(0.04, 0.9, f"Removing {h['criterion']}: {h['baseline_eligible']} → {h['removed_eligible']} eligible patients",
-             fontsize=24, fontweight="bold", color=INK)
+    best = s["best_sweep_variant"]
+    fig.text(0.04, 0.9, f"Removing {h['criterion']} ({h['short']}): {h['baseline_eligible']} → {h['removed_eligible']} eligible patients",
+             fontsize=22, fontweight="bold", color=INK)
     fig.text(0.04, 0.83, f"Screen-failure proxy {h['baseline_sf_proxy']:.1%} → {h['removed_sf_proxy']:.1%} across "
              f"{s['baseline']['n_prescreened']} prescreened synthetic CKD patients · {s['n_variants']} protocol variants",
              fontsize=13, color=MUTED)
+    fig.text(0.04, 0.78, f"Best relaxed variant ({best['label']}): {best['n_eligible']} eligible, screen-failure proxy {best['sf_proxy']:.1%}",
+             fontsize=13, color=GOLD)
     fig.text(0.04, 0.04, f"{nct} eligibility on a Synthea population. Synthetic data; not clinical evidence.", fontsize=10, color=MUTED)
     fig.text(0.96, 0.04, "Temple Compute · Horus", fontsize=11, color=GOLD, ha="right", fontweight="bold")
     fig.savefig(path, dpi=100, facecolor="white")
@@ -165,7 +175,7 @@ def _fmt(v, pct=False):
 def report_html(s: dict, prov: dict, pre: dict, diff: dict, hero_png: Path) -> str:
     img = base64.b64encode(hero_png.read_bytes()).decode()
     crit_rows = "".join(
-        f"<tr><td>{r['id']}</td><td>{r['type']}</td><td>{html.escape(r['text'])}</td><td class=n>{r['fail']}</td>"
+        f"<tr><td>{r['id']}</td><td>{r['type']}</td><td><b>{html.escape(r['short'])}</b><br><span class=m>{html.escape(r['text'])}</span></td><td class=n>{r['fail']}</td>"
         f"<td class=n>{r['sole_cause']}</td><td class=n>+{r['delta_eligible']}</td><td class=n>{r['delta_sf_proxy']:+.1%}</td>"
         f"<td class=n>{_fmt(r['delta_diversity'])}</td><td class=m>{html.escape(r['reason'])}</td></tr>" for r in s["criteria"])
     nc_rows = "".join(f"<tr><td>{r['id']}</td><td>{html.escape(r['text'])}</td><td class=m>{html.escape(r['reason'])}</td></tr>" for r in s["non_computable"])
@@ -210,7 +220,7 @@ th{{background:#FBF6F0}} .n{{text-align:right;font-variant-numeric:tabular-nums;
 <h2>Pareto frontier: pool size vs diversity</h2><p class=m>{s['pareto_size']} non-dominated variants; top 10 by pool size.</p>
 <div class=wrap><table><tr><th>Variant</th><th>Hash</th><th>Kind</th><th>Change</th><th>Eligible</th><th>SF proxy</th><th>Diversity</th></tr>{top_rows}</table></div>
 <h2>LLM draft vs reviewed rules</h2>{llm}
-<h2>Data coverage among prescreened patients</h2><p class=m>Non-null values per feature.</p><table>{cov}</table>
+<h2>Data coverage among prescreened patients</h2><p class=m>Non-null values per measured feature; patients flagged for boolean features.</p><table>{cov}</table>
 <h2>Provenance</h2><pre>{html.escape(json.dumps(prov, indent=2))}</pre>
 </body></html>"""
 
@@ -275,7 +285,7 @@ def run(args) -> int:
 
 def _selftest() -> int:
     rules = {"criteria": [
-        {"id": "A", "type": "inclusion", "text": "lab in range", "computable": True, "operator": "between", "value": [1, 2], "sweep": {"low": [0, 1], "high": [2]}},
+        {"id": "A", "short": "Lab", "type": "inclusion", "text": "lab in range", "computable": True, "operator": "between", "value": [1, 2], "sweep": {"low": [0, 1], "high": [2]}},
         {"id": "B", "type": "exclusion", "text": "event", "computable": True, "operator": "is_true"},
         {"id": "C", "type": "inclusion", "text": "consent", "computable": False, "reason": "procedural"},
     ]}
@@ -314,7 +324,7 @@ def _selftest() -> int:
         run(a)
         from struct import unpack
         assert unpack(">II", (t / "o/h.png").read_bytes()[16:24]) == (1200, 630)
-        assert "Removing A" in (t / "o/r.html").read_text() and "—" not in (t / "o/r.html").read_text()
+        assert "Removing A (Lab)" in (t / "o/r.html").read_text() and "—" not in (t / "o/r.html").read_text()
     print("gather_report selftest OK")
     return 0
 

@@ -197,7 +197,8 @@ def summarize(df: pl.DataFrame, t: dict, rules: dict, index: date) -> dict:
             "t2d": share(pl.col("t2d")) if "t2d" in pre.columns else None,
             "race_eth": {k: round(v / n, 4) for k, v in sorted(pre["race_eth"].value_counts().iter_rows())} if n else {},
         },
-        "prescreened_coverage": {f: int(pre[f].is_not_null().sum()) for f in rules["features"]},
+        # Non-null values for measurements; patients flagged True for boolean features.
+        "prescreened_coverage": {f: int(pre[f].sum() if pre[f].dtype == pl.Boolean else pre[f].is_not_null().sum()) for f in rules["features"]},
         "shards": t["shards"],
     }
 

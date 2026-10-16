@@ -99,6 +99,12 @@ uv run horus run workflow.yaml
 |---|---|---|
 | W-33 | [Engin Strain-to-Scale](workflows/omics/w01-engin-strain-to-scale/README.md) | Which host, which route, and what to run next for a bioprocess target, via Engin's three independent decision-aid CLIs, merged into one calibrated decision brief |
 
+### Clinical Trials
+
+| ID | Workflow | Description |
+|---|---|---|
+| W-37 | [Protocol Stress-Test](workflows/clinical-trials/w01-protocol-stress-test/README.md) | A public trial's eligibility criteria as computable rules on a Synthea population; thousands of protocol variants fanned out to rank criteria by the patients and diversity they cost |
+
 ### Engine Showcases
 
 Small, self-contained workflows that demonstrate horus-runtime engine
