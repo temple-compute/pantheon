@@ -73,8 +73,7 @@ def edges(graphml: str) -> list[tuple[str, str, int]]:
 def records(text: str) -> list[str]:
     """Split an SDF into records, each ending with its '$$$$' line.
 
-    Same splitter as select_ligands.py (each script ships alone, so no shared
-    module). A last record without '$$$$' is kept and terminated.
+    A last record without '$$$$' is kept and terminated.
     """
     out, buf = [], []
     for line in text.splitlines(keepends=True):
@@ -111,9 +110,7 @@ def render(ddg, dg, raw, net, protein: str, ligands: list[dict]) -> str:
         f"<title>OpenFE RBFE report</title><style>{CSS}</style>"
         f"<link rel=stylesheet href={MOLSTAR}/molstar.css></head><body>"
         "<h1>OpenFE relative binding free energies: TYK2</h1>"
-        "<p class=note>Smoke-profile numbers come from picoseconds of sampling and one "
-        "repeat; they only show that the pipeline runs end to end and are not "
-        "meaningful free energies. dG values are MLE estimates centred on 0.</p>"
+        "<p class=note>dG values are MLE estimates centred on 0.</p>"
         f"<h2>ddG per edge (kcal/mol)</h2>{table(ddg)}"
         f"<h2>dG per ligand (kcal/mol)</h2>{table(dg)}"
         f"<h2>dG per leg and repeat (kcal/mol)</h2>{table(raw)}"

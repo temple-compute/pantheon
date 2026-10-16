@@ -1,5 +1,7 @@
 # OMSF workflows: port plan
 
+> **Revision (2026-10-16, after E2E):** the `smoke`/`full` profile was removed from all three workflows. Each workflow now exposes explicit variables (input URLs for molecules and datasets, plus sampling, model and MD settings) whose defaults are the upstream production values; see each workflow README's Parameters table. Smoke references below describe the original plan.
+
 ## Context
 OMSF's infra team (Open Force Field, OpenFE, OpenADMET) is evaluating Horus. Their pain is running one pipeline on Slurm, cloud GPUs and laptops without re-engineering it. We port 3 of their 16 directory workflows into native Horus workflows in `pantheon` as a demo (first ones due Sun 18 Oct 2026). Depth over breadth: real task decomposition, map fan-out, CPU and GPU steps on different targets, and a smoke profile that runs in minutes.
 

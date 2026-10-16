@@ -17,8 +17,8 @@ _shell: &shell
 _local: &local
   kind: local
 
-# GPU target for the quickrun map in the full profile. Fill in partition and
-# account for your site, then set `target: *gpu` on the quickrun task.
+# GPU target for the quickrun map. Fill in partition and account for your
+# site, then set `target: *gpu` on the quickrun task.
 _gpu: &gpu
   kind: slurm
   inner:
@@ -26,95 +26,146 @@ _gpu: &gpu
   partition: "" # <- set per site
   account: "" # <- set per site
   # CPUs and GPU come from the task's resources (--cpus-per-task, --gres).
-  # One leg = 3 repeats x 11 windows x (1 ns eq + 5 ns prod); set this to
-  # your site's maximum. A timed-out leg resumes on the next horus run.
+  # With the defaults one leg = 3 repeats x 11 windows x (1 ns eq + 5 ns
+  # prod); set this to your site's maximum. A timed-out leg resumes on the
+  # next horus run.
   time_limit: "24:00:00"
 
 artifacts:
-  - id: profile
-    name: Profile
+  - id: ligands_url
+    name: Ligands URL
     description: >-
-      smoke: 3 ligands, 2 edges, 4 legs, 1 repeat, 4 lambda windows,
-      1 ps eq / 2 ps prod on the CPU platform (minutes, meaningless numbers;
-      it only proves the pipeline runs). full: all
-      10 ligands with the openfe protocol defaults (3 repeats, 1 ns / 5 ns,
-      11 windows, CUDA), same as `openfe plan-rbfe-network`.
-    kind: choice
-    path: params/profile.txt
-    options:
-      - value: smoke
-        label: Smoke (CPU, minutes)
-      - value: full
-        label: Full (GPU, upstream defaults)
-    value: smoke
+      SDF with the congeneric ligand series (all records are charged and
+      planned). Default: the 10 TYK2 ligands from
+      OpenFreeEnergy/ExampleNotebooks at a pinned commit. file:///abs/path
+      works for a local file.
+    kind: string
+    path: params/ligands_url.txt
+    value: https://raw.githubusercontent.com/OpenFreeEnergy/ExampleNotebooks/d083c283b96e976d2e90c03d94e57e3ef6bc2c8c/rbfe_tutorial/tyk2_ligands.sdf
+  - id: protein_url
+    name: Protein URL
+    description: >-
+      PDB of the prepared protein. Default: TYK2 from
+      OpenFreeEnergy/ExampleNotebooks at a pinned commit. file:///abs/path
+      works for a local file.
+    kind: string
+    path: params/protein_url.txt
+    value: https://raw.githubusercontent.com/OpenFreeEnergy/ExampleNotebooks/d083c283b96e976d2e90c03d94e57e3ef6bc2c8c/rbfe_tutorial/tyk2_protein.pdb
+  - id: n_repeats
+    name: Repeats per leg
+    description: >-
+      Independent repeats of each leg (protocol_repeats). Whole number >= 1;
+      openfe gather --report dg needs >= 2.
+    kind: number
+    path: params/n_repeats.txt
+    value: 3
+  - id: lambda_windows
+    name: Lambda windows
+    description: >-
+      Lambda windows per leg; n_replicas is set to the same value. Whole
+      number >= 2.
+    kind: number
+    path: params/lambda_windows.txt
+    value: 11
+  - id: equilibration_ns
+    name: Equilibration (ns)
+    description: >-
+      Equilibration length per replica in ns (> 0).
+    kind: number
+    path: params/equilibration_ns.txt
+    value: 1.0
+  - id: production_ns
+    name: Production (ns)
+    description: >-
+      Production length per replica in ns (> 0).
+    kind: number
+    path: params/production_ns.txt
+    value: 5.0
+  - id: time_per_iteration_ps
+    name: Time per iteration (ps)
+    description: >-
+      MD time between replica-exchange attempts in ps (> 0); must divide the
+      equilibration, production, checkpoint and real-time analysis intervals.
+    kind: number
+    path: params/time_per_iteration_ps.txt
+    value: 2.5
+  - id: minimization_steps
+    name: Minimization steps
+    description: >-
+      Energy minimization steps before equilibration (whole number >= 0).
+    kind: number
+    path: params/minimization_steps.txt
+    value: 5000
+  - id: real_time_analysis_ps
+    name: Real-time analysis interval (ps)
+    description: >-
+      Interval of the online free energy analysis in ps; 0 turns it off.
+    kind: number
+    path: params/real_time_analysis_ps.txt
+    value: 250.0
+  - id: checkpoint_interval_ns
+    name: Checkpoint interval (ns)
+    description: >-
+      Interval between simulation checkpoints in ns (> 0), which is what
+      quickrun --resume restarts from.
+    kind: number
+    path: params/checkpoint_interval_ns.txt
+    value: 1.0
+  - id: compute_platform
+    name: OpenMM platform
+    description: >-
+      OpenMM compute platform: cuda, opencl or cpu.
+    kind: string
+    path: params/compute_platform.txt
+    value: cuda
 
 tasks:
   - kind: horus_task
     id: fetch_inputs
-    name: 1. Fetch TYK2 inputs
-    description: Downloads the TYK2 ligands and protein from
-      OpenFreeEnergy/ExampleNotebooks at a pinned commit.
+    name: 1. Fetch inputs
+    description: Downloads the ligand SDF and the protein PDB from the
+      ligands_url and protein_url variables (default TYK2 from
+      OpenFreeEnergy/ExampleNotebooks at a pinned commit; file:// URLs work).
+    inputs:
+      - id: ligands_url
+        name: Ligands URL
+        kind: string
+        path: params/ligands_url.txt
+      - id: protein_url
+        name: Protein URL
+        kind: string
+        path: params/protein_url.txt
     outputs:
       - id: ligands_sdf
-        name: TYK2 ligands
+        name: Ligands
         kind: file
-        path: results/inputs/tyk2_ligands.sdf
+        path: results/inputs/ligands.sdf
       - id: protein_pdb
-        name: TYK2 protein
+        name: Protein
         kind: file
-        path: results/inputs/tyk2_protein.pdb
+        path: results/inputs/protein.pdb
     executor: *shell
     runtime:
       kind: command
       command: >-
-        BASE=https://raw.githubusercontent.com/OpenFreeEnergy/ExampleNotebooks/d083c283b96e976d2e90c03d94e57e3ef6bc2c8c/rbfe_tutorial &&
-        curl -fL --retry 3 -o ${ligands_sdf}.part $$BASE/tyk2_ligands.sdf &&
+        curl -fL --retry 3 -o ${ligands_sdf}.part ${ligands_url} &&
         mv ${ligands_sdf}.part ${ligands_sdf} &&
-        curl -fL --retry 3 -o ${protein_pdb}.part $$BASE/tyk2_protein.pdb &&
+        curl -fL --retry 3 -o ${protein_pdb}.part ${protein_url} &&
         mv ${protein_pdb}.part ${protein_pdb}
     target: *local
 
   - kind: horus_task
-    id: select_ligands
-    name: 2. Select ligands for the profile
-    description: Keeps 3 ligands in smoke (so only those get charged) and all
-      10 in full.
+    id: charge_ligands
+    name: 2. Charge ligands (AM1-BCC)
+    description: >-
+      `openfe charge-molecules` assigns AM1-BCC charges once (ambertools) to
+      every ligand in the SDF, so every leg of every edge uses the same
+      charges.
     inputs:
       - id: ligands_in
-        name: TYK2 ligands
+        name: Ligands
         kind: file
-        path: results/inputs/tyk2_ligands.sdf
-      - id: profile
-        name: Profile
-        kind: choice
-        path: params/profile.txt
-        options:
-          - value: smoke
-          - value: full
-    outputs:
-      - id: selected
-        name: Selected ligands
-        kind: file
-        path: results/inputs/ligands_selected.sdf
-    executor: *shell
-    runtime:
-      kind: python_script
-      script: scripts/select_ligands.py
-      python: python3 # stdlib-only
-      args: --ligands ${ligands_in} --profile ${profile} --out ${selected}
-    target: *local
-
-  - kind: horus_task
-    id: charge_ligands
-    name: 3. Charge ligands (AM1-BCC)
-    description: >-
-      `openfe charge-molecules` assigns AM1-BCC charges once (ambertools), so
-      every leg of every edge uses the same charges.
-    inputs:
-      - id: selected_in
-        name: Selected ligands
-        kind: file
-        path: results/inputs/ligands_selected.sdf
+        path: results/inputs/ligands.sdf
     outputs:
       - id: charged
         name: Charged ligands
@@ -127,34 +178,64 @@ tasks:
       kind: command
       # The progress bar is \r-only; keep it in a log and show the tail.
       command: >-
-        { openfe charge-molecules -M ${selected_in} -o ${charged}
+        { openfe charge-molecules -M ${ligands_in} -o ${charged}
         -n ${task.resources.cpus} > ${charged}.log 2>&1;
         RC=$$?; tr '\r' '\n' < ${charged}.log | tail -n 15; exit $$RC; }
     target: *local
 
   - kind: horus_task
     id: plan_network
-    name: 4. Plan the RBFE network
+    name: 3. Plan the RBFE network
     description: >-
       Kartograf mappings, minimal spanning network and the
       RelativeHybridTopologyProtocol, as `openfe plan-rbfe-network` does, with
-      the sampling set by the profile. Writes one transformation JSON per leg.
+      the sampling settings from the workflow variables. Writes one
+      transformation JSON per leg.
     inputs:
       - id: charged_in
         name: Charged ligands
         kind: file
         path: results/charged_ligands.sdf
       - id: protein_in
-        name: TYK2 protein
+        name: Protein
         kind: file
-        path: results/inputs/tyk2_protein.pdb
-      - id: profile
-        name: Profile
-        kind: choice
-        path: params/profile.txt
-        options:
-          - value: smoke
-          - value: full
+        path: results/inputs/protein.pdb
+      - id: n_repeats
+        name: Repeats per leg
+        kind: number
+        path: params/n_repeats.txt
+      - id: lambda_windows
+        name: Lambda windows
+        kind: number
+        path: params/lambda_windows.txt
+      - id: equilibration_ns
+        name: Equilibration (ns)
+        kind: number
+        path: params/equilibration_ns.txt
+      - id: production_ns
+        name: Production (ns)
+        kind: number
+        path: params/production_ns.txt
+      - id: time_per_iteration_ps
+        name: Time per iteration (ps)
+        kind: number
+        path: params/time_per_iteration_ps.txt
+      - id: minimization_steps
+        name: Minimization steps
+        kind: number
+        path: params/minimization_steps.txt
+      - id: real_time_analysis_ps
+        name: Real-time analysis interval (ps)
+        kind: number
+        path: params/real_time_analysis_ps.txt
+      - id: checkpoint_interval_ns
+        name: Checkpoint interval (ns)
+        kind: number
+        path: params/checkpoint_interval_ns.txt
+      - id: compute_platform
+        name: OpenMM platform
+        kind: string
+        path: params/compute_platform.txt
     outputs:
       - id: transformations
         name: Transformations (one JSON per leg)
@@ -169,16 +250,23 @@ tasks:
       kind: python_script
       script: scripts/plan.py
       args: >-
-        --ligands ${charged_in} --protein ${protein_in} --profile ${profile}
+        --ligands ${charged_in} --protein ${protein_in}
         --out ${transformations} --graphml ${network}
+        --n-repeats ${n_repeats} --lambda-windows ${lambda_windows}
+        --equilibration-ns ${equilibration_ns} --production-ns ${production_ns}
+        --time-per-iteration-ps ${time_per_iteration_ps}
+        --minimization-steps ${minimization_steps}
+        --real-time-analysis-ps ${real_time_analysis_ps}
+        --checkpoint-interval-ns ${checkpoint_interval_ns}
+        --compute-platform ${compute_platform}
     target: *local
 
   # One clone per transformation JSON (complex and solvent leg of each edge).
-  # Smoke runs 2 CPU legs at a time, 2 OpenMM threads each. For full, switch
-  # the target to *gpu and raise max_concurrency to the GPUs you can get.
+  # Runs 2 legs at a time on the local target; on Slurm, switch the target to
+  # *gpu and raise max_concurrency to the GPUs you can get.
   - kind: horus_map
     id: quickrun
-    name: 5. Run each leg (openfe quickrun)
+    name: 4. Run each leg (openfe quickrun)
     description: Runs `openfe quickrun` once per leg; each clone writes its
       result.json and quickrun.log into its own slot.
     over:
@@ -201,8 +289,8 @@ tasks:
     executor: *openfe
     runtime:
       kind: command
-      # OPENMM_CPU_THREADS only matters on the CPU platform (smoke). The slot
-      # is cleared so a slot reused for another leg keeps no old result. The
+      # OPENMM_CPU_THREADS only matters on the CPU platform. The slot is
+      # cleared so a slot reused for another leg keeps no old result. The
       # work dir (trajectories, resume cache) is quickrun[N]/work, outside the
       # output; --resume continues an interrupted leg and starts fresh otherwise.
       command: >-
@@ -214,24 +302,20 @@ tasks:
 
   - kind: horus_task
     id: gather
-    name: 6. Gather free energies
+    name: 5. Gather free energies
     description: >-
       `openfe gather` turns the leg results into ddG per edge, raw dG per leg
-      and repeat, and (full only) the MLE dG per ligand. `--report dg` needs at
-      least 3 edges and 2 repeats, which the smoke network does not have, so
-      smoke writes a note to dg.tsv instead.
+      and repeat, and the MLE dG per ligand. `--report dg` needs at least 3
+      edges and 2 repeats; for a smaller network dg.tsv holds a note instead.
     inputs:
       - id: legs_in
         name: Leg results
         kind: folder
         path: results/legs/
-      - id: profile
-        name: Profile
-        kind: choice
-        path: params/profile.txt
-        options:
-          - value: smoke
-          - value: full
+      - id: n_repeats
+        name: Repeats per leg
+        kind: number
+        path: params/n_repeats.txt
     outputs:
       - id: ddg
         name: ddG per edge
@@ -248,20 +332,22 @@ tasks:
     executor: *openfe
     runtime:
       kind: command
+      # ddg.tsv has a header and one row per edge.
       command: >-
         openfe gather ${legs_in} --report ddg -o ${ddg} &&
         openfe gather ${legs_in} --report raw -o ${raw} &&
-        if [ "${profile}" = full ]; then
+        EDGES=$$(( $$(wc -l < ${ddg}) - 1 )) &&
+        if [ $$EDGES -ge 3 ] && [ ${n_repeats} -ge 2 ]; then
         openfe gather ${legs_in} --report dg -o ${dg};
-        else printf 'note\nsmoke: openfe gather --report dg needs at least 3 edges and 2 repeats; see ddg.tsv and raw.tsv\n' > ${dg};
+        else printf 'note\nopenfe gather --report dg needs at least 3 edges and 2 repeats (this network: %s edges, n_repeats %s); see ddg.tsv and raw.tsv\n' $$EDGES ${n_repeats} > ${dg};
         fi && cat ${ddg} ${raw} ${dg}
     target: *local
 
   - kind: horus_task
     id: report
-    name: 7. Build the report
+    name: 6. Build the report
     description: HTML report with the dG and ddG tables, the network edges and
-      a Mol* view of TYK2 with the ligands.
+      a Mol* view of the protein with the ligands.
     inputs:
       - id: ddg_in
         name: ddG per edge
@@ -280,9 +366,9 @@ tasks:
         kind: file
         path: results/ligand_network.graphml
       - id: protein_in
-        name: TYK2 protein
+        name: Protein
         kind: file
-        path: results/inputs/tyk2_protein.pdb
+        path: results/inputs/protein.pdb
       - id: ligands_in
         name: Charged ligands
         kind: file
@@ -303,22 +389,58 @@ tasks:
     target: *local
 
 edges:
-  - source: artifact-profile
-    source_output: profile
-    target: select_ligands
-    target_input: profile
-  - source: artifact-profile
-    source_output: profile
+  - source: artifact-ligands_url
+    source_output: ligands_url
+    target: fetch_inputs
+    target_input: ligands_url
+  - source: artifact-protein_url
+    source_output: protein_url
+    target: fetch_inputs
+    target_input: protein_url
+  - source: artifact-n_repeats
+    source_output: n_repeats
     target: plan_network
-    target_input: profile
+    target_input: n_repeats
+  - source: artifact-lambda_windows
+    source_output: lambda_windows
+    target: plan_network
+    target_input: lambda_windows
+  - source: artifact-equilibration_ns
+    source_output: equilibration_ns
+    target: plan_network
+    target_input: equilibration_ns
+  - source: artifact-production_ns
+    source_output: production_ns
+    target: plan_network
+    target_input: production_ns
+  - source: artifact-time_per_iteration_ps
+    source_output: time_per_iteration_ps
+    target: plan_network
+    target_input: time_per_iteration_ps
+  - source: artifact-minimization_steps
+    source_output: minimization_steps
+    target: plan_network
+    target_input: minimization_steps
+  - source: artifact-real_time_analysis_ps
+    source_output: real_time_analysis_ps
+    target: plan_network
+    target_input: real_time_analysis_ps
+  - source: artifact-checkpoint_interval_ns
+    source_output: checkpoint_interval_ns
+    target: plan_network
+    target_input: checkpoint_interval_ns
+  - source: artifact-compute_platform
+    source_output: compute_platform
+    target: plan_network
+    target_input: compute_platform
+  - source: artifact-n_repeats
+    source_output: n_repeats
+    target: gather
+    target_input: n_repeats
   - source: fetch_inputs
     source_output: ligands_sdf
-    target: select_ligands
-    target_input: ligands_in
-  - source: select_ligands
-    source_output: selected
     target: charge_ligands
-    target_input: selected_in
+    target_input: ligands_in
   - source: charge_ligands
     source_output: charged
     target: plan_network
@@ -347,10 +469,6 @@ edges:
     source_output: raw
     target: report
     target_input: raw_in
-  - source: artifact-profile
-    source_output: profile
-    target: gather
-    target_input: profile
   - source: plan_network
     source_output: network
     target: report
