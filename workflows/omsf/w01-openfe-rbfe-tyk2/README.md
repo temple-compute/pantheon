@@ -46,11 +46,12 @@ report          (local, shell)   scripts/report.py --> report.html (tables + Mol
 | fetch, select | local | CPU | seconds | seconds |
 | charge_ligands | local | 4 CPU | ~1 min (3 ligands) | a few min (10 ligands) |
 | plan_network | local | 1 CPU | seconds | ~1 min |
-| quickrun (map) | local / Slurm | smoke: 2 CPU threads per leg, 2 legs at a time; full: 1 GPU per leg | complex legs 11-12 min, solvent legs ~1 min; map 13 min | hours per leg (3 repeats x 11 windows x 6 ns) |
+| quickrun (map) | local / Slurm | smoke: 2 CPU threads per leg, 2 legs at a time; full: 1 GPU per leg | complex legs 11-22 min, solvent legs 1-2 min; map 13-22 min (host load) | hours per leg (3 repeats x 11 windows x 6 ns) |
 | gather, report | local | CPU | seconds | seconds |
 
-Measured smoke run on a shared 16-core host (other jobs running, our cap ~5 cores):
-**15 min wall** (886 s) end to end with the conda env already built; building the env
+Measured smoke runs on a shared 16-core host (other jobs running, our cap 5 cores):
+**15-23 min wall** (886 s, and 1388 s with a host load average of ~16, where the two
+concurrent complex legs took 15 and 22 min) end to end with the conda env already built; building the env
 the first time adds a few minutes. Each complex leg uses ~1.5 GB RAM. The full profile
 is 10 ligands, 9 edges, 18 legs of several GPU-hours each (not measured here), spread
 over as many GPUs as `max_concurrency` allows.
