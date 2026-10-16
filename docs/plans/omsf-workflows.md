@@ -76,7 +76,7 @@ DAG: `fetch_inputs → build_system → parameterize → [map] simulate (per rep
 - fetch: `5tbm_prepared.pdb` and `PT2385.sdf` from openff-toolkit tag 0.19.0.
 - build_system: PDBFixer solvation (1 nm padding, 0.15 M), insert the ligand and remove clashing waters, write `topology.json`.
 - parameterize: `ForceField("openff-2.3.0.offxml","ff14sb_off_impropers_0.0.4.offxml")`, `create_interchange`, export OpenMM `system.xml` and `complex.pdb`, write `replicas/<i>/` slots (smoke 2 replicas, full 3).
-- simulate (map): OpenMM minimize + Langevin 300 K, 2 fs. smoke: 5k steps; full: upstream-like longer run; DCD output. CPU locally, GPU target via one-field swap.
+- simulate (map): OpenMM minimize + Langevin 300 K, 2 fs. smoke: 2.5k steps (5 ps); full: upstream-like longer run; DCD output. CPU locally, GPU target via one-field swap.
 - analyze: mdtraj RMSD per replica (`rmsd.csv`), `final_frame.pdb`, and `report.html` with Mol*.
 - Env: conda with `openff-toolkit=0.19.0`, `openff-interchange=0.5.5`, `openmm=8.6.1`, pdbfixer, mdtraj. There is no official container.
 
