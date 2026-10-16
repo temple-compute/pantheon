@@ -1,0 +1,15 @@
+[project]
+name = "w02-openadmet-cyp3a4"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "horus-environments>=0.1.2",
+  "horus-runtime>=0.6.7",
+  "horus-slurm>=0.2.2",
+]
+
+[project.optional-dependencies]
+# Only for the container swaps in the README: `uv sync --extra docker` or
+# `uv sync --extra apptainer`.
+docker = ["horus-docker"]
+apptainer = ["horus-singularity"]
