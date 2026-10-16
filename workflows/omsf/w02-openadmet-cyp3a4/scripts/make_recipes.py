@@ -41,9 +41,11 @@ CHEMPROP_PARAMS = {
 }
 
 PROFILES = {
-    # models, CV (n_splits, n_repeats), n_estimators cap, n_jobs (-1 = whole allocation)
+    # models, CV (n_splits, n_repeats), n_estimators cap, n_jobs. Full n_jobs is
+    # the _gpu anchor's cpus_per_task: catboost's -1 means every host core, which
+    # oversubscribes a shared node.
     "smoke": {"models": ["lgbm", "rf"], "cv": (2, 2), "n_estimators": 50, "n_jobs": 2},
-    "full": {"models": ["lgbm", "rf", "xgboost", "catboost", "chemprop"], "cv": (5, 5), "n_estimators": None, "n_jobs": -1},
+    "full": {"models": ["lgbm", "rf", "xgboost", "catboost", "chemprop"], "cv": (5, 5), "n_estimators": None, "n_jobs": 8},
 }
 
 
@@ -113,7 +115,9 @@ def clean(parquet, out_csv):
 
 
 def write_all(data_csv, out, profile):
-    out.mkdir(parents=True, exist_ok=True)
+    # Horus keeps this folder between runs; drop slots of an earlier profile.
+    shutil.rmtree(out, ignore_errors=True)
+    out.mkdir(parents=True)
     for model in PROFILES[profile]["models"]:
         slot = out / model
         slot.mkdir(exist_ok=True)
@@ -145,11 +149,13 @@ def selftest():
         write_all(csv, tmp / "full", "full")
         assert len(list((tmp / "full").iterdir())) == 5
         cb = yaml.safe_load((tmp / "full/catboost/recipe.yaml").read_text())
-        assert cb["procedure"]["model"]["params"]["thread_count"] == -1
+        assert cb["procedure"]["model"]["params"]["thread_count"] == 8
         assert cb["procedure"]["model"]["params"]["n_estimators"] == 500
         cp = yaml.safe_load((tmp / "full/chemprop/recipe.yaml").read_text())
         assert cp["procedure"]["train"]["type"] == "LightningTrainer"
         assert cp["report"]["eval"][1]["params"]["n_repeats"] == 5
+        write_all(csv, tmp / "full", "smoke")  # profile switch: no stale slots
+        assert sorted(p.name for p in (tmp / "full").iterdir()) == ["lgbm", "rf"]
     print("selftest ok")
 
 

@@ -12,6 +12,7 @@ model.*). Slots are numbered, so the model label is read from the recipe.
 import argparse
 import csv
 import json
+import math
 import subprocess
 import sys
 import tempfile
@@ -40,7 +41,11 @@ def collect(trained):
 
 def best(rows, metric):
     sign = -1 if metric in LOWER_IS_BETTER else 1
-    return max(rows, key=lambda r: sign * r[2][metric]["mean"])
+    # NaN breaks max(): the pick would depend on row order.
+    scored = [r for r in rows if not math.isnan(r[2][metric]["mean"])]
+    if not scored:
+        sys.exit(f"mean CV {metric} is NaN for every model")
+    return max(scored, key=lambda r: sign * r[2][metric]["mean"])
 
 
 def compare_args(rows, out_dir):
@@ -89,6 +94,8 @@ def top_predictions(pred_csv, n):
 
 
 def write_csv(path, rows):
+    if not rows:
+        sys.exit(f"nothing to write to {path}")
     path.parent.mkdir(parents=True, exist_ok=True)
     with open(path, "w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=list(rows[0]))
@@ -114,6 +121,8 @@ def selftest():
         rows = collect(tmp / "trained")
         assert [r[0] for r in rows] == ["lgbm", "rf"]
         assert best(rows, "r2")[0] == "rf" and best(rows, "mae")[0] == "rf"
+        nan_rf = [rows[0], (rows[1][0], rows[1][1], {"r2": {"mean": float("nan")}})]
+        assert best(nan_rf, "r2")[0] == "lgbm" and best(nan_rf[::-1], "r2")[0] == "lgbm"
         a = compare_args(rows, tmp / "cmp")
         assert a.count("--model-stats-fns") == 2 and a[a.index("--labels") + 1] == "lgbm"
         assert a[-2:] == ["--report", "True"]
@@ -141,7 +150,7 @@ def main():
     ap.add_argument("--top-out", type=Path, help="report: top predictions CSV")
     ap.add_argument("--compounds", type=Path, help="predict: inference CSV")
     ap.add_argument("--predictions", type=Path, help="report: predictions CSV")
-    ap.add_argument("--profile", choices=["smoke", "full"], default="full")
+    ap.add_argument("--profile", choices=["smoke", "full"], help="predict: smoke uses the first compounds only")
     ap.add_argument("--metric", default="r2", choices=METRICS)
     ap.add_argument("--top", type=int, default=50)
     a = ap.parse_args()
@@ -149,6 +158,10 @@ def main():
         return selftest()
     if not (a.mode and a.trained and a.out):
         ap.error("mode, --trained and --out are required")
+    if a.mode == "predict" and not (a.compounds and a.profile):
+        ap.error("predict needs --compounds and --profile")
+    if a.mode == "report" and not (a.predictions and a.top_out):
+        ap.error("report needs --predictions and --top-out")
     rows = collect(a.trained)
     if a.mode == "compare":
         a.out.mkdir(parents=True, exist_ok=True)  # openadmet compare needs it to exist
@@ -156,12 +169,13 @@ def main():
     elif a.mode == "predict":
         label, model_dir, stats = best(rows, a.metric)
         print(f"best model by mean CV {a.metric}: {label} ({stats[a.metric]['mean']:.3f})")
-        compounds = a.compounds
-        if a.profile == "smoke":
-            compounds = Path(tempfile.mkdtemp()) / "compounds_smoke.csv"
-            head_csv(a.compounds, compounds, SMOKE_COMPOUNDS)
         a.out.parent.mkdir(parents=True, exist_ok=True)
-        run(predict_args(model_dir, compounds, a.out))
+        with tempfile.TemporaryDirectory() as tmp:
+            compounds = a.compounds
+            if a.profile == "smoke":
+                compounds = Path(tmp) / "compounds_smoke.csv"
+                head_csv(a.compounds, compounds, SMOKE_COMPOUNDS)
+            run(predict_args(model_dir, compounds, a.out))
     else:
         write_csv(a.out, metrics_rows(rows, a.metric))
         write_csv(a.top_out, top_predictions(a.predictions, a.top))

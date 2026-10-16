@@ -2,7 +2,8 @@
 # devtools/conda-envs/openadmet-models.yaml (Apache-2.0) minus the test,
 # notebook and optional-model extras (TabPFN, TabICL, NePaRe, modal).
 # Versions pinned to a working solve on 2026-10-16 (linux-64).
-# openadmet-models is not on PyPI or conda-forge; it installs from its git tag.
+# openadmet-models is not on PyPI or conda-forge; it installs from the commit
+# of its v0.2.0 tag.
 name: openadmet-models
 channels:
   - conda-forge
@@ -45,5 +46,5 @@ dependencies:
       - wandb==0.25.1
       # OpenADMET fork of molfeat, main at 2026-10-16
       - git+https://github.com/OpenADMET/molfeat.git@cfe2abb4d451e94a7fbe98e7942ad4d5018de8cd
-      # v0.2.0 = cdf3e9f7de9ae6b30d13a28c68e20d3b2e651498
-      - git+https://github.com/OpenADMET/openadmet-models.git@v0.2.0
+      # tag v0.2.0
+      - git+https://github.com/OpenADMET/openadmet-models.git@cdf3e9f7de9ae6b30d13a28c68e20d3b2e651498

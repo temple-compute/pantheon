@@ -4,9 +4,10 @@ name: OpenADMET CYP3A4 Inhibition Models
 # --- reusable blocks -------------------------------------------------------
 # Every openadmet step runs in one pinned conda env (conda_env.yaml), built
 # once. Task working dirs are horus_workflow_results/<task>/<run>/, so
-# ../../ puts the shared env at horus_workflow_results/.horus_conda_env. To use the official container instead, swap this
-# anchor for `kind: docker` + `image: ghcr.io/openadmet/openadmet-models:main`
-# (moving tag, see README).
+# ../../ puts the shared env at horus_workflow_results/.horus_conda_env. The
+# executor reuses an existing env as is: after editing conda_env.yaml, delete
+# that folder. To use the official container instead, see the README
+# (docker or apptainer).
 _conda: &conda
   kind: conda_python_environment
   conda: micromamba # set to mamba/conda if that's what's on PATH
@@ -16,6 +17,15 @@ _conda: &conda
     OADMET_NO_RICH_LOGGING: "1"
     MPLBACKEND: Agg
 
+# Full profile only: the train map's env, with a CUDA pytorch build
+# (conda_env.gpu.yaml). It gets its own folder so it is solved on the GPU node,
+# not on the CPU host that builds the shared env. Set the train task's
+# `executor: *conda_gpu` together with `target: *gpu` (see README).
+_conda_gpu: &conda_gpu
+  <<: *conda
+  environment_file: conda_env.gpu.yaml
+  environment_dir: "../../.horus_conda_env_gpu"
+
 _shell: &shell
   kind: shell
 
@@ -24,7 +34,8 @@ _local: &local
 
 # Full profile: Chemprop trains on GPU, so the whole train map goes here
 # (a map runs every clone on one target). Fill in partition/account for your
-# site and set the train task's `target: *gpu`.
+# site and set the train task's `target: *gpu` and `executor: *conda_gpu`.
+# Keep cpus_per_task at 8 or change n_jobs in scripts/make_recipes.py with it.
 _gpu: &gpu
   kind: slurm
   inner:
@@ -102,7 +113,6 @@ tasks:
         options:
           - value: smoke
           - value: full
-        value: smoke
     outputs:
       - id: cleaned
         name: Cleaned CYP3A4 dataset
@@ -122,8 +132,9 @@ tasks:
     target: *local
 
   # One clone per recipe slot. Smoke: 2 clones x 2 threads on the local CPU.
-  # Full: switch `target` to *gpu (chemprop needs CUDA; the tree models run
-  # on the allocation's CPUs).
+  # Full: switch `target` to *gpu and `executor` to *conda_gpu (chemprop needs
+  # CUDA; the tree models run on the allocation's CPUs), and raise
+  # max_concurrency to 5 so chemprop does not queue behind the tree models.
   - kind: horus_map
     id: train
     name: 3. Train and cross-validate each model (parallel)
@@ -207,7 +218,6 @@ tasks:
         options:
           - value: smoke
           - value: full
-        value: smoke
     outputs:
       - id: predictions
         name: Predictions
