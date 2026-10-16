@@ -26,8 +26,8 @@ HEADER = """\
 
 TARGET = "OPENADMET_LOGAC50"
 
-# Full-profile settings. lgbm and chemprop are upstream's; upstream has no
-# rf/xgboost/catboost recipe, so those use library defaults plus a tree count.
+# lgbm and chemprop are upstream's; upstream has no rf/xgboost/catboost recipe,
+# so those use library defaults plus a tree count.
 SKLEARN_MODELS = {
     "lgbm": ("LGBMRegressorModel", {"alpha": 0.005, "learning_rate": 0.05, "n_estimators": 500}),
     "rf": ("RFRegressorModel", {"n_estimators": 100, "random_state": 42}),
@@ -39,14 +39,11 @@ CHEMPROP_PARAMS = {
     "ffn_hidden_num_layers": 4, "from_chemeleon": False,
     "message_hidden_dim": 2048, "messages": "bond", "n_tasks": 1,
 }
-
-PROFILES = {
-    # models, CV (n_splits, n_repeats), n_estimators cap, n_jobs. Full n_jobs is
-    # the _gpu anchor's cpus_per_task: catboost's -1 means every host core, which
-    # oversubscribes a shared node.
-    "smoke": {"models": ["lgbm", "rf"], "cv": (2, 2), "n_estimators": 50, "n_jobs": 2},
-    "full": {"models": ["lgbm", "rf", "xgboost", "catboost", "chemprop"], "cv": (5, 5), "n_estimators": None, "n_jobs": 8},
-}
+SUPPORTED = [*SKLEARN_MODELS, "chemprop"]
+ACCELERATORS = ["gpu", "cpu"]
+# Threads per featurizer/model: the _gpu anchor's cpus_per_task. Never -1:
+# catboost reads it as every host core, which oversubscribes a shared node.
+N_JOBS = 8
 
 
 def _cv_eval(kind, labels, n_splits, n_repeats):
@@ -60,14 +57,12 @@ def _cv_eval(kind, labels, n_splits, n_repeats):
     ]
 
 
-def recipe(model, profile):
-    p = PROFILES[profile]
-    n_splits, n_repeats = p["cv"]
+def recipe(model, n_splits, n_repeats, accelerator):
     data = {"resource": "{{ ANVIL_DIR }}/data.csv", "type": "intake",
             "input_col": "OPENADMET_CANONICAL_SMILES", "target_cols": [TARGET], "dropna": True}
     meta = {"authors": "OpenADMET showcase (ported to Horus)", "email": "noreply@example.org",
             "biotargets": ["CYP3A4"], "build_number": 0, "name": model,
-            "tag": "openadmet-chembl", "tags": ["openadmet", "pchembl", profile], "version": "v1"}
+            "tag": "openadmet-chembl", "tags": ["openadmet", "pchembl"], "version": "v1"}
     if model == "chemprop":
         meta.update(description="single-task Chemprop regression", driver="pytorch")
         procedure = {
@@ -76,7 +71,7 @@ def recipe(model, profile):
             "split": {"type": "ShuffleSplitter", "params": {
                 "random_state": 42, "train_size": 0.7, "val_size": 0.1, "test_size": 0.2}},
             "train": {"type": "LightningTrainer", "params": {
-                "accelerator": "gpu", "early_stopping": True, "early_stopping_min_delta": 0.001,
+                "accelerator": accelerator, "early_stopping": True, "early_stopping_min_delta": 0.001,
                 "early_stopping_mode": "min", "early_stopping_patience": 10,
                 "max_epochs": 50, "monitor_metric": "val_loss", "use_wandb": False}},
         }
@@ -85,15 +80,13 @@ def recipe(model, profile):
     else:
         kind, params = SKLEARN_MODELS[model]
         params = dict(params)
-        if p["n_estimators"]:
-            params["n_estimators"] = min(params["n_estimators"], p["n_estimators"])
         # catboost names its thread count differently
-        params["thread_count" if model == "catboost" else "n_jobs"] = p["n_jobs"]
+        params["thread_count" if model == "catboost" else "n_jobs"] = N_JOBS
         meta.update(description=f"{model} regression on 2D descriptors + ECFP4", driver="sklearn")
         procedure = {
             "feat": {"type": "FeatureConcatenator", "params": {"featurizers": {
-                "DescriptorFeaturizer": {"descr_type": "desc2d", "n_jobs": p["n_jobs"]},
-                "FingerprintFeaturizer": {"fp_type": "ecfp:4", "n_jobs": p["n_jobs"]},
+                "DescriptorFeaturizer": {"descr_type": "desc2d", "n_jobs": N_JOBS},
+                "FingerprintFeaturizer": {"fp_type": "ecfp:4", "n_jobs": N_JOBS},
             }}},
             "model": {"type": kind, "params": params},
             "split": {"type": "ShuffleSplitter", "params": {
@@ -114,20 +107,45 @@ def clean(parquet, out_csv):
     print(f"{len(df)} compounds -> {out_csv}")
 
 
-def write_all(data_csv, out, profile):
-    # Horus keeps this folder between runs; drop slots of an earlier profile.
+def parse_models(text):
+    models = [m.strip() for m in text.split(",") if m.strip()]
+    bad = [m for m in models if m not in SUPPORTED]
+    if not models or bad or len(set(models)) != len(models):
+        raise ValueError(f"models must be a comma list of distinct names from {','.join(SUPPORTED)}; got {text!r}")
+    return models
+
+
+def parse_count(name, text, minimum):
+    try:
+        value = float(text)
+    except ValueError:
+        value = None
+    if value is None or not value.is_integer() or value < minimum:
+        raise ValueError(f"{name} must be an integer >= {minimum}; got {text!r}")
+    return int(value)
+
+
+def check_accelerator(text):
+    if text not in ACCELERATORS:
+        raise ValueError(f"accelerator must be one of {'|'.join(ACCELERATORS)}; got {text!r}")
+    return text
+
+
+def write_all(data_csv, out, models, n_splits, n_repeats, accelerator):
+    # Horus keeps this folder between runs; drop slots of an earlier model list.
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
-    for model in PROFILES[profile]["models"]:
+    for model in models:
         slot = out / model
         slot.mkdir(exist_ok=True)
         shutil.copyfile(data_csv, slot / "data.csv")
-        text = HEADER + yaml.safe_dump(recipe(model, profile), sort_keys=False)
+        text = HEADER + yaml.safe_dump(recipe(model, n_splits, n_repeats, accelerator), sort_keys=False)
         (slot / "recipe.yaml").write_text(text)
         print(f"wrote {slot / 'recipe.yaml'}")
 
 
 def selftest():
+    """Unit test of the cleaning, validation and recipe generation."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         pd.DataFrame({"OPENADMET_CANONICAL_SMILES": ["CCO", "CCN"],
@@ -137,43 +155,76 @@ def selftest():
         df = pd.read_csv(csv)
         assert df[TARGET].tolist() == [5.0, 6.5]
         assert set(df["Target"]) == {"CYP3A4"} and set(df["OPENADMET_ACTIVITY_TYPE"]) == {"IC50"}
-        write_all(csv, tmp / "smoke", "smoke")
-        assert sorted(p.name for p in (tmp / "smoke").iterdir()) == ["lgbm", "rf"]
-        r = yaml.safe_load((tmp / "smoke/lgbm/recipe.yaml").read_text())
-        assert (tmp / "smoke/lgbm/recipe.yaml").read_text().startswith("# Derived from OpenADMET")
+        assert parse_models(" lgbm, rf ") == ["lgbm", "rf"]
+        for bad in ["", "lgbm,svm", "rf,rf"]:
+            try:
+                parse_models(bad)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(bad)
+        assert parse_count("cv_folds", "5", 2) == 5 and parse_count("cv_folds", "3.0", 2) == 3
+        for bad in ["1", "2.5", "x"]:
+            try:
+                parse_count("cv_folds", bad, 2)
+            except ValueError:
+                pass
+            else:
+                raise AssertionError(bad)
+        try:
+            check_accelerator("tpu")
+        except ValueError:
+            pass
+        else:
+            raise AssertionError("tpu")
+        write_all(csv, tmp / "two", ["lgbm", "rf"], 2, 3, "cpu")
+        assert sorted(p.name for p in (tmp / "two").iterdir()) == ["lgbm", "rf"]
+        r = yaml.safe_load((tmp / "two/lgbm/recipe.yaml").read_text())
+        assert (tmp / "two/lgbm/recipe.yaml").read_text().startswith("# Derived from OpenADMET")
         assert r["data"]["resource"] == "{{ ANVIL_DIR }}/data.csv"
-        assert r["procedure"]["model"]["params"]["n_estimators"] == 50
-        assert r["procedure"]["model"]["params"]["n_jobs"] == 2
+        assert r["procedure"]["model"]["params"]["n_estimators"] == 500
+        assert r["procedure"]["model"]["params"]["n_jobs"] == N_JOBS
         assert r["report"]["eval"][1]["params"]["n_splits"] == 2
-        assert (tmp / "smoke/rf/data.csv").read_text() == csv.read_text()
-        write_all(csv, tmp / "full", "full")
-        assert len(list((tmp / "full").iterdir())) == 5
-        cb = yaml.safe_load((tmp / "full/catboost/recipe.yaml").read_text())
-        assert cb["procedure"]["model"]["params"]["thread_count"] == 8
-        assert cb["procedure"]["model"]["params"]["n_estimators"] == 500
-        cp = yaml.safe_load((tmp / "full/chemprop/recipe.yaml").read_text())
+        assert r["report"]["eval"][1]["params"]["n_repeats"] == 3
+        assert (tmp / "two/rf/data.csv").read_text() == csv.read_text()
+        write_all(csv, tmp / "all", SUPPORTED, 5, 5, "gpu")
+        assert len(list((tmp / "all").iterdir())) == 5
+        cb = yaml.safe_load((tmp / "all/catboost/recipe.yaml").read_text())
+        assert cb["procedure"]["model"]["params"]["thread_count"] == N_JOBS
+        cp = yaml.safe_load((tmp / "all/chemprop/recipe.yaml").read_text())
         assert cp["procedure"]["train"]["type"] == "LightningTrainer"
+        assert cp["procedure"]["train"]["params"]["accelerator"] == "gpu"
         assert cp["report"]["eval"][1]["params"]["n_repeats"] == 5
-        write_all(csv, tmp / "full", "smoke")  # profile switch: no stale slots
-        assert sorted(p.name for p in (tmp / "full").iterdir()) == ["lgbm", "rf"]
+        write_all(csv, tmp / "all", ["lgbm", "rf"], 5, 5, "gpu")  # shorter list: no stale slots
+        assert sorted(p.name for p in (tmp / "all").iterdir()) == ["lgbm", "rf"]
     print("selftest ok")
 
 
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
-    ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--selftest", action="store_true", help="run the unit test and exit")
     ap.add_argument("--parquet", type=Path, help="ChEMBL CYP3A4 aggregated parquet")
     ap.add_argument("--cleaned", type=Path, help="where to write the cleaned CSV")
-    ap.add_argument("--profile", choices=sorted(PROFILES))
+    ap.add_argument("--models", help=f"comma list from {','.join(SUPPORTED)}")
+    ap.add_argument("--cv-folds", help="k of the repeated k-fold CV (>= 2)")
+    ap.add_argument("--cv-repeats", help="repeats of the k-fold CV (>= 1)")
+    ap.add_argument("--accelerator", help="chemprop training device: gpu or cpu")
     ap.add_argument("--out", type=Path)
     a = ap.parse_args()
     if a.selftest:
         return selftest()
-    if not (a.parquet and a.cleaned and a.profile and a.out):
-        ap.error("--parquet, --cleaned, --profile and --out are required")
+    if not (a.parquet and a.cleaned and a.models and a.cv_folds and a.cv_repeats and a.accelerator and a.out):
+        ap.error("--parquet, --cleaned, --models, --cv-folds, --cv-repeats, --accelerator and --out are required")
+    try:
+        models = parse_models(a.models)
+        n_splits = parse_count("cv_folds", a.cv_folds, 2)
+        n_repeats = parse_count("cv_repeats", a.cv_repeats, 1)
+        accelerator = check_accelerator(a.accelerator)
+    except ValueError as e:
+        ap.error(str(e))
     a.cleaned.parent.mkdir(parents=True, exist_ok=True)
     clean(a.parquet, a.cleaned)
-    write_all(a.cleaned, a.out, a.profile)
+    write_all(a.cleaned, a.out, models, n_splits, n_repeats, accelerator)
 
 
 if __name__ == "__main__":

@@ -24,7 +24,7 @@ TASK = "OPENADMET_LOGAC50"
 PRED_COL = f"OADMET_PRED_openadmet-chembl_{TASK}"
 METRICS = ["r2", "mae", "mse", "spearmanr", "ktau"]
 LOWER_IS_BETTER = {"mae", "mse"}
-SMOKE_COMPOUNDS = 2000  # smoke predicts on the first N inference compounds
+ACCELERATORS = ["gpu", "cpu"]
 
 
 def collect(trained):
@@ -56,18 +56,17 @@ def compare_args(rows, out_dir):
     return args + ["--output-dir", str(out_dir), "--report", "True"]
 
 
-def predict_args(model_dir, compounds, out_csv):
+def predict_args(model_dir, compounds, out_csv, accelerator):
     return ["openadmet", "predict", "--input-path", str(compounds),
             "--input-col", "OPENADMET_CANONICAL_SMILES", "--model-dir", str(model_dir),
-            "--output-csv", str(out_csv), "--accelerator", "cpu"]
+            "--output-csv", str(out_csv), "--accelerator", accelerator]
 
 
-def head_csv(src, dst, n):
-    with open(src, newline="") as f, open(dst, "w", newline="") as g:
-        for i, line in enumerate(f):
-            if i > n:
-                break
-            g.write(line)
+def check_compounds(path):
+    with open(path, newline="") as f:
+        header = next(csv.reader(f), [])
+    if "OPENADMET_CANONICAL_SMILES" not in header:
+        sys.exit(f"{path}: inference CSV needs an OPENADMET_CANONICAL_SMILES column; has {header}")
 
 
 def metrics_rows(rows, metric):
@@ -109,6 +108,7 @@ def run(args):
 
 
 def selftest():
+    """Unit test of the model collection, selection and CSV glue."""
     with tempfile.TemporaryDirectory() as tmp:
         tmp = Path(tmp)
         for slot, name, r2, mae in [("0", "lgbm", 0.45, 0.48), ("1", "rf", 0.51, 0.44)]:
@@ -126,14 +126,20 @@ def selftest():
         a = compare_args(rows, tmp / "cmp")
         assert a.count("--model-stats-fns") == 2 and a[a.index("--labels") + 1] == "lgbm"
         assert a[-2:] == ["--report", "True"]
-        p = predict_args(rows[1][1], "in.csv", "out.csv")
-        assert p[p.index("--model-dir") + 1].endswith("1/model")
+        p = predict_args(rows[1][1], "in.csv", "out.csv", "cpu")
+        assert p[p.index("--model-dir") + 1].endswith("1/model") and p[-2:] == ["--accelerator", "cpu"]
         m = metrics_rows(rows, "r2")
         assert [r["best"] for r in m] == [False, True] and m[0]["n_folds"] == 4
         src = tmp / "inf.csv"
-        src.write_text("OPENADMET_CANONICAL_SMILES,OPENADMET_INCHIKEY\nC,A\nCC,B\nCCC,C\n")
-        head_csv(src, tmp / "head.csv", 2)
-        assert (tmp / "head.csv").read_text().count("\n") == 3
+        src.write_text("OPENADMET_CANONICAL_SMILES,OPENADMET_INCHIKEY\nC,A\n")
+        check_compounds(src)
+        (tmp / "bad.csv").write_text("smiles\nC\n")
+        try:
+            check_compounds(tmp / "bad.csv")
+        except SystemExit:
+            pass
+        else:
+            raise AssertionError("missing SMILES column accepted")
         pred = tmp / "pred.csv"
         pred.write_text(f"OPENADMET_CANONICAL_SMILES,OPENADMET_INCHIKEY,{PRED_COL}\nC,A,4.1\nCC,B,6.2\nCCC,C,\n")
         top = top_predictions(pred, 5)
@@ -144,13 +150,13 @@ def selftest():
 def main():
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
     ap.add_argument("mode", choices=["compare", "predict", "report"], nargs="?")
-    ap.add_argument("--selftest", action="store_true")
+    ap.add_argument("--selftest", action="store_true", help="run the unit test and exit")
     ap.add_argument("--trained", type=Path)
     ap.add_argument("--out", type=Path, help="compare: output dir; predict: predictions CSV; report: metrics CSV")
     ap.add_argument("--top-out", type=Path, help="report: top predictions CSV")
     ap.add_argument("--compounds", type=Path, help="predict: inference CSV")
     ap.add_argument("--predictions", type=Path, help="report: predictions CSV")
-    ap.add_argument("--profile", choices=["smoke", "full"], help="predict: smoke uses the first compounds only")
+    ap.add_argument("--accelerator", help="predict: gpu or cpu")
     ap.add_argument("--metric", default="r2", choices=METRICS)
     ap.add_argument("--top", type=int, default=50)
     a = ap.parse_args()
@@ -158,8 +164,10 @@ def main():
         return selftest()
     if not (a.mode and a.trained and a.out):
         ap.error("mode, --trained and --out are required")
-    if a.mode == "predict" and not (a.compounds and a.profile):
-        ap.error("predict needs --compounds and --profile")
+    if a.mode == "predict" and not (a.compounds and a.accelerator):
+        ap.error("predict needs --compounds and --accelerator")
+    if a.mode == "predict" and a.accelerator not in ACCELERATORS:
+        ap.error(f"accelerator must be one of {'|'.join(ACCELERATORS)}; got {a.accelerator!r}")
     if a.mode == "report" and not (a.predictions and a.top_out):
         ap.error("report needs --predictions and --top-out")
     rows = collect(a.trained)
@@ -167,15 +175,11 @@ def main():
         a.out.mkdir(parents=True, exist_ok=True)  # openadmet compare needs it to exist
         run(compare_args(rows, a.out))
     elif a.mode == "predict":
+        check_compounds(a.compounds)
         label, model_dir, stats = best(rows, a.metric)
         print(f"best model by mean CV {a.metric}: {label} ({stats[a.metric]['mean']:.3f})")
         a.out.parent.mkdir(parents=True, exist_ok=True)
-        with tempfile.TemporaryDirectory() as tmp:
-            compounds = a.compounds
-            if a.profile == "smoke":
-                compounds = Path(tmp) / "compounds_smoke.csv"
-                head_csv(a.compounds, compounds, SMOKE_COMPOUNDS)
-            run(predict_args(model_dir, compounds, a.out))
+        run(predict_args(model_dir, a.compounds, a.out, a.accelerator))
     else:
         write_csv(a.out, metrics_rows(rows, a.metric))
         write_csv(a.top_out, top_predictions(a.predictions, a.top))

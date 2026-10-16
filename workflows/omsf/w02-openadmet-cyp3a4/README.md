@@ -20,16 +20,17 @@ notebook stage is its own task:
 6. tabulate CV metrics and the top predicted inhibitors.
 
 Tree models train on CPU in minutes. Chemprop (a graph neural network) needs
-a GPU, which is why the full profile sends the training map to Slurm.
+a GPU, so the default run expects a GPU host, or the training map on a Slurm
+GPU node (see **Slurm/GPU** below).
 
 ## Pipeline
 
 ```
-fetch_data    (local, shell)   curl parquet + inference CSV at pinned commits
+fetch_data    (local, shell)   curl ${dataset_url} + ${inference_url}
    │
 make_recipes  (local, conda)   OPENADMET_* headers, recipes/<model>/{recipe.yaml,data.csv}
    │
-train         (map, conda)     openadmet anvil, one clone per model    smoke: local CPU / full: _gpu Slurm
+train         (map, conda)     openadmet anvil, one clone per model (all at once)
    ├──────────────┐
 compare           predict      openadmet compare  |  best mean CV R2 -> openadmet predict
                      │
@@ -47,28 +48,75 @@ cd workflows/omsf/w02-openadmet-cyp3a4
 # Install the horus-runtime and plugins (one time)
 uv sync
 
-# Run the workflow (smoke profile by default)
+# Run the workflow with the default parameters (on a GPU host)
 uv run horus run workflow.yaml
 ```
 
 Executor: `conda_python_environment` with `micromamba` (set `conda:` in the
 `_conda` anchor to `mamba` or `conda` if that is what you have). The first
-task builds the env from `conda_env.yaml` into
-`horus_workflow_results/.horus_conda_env/` (about 1 min with a warm package cache). Later runs reuse it
-as is, without checking it against `conda_env.yaml`: after editing that file,
-delete `horus_workflow_results/.horus_conda_env/` (or set `recreate: true` for
-one run) so the next run rebuilds it.
+conda task builds the env from `conda_env.yaml` into
+`horus_workflow_results/.horus_conda_env/` (a few minutes: the CUDA pytorch
+build is a large download). Later runs reuse it as is, without checking it
+against `conda_env.yaml`: after editing that file, delete
+`horus_workflow_results/.horus_conda_env/` (or set `recreate: true` for one
+run) so the next run rebuilds it.
+
+The env pins a CUDA build of pytorch, and conda-forge only picks it when the
+solving host reports a GPU. On a host without a GPU (a login node, or a CPU
+workstation running with `accelerator: cpu`), declare the CUDA version the
+solver should assume:
+
+```bash
+CONDA_OVERRIDE_CUDA=12.9 uv run horus run workflow.yaml
+```
+
+Without a GPU or `CONDA_OVERRIDE_CUDA`, the solve fails instead of quietly
+installing a CPU pytorch. The CUDA build also runs on CPU.
+
+## Parameters
+
+Root value artifacts of `workflow.yaml`. Each is written to
+`params/<id>.txt` (next to `workflow.yaml`) the first time a task uses it and
+reaches the tasks only through `${id}`.
+
+| id | kind | Default | Meaning |
+|---|---|---|---|
+| `dataset_url` | string | ChEMBL35 CYP3A4 IC50 aggregate, [OpenADMET/data-catalogs](https://github.com/OpenADMET/data-catalogs) at `65dd4ee3` | Training set: any OpenADMET data-catalogs aggregated parquet, one row per compound, with `OPENADMET_CANONICAL_SMILES` (input) and `pchembl_value_mean` (target) columns |
+| `inference_url` | string | `showcase/compounds_for_inference.csv` from openadmet-demos at `8b2c5f34` (10,000 ZINC compounds) | CSV to predict; needs an `OPENADMET_CANONICAL_SMILES` column (`OPENADMET_INCHIKEY` is copied to the top list if present) |
+| `models` | string | `lgbm,rf,xgboost,catboost,chemprop` | Comma list of models to train, compare and pick from; any distinct subset of those five |
+| `cv_folds` | number | `5` (upstream) | k of the repeated k-fold CV, integer >= 2 |
+| `cv_repeats` | number | `5` (upstream) | Repeats of the k-fold CV, integer >= 1 |
+| `accelerator` | string | `gpu` | `gpu` or `cpu`: device for Chemprop training and for `openadmet predict` (tree models always run on CPU) |
+
+Both URLs are fetched with `curl`, so `file:///abs/path/to/file` works for a
+local file. `make_recipes.py` and `models.py` reject an unknown model, a
+repeated model, a non-integer or out-of-range CV count and an accelerator
+other than `gpu`/`cpu` with an error naming the parameter. The best model is
+picked by mean CV R2 (`--metric` of `models.py predict`).
+
+To change a value, edit its `value:` in the root `artifacts:` list of
+`workflow.yaml` (or on the artifact in the tc-os UI), then delete the
+materialized files:
+
+```bash
+rm -rf params/
+```
+
+`${id}` renders the root `value:`, but the skip check fingerprints
+`params/<id>.txt`, which Horus writes only when it is missing. Without the
+delete, finished tasks are skipped with the old value. `params/` is run
+state, not something to commit.
 
 ## Compute Pattern
 
-| Stage | Smoke (default) | Full |
+| Stage | Where (defaults) | Time |
 |---|---|---|
-| fetch_data | local, seconds | same |
-| make_recipes | local CPU, seconds | same |
-| train (map) | 2 clones (lgbm, rf) in parallel, 2 threads each, local CPU, about 5 min | 5 clones (lgbm, rf, xgboost, catboost, chemprop) on the `_gpu` Slurm anchor, 1 GPU + 8 CPUs each, hours |
-| compare | local CPU, about 20 s | same |
-| predict | best model on the first 2000 compounds, about 40 s | all 10,000 compounds, a few min |
-| report | seconds | same |
+| fetch_data | local, shell | seconds |
+| make_recipes | local CPU (builds the env on first run) | seconds, plus the env build |
+| train (map) | 5 clones (lgbm, rf, xgboost, catboost, chemprop) at once, 8 threads each; chemprop on 1 GPU | tree models minutes to tens of minutes, chemprop hours |
+| compare | local CPU | under a minute |
+| predict | best model on all 10,000 compounds | a few minutes |
+| report | local | seconds |
 
 ## Tools & Dependencies
 
@@ -78,20 +126,16 @@ one run) so the next run rebuilds it.
   showcase uses (`anvil --recipe-path/--output-dir`, `compare
   --model-stats-fns/--labels/--task-names/--output-dir/--report`, `predict
   --input-path/--input-col/--model-dir/--output-csv/--accelerator`), so no
-  `main` commit is needed. One difference from `main`: `predict
-  --accelerator` defaults to `gpu` in v0.2.0, so the workflow always passes
-  `--accelerator cpu`.
+  `main` commit is needed. `predict --accelerator` defaults to `gpu` in
+  v0.2.0, so the workflow always passes `${accelerator}`.
 - `conda_env.yaml`: the runtime part of upstream
   `devtools/conda-envs/openadmet-models.yaml` (pytorch, chemprop, lightgbm,
   xgboost, catboost, rdkit, the OpenADMET molfeat fork at a pinned commit, and
-  so on). Test and notebook tools and the optional TabPFN/TabICL/NePaRe extras
-  are left out. Every package is pinned to the versions of a working solve.
-- `conda_env.gpu.yaml`: the same env with a CUDA build of pytorch
-  (`pytorch=2.14.1=cuda*`), used only by the full profile's train map. Keep
-  the two files in sync.
-- Data: [OpenADMET/data-catalogs](https://github.com/OpenADMET/data-catalogs)
-  at `65dd4ee3` and `showcase/compounds_for_inference.csv` from
-  openadmet-demos at `8b2c5f34`. Both are downloaded at run time.
+  so on), with the CUDA build of pytorch (`pytorch=2.14.1=cuda*`). Test and
+  notebook tools and the optional TabPFN/TabICL/NePaRe extras are left out.
+  Every package is pinned to the versions of a working solve. One env serves
+  every task, CPU or GPU.
+- Data: the two URLs in **Parameters**, downloaded at run time.
 
 ### Container option
 
@@ -126,80 +170,52 @@ _conda: &conda
     MPLBACKEND: Agg
 ```
 
-With either swap, also point the `_conda_gpu` anchor at the new `_conda`
-(`_conda_gpu: &conda_gpu` with only `<<: *conda`), since the image already
-has a CUDA pytorch. On Slurm, the train map still needs `target: *gpu`.
+On Slurm, the train map still needs `target: *gpu`.
 
 ## Horus Configuration
 
-- **profile** (`choice` artifact, `smoke` | `full`, default `smoke`). It is
-  stored at `params/profile.txt` (next to `workflow.yaml`) as the bare option
-  text, and `${profile}` renders as `smoke` or `full`. `make_recipes.py` and
-  `models.py predict` read it from `--profile`. To switch, edit `value:` in
-  the root `artifacts:` entry (or pick it on the artifact in the tc-os UI)
-  and delete the stale file:
-
-  ```bash
-  rm params/profile.txt
-  ```
-
-  `${profile}` renders the root `value:`, but the skip check hashes
-  `params/profile.txt`, which Horus writes only when it is missing. Without
-  the delete, finished tasks are skipped with the old profile. `params/` is
-  run state, not something to commit.
-- **train** is a `horus_map` over `recipes/`. Each child folder
-  (`recipes/lgbm/`, `recipes/rf/`, ...) holds `recipe.yaml` and its own copy
-  of the data. The recipe points at `{{ ANVIL_DIR }}/data.csv`, so the slot
-  works on any target the clone is copied to. Each clone writes its anvil
-  output to `trained/<slot>/model/`. Slots are numbered (`0`, `1`, ...), and
-  the model name is read from `model/anvil_recipe.yaml`.
-- **Full on Slurm/GPU**: in `workflow.yaml`,
+- **Parameters**: see **Parameters** above.
+- **train** is a `horus_map` over `recipes/` with `max_concurrency: 5`, so
+  all default models train at once and Chemprop does not wait behind the
+  tree models. Each child folder (`recipes/lgbm/`, `recipes/rf/`, ...) holds
+  `recipe.yaml` and its own copy of the data. The recipe points at
+  `{{ ANVIL_DIR }}/data.csv`, so the slot works on any target the clone is
+  copied to. Each clone writes its anvil output to `trained/<slot>/model/`.
+  Slots are numbered (`0`, `1`, ...), and the model name is read from
+  `model/anvil_recipe.yaml`.
+- **Slurm/GPU**: in `workflow.yaml`,
   1. set `partition` and `account` in the `_gpu` anchor,
-  2. on the train task, change `target: *local` to `target: *gpu` and
-     `executor: *conda` to `executor: *conda_gpu`,
-  3. on the train task, raise `max_concurrency` from 2 to 5, so Chemprop
-     does not wait for a slot behind the tree models,
-  4. switch the profile to `full` (see **profile** above).
+  2. on the train task, change `target: *local` to `target: *gpu`.
 
-  `resources.gpus: 1` is already on the task; the local target ignores it
-  unless a capacity is declared. A map runs every clone on one target, so the
-  tree models also land on GPU nodes in the full run. They only use the
-  allocation's CPUs.
-- **GPU env**: `_conda_gpu` builds `conda_env.gpu.yaml` into its own folder,
-  `horus_workflow_results/.horus_conda_env_gpu/`. conda-forge only picks the
-  CUDA pytorch build when the solving host reports a GPU, which is why the
-  shared env (built by `make_recipes` on the local CPU host) cannot be reused
-  for Chemprop. The executor has no lock, so build the GPU env once before
-  the full run instead of letting 5 clones race to create it. Either build it
-  on a GPU node:
+  `resources` (`cpus: 8`, `gpus: 1`) is already on the task; the local
+  target ignores it unless a capacity is declared. A map runs every clone on
+  one target, so the tree models also land on GPU nodes. They only use the
+  allocation's CPUs. The env lives in `horus_workflow_results/` and must be
+  on a filesystem the nodes share. The executor has no lock, so if `train`
+  could be the first conda task (for example after deleting the env), build
+  the env once before the run instead of letting 5 clones race to create
+  it, either on a GPU node:
 
   ```bash
-  srun --gres=gpu:1 micromamba env create -y -f conda_env.gpu.yaml \
-    -p horus_workflow_results/.horus_conda_env_gpu
+  srun --gres=gpu:1 micromamba env create -y -f conda_env.yaml \
+    -p horus_workflow_results/.horus_conda_env
   ```
 
-  or build it on a host without a GPU (the login node) by declaring the CUDA
-  version the solver should assume:
-
-  ```bash
-  CONDA_OVERRIDE_CUDA=12.9 micromamba env create -y -f conda_env.gpu.yaml \
-    -p horus_workflow_results/.horus_conda_env_gpu
-  ```
-
-  Without a GPU or `CONDA_OVERRIDE_CUDA`, the solve fails instead of quietly
-  installing a CPU pytorch. Check the result with
-  `horus_workflow_results/.horus_conda_env_gpu/bin/python -c "import torch; print(torch.version.cuda)"`
+  or on the login node with `CONDA_OVERRIDE_CUDA=12.9` in front of the same
+  `micromamba env create` command. Check the result with
+  `horus_workflow_results/.horus_conda_env/bin/python -c "import torch; print(torch.version.cuda)"`
   (it must not print `None`).
-- Threads: smoke sets `n_jobs: 2` (catboost: `thread_count`) on the
-  featurizers and models, with `max_concurrency: 2`. Full sets `n_jobs: 8`,
-  the `_gpu` anchor's `cpus_per_task`; change both together. `-1` is not used
-  because catboost reads it as every core on the host, not the allocation,
-  and the upstream featurizers default to it, so the recipes always set the
-  count explicitly.
+- Threads: the recipes set `n_jobs: 8` (catboost: `thread_count`) on the
+  featurizers and models, the `_gpu` anchor's `cpus_per_task`; change
+  `N_JOBS` in `scripts/make_recipes.py` and `cpus_per_task` together. `-1`
+  is not used because catboost reads it as every core on the host, not the
+  allocation, and the upstream featurizers default to it, so the recipes
+  always set the count explicitly.
 
 ## Input / Output
 
-**Inputs**: none to provide. Both data files are fetched from pinned commits.
+**Inputs**: none to provide. Both data files are fetched from
+`dataset_url` and `inference_url` (see **Parameters**).
 
 **Outputs** (under `horus_workflow_results/`):
 
@@ -212,36 +228,30 @@ has a CUDA pytorch. On Slurm, the train map still needs `target: *gpu`.
 | `trained/<slot>/model/` | files | anvil output: `model.pkl`/`model.pth`, `cross_validation_metrics.json`, `regression_metrics.json`, CV plots (PNG), `anvil_recipe.yaml` |
 | `data/cleaned_cyp3a4.csv` | table | Training data with the `OPENADMET_*` headers |
 
-## Parameterization
-
-| Parameter | Where | Smoke | Full |
-|---|---|---|---|
-| models | `PROFILES` in `scripts/make_recipes.py` | lgbm, rf | lgbm, rf, xgboost, catboost, chemprop |
-| CV (splits x repeats) | same | 2 x 2 | 5 x 5 (upstream) |
-| trees per model | same | at most 50 | lgbm 500 (upstream), rf 100, xgboost/catboost 500 |
-| threads | same | 2 | 8 (the `_gpu` anchor's `cpus_per_task`) |
-| inference compounds | `SMOKE_COMPOUNDS` in `scripts/models.py` | 2000 | 10,000 |
-| selection metric | `--metric` of `models.py predict` | mean CV R2 | same |
-
 ## Expected runtime
 
-- Smoke, measured on this repo's 16-core shared dev host with about 5 cores:
-  **7 min** for a cold run, including about 1 min to build the env
-  (fetch 1 s, make_recipes 58 s with the env build, train 5 min 16 s with
-  lgbm 3.4 min and rf 5.3 min in parallel, compare 22 s, predict 41 s,
-  report < 1 s). A re-run takes about 1 s: every task is skipped by
-  `skip_if_complete`. Peak use was about 4 cores and under 4 GB RAM per clone.
-  The smoke run picked rf (mean CV R2 0.51 against 0.45 for lgbm).
-- Full: not run by us (no GPU or Slurm on the dev host). Upstream 5x5 CV on
-  about 4900 compounds is minutes per tree model and tens of minutes to hours
-  for Chemprop on one GPU (25 CV refits of up to 50 epochs).
+- Defaults (five models, upstream 5x5 CV on about 4900 compounds, 10,000
+  inference compounds) on one GPU node with 8 CPUs per clone: not run by us
+  (no GPU on the dev host). Expect minutes to tens of minutes per tree model
+  and tens of minutes to hours for Chemprop (25 CV refits of up to 50
+  epochs), plus a few minutes to build the env and to predict. Plan for
+  about 8 CPUs, 8 GB RAM and 1 GPU per clone.
+- Measured reference on this repo's 16-core shared dev host, CPU only,
+  pinned to 5 cores: `models: lgbm,rf`, `cv_folds: 2`, `cv_repeats: 2`,
+  `accelerator: cpu` took **8 min (483 s)** cold, including **about 2 min** to build the
+  env (fetch 1 s, make_recipes 2 min 21 s with the
+  env build, train 4 min 28 s with both clones in parallel, compare 19 s,
+  predict 74 s on all 10,000 compounds, report < 1 s; lgbm was picked, mean
+  CV R2 0.54 against 0.52 for rf). A re-run of a finished workflow takes seconds: every
+  task is skipped by `skip_if_complete`.
 
 ## Implementation Notes
 
 - No notebook code is copied. The glue is two scripts:
-  `scripts/make_recipes.py` (cleaning as in showcase cells 9-13, plus recipe
-  generation) and `scripts/models.py` (compare, best-model pick + predict,
-  report). Both have `--selftest`; run them with the env's python:
+  `scripts/make_recipes.py` (cleaning as in showcase cells 9-13, parameter
+  checks, recipe generation) and `scripts/models.py` (compare, best-model
+  pick + predict, report). Each has a `--selftest` unit test of its glue;
+  run it with the env's python:
   `horus_workflow_results/.horus_conda_env/bin/python scripts/models.py --selftest`.
 - Recipes follow upstream `showcase/anvil_lgbm-cv.yaml` (sklearn models) and
   `showcase/chemprop/anvil_recipe.yaml` (Chemprop). Upstream ships no rf,
@@ -249,7 +259,7 @@ has a CUDA pytorch. On Slurm, the train map still needs `target: *gpu`.
   descriptors + ECFP4), split and CV as lgbm. Their overrides of the library
   defaults are: rf `n_estimators: 100`; xgboost and catboost
   `n_estimators: 500` and `learning_rate: 0.05`; `random_state: 42` on all
-  three. Smoke caps every tree count at 50.
+  three.
 - Deliberate differences from the upstream showcase recipes: the CV sets
   `random_state: 42` (upstream lgbm sets none), the Chemprop CV sets
   `max_val: 10` / `min_val: 3` plot limits (upstream sets neither), Chemprop uses `dropna: true` (upstream
@@ -264,13 +274,15 @@ has a CUDA pytorch. On Slurm, the train map still needs `target: *gpu`.
 - anvil prints many sklearn warnings. They go to `trained/<slot>/anvil.log`,
   and the task log shows only the tail, or the last 40 lines on failure.
 - `openadmet compare` needs its `--output-dir` to exist; `models.py` creates it.
+- The command runtime shell-quotes every `${id}` substitution, so the URLs
+  in `fetch_data` carry no quotes of their own.
 
 ## Open Questions
 
-- The full profile has not been run on a GPU cluster. `conda_env.gpu.yaml`
-  was only checked with a dry-run solve (`CONDA_OVERRIDE_CUDA=12.9`), which
-  picks the `cuda129` pytorch 2.14.1 build. The container swaps have not
-  been run either.
+- The defaults have not been run on a GPU host or cluster. The CUDA env was
+  built and run on CPU only (with `CONDA_OVERRIDE_CUDA=12.9`), which picks
+  the `cuda129` pytorch 2.14.1 build. The container swaps have not been run
+  either.
 - A `horus_map` runs every clone on one target, so the CPU tree models
   cannot stay on CPU nodes while Chemprop goes to a GPU. Splitting the map
   into a CPU map and a GPU map would fix that at the cost of a second recipe

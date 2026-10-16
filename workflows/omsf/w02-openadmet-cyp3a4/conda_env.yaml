@@ -4,6 +4,7 @@
 # Versions pinned to a working solve on 2026-10-16 (linux-64).
 # openadmet-models is not on PyPI or conda-forge; it installs from the commit
 # of its v0.2.0 tag.
+# Without a GPU on the solving host, set CONDA_OVERRIDE_CUDA=12.9 (see README).
 name: openadmet-models
 channels:
   - conda-forge
@@ -24,7 +25,7 @@ dependencies:
   - pandas=3.0.6
   - pip=26.2.1
   - pyarrow=25.0.0
-  - pytorch=2.14.1
+  - pytorch=2.14.1=cuda*  # CUDA build (runs on CPU too); cuda-version follows the driver
   - pytorch-lightning=2.6.1
   - pyyaml=6.0.3
   - rdkit=2026.03.6
