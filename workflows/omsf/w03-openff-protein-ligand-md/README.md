@@ -18,17 +18,20 @@ GPU target while everything else stays local.
 
 ## Compute Pattern
 
-| Stage | Task | Where | CPU / GPU | Smoke (measured, this host) | Full (estimate) |
-|---|---|---|---|---|---|
-| 1 | `fetch_inputs` | local | shell, network | ~1 s | ~1 s |
-| 2 | `build_system` | local | 1 CPU, ~2 GB | 4.5-7.5 min | same |
-| 3 | `parameterize` | local | 2 CPU, ~3 GB | 0.5-1 min | same |
-| 4 | `simulate` (map, 1 clone per replica) | smoke: local; full: Slurm GPU | 2 CPU threads each, or 1 GPU | 2 x 5 ps, 5-6 min in parallel | 3 x 1 ns, a few minutes each on a modern GPU (estimate) |
-| 5 | `analyze` | local | 1 CPU | ~5 s | ~30 s |
+| Stage | Task | Where | CPU / GPU | Defaults (3 x 1 ns) |
+|---|---|---|---|---|
+| 1 | `fetch_inputs` | local | shell, network | ~1 s |
+| 2 | `build_system` | local | 1 CPU, ~2 GB | 4.5-7.5 min (measured) |
+| 3 | `parameterize` | local | 2 CPU, ~3 GB | 0.5-1 min (measured) |
+| 4 | `simulate` (map, 1 clone per replica) | Slurm GPU (`_gpu` target) | 1 GPU + 2 CPU each | 3 x 1 ns in parallel, a few minutes each on a modern GPU (estimate) |
+| 5 | `analyze` | local | 1 CPU | ~30 s |
 
-Smoke total: 14.7 min from scratch on a shared 16-core host (load average ~30), env already built. The system has about 24,000 atoms. On CPU OpenMM runs at about 3.5 ns/day
-with 2 threads, so the full profile is not meant for CPU. A fresh run also
-builds the conda env once (about 2.2 GB, a few minutes).
+With the defaults the run is meant for one GPU per replica; setup takes
+about 10 min on CPU. The system has about 24,000 atoms. On CPU OpenMM runs
+at about 3.5 ns/day with 2 threads, so 1 ns per replica on the local target
+takes roughly 7 h, and minimizing until converged takes about 6.5 min per
+replica on 2 CPU threads (measured). A fresh run also builds the conda env once (about 2.2 GB,
+a few minutes).
 
 ## Tools & Dependencies
 
@@ -36,7 +39,9 @@ Installed from conda-forge by `conda_env.yaml` (micromamba), pinned:
 `openff-toolkit=0.19.0`, `openff-interchange=0.5.5`, `openmm=8.6.1`,
 `openff-forcefields=2026.09.0` (provides `openff-2.3.0.offxml`),
 `openff-amber-ff-ports=2025.09.0` (provides `ff14sb_off_impropers_0.0.4.offxml`),
-`pdbfixer=1.12`, `mdtraj=1.11.2`, Python 3.12. Sage 2.3.0 assigns ligand
+`pdbfixer=1.12`, `mdtraj=1.11.2`, Python 3.12. The force fields are fixed: OpenFF Sage 2.3.0
+(`openff-2.3.0.offxml`) for the ligand, water (TIP3P) and ions, and ff14SB
+(`ff14sb_off_impropers_0.0.4.offxml`) for the protein. Sage 2.3.0 assigns ligand
 charges with OpenFF NAGL (pulled in by openff-toolkit), so AmberTools and
 OpenEye are not needed.
 
@@ -62,25 +67,18 @@ fetch_inputs ─► build_system ─► parameterize ─► simulate[0..n] ─�
 - `parameterize` writes `replicas/<i>/{system.xml,complex.pdb,seed}`; the
   `simulate` map clones itself once per slot and writes `trajectories/<i>/`.
 - `analyze` also takes `replicas/` and reads only `trajectories/<i>/` for the
-  current slots, so a leftover `trajectories/2/` from an earlier full run is
-  ignored after switching to smoke.
+  current slots, so a leftover `trajectories/2/` from an earlier run with
+  more replicas is ignored after lowering `n_replicas`.
 - `simulate` tries CUDA, then OpenCL, then CPU with `--threads` (2), taking the
   first platform that creates a context; each fallback is logged. On the `_gpu`
   target `REQUIRE_GPU=1` is exported (`extra_sbatch_args`), so if no GPU
-  platform works the clone fails at once instead of running 1 ns on CPU into
+  platform works the clone fails at once instead of running `n_steps` on CPU into
   the time limit. BLAS/torch threads are capped with `OMP_NUM_THREADS=2`
   unless already set.
 
-### Running full on Slurm / GPU
+### Running on Slurm / GPU
 
-1. Switch the profile: set `value: full` on the root `profile` artifact in
-   `workflow.yaml` (or pick it in the UI dropdown), **and** run
-   `rm params/profile.txt`. Both steps are needed. Tasks get the value through
-   `${profile}`, but the skip check hashes `params/profile.txt`, which horus
-   writes only when it is missing; without the `rm` every task reports
-   "Already complete" and the old results stay. After the `rm`, `fetch_inputs`
-   and `build_system` are still skipped and only `parameterize`, `simulate`
-   and `analyze` re-run. Do the same to go back to smoke.
+1. Set the variables you need (see [Parameters](#parameters)).
 2. In the `_gpu` anchor fill in `partition` and `account` (and `qos` if your
    site needs it).
 3. On the `simulate` task change `target: *local` to `target: *gpu`. That is
@@ -112,7 +110,8 @@ cd workflows/omsf/w03-openff-protein-ligand-md
 # Install the horus-runtime and plugins (one time)
 uv sync
 
-# Run the smoke profile (needs micromamba on PATH)
+# Run with the defaults (needs micromamba on PATH). Set the simulate target
+# to *gpu first (see above); on the local CPU target 3 x 1 ns takes hours.
 uv run horus run workflow.yaml
 ```
 
@@ -121,8 +120,12 @@ every finished task.
 
 ## Input / Output
 
-**Inputs** (downloaded at run time from openff-toolkit tag `0.19.0`):
-`5tbm_prepared.pdb` and `PT2385.sdf`.
+**Inputs**: the receptor PDB at `protein_url` and the ligand SDF at
+`ligand_url`, downloaded at run time with `curl` (defaults: `5tbm_prepared.pdb`
+and `PT2385.sdf` from openff-toolkit tag `0.19.0`). `file:///abs/path` URLs
+work, so local files can be used. The receptor must already be prepared
+(protonated, capped, no missing atoms) and the ligand must have explicit
+hydrogens and a pose in the pocket; the ligand residue is named `UNK`.
 
 **Outputs** in `horus_workflow_results/results/`:
 
@@ -135,20 +138,33 @@ every finished task.
 Per replica, `horus_workflow_results/trajectories/<i>/` holds `trajectory.dcd`,
 `log.csv` (energy, temperature, speed), `complex.pdb` and `seed`.
 
-## Parameterization
+## Parameters
 
-| Parameter | Where | smoke | full |
-|---|---|---|---|
-| `profile` | `profile` choice artifact | default | 1 ns runs |
-| replicas | `REPLICAS` in `scripts/parameterize.py` | 2 | 3 |
-| MD steps / frame interval | `PROFILES` in `scripts/simulate.py` | 2,500 / 250 (5 ps) | 500,000 / 5,000 (1 ns) |
+Root variables in `workflow.yaml`. Defaults are the production setup.
 
-Smoke runs 2,500 steps (5 ps), not 5,000: that keeps a from-scratch smoke run
-inside the 15 min budget on a loaded shared host.
-| minimizer iterations | `PROFILES` in `scripts/simulate.py` | 200 | until converged |
-| CPU threads per replica | `--threads` in `simulate` args | 2 | 2 (ignored on CUDA) |
+| id | default | meaning |
+|---|---|---|
+| `protein_url` | openff-toolkit 0.19.0 `toolkit_showcase/5tbm_prepared.pdb` | receptor PDB to download (`file:///abs/path` works) |
+| `ligand_url` | openff-toolkit 0.19.0 `toolkit_showcase/PT2385.sdf` | ligand SDF to download (`file:///abs/path` works) |
+| `n_replicas` | 3 | independent replicas, 1-100 |
+| `n_steps` | 500000 | MD steps per replica (1 ns at 2 fs) |
+| `padding_nm` | 1.0 | solvent padding around the protein, 0.5-5 nm |
+| `ionic_strength_molar` | 0.15 | NaCl ionic strength, 0-2 M |
+| `temperature_k` | 300 | thermostat temperature, 1-1000 K |
+| `timestep_fs` | 2 | integrator timestep, 0.1-4 fs (H bonds constrained, no HMR) |
+| `report_interval_steps` | 5000 | steps between DCD frames and `log.csv` rows (10 ps at 2 fs), 1 to `n_steps` |
 
-Seeds are `2026 + replica index`, stored in each slot's `seed` file.
+Out-of-range values stop the task with a message naming the variable.
+Fixed: Sage 2.3.0 + ff14SB, 1/ps friction, minimization until converged,
+2 CPU threads per replica (`--threads` in the `simulate` args, ignored on
+GPU). Seeds are `2026 + replica index`, stored in each slot's `seed` file.
+
+To change a value, edit its `value:` in `workflow.yaml` (or in the tc-os
+UI), **then** run `rm -rf params/`. Both steps are needed: tasks get the
+value through `${id}`, but the skip check hashes `params/<id>.txt`, which
+horus writes only when it is missing; without the `rm` every task reports
+"Already complete" and the old results stay. Only the tasks downstream of
+the changed variable re-run.
 
 ## Implementation Notes
 
@@ -166,19 +182,19 @@ Seeds are `2026 + replica index`, stored in each slot's `seed` file.
   reproducible: CPU summation order varies with threads, so RMSDs differ in
   the last digits between runs.
 - The integrator is `LangevinMiddleIntegrator` (the notebook uses
-  `LangevinIntegrator`); same 300 K, 1/ps, 2 fs.
+  `LangevinIntegrator`); same 300 K, 1/ps, 2 fs by default.
 - The simulation is built from `interchange.to_openmm_system()` plus positions
   from `interchange.to_pdb()` (0.001 Å precision) instead of
   `interchange.to_openmm_simulation()`, so the system can be shipped to the
   map clones as `system.xml` and `complex.pdb`.
-- Full profile: 1 ns with a frame every 10 ps (upstream-like length, not the
-  notebook's clock-time run).
+- Default length: 1 ns with a frame every 10 ps (upstream-like length, not
+  the notebook's clock-time run).
 - `build_system` is dominated by `Topology.from_pdb` on the solvated system,
   which is single-threaded.
 
 ## Open Questions
 
-- Full-profile GPU timings are estimates; this port was only run on CPU.
+- GPU timings are estimates; this port was only run on CPU.
 - No official container exists (see Tools & Dependencies).
 
 ## References

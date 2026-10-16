@@ -16,7 +16,7 @@ _shell: &shell
 _local: &local
   kind: local
 
-# GPU target for the simulate map (profile=full). Fill in partition/account
+# GPU target for the simulate map. Fill in partition/account
 # for your site and set `target: *gpu` on the simulate task. CPUs and
 # gres=gpu:1 come from simulate.resources. REQUIRE_GPU=1 makes simulate.py fail
 # instead of falling back to CPU when no GPU platform works.
@@ -31,26 +31,81 @@ _gpu: &gpu
   extra_sbatch_args: ["--export=ALL,REQUIRE_GPU=1"]
 
 artifacts:
-  - id: profile
-    name: Run profile
+  - id: protein_url
+    name: Receptor URL
     description: >-
-      smoke: 2 replicas x 5 ps on CPU (minutes). full: 3 replicas x 1 ns,
-      meant for the GPU target.
-    kind: choice
-    path: params/profile.txt
-    options:
-      - value: smoke
-        label: Smoke (2 x 5 ps, CPU)
-      - value: full
-        label: Full (3 x 1 ns, GPU)
-    value: smoke
+      Prepared receptor PDB (protonated, capped) to download. file:///abs/path
+      works for a local file.
+    kind: string
+    path: params/protein_url.txt
+    value: https://raw.githubusercontent.com/openforcefield/openff-toolkit/0.19.0/examples/toolkit_showcase/5tbm_prepared.pdb
+  - id: ligand_url
+    name: Ligand URL
+    description: >-
+      Ligand SDF with explicit hydrogens, posed in the pocket. file:///abs/path
+      works for a local file.
+    kind: string
+    path: params/ligand_url.txt
+    value: https://raw.githubusercontent.com/openforcefield/openff-toolkit/0.19.0/examples/toolkit_showcase/PT2385.sdf
+  - id: n_replicas
+    name: Replicas
+    description: Independent MD replicas (seeds 2026, 2027, ...).
+    kind: number
+    path: params/n_replicas.txt
+    value: 3
+  - id: n_steps
+    name: MD steps per replica
+    description: Production steps per replica (500000 x 2 fs = 1 ns).
+    kind: number
+    path: params/n_steps.txt
+    value: 500000
+  - id: padding_nm
+    name: Solvent padding (nm)
+    description: Minimum distance from the protein to the box edge.
+    kind: number
+    path: params/padding_nm.txt
+    value: 1.0
+  - id: ionic_strength_molar
+    name: NaCl ionic strength (M)
+    description: Salt added by PDBFixer on top of neutralizing ions.
+    kind: number
+    path: params/ionic_strength_molar.txt
+    value: 0.15
+  - id: temperature_k
+    name: Temperature (K)
+    description: Langevin thermostat and initial velocity temperature.
+    kind: number
+    path: params/temperature_k.txt
+    value: 300
+  - id: timestep_fs
+    name: Timestep (fs)
+    description: Integrator timestep; bonds to hydrogen are constrained.
+    kind: number
+    path: params/timestep_fs.txt
+    value: 2
+  - id: report_interval_steps
+    name: Report interval (steps)
+    description: Steps between saved frames and log.csv rows (5000 x 2 fs = 10 ps).
+    kind: number
+    path: params/report_interval_steps.txt
+    value: 5000
 
 tasks:
   - kind: horus_task
     id: fetch_inputs
     name: 1. Fetch receptor and ligand
-    description: Downloads 5tbm_prepared.pdb (HIF-2a PAS-B) and PT2385.sdf from
-      the openff-toolkit 0.19.0 toolkit_showcase example.
+    description: Downloads the receptor PDB and ligand SDF (by default
+      5tbm_prepared.pdb, HIF-2a PAS-B, and PT2385.sdf from the openff-toolkit
+      0.19.0 toolkit_showcase example).
+    inputs:
+      - id: protein_url
+        name: Receptor URL
+        kind: string
+        path: params/protein_url.txt
+      - id: ligand_url
+        name: Ligand URL
+        kind: string
+        path: params/ligand_url.txt
     outputs:
       - id: receptor
         name: Prepared receptor
@@ -65,19 +120,18 @@ tasks:
       kind: command
       command: >-
         mkdir -p "$(dirname ${receptor})" &&
-        curl -fL --retry 3 -o ${receptor}.part
-        https://raw.githubusercontent.com/openforcefield/openff-toolkit/0.19.0/examples/toolkit_showcase/5tbm_prepared.pdb
+        curl -fL --retry 3 -o ${receptor}.part ${protein_url}
         && mv ${receptor}.part ${receptor} &&
-        curl -fL --retry 3 -o ${ligand}.part
-        https://raw.githubusercontent.com/openforcefield/openff-toolkit/0.19.0/examples/toolkit_showcase/PT2385.sdf
+        curl -fL --retry 3 -o ${ligand}.part ${ligand_url}
         && mv ${ligand}.part ${ligand}
     target: *local
 
   - kind: horus_task
     id: build_system
     name: 2. Solvate and insert ligand
-    description: PDBFixer adds a 1 nm water box with 0.15 M NaCl, the ligand is
-      inserted and clashing waters are removed. Writes an OpenFF Topology.
+    description: PDBFixer adds a water box (padding_nm) with NaCl
+      (ionic_strength_molar), the ligand is inserted and clashing waters are
+      removed. Writes an OpenFF Topology.
     inputs:
       - id: receptor
         name: Prepared receptor
@@ -87,6 +141,14 @@ tasks:
         name: Ligand pose
         kind: file
         path: inputs/PT2385.sdf
+      - id: padding_nm
+        name: Solvent padding (nm)
+        kind: number
+        path: params/padding_nm.txt
+      - id: ionic_strength_molar
+        name: NaCl ionic strength (M)
+        kind: number
+        path: params/ionic_strength_molar.txt
     outputs:
       - id: topology
         name: OpenFF topology
@@ -99,27 +161,25 @@ tasks:
     runtime:
       kind: python_script
       script: scripts/build_system.py
-      args: --receptor ${receptor} --ligand ${ligand} --out ${topology}
+      args: >-
+        --receptor ${receptor} --ligand ${ligand} --out ${topology}
+        --padding-nm ${padding_nm} --ionic-strength ${ionic_strength_molar}
     target: *local
 
   - kind: horus_task
     id: parameterize
     name: 3. Parameterize (Sage 2.3.0 + ff14SB)
     description: Applies openff-2.3.0 and ff14sb_off_impropers_0.0.4 with
-      Interchange, exports an OpenMM system, and writes one slot per replica
-      (2 for smoke, 3 for full).
+      Interchange, exports an OpenMM system, and writes n_replicas slots.
     inputs:
       - id: topology
         name: OpenFF topology
         kind: file
         path: system/topology.json
-      - id: profile
-        name: Run profile
-        kind: choice
-        path: params/profile.txt
-        options:
-          - value: smoke
-          - value: full
+      - id: n_replicas
+        name: Replicas
+        kind: number
+        path: params/n_replicas.txt
     outputs:
       - id: replicas
         name: Replica slots
@@ -132,17 +192,17 @@ tasks:
     runtime:
       kind: python_script
       script: scripts/parameterize.py
-      args: --topology ${topology} --out ${replicas} --profile ${profile}
+      args: --topology ${topology} --out ${replicas} --replicas ${n_replicas}
     target: *local
 
   # One clone per replica slot. CUDA, then OpenCL, then the CPU platform with
-  # --threads, whichever first creates a context. For the full profile switch the target
-  # to *gpu (one field); nothing else changes.
+  # --threads, whichever first creates a context. To run on a GPU node switch
+  # the target to *gpu (one field); nothing else changes.
   - kind: horus_map
     id: simulate
     name: 4. Run MD per replica (parallel)
-    description: Minimizes, then runs NVT Langevin dynamics at 300 K with a
-      2 fs step and writes a DCD trajectory (5 ps smoke, 1 ns full).
+    description: Minimizes, then runs n_steps of NVT Langevin dynamics at
+      temperature_k with a timestep_fs step and writes a DCD trajectory.
     over:
       input_id: replicas_in
       as: slot
@@ -151,13 +211,22 @@ tasks:
         name: Replica slots
         kind: folder
         path: replicas/
-      - id: profile
-        name: Run profile
-        kind: choice
-        path: params/profile.txt
-        options:
-          - value: smoke
-          - value: full
+      - id: n_steps
+        name: MD steps per replica
+        kind: number
+        path: params/n_steps.txt
+      - id: temperature_k
+        name: Temperature (K)
+        kind: number
+        path: params/temperature_k.txt
+      - id: timestep_fs
+        name: Timestep (fs)
+        kind: number
+        path: params/timestep_fs.txt
+      - id: report_interval_steps
+        name: Report interval (steps)
+        kind: number
+        path: params/report_interval_steps.txt
     outputs:
       - id: trajectories
         name: Trajectories
@@ -173,7 +242,10 @@ tasks:
     runtime:
       kind: python_script
       script: scripts/simulate.py
-      args: --slot ${slot} --out ${trajectories} --profile ${profile} --threads 2
+      args: >-
+        --slot ${slot} --out ${trajectories} --steps ${n_steps}
+        --temperature ${temperature_k} --timestep-fs ${timestep_fs}
+        --report-interval ${report_interval_steps} --threads 2
     target: *local
 
   - kind: horus_task
@@ -217,6 +289,22 @@ tasks:
     target: *local
 
 edges:
+  - source: artifact-protein_url
+    source_output: protein_url
+    target: fetch_inputs
+    target_input: protein_url
+  - source: artifact-ligand_url
+    source_output: ligand_url
+    target: fetch_inputs
+    target_input: ligand_url
+  - source: artifact-padding_nm
+    source_output: padding_nm
+    target: build_system
+    target_input: padding_nm
+  - source: artifact-ionic_strength_molar
+    source_output: ionic_strength_molar
+    target: build_system
+    target_input: ionic_strength_molar
   - source: fetch_inputs
     source_output: receptor
     target: build_system
@@ -229,18 +317,30 @@ edges:
     source_output: topology
     target: parameterize
     target_input: topology
-  - source: artifact-profile
-    source_output: profile
+  - source: artifact-n_replicas
+    source_output: n_replicas
     target: parameterize
-    target_input: profile
+    target_input: n_replicas
   - source: parameterize
     source_output: replicas
     target: simulate
     target_input: replicas_in
-  - source: artifact-profile
-    source_output: profile
+  - source: artifact-n_steps
+    source_output: n_steps
     target: simulate
-    target_input: profile
+    target_input: n_steps
+  - source: artifact-temperature_k
+    source_output: temperature_k
+    target: simulate
+    target_input: temperature_k
+  - source: artifact-timestep_fs
+    source_output: timestep_fs
+    target: simulate
+    target_input: timestep_fs
+  - source: artifact-report_interval_steps
+    source_output: report_interval_steps
+    target: simulate
+    target_input: report_interval_steps
   - source: simulate
     source_output: trajectories
     target: analyze
