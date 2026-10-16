@@ -17,7 +17,9 @@ _local: &local
   kind: local
 
 # GPU target for the simulate map (profile=full). Fill in partition/account
-# for your site and set `target: *gpu` on the simulate task.
+# for your site and set `target: *gpu` on the simulate task. CPUs and
+# gres=gpu:1 come from simulate.resources. REQUIRE_GPU=1 makes simulate.py fail
+# instead of falling back to CPU when no GPU platform works.
 _gpu: &gpu
   kind: slurm
   inner:
@@ -25,9 +27,8 @@ _gpu: &gpu
   partition: "" # <- set per site
   account: "" # <- set per site
   ntasks: 1
-  cpus_per_task: 2
-  gres: gpu:1
   time_limit: "04:00:00"
+  extra_sbatch_args: ["--export=ALL,REQUIRE_GPU=1"]
 
 artifacts:
   - id: profile
@@ -134,8 +135,8 @@ tasks:
       args: --topology ${topology} --out ${replicas} --profile ${profile}
     target: *local
 
-  # One clone per replica slot. CUDA is used when OpenMM can load it, else
-  # the CPU platform with --threads. For the full profile switch the target
+  # One clone per replica slot. CUDA, then OpenCL, then the CPU platform with
+  # --threads, whichever first creates a context. For the full profile switch the target
   # to *gpu (one field); nothing else changes.
   - kind: horus_map
     id: simulate
@@ -185,6 +186,11 @@ tasks:
         name: Trajectories
         kind: folder
         path: trajectories/
+      # only the current slots are analyzed; trajectories/ can keep stale ones
+      - id: replicas
+        name: Replica slots
+        kind: folder
+        path: replicas/
     outputs:
       - id: rmsd
         name: RMSD table
@@ -206,7 +212,7 @@ tasks:
       kind: python_script
       script: scripts/analyze.py
       args: >-
-        --trajectories ${trajectories} --table ${rmsd}
+        --trajectories ${trajectories} --replicas ${replicas} --table ${rmsd}
         --final-frame ${final_frame} --report ${report}
     target: *local
 
@@ -239,6 +245,10 @@ edges:
     source_output: trajectories
     target: analyze
     target_input: trajectories
+  - source: parameterize
+    source_output: replicas
+    target: analyze
+    target_input: replicas
 
 orchestrator_target:
   kind: local

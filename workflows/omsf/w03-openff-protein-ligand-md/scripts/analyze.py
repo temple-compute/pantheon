@@ -97,11 +97,18 @@ def render(summary: list[dict], pdb: str) -> str:
     )
 
 
-def analyze(trajectories: Path, final_frame: Path) -> list[dict]:
+def current(replicas: Path, trajectories: Path) -> list[Path]:
+    """Trajectory dirs for this run's slots; leftovers from a larger run are ignored."""
+    names = sorted((p.name for p in replicas.iterdir() if p.name.isdigit()), key=int)
+    assert names, f"no replica slots in {replicas}"
+    return [trajectories / n for n in names]
+
+
+def analyze(trajectories: Path, replicas: Path, final_frame: Path) -> list[dict]:
     import mdtraj as md
 
     rows = []
-    for rep in sorted((p for p in trajectories.iterdir() if p.is_dir()), key=lambda p: int(p.name)):
+    for rep in current(replicas, trajectories):
         ref = md.load(str(rep / "complex.pdb"))
         traj = md.load(str(rep / "trajectory.dcd"), top=ref.topology)
         ca, lig = ref.topology.select("protein and name CA"), ref.topology.select(LIGAND)
@@ -136,12 +143,20 @@ def selftest() -> None:
     page = render(s, "ATOM </script>\nEND\n")
     assert "</script>\\nEND" not in page and "<\\/script>" in page
     assert page.count("<tr>") == 3 and "molstar.js" in page
+    import tempfile
+    with tempfile.TemporaryDirectory() as d:
+        d = Path(d)
+        for n in ("0", "1", "10"):
+            (d / "replicas" / n).mkdir(parents=True)
+        (d / "replicas/notes").mkdir()
+        assert [p.name for p in current(d / "replicas", d / "t")] == ["0", "1", "10"]
     print("selftest ok")
 
 
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--trajectories", type=Path)
+    ap.add_argument("--replicas", type=Path)
     ap.add_argument("--table", type=Path)
     ap.add_argument("--final-frame", type=Path)
     ap.add_argument("--report", type=Path)
@@ -149,12 +164,12 @@ def main() -> None:
     a = ap.parse_args()
     if a.selftest:
         return selftest()
-    if not (a.trajectories and a.table and a.final_frame and a.report):
-        sys.exit("--trajectories, --table, --final-frame and --report are required")
+    if not (a.trajectories and a.replicas and a.table and a.final_frame and a.report):
+        sys.exit("--trajectories, --replicas, --table, --final-frame and --report are required")
     for p in (a.table, a.final_frame, a.report):
         p.parent.mkdir(parents=True, exist_ok=True)
     a.final_frame.unlink(missing_ok=True)
-    rows = analyze(a.trajectories, a.final_frame)
+    rows = analyze(a.trajectories, a.replicas, a.final_frame)
     with a.table.open("w", newline="") as f:
         w = csv.DictWriter(f, fieldnames=COLUMNS)
         w.writeheader()

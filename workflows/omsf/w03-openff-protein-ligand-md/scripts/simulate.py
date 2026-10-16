@@ -1,8 +1,11 @@
 #!/usr/bin/env python3
 # Runs one replica: minimize, then NVT Langevin (300 K, 1/ps, 2 fs) with a DCD
-# reporter. Uses CUDA when OpenMM can load it, else CPU with capped threads.
+# reporter. Uses CUDA, then OpenCL, then CPU with capped threads, falling back
+# when a platform cannot create a context. REQUIRE_GPU=1 (set by the _gpu
+# target) makes a missing GPU an error instead of a CPU fallback.
 
 import argparse
+import os
 import shutil
 import sys
 from pathlib import Path
@@ -14,13 +17,29 @@ PROFILES = {
 }
 
 
-def pick_platform(threads: int):
-    import openmm
+def candidates(threads: int, require_gpu: bool) -> list[tuple[str, dict]]:
+    gpu = [("CUDA", {"Precision": "mixed"}), ("OpenCL", {"Precision": "mixed"})]
+    return gpu if require_gpu else gpu + [("CPU", {"Threads": str(threads)})]
 
-    try:
-        return openmm.Platform.getPlatformByName("CUDA"), {"Precision": "mixed"}
-    except openmm.OpenMMException:
-        return openmm.Platform.getPlatformByName("CPU"), {"Threads": str(threads)}
+
+def make_simulation(topology, system, integrator, threads: int, require_gpu: bool):
+    """First platform that can create a context; a plugin that loads can still fail here."""
+    import openmm
+    import openmm.app as app
+
+    errors = []
+    for name, props in candidates(threads, require_gpu):
+        try:
+            sim = app.Simulation(topology, system, integrator,
+                                 openmm.Platform.getPlatformByName(name), props)
+            return sim, name, props
+        except openmm.OpenMMException as e:
+            # the integrator stays bound to a failed context; retry with a copy
+            integrator = openmm.XmlSerializer.clone(integrator)
+            errors.append(f"{name}: {e}")
+            print(f"platform {name} unavailable: {e}", flush=True)
+    sys.exit("no usable OpenMM platform" + (" (REQUIRE_GPU=1, CPU not allowed)"
+             if require_gpu else "") + ":\n" + "\n".join(errors))
 
 
 def run(slot: Path, out: Path, profile: str, threads: int) -> None:
@@ -39,10 +58,10 @@ def run(slot: Path, out: Path, profile: str, threads: int) -> None:
     integrator = openmm.LangevinMiddleIntegrator(
         300 * unit.kelvin, 1 / unit.picosecond, 0.002 * unit.picoseconds)
     integrator.setRandomNumberSeed(seed)
-    platform, props = pick_platform(threads)
-    sim = app.Simulation(pdb.topology, system, integrator, platform, props)
+    sim, platform, props = make_simulation(
+        pdb.topology, system, integrator, threads, os.environ.get("REQUIRE_GPU") == "1")
     sim.context.setPositions(pdb.positions)
-    print(f"platform {platform.getName()} {props}; {system.getNumParticles()} atoms; "
+    print(f"platform {platform} {props}; {system.getNumParticles()} atoms; "
           f"seed {seed}; {steps} steps", flush=True)
 
     e0 = sim.context.getState(getEnergy=True).getPotentialEnergy()
@@ -70,6 +89,8 @@ def selftest() -> None:
         assert max_iter >= 0
     assert PROFILES["smoke"][0] * 0.002 == 5.0  # ps
     assert PROFILES["full"][0] * 0.002 == 1000.0
+    assert [n for n, _ in candidates(2, False)] == ["CUDA", "OpenCL", "CPU"]
+    assert [n for n, _ in candidates(2, True)] == ["CUDA", "OpenCL"]
     print("selftest ok")
 
 
