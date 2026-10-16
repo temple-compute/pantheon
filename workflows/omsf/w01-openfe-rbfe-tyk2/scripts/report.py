@@ -70,9 +70,26 @@ def edges(graphml: str) -> list[tuple[str, str, int]]:
     return out
 
 
+def records(text: str) -> list[str]:
+    """Split an SDF into records, each ending with its '$$$$' line.
+
+    Same splitter as select_ligands.py (each script ships alone, so no shared
+    module). A last record without '$$$$' is kept and terminated.
+    """
+    out, buf = [], []
+    for line in text.splitlines(keepends=True):
+        buf.append(line)
+        if line.strip() == "$$$$":
+            out.append("".join(buf))
+            buf = []
+    tail = "".join(buf)
+    if tail.strip():
+        out.append(tail + ("" if tail.endswith("\n") else "\n") + "$$$$\n")
+    return out
+
+
 def sdf_records(text: str) -> list[dict]:
-    recs = [r.strip("\n") + "\n$$$$\n" for r in text.split("$$$$") if r.strip()]
-    return [{"name": r.splitlines()[0].strip(), "sdf": r} for r in recs]
+    return [{"name": r.splitlines()[0].strip(), "sdf": r} for r in records(text)]
 
 
 def table(rows: list[list[str]]) -> str:
@@ -121,6 +138,9 @@ def selftest() -> None:
     assert edges(g) == [("a", "b", 2)]
     recs = sdf_records("a\n x\nM  END\n$$$$\nb\n y\nM  END\n$$$$\n")
     assert [r["name"] for r in recs] == ["a", "b"] and recs[1]["sdf"].endswith("$$$$\n")
+    # An empty title line must survive, or the molfile header shifts up.
+    recs = sdf_records("a\nM  END\n$$$$\n\n  RDKit  3D\nM  END\n$$$$\n")
+    assert recs[1] == {"name": "", "sdf": "\n  RDKit  3D\nM  END\n$$$$\n"}
     page = render([["ligand_i", "ligand_j"], ["a", "b<"]], [["ligand"], ["a"]],
                   [["leg"], ["complex"]], edges(g), "ATOM</script>", recs)
     assert "b&lt;" in page and "ATOM<\\/script>" in page and "<td>complex</td>" in page

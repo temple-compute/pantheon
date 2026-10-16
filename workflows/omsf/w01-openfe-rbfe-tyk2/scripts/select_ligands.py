@@ -11,13 +11,20 @@ SMOKE = ["lig_ejm_31", "lig_ejm_42", "lig_ejm_46"]
 
 
 def records(text: str) -> list[str]:
-    """Split an SDF into records, each ending with its '$$$$' line."""
+    """Split an SDF into records, each ending with its '$$$$' line.
+
+    Same splitter as report.py (each script ships alone, so no shared module).
+    A last record without '$$$$' is kept and terminated.
+    """
     out, buf = [], []
     for line in text.splitlines(keepends=True):
         buf.append(line)
         if line.strip() == "$$$$":
             out.append("".join(buf))
             buf = []
+    tail = "".join(buf)
+    if tail.strip():
+        out.append(tail + ("" if tail.endswith("\n") else "\n") + "$$$$\n")
     return out
 
 
@@ -35,6 +42,7 @@ def select(text: str, profile: str) -> str:
 def selftest() -> None:
     sdf = "".join(f"{n}\n  x\n\nM  END\n$$$$\n" for n in ["a", *SMOKE, "b"])
     assert len(records(sdf)) == 5
+    assert records("a\nM  END\n$$$$\nb\nM  END") == ["a\nM  END\n$$$$\n", "b\nM  END\n$$$$\n"]
     assert select(sdf, "full") == sdf
     smoke = select(sdf, "smoke")
     assert [r.splitlines()[0] for r in records(smoke)] == SMOKE

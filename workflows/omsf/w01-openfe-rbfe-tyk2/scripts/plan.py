@@ -67,6 +67,8 @@ def plan(ligands: Path, protein: Path, profile: str, out: Path, graphml: Path):
         t.to_json(out / f"{t.name or t.key}.json")
     graphml.parent.mkdir(parents=True, exist_ok=True)
     graphml.write_text(planner._ligand_network.to_graphml())
+    # As plan-rbfe-network does; not next to the legs, which the map runs over.
+    network.to_json(graphml.parent / "alchemicalNetwork.json")
     print(f"{len(network.edges)} legs -> {out}")
 
 
