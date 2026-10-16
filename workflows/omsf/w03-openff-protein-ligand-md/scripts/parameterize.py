@@ -7,6 +7,7 @@ import argparse
 import os
 import shutil
 import sys
+import tempfile
 from pathlib import Path
 
 # Shared host: cap BLAS/torch threads unless the caller set them.
@@ -34,12 +35,11 @@ def parameterize(topology: Path, out: Path, n: int) -> None:
 
     top = Topology.from_json(topology.read_text())
     interchange = ForceField(*FORCE_FIELDS).create_interchange(top)
-    work = out.parent / "parameterized"
-    work.mkdir(parents=True, exist_ok=True)
-    system_xml, complex_pdb = work / "system.xml", work / "complex.pdb"
-    system_xml.write_text(openmm.XmlSerializer.serialize(interchange.to_openmm_system()))
-    interchange.to_pdb(str(complex_pdb))
-    write_slots(out, system_xml, complex_pdb, n)
+    with tempfile.TemporaryDirectory() as d:
+        system_xml, complex_pdb = Path(d) / "system.xml", Path(d) / "complex.pdb"
+        system_xml.write_text(openmm.XmlSerializer.serialize(interchange.to_openmm_system()))
+        interchange.to_pdb(str(complex_pdb))
+        write_slots(out, system_xml, complex_pdb, n)
     print(f"parameterized {top.n_atoms} atoms; wrote {n} replica slots", flush=True)
 
 
