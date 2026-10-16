@@ -19,7 +19,7 @@ that fan-out to a hand-written `sbatch` loop. Here it is a `horus_map`: one clon
 transformation JSON, on a local CPU for the smoke profile or one Slurm GPU job per leg
 for the full profile, with gather and the report waiting for all of them.
 
-## Pipeline
+## Horus Configuration
 
 ```
 fetch_inputs    (local, shell)   curl tyk2_ligands.sdf + tyk2_protein.pdb (pinned commit)
@@ -31,6 +31,13 @@ quickrun        (horus_map)      openfe quickrun per leg   (smoke: local CPU; fu
 gather          (local, conda)   openfe gather --report ddg / raw / dg --> ddg.tsv, raw.tsv, dg.tsv
 report          (local, shell)   scripts/report.py --> report.html (tables + Mol*)
 ```
+
+| Piece | Kind | Used by |
+|---|---|---|
+| executors | `shell` (stdlib Python, curl); `conda_python_environment` (one openfe 1.13.0 env at `horus_workflow_results/.horus_conda_env`) | shell: fetch, select, report; conda: charge, plan, quickrun, gather |
+| targets | `local` (`*local`); `slurm` with a local inner target (`*gpu`, partition/account per site) | everything local; `quickrun` switches to `*gpu` for full |
+| map | `horus_map` over the `transformations/` folder, one clone per leg JSON, `max_concurrency: 2` | `quickrun` |
+| parameter | root `choice` artifact `profile` (`params/profile.txt`) | select, plan, gather |
 
 ## Compute Pattern
 
@@ -86,13 +93,17 @@ micromamba run -p horus_workflow_results/.horus_conda_env python scripts/plan.py
 
 1. Switch the profile: set `value: full` on the root `profile` artifact in
    `workflow.yaml` (or pick it in the tc-os UI), then
-   `rm params/profile.txt horus_workflow_results/results -rf`. Horus writes
-   `params/profile.txt` only when it is missing and uses it for the skip check, and
-   the old per-leg slots in `results/legs/` would otherwise be gathered too.
+   `rm params/profile.txt`. Horus writes `params/profile.txt` only when it is missing
+   and uses it for the skip check. Optionally also `rm -rf horus_workflow_results/results`
+   for a clean start; it is not needed for correctness, since the map drops slots it no
+   longer uses and each slot is cleared before its leg runs.
 2. Fill `partition` and `account` in the `_gpu` anchor.
 3. On the `quickrun` task change `target: *local` to `target: *gpu`, and raise
    `max_concurrency` to the number of GPU jobs you want at once (10 ligands give
    9 edges, so 18 legs).
+4. Set `time_limit` in `_gpu` to your site's maximum. A leg that is killed (timeout,
+   preemption) is re-run on the next `horus run` and `openfe quickrun --resume` picks up
+   the units it already finished from `horus_workflow_results/quickrun[N]/work`.
 
 The full profile uses the protocol defaults, which are also the CLI defaults: CUDA
 platform, 3 repeats per leg, 11 lambda windows, 1 ns equilibration and 5 ns production.
@@ -113,6 +124,7 @@ executor:
   kind: docker
   image: ghcr.io/openfreeenergy/openfe:1.13.0
   gpus: all
+  user: "1000:1000" # your uid:gid (`id -u`:`id -g`), else results/ ends up root-owned
 
 # Apptainer, typical on HPC: pull once, then point at the .sif
 #   apptainer pull openfe.sif oras://ghcr.io/openfreeenergy/openfe:1.13.0-apptainer
@@ -122,6 +134,13 @@ executor:
   image: /path/to/openfe.sif
   nv: true
 ```
+
+Both executors mount the artifact folders only. `quickrun` keeps its work dir at
+`../work` relative to the clone's run folder, so under a container that folder also
+needs a bind mount and the container's working directory must be the run folder
+(e.g. Docker `working_dir: ${task.working_dir}` plus a `volumes` entry for
+`horus_workflow_results`); without it the leg still runs but `--resume` has nothing to
+resume from.
 
 ## Input / Output
 
@@ -138,9 +157,10 @@ To run your own series, replace `fetch_inputs` with root file artifacts.
 | `dg.tsv` | MLE dG per ligand (`--report dg`); in smoke a one-line note (see below) | table |
 | `report.html` | both tables, network edges, Mol* view of TYK2 with the ligands | HTML page |
 | `ligand_network.graphml` | the planned network with atom mappings | file |
+| `alchemicalNetwork.json` | the full alchemical network, as `plan-rbfe-network` writes it (not a declared artifact) | file |
 | `charged_ligands.sdf` | ligands with AM1-BCC charges | file |
 | `transformations/` | one transformation JSON per leg | folder |
-| `legs/<slot>/` | per leg: result JSON, `quickrun.log`, openfe work directory | folder |
+| `legs/<slot>/` | per leg: `result.json`, `quickrun.log` | folder |
 
 ## Parameterization
 
@@ -175,8 +195,14 @@ To run your own series, replace `fetch_inputs` with root file artifacts.
   2 repeats per edge. The smoke network has 2 edges and 1 repeat (a 4th ligand would add
   a third ~15 min complex leg), so in smoke `gather` writes a note to `dg.tsv` and the
   report shows ddG and raw per-leg values. Full runs `--report dg` as usual.
-- `openfe gather` reads only the result JSONs; the work directories (trajectories,
-  checkpoints) are kept in `legs/<slot>/work` for inspection.
+- Each leg writes `legs/<slot>/result.json` (gather reads the leg identity from the
+  JSON, not the file name) and the slot is emptied before the leg runs, so a slot reused
+  for a different leg never keeps the old result.
+- The openfe work directory (trajectories, checkpoints, the quickrun resume cache) is
+  `horus_workflow_results/quickrun[N]/work`, outside the `legs/` output, so Horus does
+  not fingerprint or transfer GBs of trajectories and gather only walks small files.
+  `--resume` is a no-op on a fresh leg; the cache key hashes the output path and the
+  transformation, so a cache from another leg is never reused.
 - Progress bars from `openfe` are `\r`-only, so `charge_ligands` and `quickrun` log to a
   file and print the tail.
 
@@ -187,7 +213,11 @@ To run your own series, replace `fetch_inputs` with root file artifacts.
   0.0 because a single repeat has no spread. Expect
   different numbers on every run.
 - The full profile and the container executors were not run here (no GPU or Slurm on
-  the test host).
+  the test host). Not verified: that `openfe` is on `PATH` under `apptainer exec` for the
+  `-apptainer` image (exec skips the runscript), and the container bind mount for the
+  quickrun work dir described above.
+- Whether one full leg (198 ns of hybrid-topology sampling) fits in 24 h depends on the
+  GPU; on older cards it may need a resume or two.
 
 ## References
 

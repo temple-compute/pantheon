@@ -25,9 +25,9 @@ _gpu: &gpu
     kind: local
   partition: "" # <- set per site
   account: "" # <- set per site
-  gres: gpu:1
-  cpus_per_task: 4
-  # One leg = 3 repeats x 11 windows x (1 ns eq + 5 ns prod).
+  # CPUs and GPU come from the task's resources (--cpus-per-task, --gres).
+  # One leg = 3 repeats x 11 windows x (1 ns eq + 5 ns prod); set this to
+  # your site's maximum. A timed-out leg resumes on the next horus run.
   time_limit: "24:00:00"
 
 artifacts:
@@ -128,8 +128,8 @@ tasks:
       # The progress bar is \r-only; keep it in a log and show the tail.
       command: >-
         { openfe charge-molecules -M ${selected_in} -o ${charged}
-        -n ${task.resources.cpus} > charge.log 2>&1;
-        RC=$$?; tr '\r' '\n' < charge.log | tail -n 15; exit $$RC; }
+        -n ${task.resources.cpus} > ${charged}.log 2>&1;
+        RC=$$?; tr '\r' '\n' < ${charged}.log | tail -n 15; exit $$RC; }
     target: *local
 
   - kind: horus_task
@@ -180,7 +180,7 @@ tasks:
     id: quickrun
     name: 5. Run each leg (openfe quickrun)
     description: Runs `openfe quickrun` once per leg; each clone writes its
-      result JSON and work directory into its own slot.
+      result.json and quickrun.log into its own slot.
     over:
       input_id: transformations_in
       as: leg
@@ -201,10 +201,14 @@ tasks:
     executor: *openfe
     runtime:
       kind: command
-      # OPENMM_CPU_THREADS only matters on the CPU platform (smoke).
+      # OPENMM_CPU_THREADS only matters on the CPU platform (smoke). The slot
+      # is cleared so a slot reused for another leg keeps no old result. The
+      # work dir (trajectories, resume cache) is quickrun[N]/work, outside the
+      # output; --resume continues an interrupted leg and starts fresh otherwise.
       command: >-
-        { OPENMM_CPU_THREADS=${task.resources.cpus} openfe quickrun ${leg}
-        -o ${legs}/${leg.path.stem}.json -d ${legs}/work > ${legs}/quickrun.log 2>&1;
+        { mkdir -p ${legs} && rm -rf ${legs}/* &&
+        OPENMM_CPU_THREADS=${task.resources.cpus} openfe quickrun ${leg}
+        -o ${legs}/result.json -d ../work --resume > ${legs}/quickrun.log 2>&1;
         RC=$$?; tail -n 8 ${legs}/quickrun.log; exit $$RC; }
     target: *local
 
