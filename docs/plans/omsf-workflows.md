@@ -60,7 +60,7 @@ DAG: `fetch_inputs → charge_ligands → plan_network → [map] quickrun (per l
 Outputs: `ddg.tsv`, `dg.tsv` (tables), `report.html` (Mol*), `ligand_network.graphml`.
 
 ### W-38 `workflows/omsf/w02-openadmet-cyp3a4`
-DAG: `fetch_data → make_recipes → [map] train (per model) → compare → predict → report`
+DAG: `fetch_data → make_recipes → [map] train (per model) → {compare, predict} (parallel) → report`
 | Task | What | Where |
 |---|---|---|
 |fetch_data|curl the ChEMBL35 CYP3A4 IC50 aggregated parquet (data-catalogs, pinned commit) and `compounds_for_inference.csv` (openadmet-demos, pinned)|local|
