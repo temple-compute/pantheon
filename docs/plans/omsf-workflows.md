@@ -88,6 +88,7 @@ DAG: `fetch_inputs → build_system → parameterize → [map] simulate (per rep
 
 ## 5. Gaps and open questions
 - No profile mechanism in Horus; we use a `choice` artifact. A map target cannot be chosen per item, so mixed CPU and GPU models in one map are not possible (full W-38 runs the whole map on the GPU target).
+- Horus runtime bug (value artifacts): `${profile}` renders the root `value:`, but the skip_if_complete fingerprint hashes the materialized `params/profile.txt`, which `ValueArtifact.materialize` writes only when missing. Editing `value:` alone therefore re-uses stale outputs. Workaround documented in every README: edit `value:` and `rm params/profile.txt`. Fix upstream: fingerprint the authored value, or re-materialize when it changes.
 - No Kubernetes or Modal target. Cloud GPU means `terraform` or `ssh` targets, which are documented but not exercised.
 - Open: whether the openadmet-models v0.2.0 CLI matches the showcase (which installs `main`); the engineer verifies and pins a commit if not. Whether openfe 1.13.0 accepts a reduced `lambda_windows`. Whether tc-os import still rejects folder artifacts (w04-cmd works around it with a tarball). The duplicate W-numbers in the root README are not fixed here.
 
