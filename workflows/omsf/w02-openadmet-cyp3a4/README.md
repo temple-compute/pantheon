@@ -135,17 +135,10 @@ has a CUDA pytorch. On Slurm, the train map still needs `target: *gpu`.
 - **profile** (`choice` artifact, `smoke` | `full`, default `smoke`). It is
   stored at `params/profile.txt` (next to `workflow.yaml`) as the bare option
   text, and `${profile}` renders as `smoke` or `full`. `make_recipes.py` and
-  `models.py predict` read it from `--profile`. Horus writes that file from
-  the root `artifacts:` entry's `value:` only when the file does not exist
-  yet, so after the first run, editing `value:` changes nothing. To switch
-  from the CLI, either write the file:
-
-  ```bash
-  echo full > params/profile.txt
-  ```
-
-  or delete `params/` and then edit `value:` in the root `artifacts:` entry.
-  In the tc-os UI, pick the profile on the artifact. `params/` is run state,
+  `models.py predict` read it from `--profile`. To switch, edit `value:` in
+  the root `artifacts:` entry (or pick it on the artifact in the tc-os UI).
+  `${profile}` always renders that root value, not the contents of
+  `params/profile.txt`, so do not edit the file. `params/` is run state,
   not something to commit.
 - **train** is a `horus_map` over `recipes/`. Each child folder
   (`recipes/lgbm/`, `recipes/rf/`, ...) holds `recipe.yaml` and its own copy
