@@ -23,7 +23,7 @@ GPU target while everything else stays local.
 | 1 | `fetch_inputs` | local | shell, network | ~1 s | ~1 s |
 | 2 | `build_system` | local | 1 CPU, ~2 GB | 4.5-7.5 min | same |
 | 3 | `parameterize` | local | 2 CPU, ~3 GB | 0.5-1 min | same |
-| 4 | `simulate` (map, 1 clone per replica) | smoke: local; full: Slurm GPU | 2 CPU threads each, or 1 GPU | 2 x 5 ps, 5-6 min in parallel | 3 x 1 ns, ~10-20 min each on a modern GPU |
+| 4 | `simulate` (map, 1 clone per replica) | smoke: local; full: Slurm GPU | 2 CPU threads each, or 1 GPU | 2 x 5 ps, 5-6 min in parallel | 3 x 1 ns, a few minutes each on a modern GPU (estimate) |
 | 5 | `analyze` | local | 1 CPU | ~5 s | ~30 s |
 
 Smoke total: 14.7 min from scratch on a shared 16-core host (load average ~30), env already built. The system has about 24,000 atoms. On CPU OpenMM runs at about 3.5 ns/day
@@ -61,38 +61,53 @@ fetch_inputs ─► build_system ─► parameterize ─► simulate[0..n] ─�
   relative to each task's `<results>/<task-id>/<run-id>` working dir).
 - `parameterize` writes `replicas/<i>/{system.xml,complex.pdb,seed}`; the
   `simulate` map clones itself once per slot and writes `trajectories/<i>/`.
-- `simulate` picks the CUDA platform when OpenMM can load it, otherwise CPU
-  with `--threads` (2). BLAS/torch threads are capped with `OMP_NUM_THREADS=2`
+- `analyze` also takes `replicas/` and reads only `trajectories/<i>/` for the
+  current slots, so a leftover `trajectories/2/` from an earlier full run is
+  ignored after switching to smoke.
+- `simulate` tries CUDA, then OpenCL, then CPU with `--threads` (2), taking the
+  first platform that creates a context; each fallback is logged. On the `_gpu`
+  target `REQUIRE_GPU=1` is exported (`extra_sbatch_args`), so if no GPU
+  platform works the clone fails at once instead of running 1 ns on CPU into
+  the time limit. BLAS/torch threads are capped with `OMP_NUM_THREADS=2`
   unless already set.
 
 ### Running full on Slurm / GPU
 
-1. Set the `profile` artifact to `full` (UI dropdown, or `value: full` on the
-   root `profile` artifact in `workflow.yaml`). Tasks get the value through
-   `${profile}`, which follows the authored value; `params/profile.txt` is
-   written once and not read back, so editing that file does not switch it.
+1. Switch the profile: set `value: full` on the root `profile` artifact in
+   `workflow.yaml` (or pick it in the UI dropdown), **and** run
+   `rm params/profile.txt`. Both steps are needed. Tasks get the value through
+   `${profile}`, but the skip check hashes `params/profile.txt`, which horus
+   writes only when it is missing; without the `rm` every task reports
+   "Already complete" and the old results stay. After the `rm`, `fetch_inputs`
+   and `build_system` are still skipped and only `parameterize`, `simulate`
+   and `analyze` re-run. Do the same to go back to smoke.
 2. In the `_gpu` anchor fill in `partition` and `account` (and `qos` if your
    site needs it).
 3. On the `simulate` task change `target: *local` to `target: *gpu`. That is
    the only change; the conda env is built on the cluster on first use.
 
-`resources.gpus: 1` is already set on `simulate`; `gres: gpu:1` in the anchor
-requests it from Slurm. Finished tasks are skipped, so after a smoke run
-delete `horus_workflow_results/` except `.horus_conda_env/` before running
-full (or the other way round). `parameterize` clears old replica slots itself.
+The anchor sets no `cpus_per_task` or `gres`: horus-slurm derives
+`--cpus-per-task=2` and `--gres=gpu:1` from `simulate.resources`, so edit
+`resources` to change them. `parameterize` clears old replica slots itself.
 
 GPU build: conda-forge ships OpenMM's CUDA plugin whether or not the solving
 host has a GPU, so one env built on a CPU node still runs CUDA on the GPU
 node (PyTorch is CPU-only, but only NAGL charging in `parameterize` uses it).
-The pinned solve picks CUDA 13 builds, which need an NVIDIA driver >= 580. For
-older drivers add `cuda-version=12.9` to `conda_env.yaml` (this resolves with
-the same pins) and delete `.horus_conda_env/` so it is rebuilt.
+The pinned solve picks CUDA 13 builds (`cuda-version 13.4`, `cuda-nvrtc
+13.4`). OpenMM compiles its kernels at run time with nvrtc, and an older
+driver can reject that code even inside the 13.x compat range, so pin
+`cuda-version` in `conda_env.yaml` to at most the CUDA version `nvidia-smi`
+reports on the GPU node (e.g. `cuda-version=12.9`, which resolves with the
+same pins) and delete `.horus_conda_env/` so it is rebuilt. Not tested on a
+GPU.
 
 ## Quick start
 
 ```bash
 # Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
+
+cd workflows/omsf/w03-openff-protein-ligand-md
 
 # Install the horus-runtime and plugins (one time)
 uv sync
@@ -127,6 +142,9 @@ Per replica, `horus_workflow_results/trajectories/<i>/` holds `trajectory.dcd`,
 | `profile` | `profile` choice artifact | default | 1 ns runs |
 | replicas | `REPLICAS` in `scripts/parameterize.py` | 2 | 3 |
 | MD steps / frame interval | `PROFILES` in `scripts/simulate.py` | 2,500 / 250 (5 ps) | 500,000 / 5,000 (1 ns) |
+
+Smoke runs 2,500 steps (5 ps), not 5,000: that keeps a from-scratch smoke run
+inside the 15 min budget on a loaded shared host.
 | minimizer iterations | `PROFILES` in `scripts/simulate.py` | 200 | until converged |
 | CPU threads per replica | `--threads` in `simulate` args | 2 | 2 (ignored on CUDA) |
 
@@ -137,11 +155,24 @@ Seeds are `2026 + replica index`, stored in each slot's `seed` file.
 - Ligand RMSD is measured after aligning on protein Cα atoms, without refitting
   the ligand, so it shows drift in the pocket. DCD frames are written
   unwrapped (`enforcePeriodicBox=False`) so molecules never jump a box length.
-- The notebook's clash helper is reimplemented in a few lines of numpy. It
-  only removes waters and ions within 1.5 Å of the ligand, never the protein.
-  For 5TBM no solvent clashes, since PDBFixer does not fill the buried pocket.
-- Dynamics are NVT, like the notebook, which uses `runForClockTime(1 min)`;
-  we use a fixed step count so runs are reproducible.
+- The notebook's clash helper is reimplemented in a few lines of Python. It
+  only removes waters within 1.5 Å of the ligand, never the protein or ions
+  (dropping an ion would leave a net charge under PME), and prints how many it
+  removed. For 5TBM no water clashes, since PDBFixer does not fill the buried
+  pocket.
+- Dynamics are NVT, like the notebook, which uses `runForClockTime(1 min)` with
+  a reporter stride of 1000 on CUDA; we use a fixed length (and fixed seeds)
+  so a run takes the same simulated time anywhere. Runs are not bitwise
+  reproducible: CPU summation order varies with threads, so RMSDs differ in
+  the last digits between runs.
+- The integrator is `LangevinMiddleIntegrator` (the notebook uses
+  `LangevinIntegrator`); same 300 K, 1/ps, 2 fs.
+- The simulation is built from `interchange.to_openmm_system()` plus positions
+  from `interchange.to_pdb()` (0.001 Å precision) instead of
+  `interchange.to_openmm_simulation()`, so the system can be shipped to the
+  map clones as `system.xml` and `complex.pdb`.
+- Full profile: 1 ns with a frame every 10 ps (upstream-like length, not the
+  notebook's clock-time run).
 - `build_system` is dominated by `Topology.from_pdb` on the solvated system,
   which is single-threaded.
 
