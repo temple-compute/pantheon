@@ -1,0 +1,49 @@
+# Runtime deps of openadmet-models v0.2.0, from upstream
+# devtools/conda-envs/openadmet-models.yaml (Apache-2.0) minus the test,
+# notebook and optional-model extras (TabPFN, TabICL, NePaRe, modal).
+# Versions pinned to a working solve on 2026-10-16 (linux-64).
+# openadmet-models is not on PyPI or conda-forge; it installs from its git tag.
+name: openadmet-models
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12.15
+  - aiobotocore=3.9.2
+  - boto3=1.43.106
+  - catboost=1.2.10
+  - chemprop=2.3.1
+  - datamol=0.12.5
+  - intake=2.0.9
+  - intake-parquet=0.3.0
+  - joblib=1.6.0
+  - lightgbm=4.7.0
+  - loguru=0.7.3
+  - matplotlib=3.11.2
+  - numpy=2.5.4
+  - pandas=3.0.6
+  - pip=26.2.1
+  - pyarrow=25.0.0
+  - pytorch=2.14.1
+  - pytorch-lightning=2.6.1
+  - pyyaml=6.0.3
+  - rdkit=2026.03.6
+  - reportlab=5.0.1
+  - rich=15.0.0
+  - s3fs=2026.9.0
+  - scikit-learn=1.9.1
+  - seaborn=0.13.2
+  - splito=0.1.4
+  - statsmodels=0.15.0
+  - tabulate=0.10.0
+  - uncertainty-toolbox=0.1.1
+  - xgboost=3.4.2
+  - zarr=3.4.1
+  - pip:
+      - email-validator==2.3.0
+      - phx-class-registry==5.2.2
+      - setuptools==81.0.0
+      - wandb==0.25.1
+      # OpenADMET fork of molfeat, main at 2026-10-16
+      - git+https://github.com/OpenADMET/molfeat.git@cfe2abb4d451e94a7fbe98e7942ad4d5018de8cd
+      # v0.2.0 = cdf3e9f7de9ae6b30d13a28c68e20d3b2e651498
+      - git+https://github.com/OpenADMET/openadmet-models.git@v0.2.0
