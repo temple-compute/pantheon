@@ -1,0 +1,369 @@
+kind: horus_workflow
+name: OpenFE RBFE TYK2
+
+# --- reusable blocks -------------------------------------------------------
+# One conda env (openfe 1.13.0) shared by every openfe task. environment_dir
+# is relative to each task's run folder (horus_workflow_results/<task>/<run>),
+# so ../../ puts a single env at horus_workflow_results/.horus_conda_env.
+_openfe: &openfe
+  kind: conda_python_environment
+  conda: micromamba # set to mamba/conda if that's what's on PATH
+  environment_file: conda_env.yaml
+  environment_dir: "../../.horus_conda_env"
+
+_shell: &shell
+  kind: shell
+
+_local: &local
+  kind: local
+
+# GPU target for the quickrun map in the full profile. Fill in partition and
+# account for your site, then set `target: *gpu` on the quickrun task.
+_gpu: &gpu
+  kind: slurm
+  inner:
+    kind: local
+  partition: "" # <- set per site
+  account: "" # <- set per site
+  # CPUs and GPU come from the task's resources (--cpus-per-task, --gres).
+  # One leg = 3 repeats x 11 windows x (1 ns eq + 5 ns prod); set this to
+  # your site's maximum. A timed-out leg resumes on the next horus run.
+  time_limit: "24:00:00"
+
+artifacts:
+  - id: profile
+    name: Profile
+    description: >-
+      smoke: 3 ligands, 2 edges, 4 legs, 1 repeat, 4 lambda windows,
+      1 ps eq / 2 ps prod on the CPU platform (minutes, meaningless numbers;
+      it only proves the pipeline runs). full: all
+      10 ligands with the openfe protocol defaults (3 repeats, 1 ns / 5 ns,
+      11 windows, CUDA), same as `openfe plan-rbfe-network`.
+    kind: choice
+    path: params/profile.txt
+    options:
+      - value: smoke
+        label: Smoke (CPU, minutes)
+      - value: full
+        label: Full (GPU, upstream defaults)
+    value: smoke
+
+tasks:
+  - kind: horus_task
+    id: fetch_inputs
+    name: 1. Fetch TYK2 inputs
+    description: Downloads the TYK2 ligands and protein from
+      OpenFreeEnergy/ExampleNotebooks at a pinned commit.
+    outputs:
+      - id: ligands_sdf
+        name: TYK2 ligands
+        kind: file
+        path: results/inputs/tyk2_ligands.sdf
+      - id: protein_pdb
+        name: TYK2 protein
+        kind: file
+        path: results/inputs/tyk2_protein.pdb
+    executor: *shell
+    runtime:
+      kind: command
+      command: >-
+        BASE=https://raw.githubusercontent.com/OpenFreeEnergy/ExampleNotebooks/d083c283b96e976d2e90c03d94e57e3ef6bc2c8c/rbfe_tutorial &&
+        curl -fL --retry 3 -o ${ligands_sdf}.part $$BASE/tyk2_ligands.sdf &&
+        mv ${ligands_sdf}.part ${ligands_sdf} &&
+        curl -fL --retry 3 -o ${protein_pdb}.part $$BASE/tyk2_protein.pdb &&
+        mv ${protein_pdb}.part ${protein_pdb}
+    target: *local
+
+  - kind: horus_task
+    id: select_ligands
+    name: 2. Select ligands for the profile
+    description: Keeps 3 ligands in smoke (so only those get charged) and all
+      10 in full.
+    inputs:
+      - id: ligands_in
+        name: TYK2 ligands
+        kind: file
+        path: results/inputs/tyk2_ligands.sdf
+      - id: profile
+        name: Profile
+        kind: choice
+        path: params/profile.txt
+        options:
+          - value: smoke
+          - value: full
+    outputs:
+      - id: selected
+        name: Selected ligands
+        kind: file
+        path: results/inputs/ligands_selected.sdf
+    executor: *shell
+    runtime:
+      kind: python_script
+      script: scripts/select_ligands.py
+      python: python3 # stdlib-only
+      args: --ligands ${ligands_in} --profile ${profile} --out ${selected}
+    target: *local
+
+  - kind: horus_task
+    id: charge_ligands
+    name: 3. Charge ligands (AM1-BCC)
+    description: >-
+      `openfe charge-molecules` assigns AM1-BCC charges once (ambertools), so
+      every leg of every edge uses the same charges.
+    inputs:
+      - id: selected_in
+        name: Selected ligands
+        kind: file
+        path: results/inputs/ligands_selected.sdf
+    outputs:
+      - id: charged
+        name: Charged ligands
+        kind: file
+        path: results/charged_ligands.sdf
+    resources:
+      cpus: 4
+    executor: *openfe
+    runtime:
+      kind: command
+      # The progress bar is \r-only; keep it in a log and show the tail.
+      command: >-
+        { openfe charge-molecules -M ${selected_in} -o ${charged}
+        -n ${task.resources.cpus} > ${charged}.log 2>&1;
+        RC=$$?; tr '\r' '\n' < ${charged}.log | tail -n 15; exit $$RC; }
+    target: *local
+
+  - kind: horus_task
+    id: plan_network
+    name: 4. Plan the RBFE network
+    description: >-
+      Kartograf mappings, minimal spanning network and the
+      RelativeHybridTopologyProtocol, as `openfe plan-rbfe-network` does, with
+      the sampling set by the profile. Writes one transformation JSON per leg.
+    inputs:
+      - id: charged_in
+        name: Charged ligands
+        kind: file
+        path: results/charged_ligands.sdf
+      - id: protein_in
+        name: TYK2 protein
+        kind: file
+        path: results/inputs/tyk2_protein.pdb
+      - id: profile
+        name: Profile
+        kind: choice
+        path: params/profile.txt
+        options:
+          - value: smoke
+          - value: full
+    outputs:
+      - id: transformations
+        name: Transformations (one JSON per leg)
+        kind: folder
+        path: results/transformations/
+      - id: network
+        name: Ligand network
+        kind: file
+        path: results/ligand_network.graphml
+    executor: *openfe
+    runtime:
+      kind: python_script
+      script: scripts/plan.py
+      args: >-
+        --ligands ${charged_in} --protein ${protein_in} --profile ${profile}
+        --out ${transformations} --graphml ${network}
+    target: *local
+
+  # One clone per transformation JSON (complex and solvent leg of each edge).
+  # Smoke runs 2 CPU legs at a time, 2 OpenMM threads each. For full, switch
+  # the target to *gpu and raise max_concurrency to the GPUs you can get.
+  - kind: horus_map
+    id: quickrun
+    name: 5. Run each leg (openfe quickrun)
+    description: Runs `openfe quickrun` once per leg; each clone writes its
+      result.json and quickrun.log into its own slot.
+    over:
+      input_id: transformations_in
+      as: leg
+    max_concurrency: 2
+    inputs:
+      - id: transformations_in
+        name: Transformations
+        kind: folder
+        path: results/transformations/
+    outputs:
+      - id: legs
+        name: Leg results
+        kind: folder
+        path: results/legs/
+    resources:
+      cpus: 2
+      gpus: 1
+    executor: *openfe
+    runtime:
+      kind: command
+      # OPENMM_CPU_THREADS only matters on the CPU platform (smoke). The slot
+      # is cleared so a slot reused for another leg keeps no old result. The
+      # work dir (trajectories, resume cache) is quickrun[N]/work, outside the
+      # output; --resume continues an interrupted leg and starts fresh otherwise.
+      command: >-
+        { mkdir -p ${legs} && rm -rf ${legs}/* &&
+        OPENMM_CPU_THREADS=${task.resources.cpus} openfe quickrun ${leg}
+        -o ${legs}/result.json -d ../work --resume > ${legs}/quickrun.log 2>&1;
+        RC=$$?; tail -n 8 ${legs}/quickrun.log; exit $$RC; }
+    target: *local
+
+  - kind: horus_task
+    id: gather
+    name: 6. Gather free energies
+    description: >-
+      `openfe gather` turns the leg results into ddG per edge, raw dG per leg
+      and repeat, and (full only) the MLE dG per ligand. `--report dg` needs at
+      least 3 edges and 2 repeats, which the smoke network does not have, so
+      smoke writes a note to dg.tsv instead.
+    inputs:
+      - id: legs_in
+        name: Leg results
+        kind: folder
+        path: results/legs/
+      - id: profile
+        name: Profile
+        kind: choice
+        path: params/profile.txt
+        options:
+          - value: smoke
+          - value: full
+    outputs:
+      - id: ddg
+        name: ddG per edge
+        kind: file
+        path: results/ddg.tsv
+      - id: raw
+        name: dG per leg and repeat
+        kind: file
+        path: results/raw.tsv
+      - id: dg
+        name: dG per ligand
+        kind: file
+        path: results/dg.tsv
+    executor: *openfe
+    runtime:
+      kind: command
+      command: >-
+        openfe gather ${legs_in} --report ddg -o ${ddg} &&
+        openfe gather ${legs_in} --report raw -o ${raw} &&
+        if [ "${profile}" = full ]; then
+        openfe gather ${legs_in} --report dg -o ${dg};
+        else printf 'note\nsmoke: openfe gather --report dg needs at least 3 edges and 2 repeats; see ddg.tsv and raw.tsv\n' > ${dg};
+        fi && cat ${ddg} ${raw} ${dg}
+    target: *local
+
+  - kind: horus_task
+    id: report
+    name: 7. Build the report
+    description: HTML report with the dG and ddG tables, the network edges and
+      a Mol* view of TYK2 with the ligands.
+    inputs:
+      - id: ddg_in
+        name: ddG per edge
+        kind: file
+        path: results/ddg.tsv
+      - id: dg_in
+        name: dG per ligand
+        kind: file
+        path: results/dg.tsv
+      - id: raw_in
+        name: dG per leg and repeat
+        kind: file
+        path: results/raw.tsv
+      - id: network_in
+        name: Ligand network
+        kind: file
+        path: results/ligand_network.graphml
+      - id: protein_in
+        name: TYK2 protein
+        kind: file
+        path: results/inputs/tyk2_protein.pdb
+      - id: ligands_in
+        name: Charged ligands
+        kind: file
+        path: results/charged_ligands.sdf
+    outputs:
+      - id: report_html
+        name: RBFE report
+        kind: file
+        path: results/report.html
+    executor: *shell
+    runtime:
+      kind: python_script
+      script: scripts/report.py
+      python: python3 # stdlib-only
+      args: >-
+        --ddg ${ddg_in} --dg ${dg_in} --raw ${raw_in} --network ${network_in}
+        --protein ${protein_in} --ligands ${ligands_in} --out ${report_html}
+    target: *local
+
+edges:
+  - source: artifact-profile
+    source_output: profile
+    target: select_ligands
+    target_input: profile
+  - source: artifact-profile
+    source_output: profile
+    target: plan_network
+    target_input: profile
+  - source: fetch_inputs
+    source_output: ligands_sdf
+    target: select_ligands
+    target_input: ligands_in
+  - source: select_ligands
+    source_output: selected
+    target: charge_ligands
+    target_input: selected_in
+  - source: charge_ligands
+    source_output: charged
+    target: plan_network
+    target_input: charged_in
+  - source: fetch_inputs
+    source_output: protein_pdb
+    target: plan_network
+    target_input: protein_in
+  - source: plan_network
+    source_output: transformations
+    target: quickrun
+    target_input: transformations_in
+  - source: quickrun
+    source_output: legs
+    target: gather
+    target_input: legs_in
+  - source: gather
+    source_output: ddg
+    target: report
+    target_input: ddg_in
+  - source: gather
+    source_output: dg
+    target: report
+    target_input: dg_in
+  - source: gather
+    source_output: raw
+    target: report
+    target_input: raw_in
+  - source: artifact-profile
+    source_output: profile
+    target: gather
+    target_input: profile
+  - source: plan_network
+    source_output: network
+    target: report
+    target_input: network_in
+  - source: fetch_inputs
+    source_output: protein_pdb
+    target: report
+    target_input: protein_in
+  - source: charge_ligands
+    source_output: charged
+    target: report
+    target_input: ligands_in
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
