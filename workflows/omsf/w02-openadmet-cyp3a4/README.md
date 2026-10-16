@@ -207,7 +207,7 @@ has a CUDA pytorch. On Slurm, the train map still needs `target: *gpu`.
 |---|---|---|
 | `results/metrics.csv` | table | One row per model: mean and 95% CI of R2, MAE, MSE, Spearman, Kendall tau over the CV folds, and which model was picked |
 | `results/top_predictions.csv` | table | Top 50 compounds by predicted pIC50 (strongest predicted inhibitors) |
-| `results/predictions.csv` | table | Every predicted compound, `OADMET_PRED_openadmet-chembl_OPENADMET_LOGAC50` column |
+| `results/predictions.csv` | table | Every predicted compound, `OADMET_PRED_openadmet-chembl_OPENADMET_LOGAC50` column (the `OADMET_STD_...` column stays empty: a single model has no ensemble spread) |
 | `results/comparisons/` | PDFs + JSON | `openadmet compare` report: `anova.pdf`, `mcs_plots.pdf`, `mean_diffs.pdf`, `normality_plots.pdf`, `paired_plots.pdf`, `posthoc.pdf`, `Levene.json`, `Tukey_HSD.json` |
 | `trained/<slot>/model/` | files | anvil output: `model.pkl`/`model.pth`, `cross_validation_metrics.json`, `regression_metrics.json`, CV plots (PNG), `anvil_recipe.yaml` |
 | `data/cleaned_cyp3a4.csv` | table | Training data with the `OPENADMET_*` headers |

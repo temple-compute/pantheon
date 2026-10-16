@@ -71,6 +71,9 @@ over as many GPUs as `max_concurrency` allows.
 # Install uv if you don't have it
 curl -LsSf https://astral.sh/uv/install.sh | sh
 
+# From the repo root
+cd workflows/omsf/w01-openfe-rbfe-tyk2
+
 # Install the horus-runtime and plugins (one time)
 uv sync
 
