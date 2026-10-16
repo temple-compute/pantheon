@@ -67,17 +67,26 @@ fetch_inputs ─► build_system ─► parameterize ─► simulate[0..n] ─�
 
 ### Running full on Slurm / GPU
 
-1. Set the `profile` artifact to `full` (UI dropdown, or `value: full` in
-   `workflow.yaml`).
+1. Set the `profile` artifact to `full` (UI dropdown, or `value: full` on the
+   root `profile` artifact in `workflow.yaml`). Tasks get the value through
+   `${profile}`, which follows the authored value; `params/profile.txt` is
+   written once and not read back, so editing that file does not switch it.
 2. In the `_gpu` anchor fill in `partition` and `account` (and `qos` if your
    site needs it).
 3. On the `simulate` task change `target: *local` to `target: *gpu`. That is
    the only change; the conda env is built on the cluster on first use.
 
 `resources.gpus: 1` is already set on `simulate`; `gres: gpu:1` in the anchor
-requests it from Slurm. If you switch profile after a smoke run, delete
-`horus_workflow_results/` (or at least `replicas/` and `trajectories/`) first,
-since finished tasks are skipped.
+requests it from Slurm. Finished tasks are skipped, so after a smoke run
+delete `horus_workflow_results/` except `.horus_conda_env/` before running
+full (or the other way round). `parameterize` clears old replica slots itself.
+
+GPU build: conda-forge ships OpenMM's CUDA plugin whether or not the solving
+host has a GPU, so one env built on a CPU node still runs CUDA on the GPU
+node (PyTorch is CPU-only, but only NAGL charging in `parameterize` uses it).
+The pinned solve picks CUDA 13 builds, which need an NVIDIA driver >= 580. For
+older drivers add `cuda-version=12.9` to `conda_env.yaml` (this resolves with
+the same pins) and delete `.horus_conda_env/` so it is rebuilt.
 
 ## Quick start
 

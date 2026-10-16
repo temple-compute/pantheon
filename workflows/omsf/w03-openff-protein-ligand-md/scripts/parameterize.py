@@ -18,6 +18,8 @@ BASE_SEED = 2026
 
 
 def write_slots(out: Path, system_xml: Path, complex_pdb: Path, n: int) -> None:
+    # drop slots left by an earlier run with more replicas
+    shutil.rmtree(out, ignore_errors=True)
     for i in range(n):
         slot = out / str(i)
         slot.mkdir(parents=True, exist_ok=True)
@@ -48,6 +50,7 @@ def selftest() -> None:
         d = Path(d)
         (d / "s.xml").write_text("<System/>")
         (d / "c.pdb").write_text("END\n")
+        (d / "replicas/2").mkdir(parents=True)  # stale slot from a full run
         write_slots(d / "replicas", d / "s.xml", d / "c.pdb", REPLICAS["smoke"])
         slots = sorted(p.name for p in (d / "replicas").iterdir())
         assert slots == ["0", "1"], slots

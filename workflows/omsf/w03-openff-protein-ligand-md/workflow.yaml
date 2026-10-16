@@ -36,7 +36,7 @@ artifacts:
       smoke: 2 replicas x 5 ps on CPU (minutes). full: 3 replicas x 1 ns,
       meant for the GPU target.
     kind: choice
-    path: results/profile.txt
+    path: params/profile.txt
     options:
       - value: smoke
         label: Smoke (2 x 5 ps, CPU)
@@ -115,7 +115,7 @@ tasks:
       - id: profile
         name: Run profile
         kind: choice
-        path: results/profile.txt
+        path: params/profile.txt
         options:
           - value: smoke
           - value: full
@@ -153,7 +153,7 @@ tasks:
       - id: profile
         name: Run profile
         kind: choice
-        path: results/profile.txt
+        path: params/profile.txt
         options:
           - value: smoke
           - value: full
