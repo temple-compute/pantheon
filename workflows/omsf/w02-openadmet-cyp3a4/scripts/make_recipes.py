@@ -40,8 +40,8 @@ CHEMPROP_PARAMS = {
     "message_hidden_dim": 2048, "messages": "bond", "n_tasks": 1,
 }
 SUPPORTED = [*SKLEARN_MODELS, "chemprop"]
-ACCELERATORS = ["gpu", "cpu"]
-# Threads per featurizer/model: the _gpu anchor's cpus_per_task. Never -1:
+# Threads per featurizer/model: the train task's resources.cpus (and the
+# _slurm anchor's cpus_per_task). Never -1:
 # catboost reads it as every host core, which oversubscribes a shared node.
 N_JOBS = 8
 
@@ -57,7 +57,7 @@ def _cv_eval(kind, labels, n_splits, n_repeats):
     ]
 
 
-def recipe(model, n_splits, n_repeats, accelerator):
+def recipe(model, n_splits, n_repeats):
     data = {"resource": "{{ ANVIL_DIR }}/data.csv", "type": "intake",
             "input_col": "OPENADMET_CANONICAL_SMILES", "target_cols": [TARGET], "dropna": True}
     meta = {"authors": "OpenADMET showcase (ported to Horus)", "email": "noreply@example.org",
@@ -71,7 +71,7 @@ def recipe(model, n_splits, n_repeats, accelerator):
             "split": {"type": "ShuffleSplitter", "params": {
                 "random_state": 42, "train_size": 0.7, "val_size": 0.1, "test_size": 0.2}},
             "train": {"type": "LightningTrainer", "params": {
-                "accelerator": accelerator, "early_stopping": True, "early_stopping_min_delta": 0.001,
+                "accelerator": "cpu", "early_stopping": True, "early_stopping_min_delta": 0.001,
                 "early_stopping_mode": "min", "early_stopping_patience": 10,
                 "max_epochs": 50, "monitor_metric": "val_loss", "use_wandb": False}},
         }
@@ -125,13 +125,7 @@ def parse_count(name, text, minimum):
     return int(value)
 
 
-def check_accelerator(text):
-    if text not in ACCELERATORS:
-        raise ValueError(f"accelerator must be one of {'|'.join(ACCELERATORS)}; got {text!r}")
-    return text
-
-
-def write_all(data_csv, out, models, n_splits, n_repeats, accelerator):
+def write_all(data_csv, out, models, n_splits, n_repeats):
     # Horus keeps this folder between runs; drop slots of an earlier model list.
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
@@ -139,7 +133,7 @@ def write_all(data_csv, out, models, n_splits, n_repeats, accelerator):
         slot = out / model
         slot.mkdir(exist_ok=True)
         shutil.copyfile(data_csv, slot / "data.csv")
-        text = HEADER + yaml.safe_dump(recipe(model, n_splits, n_repeats, accelerator), sort_keys=False)
+        text = HEADER + yaml.safe_dump(recipe(model, n_splits, n_repeats), sort_keys=False)
         (slot / "recipe.yaml").write_text(text)
         print(f"wrote {slot / 'recipe.yaml'}")
 
@@ -171,13 +165,7 @@ def selftest():
                 pass
             else:
                 raise AssertionError(bad)
-        try:
-            check_accelerator("tpu")
-        except ValueError:
-            pass
-        else:
-            raise AssertionError("tpu")
-        write_all(csv, tmp / "two", ["lgbm", "rf"], 2, 3, "cpu")
+        write_all(csv, tmp / "two", ["lgbm", "rf"], 2, 3)
         assert sorted(p.name for p in (tmp / "two").iterdir()) == ["lgbm", "rf"]
         r = yaml.safe_load((tmp / "two/lgbm/recipe.yaml").read_text())
         assert (tmp / "two/lgbm/recipe.yaml").read_text().startswith("# Derived from OpenADMET")
@@ -187,15 +175,15 @@ def selftest():
         assert r["report"]["eval"][1]["params"]["n_splits"] == 2
         assert r["report"]["eval"][1]["params"]["n_repeats"] == 3
         assert (tmp / "two/rf/data.csv").read_text() == csv.read_text()
-        write_all(csv, tmp / "all", SUPPORTED, 5, 5, "gpu")
+        write_all(csv, tmp / "all", SUPPORTED, 5, 5)
         assert len(list((tmp / "all").iterdir())) == 5
         cb = yaml.safe_load((tmp / "all/catboost/recipe.yaml").read_text())
         assert cb["procedure"]["model"]["params"]["thread_count"] == N_JOBS
         cp = yaml.safe_load((tmp / "all/chemprop/recipe.yaml").read_text())
         assert cp["procedure"]["train"]["type"] == "LightningTrainer"
-        assert cp["procedure"]["train"]["params"]["accelerator"] == "gpu"
+        assert cp["procedure"]["train"]["params"]["accelerator"] == "cpu"
         assert cp["report"]["eval"][1]["params"]["n_repeats"] == 5
-        write_all(csv, tmp / "all", ["lgbm", "rf"], 5, 5, "gpu")  # shorter list: no stale slots
+        write_all(csv, tmp / "all", ["lgbm", "rf"], 5, 5)  # shorter list: no stale slots
         assert sorted(p.name for p in (tmp / "all").iterdir()) == ["lgbm", "rf"]
     print("selftest ok")
 
@@ -208,23 +196,21 @@ def main():
     ap.add_argument("--models", help=f"comma list from {','.join(SUPPORTED)}")
     ap.add_argument("--cv-folds", help="k of the repeated k-fold CV (>= 2)")
     ap.add_argument("--cv-repeats", help="repeats of the k-fold CV (>= 1)")
-    ap.add_argument("--accelerator", help="chemprop training device: gpu or cpu")
     ap.add_argument("--out", type=Path)
     a = ap.parse_args()
     if a.selftest:
         return selftest()
-    if not (a.parquet and a.cleaned and a.models and a.cv_folds and a.cv_repeats and a.accelerator and a.out):
-        ap.error("--parquet, --cleaned, --models, --cv-folds, --cv-repeats, --accelerator and --out are required")
+    if not (a.parquet and a.cleaned and a.models and a.cv_folds and a.cv_repeats and a.out):
+        ap.error("--parquet, --cleaned, --models, --cv-folds, --cv-repeats and --out are required")
     try:
         models = parse_models(a.models)
         n_splits = parse_count("cv_folds", a.cv_folds, 2)
         n_repeats = parse_count("cv_repeats", a.cv_repeats, 1)
-        accelerator = check_accelerator(a.accelerator)
     except ValueError as e:
         ap.error(str(e))
     a.cleaned.parent.mkdir(parents=True, exist_ok=True)
     clean(a.parquet, a.cleaned)
-    write_all(a.cleaned, a.out, models, n_splits, n_repeats, accelerator)
+    write_all(a.cleaned, a.out, models, n_splits, n_repeats)
 
 
 if __name__ == "__main__":

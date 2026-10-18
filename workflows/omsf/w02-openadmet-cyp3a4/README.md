@@ -19,9 +19,9 @@ notebook stage is its own task:
 5. predict the inference set with the best model (`openadmet predict`),
 6. tabulate CV metrics and the top predicted inhibitors.
 
-Tree models train on CPU in minutes. Chemprop (a graph neural network) needs
-a GPU, so the default run expects a GPU host, or the training map on a Slurm
-GPU node (see **Slurm/GPU** below).
+The workflow runs on CPU only: no GPU, no CUDA libraries. The four tree
+models (the default) train in minutes. Chemprop (a graph neural network) can
+be added to `models`, but on CPU it takes hours.
 
 ## Pipeline
 
@@ -48,30 +48,20 @@ cd workflows/omsf/w02-openadmet-cyp3a4
 # Install the horus-runtime and plugins (one time)
 uv sync
 
-# Run the workflow with the default parameters (on a GPU host)
+# Run the workflow with the default parameters
 uv run horus run workflow.yaml
 ```
 
 Executor: `conda_python_environment` with `micromamba` (set `conda:` in the
 `_conda` anchor to `mamba` or `conda` if that is what you have). The first
 conda task builds the env from `conda_env.yaml` into
-`horus_workflow_results/.horus_conda_env/` (a few minutes: the CUDA pytorch
-build is a large download). Later runs reuse it as is, without checking it
-against `conda_env.yaml`: after editing that file, delete
-`horus_workflow_results/.horus_conda_env/` (or set `recreate: true` for one
-run) so the next run rebuilds it.
+`horus_workflow_results/.horus_conda_env/` (a few minutes). Later runs reuse
+it as is, without checking it against `conda_env.yaml`: after editing that
+file, delete `horus_workflow_results/.horus_conda_env/` (or set
+`recreate: true` for one run) so the next run rebuilds it.
 
-The env pins a CUDA build of pytorch, and conda-forge only picks it when the
-solving host reports a GPU. On a host without a GPU (a login node, or a CPU
-workstation running with `accelerator: cpu`), declare the CUDA version the
-solver should assume:
-
-```bash
-CONDA_OVERRIDE_CUDA=12.9 uv run horus run workflow.yaml
-```
-
-Without a GPU or `CONDA_OVERRIDE_CUDA`, the solve fails instead of quietly
-installing a CPU pytorch. The CUDA build also runs on CPU.
+The env pins the CPU builds of pytorch and catboost, so it solves the same on
+any linux-64 host, with or without a GPU.
 
 ## Parameters
 
@@ -83,15 +73,14 @@ reaches the tasks only through `${id}`.
 |---|---|---|---|
 | `dataset_url` | string | ChEMBL35 CYP3A4 IC50 aggregate, [OpenADMET/data-catalogs](https://github.com/OpenADMET/data-catalogs) at `65dd4ee3` | Training set: any OpenADMET data-catalogs aggregated parquet, one row per compound, with `OPENADMET_CANONICAL_SMILES` (input) and `pchembl_value_mean` (target) columns |
 | `inference_url` | string | `showcase/compounds_for_inference.csv` from openadmet-demos at `8b2c5f34` (10,000 ZINC compounds) | CSV to predict; needs an `OPENADMET_CANONICAL_SMILES` column (`OPENADMET_INCHIKEY` is copied to the top list if present) |
-| `models` | string | `lgbm,rf,xgboost,catboost,chemprop` | Comma list of models to train, compare and pick from; any distinct subset of those five |
+| `models` | string | `lgbm,rf,xgboost,catboost` | Comma list of models to train, compare and pick from; any distinct subset of those four and `chemprop` (hours on CPU) |
 | `cv_folds` | number | `5` (upstream) | k of the repeated k-fold CV, integer >= 2 |
 | `cv_repeats` | number | `5` (upstream) | Repeats of the k-fold CV, integer >= 1 |
-| `accelerator` | string | `gpu` | `gpu` or `cpu`: device for Chemprop training and for `openadmet predict` (tree models always run on CPU) |
 
 Both URLs are fetched with `curl`, so `file:///abs/path/to/file` works for a
 local file. `make_recipes.py` and `models.py` reject an unknown model, a
-repeated model, a non-integer or out-of-range CV count and an accelerator
-other than `gpu`/`cpu` with an error naming the parameter. The best model is
+repeated model and a non-integer or out-of-range CV count with an error
+naming the parameter. The best model is
 picked by mean CV R2 (`--metric` of `models.py predict`).
 
 To change a value, edit its `value:` in the root `artifacts:` list of
@@ -113,7 +102,7 @@ state, not something to commit.
 |---|---|---|
 | fetch_data | local, shell | seconds |
 | make_recipes | local CPU (builds the env on first run) | seconds, plus the env build |
-| train (map) | 5 clones (lgbm, rf, xgboost, catboost, chemprop) at once, 8 threads each; chemprop on 1 GPU | tree models minutes to tens of minutes, chemprop hours |
+| train (map) | 4 clones (lgbm, rf, xgboost, catboost), 8 threads each, at once when the target has the CPUs | minutes per tree model (chemprop, if added: hours) |
 | compare | local CPU | under a minute |
 | predict | best model on all 10,000 compounds | a few minutes |
 | report | local | seconds |
@@ -127,14 +116,14 @@ state, not something to commit.
   --model-stats-fns/--labels/--task-names/--output-dir/--report`, `predict
   --input-path/--input-col/--model-dir/--output-csv/--accelerator`), so no
   `main` commit is needed. `predict --accelerator` defaults to `gpu` in
-  v0.2.0, so the workflow always passes `${accelerator}`.
+  v0.2.0, so `models.py` always passes `cpu`.
 - `conda_env.yaml`: the runtime part of upstream
   `devtools/conda-envs/openadmet-models.yaml` (pytorch, chemprop, lightgbm,
   xgboost, catboost, rdkit, the OpenADMET molfeat fork at a pinned commit, and
-  so on), with the CUDA build of pytorch (`pytorch=2.14.1=cuda*`). Test and
-  notebook tools and the optional TabPFN/TabICL/NePaRe extras are left out.
-  Every package is pinned to the versions of a working solve. One env serves
-  every task, CPU or GPU.
+  so on), with the CPU builds of pytorch (`pytorch=2.14.1=cpu*`) and catboost
+  (`catboost=1.2.10=cpu*`). Test and notebook tools and the optional
+  TabPFN/TabICL/NePaRe extras are left out. Every package is pinned to the
+  versions of a working solve. One env serves every task.
 - Data: the two URLs in **Parameters**, downloaded at run time.
 
 ### Container option
@@ -150,7 +139,6 @@ then replace the `_conda` anchor with:
 _conda: &conda
   kind: docker
   image: ghcr.io/openadmet/openadmet-models:main
-  gpus: all # only on a GPU host
   env:
     OADMET_NO_RICH_LOGGING: "1"
     MPLBACKEND: Agg
@@ -164,50 +152,44 @@ _conda: &conda
   kind: singularity
   image: docker://ghcr.io/openadmet/openadmet-models:main
   exe: apptainer # or singularity
-  nv: true # pass the node's GPU through; harmless on CPU nodes
   env:
     OADMET_NO_RICH_LOGGING: "1"
     MPLBACKEND: Agg
 ```
 
-On Slurm, the train map still needs `target: *gpu`.
+On Slurm, the train map still needs `target: *slurm`.
 
 ## Horus Configuration
 
 - **Parameters**: see **Parameters** above.
 - **train** is a `horus_map` over `recipes/` with `max_concurrency: 5`, so
-  all default models train at once and Chemprop does not wait behind the
-  tree models. Each child folder (`recipes/lgbm/`, `recipes/rf/`, ...) holds
+  every model can train at once. Each clone declares `resources` (`cpus: 8`,
+  `memory_gb: 8`). The local target ignores them; a shared cloud machine runs
+  only as many clones at once as its size allows (an 8-vCPU machine runs them
+  one after another, a 32-vCPU machine runs all four at once). Each child
+  folder (`recipes/lgbm/`, `recipes/rf/`, ...) holds
   `recipe.yaml` and its own copy of the data. The recipe points at
   `{{ ANVIL_DIR }}/data.csv`, so the slot works on any target the clone is
   copied to. Each clone writes its anvil output to `trained/<slot>/model/`.
   Slots are numbered (`0`, `1`, ...), and the model name is read from
   `model/anvil_recipe.yaml`.
-- **Slurm/GPU**: in `workflow.yaml`,
-  1. set `partition` and `account` in the `_gpu` anchor,
-  2. on the train task, change `target: *local` to `target: *gpu`.
+- **Slurm**: in `workflow.yaml`,
+  1. set `partition` and `account` in the `_slurm` anchor,
+  2. on the train task, change `target: *local` to `target: *slurm`.
 
-  `resources` (`cpus: 8`, `gpus: 1`) is already on the task; the local
-  target ignores it unless a capacity is declared. A map runs every clone on
-  one target, so the tree models also land on GPU nodes. They only use the
-  allocation's CPUs. The env lives in `horus_workflow_results/` and must be
-  on a filesystem the nodes share. The executor has no lock, so if `train`
-  could be the first conda task (for example after deleting the env), build
-  the env once before the run instead of letting 5 clones race to create
-  it, either on a GPU node:
+  The env lives in `horus_workflow_results/` and must be on a filesystem the
+  nodes share. The executor has no lock, so if `train` could be the first
+  conda task (for example after deleting the env), build the env once before
+  the run instead of letting the clones race to create it:
 
   ```bash
-  srun --gres=gpu:1 micromamba env create -y -f conda_env.yaml \
+  micromamba env create -y -f conda_env.yaml \
     -p horus_workflow_results/.horus_conda_env
   ```
-
-  or on the login node with `CONDA_OVERRIDE_CUDA=12.9` in front of the same
-  `micromamba env create` command. Check the result with
-  `horus_workflow_results/.horus_conda_env/bin/python -c "import torch; print(torch.version.cuda)"`
-  (it must not print `None`).
 - Threads: the recipes set `n_jobs: 8` (catboost: `thread_count`) on the
-  featurizers and models, the `_gpu` anchor's `cpus_per_task`; change
-  `N_JOBS` in `scripts/make_recipes.py` and `cpus_per_task` together. `-1`
+  featurizers and models, the train task's `resources.cpus` and the `_slurm`
+  anchor's `cpus_per_task`; change `N_JOBS` in `scripts/make_recipes.py` and
+  those two together. `-1`
   is not used because catboost reads it as every core on the host, not the
   allocation, and the upstream featurizers default to it, so the recipes
   always set the count explicitly.
@@ -230,20 +212,19 @@ On Slurm, the train map still needs `target: *gpu`.
 
 ## Expected runtime
 
-- Defaults (five models, upstream 5x5 CV on about 4900 compounds, 10,000
-  inference compounds) on one GPU node with 8 CPUs per clone: not run by us
-  (no GPU on the dev host). Expect minutes to tens of minutes per tree model
-  and tens of minutes to hours for Chemprop (25 CV refits of up to 50
-  epochs), plus a few minutes to build the env and to predict. Plan for
-  about 8 CPUs, 8 GB RAM and 1 GPU per clone.
-- Measured reference on this repo's 16-core shared dev host, CPU only,
-  pinned to 5 cores: `models: lgbm,rf`, `cv_folds: 2`, `cv_repeats: 2`,
-  `accelerator: cpu` took **8 min (483 s)** cold, including **about 2 min** to build the
-  env (fetch 1 s, make_recipes 2 min 21 s with the
-  env build, train 4 min 28 s with both clones in parallel, compare 19 s,
-  predict 74 s on all 10,000 compounds, report < 1 s; lgbm was picked, mean
-  CV R2 0.54 against 0.52 for rf). A re-run of a finished workflow takes seconds: every
-  task is skipped by `skip_if_complete`.
+- Measured on this repo's 16-core shared dev host, CPU only, the four tree
+  models with `cv_folds: 5`, `cv_repeats: 1`, env already built: **8 min 49 s**
+  (fetch and make_recipes about 1 s each, train 7 min 43 s with all four
+  clones at once, each clone 6.5 to 7.7 min, compare 36 s, predict 65 s on all
+  10,000 compounds, report < 1 s). About 67 CPU-minutes in total, under
+  2 GB RAM. lgbm was picked (mean CV R2 0.58; xgboost 0.57, rf 0.57,
+  catboost 0.55). A cold env build adds a few minutes.
+- The upstream default `cv_repeats: 5` refits each model 5 times as often,
+  so expect train to take roughly 5 times longer.
+- On a cloud machine, train time follows its vCPU count: about 16 vCPUs
+  matches the run above, 32 vCPUs runs all four 8-CPU clones at once. A
+  re-run of a finished workflow takes seconds: every task is skipped by
+  `skip_if_complete`.
 
 ## Implementation Notes
 
@@ -279,14 +260,10 @@ On Slurm, the train map still needs `target: *gpu`.
 
 ## Open Questions
 
-- The defaults have not been run on a GPU host or cluster. The CUDA env was
-  built and run on CPU only (with `CONDA_OVERRIDE_CUDA=12.9`), which picks
-  the `cuda129` pytorch 2.14.1 build. The container swaps have not been run
-  either.
-- A `horus_map` runs every clone on one target, so the CPU tree models
-  cannot stay on CPU nodes while Chemprop goes to a GPU. Splitting the map
-  into a CPU map and a GPU map would fix that at the cost of a second recipe
-  folder.
+- The container swaps and the Slurm target have not been run.
+- Chemprop on GPU is out of scope: it would need the CUDA builds back in
+  `conda_env.yaml`, a GPU target, and a map split so the tree models stay
+  on CPU nodes.
 
 ## License and credit
 

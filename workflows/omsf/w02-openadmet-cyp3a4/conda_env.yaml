@@ -4,7 +4,8 @@
 # Versions pinned to a working solve on 2026-10-16 (linux-64).
 # openadmet-models is not on PyPI or conda-forge; it installs from the commit
 # of its v0.2.0 tag.
-# Without a GPU on the solving host, set CONDA_OVERRIDE_CUDA=12.9 (see README).
+# CPU only: pytorch and catboost are pinned to their CPU builds, so the solve
+# needs no GPU and pulls no CUDA libraries.
 name: openadmet-models
 channels:
   - conda-forge
@@ -12,7 +13,7 @@ dependencies:
   - python=3.12.15
   - aiobotocore=3.9.2
   - boto3=1.43.106
-  - catboost=1.2.10
+  - catboost=1.2.10=cpu*
   - chemprop=2.3.1
   - datamol=0.12.5
   - intake=2.0.9
@@ -25,7 +26,7 @@ dependencies:
   - pandas=3.0.6
   - pip=26.2.1
   - pyarrow=25.0.0
-  - pytorch=2.14.1=cuda*  # CUDA build (runs on CPU too); cuda-version follows the driver
+  - pytorch=2.14.1=cpu*
   - pytorch-lightning=2.6.1
   - pyyaml=6.0.3
   - rdkit=2026.03.6

@@ -24,7 +24,6 @@ TASK = "OPENADMET_LOGAC50"
 PRED_COL = f"OADMET_PRED_openadmet-chembl_{TASK}"
 METRICS = ["r2", "mae", "mse", "spearmanr", "ktau"]
 LOWER_IS_BETTER = {"mae", "mse"}
-ACCELERATORS = ["gpu", "cpu"]
 
 
 def collect(trained):
@@ -56,10 +55,10 @@ def compare_args(rows, out_dir):
     return args + ["--output-dir", str(out_dir), "--report", "True"]
 
 
-def predict_args(model_dir, compounds, out_csv, accelerator):
+def predict_args(model_dir, compounds, out_csv):
     return ["openadmet", "predict", "--input-path", str(compounds),
             "--input-col", "OPENADMET_CANONICAL_SMILES", "--model-dir", str(model_dir),
-            "--output-csv", str(out_csv), "--accelerator", accelerator]
+            "--output-csv", str(out_csv), "--accelerator", "cpu"]  # v0.2.0 defaults to gpu
 
 
 def check_compounds(path):
@@ -126,7 +125,7 @@ def selftest():
         a = compare_args(rows, tmp / "cmp")
         assert a.count("--model-stats-fns") == 2 and a[a.index("--labels") + 1] == "lgbm"
         assert a[-2:] == ["--report", "True"]
-        p = predict_args(rows[1][1], "in.csv", "out.csv", "cpu")
+        p = predict_args(rows[1][1], "in.csv", "out.csv")
         assert p[p.index("--model-dir") + 1].endswith("1/model") and p[-2:] == ["--accelerator", "cpu"]
         m = metrics_rows(rows, "r2")
         assert [r["best"] for r in m] == [False, True] and m[0]["n_folds"] == 4
@@ -156,7 +155,6 @@ def main():
     ap.add_argument("--top-out", type=Path, help="report: top predictions CSV")
     ap.add_argument("--compounds", type=Path, help="predict: inference CSV")
     ap.add_argument("--predictions", type=Path, help="report: predictions CSV")
-    ap.add_argument("--accelerator", help="predict: gpu or cpu")
     ap.add_argument("--metric", default="r2", choices=METRICS)
     ap.add_argument("--top", type=int, default=50)
     a = ap.parse_args()
@@ -164,10 +162,8 @@ def main():
         return selftest()
     if not (a.mode and a.trained and a.out):
         ap.error("mode, --trained and --out are required")
-    if a.mode == "predict" and not (a.compounds and a.accelerator):
-        ap.error("predict needs --compounds and --accelerator")
-    if a.mode == "predict" and a.accelerator not in ACCELERATORS:
-        ap.error(f"accelerator must be one of {'|'.join(ACCELERATORS)}; got {a.accelerator!r}")
+    if a.mode == "predict" and not a.compounds:
+        ap.error("predict needs --compounds")
     if a.mode == "report" and not (a.predictions and a.top_out):
         ap.error("report needs --predictions and --top-out")
     rows = collect(a.trained)
@@ -179,7 +175,7 @@ def main():
         label, model_dir, stats = best(rows, a.metric)
         print(f"best model by mean CV {a.metric}: {label} ({stats[a.metric]['mean']:.3f})")
         a.out.parent.mkdir(parents=True, exist_ok=True)
-        run(predict_args(model_dir, a.compounds, a.out, a.accelerator))
+        run(predict_args(model_dir, a.compounds, a.out))
     else:
         write_csv(a.out, metrics_rows(rows, a.metric))
         write_csv(a.top_out, top_predictions(a.predictions, a.top))

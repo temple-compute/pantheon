@@ -2,7 +2,7 @@
 
 Native Horus ports of selected workflows from the [OMSF workflow directory](https://directory.omsf.io/workflows/), covering [Open Force Field](https://openforcefield.org), [Open Free Energy](https://openfree.energy) and [OpenADMET](https://openadmet.org). The notebooks are split into real tasks. Each workflow installs the upstream packages and adds thin glue scripts instead of copying upstream code.
 
-Inputs (molecule and database URLs) and run settings are workflow variables whose defaults match the upstream production setup. Point them at your own molecules or datasets (a `file:///` path works for local files). The heavy steps declare a GPU and are a one-field swap away from a Slurm or cloud GPU target.
+Inputs (molecule and database URLs) and run settings are workflow variables whose defaults match the upstream production setup. Point them at your own molecules or datasets (a `file:///` path works for local files). The heavy steps of w01 and w03 declare a GPU and are a one-field swap away from a Slurm or cloud GPU target; w02 runs on CPU only.
 
 ## Workflows
 

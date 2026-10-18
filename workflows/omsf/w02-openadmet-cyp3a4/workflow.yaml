@@ -2,14 +2,12 @@ kind: horus_workflow
 name: OpenADMET CYP3A4 Inhibition Models
 
 # --- reusable blocks -------------------------------------------------------
-# Every openadmet step runs in one pinned conda env (conda_env.yaml, with a
-# CUDA pytorch build that also runs on CPU), built once. Task working dirs are
-# horus_workflow_results/<task>/<run>/, so ../../ puts the shared env at
-# horus_workflow_results/.horus_conda_env. The executor reuses an existing env
-# as is: after editing conda_env.yaml, delete that folder. On a host without a
-# GPU the CUDA solve needs CONDA_OVERRIDE_CUDA=12.9 in the environment of
-# `horus run` (see README). To use the official container instead, see the
-# README (docker or apptainer).
+# Every openadmet step runs in one pinned CPU-only conda env (conda_env.yaml),
+# built once. Task working dirs are horus_workflow_results/<task>/<run>/, so
+# ../../ puts the shared env at horus_workflow_results/.horus_conda_env. The
+# executor reuses an existing env as is: after editing conda_env.yaml, delete
+# that folder. To use the official container instead, see the README (docker
+# or apptainer).
 _conda: &conda
   kind: conda_python_environment
   conda: micromamba # set to mamba/conda if that's what's on PATH
@@ -25,11 +23,11 @@ _shell: &shell
 _local: &local
   kind: local
 
-# Chemprop trains on GPU. To send the train map to a Slurm GPU node (a map
-# runs every clone on one target), fill in partition/account for your site
-# and set the train task's `target: *gpu`. Keep cpus_per_task at 8 or change
-# N_JOBS in scripts/make_recipes.py with it.
-_gpu: &gpu
+# To send the train map to a Slurm node (a map runs every clone on one
+# target), fill in partition/account for your site and set the train task's
+# `target: *slurm`. Keep cpus_per_task at 8 or change N_JOBS in
+# scripts/make_recipes.py with it.
+_slurm: &slurm
   kind: slurm
   inner:
     kind: local
@@ -38,7 +36,6 @@ _gpu: &gpu
   ntasks: 1
   cpus_per_task: 8
   mem: 32G
-  gres: gpu:1
   time_limit: "12:00:00"
 
 artifacts:
@@ -66,10 +63,11 @@ artifacts:
     name: Models
     description: >-
       Comma list of the models to train and compare, from lgbm, rf, xgboost,
-      catboost and chemprop.
+      catboost and chemprop. Everything runs on CPU, where chemprop takes
+      hours, so it is not in the default list.
     kind: string
     path: params/models.txt
-    value: lgbm,rf,xgboost,catboost,chemprop
+    value: lgbm,rf,xgboost,catboost
   - id: cv_folds
     name: CV folds
     description: k of the repeated k-fold cross-validation (integer >= 2, upstream 5).
@@ -82,14 +80,6 @@ artifacts:
     kind: number
     path: params/cv_repeats.txt
     value: 5
-  - id: accelerator
-    name: Accelerator
-    description: >-
-      Device for Chemprop training and for `openadmet predict`: gpu or cpu.
-      The tree models always run on CPU.
-    kind: string
-    path: params/accelerator.txt
-    value: gpu
 
 tasks:
   - kind: horus_task
@@ -153,10 +143,6 @@ tasks:
         name: CV repeats
         kind: number
         path: params/cv_repeats.txt
-      - id: accelerator
-        name: Accelerator
-        kind: string
-        path: params/accelerator.txt
     outputs:
       - id: cleaned
         name: Cleaned CYP3A4 dataset
@@ -173,12 +159,11 @@ tasks:
       args: >-
         --parquet ${chembl_parquet} --models ${models}
         --cv-folds ${cv_folds} --cv-repeats ${cv_repeats}
-        --accelerator ${accelerator} --cleaned ${cleaned} --out ${recipes}
+        --cleaned ${cleaned} --out ${recipes}
     target: *local
 
-  # One clone per recipe slot, all five default models at once. Chemprop needs
-  # CUDA (accelerator gpu): run on a GPU host, or switch `target` to *gpu for
-  # Slurm (the tree models then run on the allocation's CPUs).
+  # One clone per recipe slot, all models at once when the target has room:
+  # a shared machine runs as many 8-CPU clones as its vCPUs allow.
   - kind: horus_map
     id: train
     name: 3. Train and cross-validate each model (parallel)
@@ -214,7 +199,6 @@ tasks:
     resources:
       cpus: 8
       memory_gb: 8
-      gpus: 1
     target: *local
 
   - kind: horus_task
@@ -255,10 +239,6 @@ tasks:
         name: Compounds for inference
         kind: file
         path: data/compounds_for_inference.csv
-      - id: accelerator
-        name: Accelerator
-        kind: string
-        path: params/accelerator.txt
     outputs:
       - id: predictions
         name: Predictions
@@ -270,7 +250,7 @@ tasks:
       script: scripts/models.py
       args: >-
         predict --trained ${trained_in} --compounds ${compounds}
-        --accelerator ${accelerator} --out ${predictions}
+        --out ${predictions}
     target: *local
 
   - kind: horus_task
@@ -329,10 +309,6 @@ edges:
     source_output: cv_repeats
     target: make_recipes
     target_input: cv_repeats
-  - source: artifact-accelerator
-    source_output: accelerator
-    target: make_recipes
-    target_input: accelerator
   - source: make_recipes
     source_output: recipes
     target: train
@@ -349,10 +325,6 @@ edges:
     source_output: compounds
     target: predict
     target_input: compounds
-  - source: artifact-accelerator
-    source_output: accelerator
-    target: predict
-    target_input: accelerator
   - source: train
     source_output: trained
     target: report
