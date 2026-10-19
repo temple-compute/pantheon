@@ -1,6 +1,12 @@
 # W-35 · cMD Replicas (AMBER)
 
+<img src="assets/logo.png" width="96" align="right" alt="W-35 logo">
+
+From a PDB ID or an uploaded structure to a solvated protein–ligand system, N parallel AMBER MD replicas on GPUs, per-replica analysis and a clustered HTML report.
+
 ![Domain: Drug Discovery](https://img.shields.io/badge/domain-drug--discovery-blue)
+
+![W-35 cover](assets/cover.png)
 
 ## Overview
 
@@ -12,16 +18,16 @@ clustering. The MD protocol is ported from
 `MD/cMD/create_md_custom.sh`; preparation, analysis and the parameters around
 it are added here.
 
-Preparation and analysis run on the cluster in one conda-forge environment
-(AmberTools 26: pdb4amber, tleap, antechamber, parmchk2, parmed, cpptraj;
-PROPKA; Open Babel), built on first use and reused. Only `pmemd.cuda` comes
-from the cluster's AMBER module (`amber_env`). Replicas fan out with
-Horus's `horus_map`, one SLURM job per replica per phase.
+Preparation and analysis run in one conda-forge environment (AmberTools 26:
+pdb4amber, tleap, antechamber, parmchk2, parmed, cpptraj; PROPKA; Open Babel),
+built on first use and reused. Only `pmemd.cuda` comes from a licensed AMBER
+install (`amber_env`). Replicas fan out with Horus's `horus_map`, one GPU job per
+replica per phase.
 
 ## Pipeline
 
 ```
-fetch_pdb (local)            PDB ID --> structure.pdb
+fetch_pdb (local)            PDB ID (or uploaded PDB) --> structure.pdb
   |-- extract_ligand (local)      structure + residue name --> ligand pose .pdb
   |     parameterize_ligand (CPU) pose --> ligand.mol2 + ligand.frcmod (GAFF2, AM1-BCC)
   |-- build_complex (CPU)    structure + ligand --> system.prmtop/.inpcrd/.pdb, prep_report.json
@@ -40,7 +46,7 @@ your own file to the next block's input:
 
 | You have | Delete | Connect to |
 |---|---|---|
-| your own PDB | `fetch_pdb` | `structure_in` of the build block (and `extract_ligand`) |
+| your own PDB | nothing: clear `pdb_id` and upload it as `structure_upload` | |
 | a docked/prepared ligand pose (.pdb/.sdf/.mol2) | `extract_ligand` | `ligand_in` of `parameterize_ligand` |
 | ligand.mol2 + ligand.frcmod you parameterized | `extract_ligand`, `parameterize_ligand` | `ligand_mol2_in` / `ligand_frcmod_in` of `build_complex` |
 | a protein-only system | the ligand blocks and `build_complex` | `build_system`'s `protein_prmtop`/`protein_inpcrd` to `prepare_replicas` |
@@ -53,13 +59,12 @@ topology.
 
 ## Prerequisites
 
-- A SLURM cluster with an AMBER module providing `pmemd.cuda` (pick or add
-  its line in `amber_env`) and conda on the nodes. Set the three target
-  anchors at the top of `workflow.yaml` (partition/account) and the `_tools`
-  executor's `conda` and `environment_dir` (an absolute path, so the
-  environment is built once and shared by every task and run; the first
-  build takes a few minutes). The defaults are picard's: Miniconda is on the
-  gorn1 nodes' `/shared`, so run the CPU blocks there too.
+- `micromamba` (or conda/mamba: set `_tools.conda`) where the CPU blocks run. The
+  tools environment is built once at `horus_workflow_results/.horus_ambertools_env`;
+  on a cluster, set `_tools.environment_dir` to an absolute shared path.
+- `pmemd.cuda` on the GPU nodes (licensed AMBER; conda-forge AmberTools has no
+  CUDA pmemd). Pick or add the line that loads it in `amber_env`; the default
+  "Already on PATH" assumes it is there.
 - `prepare_replicas` runs on the orchestrator and needs only `python3`.
 
 ## Quick start
@@ -69,8 +74,19 @@ uv sync          # horus-runtime + horus-slurm + horus-environments
 uv run horus run workflow.yaml
 ```
 
-or import the folder into tc-os and set the inputs in the UI. Uses the
-`shell` executor throughout.
+Every task runs on the local target with `resources` hints. On a Slurm cluster,
+fill in `partition`/`account` in the `_cpu`, `_gpu_equilibrate` and `_gpu_produce`
+anchors at the top of `workflow.yaml` and point the CPU blocks at `*cpu`,
+`equilibrate` at `*gpu_equilibrate` and `produce` at `*gpu_produce`.
+
+## Running in Temple Compute
+
+Import the folder or start a campaign from the library entry: the form shows the
+PDB ID, the structure upload and every build, MD and analysis setting below, with
+sliders for the ranged numbers. Resource hints: parameterization, builds and the
+report 2 CPU / 8 GB; `analyze` 4 CPU / 16 GB per replica; `equilibrate` and
+`produce` one GPU (4 CPU, 16 GB) per replica, 5 h and 10 days. The GPU node must
+provide `pmemd.cuda` (see Prerequisites).
 
 ## Inputs
 
@@ -78,7 +94,8 @@ or import the folder into tc-os and set the inputs in the UI. Uses the
 
 | Input | Default | Used by | Meaning |
 |---|---|---|---|
-| `pdb_id` | `3HTB` | fetch_pdb | RCSB ID; needs a PDB-format file |
+| `pdb_id` | `3HTB` | fetch_pdb | RCSB ID; needs a PDB-format file. Empty = use `structure_upload` |
+| `structure_upload` | `examples/1aki.pdb` | fetch_pdb | PDB used when `pdb_id` is empty |
 | `ligand_resname` / `ligand_chain` | `JZ4` / first copy | extract_ligand, parameterize_ligand | ligand to extract; name it keeps in the system |
 | `ligand_charge` | 0 | parameterize_ligand | net formal charge (AM1-BCC) |
 | `protonate_ligand` | on | parameterize_ligand | Open Babel hydrogens at the pH; off keeps the file's hydrogens |
@@ -89,7 +106,7 @@ or import the folder into tc-os and set the inputs in the UI. Uses the
 | `box` / `padding` | truncated octahedron / 12 Å | build | |
 | `salt_mM` | 150 | build | NaCl by SLTCAP on top of neutralization |
 | `hmr` | off | build | hydrogen mass repartitioning (allows 4 fs) |
-| `amber_env` | Picard | equilibrate, produce | module line that provides `pmemd.cuda` |
+| `amber_env` | Already on PATH | equilibrate, produce | shell line that provides `pmemd.cuda` (Picard, CSUC and a generic `module load Amber` are listed) |
 
 **MD protocol**
 
@@ -110,6 +127,9 @@ or import the folder into tc-os and set the inputs in the UI. Uses the
 
 **Analysis:** `analysis_stride` (every Nth frame, default 1), `n_clusters`
 (k-means on backbone, default 5, 0 skips).
+
+Every number has a range in `workflow.yaml` (e.g. `n_replicas` 1–20, `length_ns`
+1–2000, `temperature` 250–400 K, `ph` 0–14), which tc-os shows as sliders.
 
 The equilibration schedule (step lengths, restraint weights, which steps
 draw new velocities) is the `PROTOCOL` table in `scripts/prepare_replicas.py`;
@@ -173,8 +193,8 @@ in each replica's **side products** in the UI:
 - **Settings:** `LIVE_INTERVAL` (default 60 s) and `LIVE_FRAMES` (default 50).
   Export them in the task environment.
 - **Outside Horus:** the monitor is a no-op (`HORUS_SIDE_ARTIFACTS_DIR` unset).
-- **If it goes bad:** cancel the run from the UI. That `scancel`s the SLURM
-  jobs, and the final digest is still uploaded.
+- **If it goes bad:** cancel the run from the UI. That stops the jobs (on Slurm,
+  `scancel`), and the final digest is still uploaded.
 - **Self-check:** `bash scripts/live_monitor.sh --selftest` checks the mdout
   parser and the plot. Trajectory frames need `cpptraj`, which AmberTools
   provides once the AMBER module is loaded (live monitor) and the tools

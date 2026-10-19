@@ -1,14 +1,15 @@
 #!/usr/bin/env python3
 """
-Download a structure from the RCSB PDB: https://files.rcsb.org/download/<ID>.pdb
+Download a structure from the RCSB PDB: https://files.rcsb.org/download/<ID>.pdb,
+or, with an empty --pdb-id, copy the --upload file instead.
 
-Standalone block: its output is a plain .pdb, so a structure you already
-have can be connected in its place. Runs on the orchestrator (cluster
+Standalone block: its output is a plain .pdb. Runs on the orchestrator (cluster
 compute nodes often have no internet). Stdlib only.
 """
 
 import argparse
 import re
+import shutil
 import time
 import urllib.error
 import urllib.request
@@ -47,8 +48,16 @@ def fetch(url: str, dest: Path, attempts: int = 3) -> None:
 def main() -> None:
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--pdb-id", required=True)
+    ap.add_argument("--upload", type=Path, help="PDB to use when --pdb-id is empty")
     ap.add_argument("--out", type=Path, required=True)
     a = ap.parse_args()
+    if not a.pdb_id.strip():
+        if a.upload is None:
+            raise SystemExit("pdb_id is empty and no structure was uploaded.")
+        a.out.parent.mkdir(parents=True, exist_ok=True)
+        shutil.copyfile(a.upload, a.out)
+        print(f"Using uploaded structure {a.upload} -> {a.out}")
+        return
     url = pdb_url(a.pdb_id)
     fetch(url, a.out)
     print(f"Downloaded {url} -> {a.out}")

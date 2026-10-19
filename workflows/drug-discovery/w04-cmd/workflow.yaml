@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: cMD Replicas (AMBER)
+name: Conventional MD Replicas (AMBER)
 
 # PDB -> protonated, solvated system (optionally with a GAFF2 ligand) -> N
 # replicas of a 10-step equilibration + chunked production on GPUs ->
@@ -19,9 +19,10 @@ name: cMD Replicas (AMBER)
 # bakes them into each replica's mdin files and protocol.json).
 
 # --- reusable blocks -------------------------------------------------------
-# Cluster-specific parts: these target anchors plus the amber_env dropdown.
-# Fill in partition/account for your site, or save these blocks as tc-os
-# library items per cluster. A bare `mem` number is MB to Slurm.
+# Every task runs on *local and carries `resources` hints, which size
+# auto-provisioned targets. On a Slurm cluster, fill in partition/account
+# below and point the tasks at *cpu / *gpu_equilibrate / *gpu_produce
+# instead. A bare `mem` number is MB to Slurm.
 _cpu: &cpu
   kind: slurm
   inner:
@@ -65,15 +66,14 @@ _shell: &shell
 
 # Preparation and analysis tools (AmberTools: pdb4amber, tleap, antechamber,
 # parmchk2, parmed, cpptraj; PROPKA; Open Babel) come from one conda-forge
-# environment, built on the cluster the first time a block needs it and
-# reused afterwards: environment_dir is absolute so every task and run shares
-# it. Set both paths per site (below: picard, where Miniconda lives on the
-# gorn1 nodes' /shared mount). Only pmemd.cuda (equilibrate/produce) still
-# comes from the cluster's AMBER module (amber_env).
+# environment, built the first time a block needs it and reused afterwards
+# (one env next to the run folders). On a cluster, point `conda` at the
+# site's conda and `environment_dir` at an absolute shared path. Only
+# pmemd.cuda (equilibrate/produce) comes from AMBER itself (amber_env).
 _tools: &tools
   kind: conda_python_environment
-  conda: /shared/software/easybuild/x86_64/software/Miniconda3/23.10.0-1/bin/conda # <- set per site
-  environment_dir: /scratch/molbiomed/soft/w04-cmd-ambertools # <- set per site (absolute = shared)
+  conda: micromamba # <- or the site's conda/mamba
+  environment_dir: "../../.horus_ambertools_env" # <- absolute path to share across runs
   channels: [conda-forge]
   python_version: "3.11"
   conda_requirements: [ambertools=26, propka=3.5, openbabel=3.2]
@@ -85,11 +85,20 @@ artifacts:
   # --- 1. structure and ligand ----------------------------------------------
   - id: pdb_id
     name: PDB ID
-    description: Four-character RCSB ID for fetch_pdb. Must have a
-      PDB-format file (very large entries are mmCIF-only).
+    description: Four-character RCSB ID to fetch (must have a PDB-format
+      file; very large entries are mmCIF-only). Empty = use the uploaded
+      structure.
     kind: string
     path: values/pdb_id
     value: 3HTB
+    pattern: '([0-9][A-Za-z0-9]{3})?'
+
+  - id: structure_upload
+    name: Structure (PDB upload)
+    description: PDB used when the PDB ID is empty. Default 1AKI (lysozyme,
+      no ligand; use with the protein-only build).
+    kind: file
+    path: examples/1aki.pdb
 
   - id: ligand_resname
     name: Ligand residue name
@@ -111,6 +120,9 @@ artifacts:
     kind: number
     path: values/ligand_charge
     value: 0
+    min: -5
+    max: 5
+    step: 1
 
   - id: protonate_ligand
     name: Protonate ligand at pH
@@ -157,6 +169,9 @@ artifacts:
     kind: number
     path: values/ph
     value: 7.0
+    min: 0
+    max: 14
+    step: 0.1
 
   - &forcefield
     id: forcefield
@@ -200,6 +215,9 @@ artifacts:
     kind: number
     path: values/padding
     value: 12.0
+    min: 8
+    max: 20
+    step: 0.5
 
   - id: salt_mM
     name: Salt (mM NaCl)
@@ -207,6 +225,9 @@ artifacts:
     kind: number
     path: values/salt_mM
     value: 150
+    min: 0
+    max: 1000
+    step: 10
 
   - id: hmr
     name: Hydrogen mass repartitioning
@@ -219,13 +240,15 @@ artifacts:
   - &amber_env
     id: amber_env
     name: AMBER environment
-    description: Shell line that puts pmemd.cuda on PATH on the cluster
-      (equilibrate/produce). Preparation and analysis tools come from the
+    description: Shell line that puts pmemd.cuda (licensed AMBER) on PATH
+      for equilibrate/produce; "Already on PATH" when the GPU node has it. Preparation and analysis tools come from the
       conda environment instead.
     kind: choice
     path: values/amber_env
-    value: ml Amber/24-foss-2023a-AmberTools-24-CUDA-11.8.0
+    value: ":"
     options:
+      - value: ":"
+        label: Already on PATH
       - value: ml Amber/24-foss-2023a-AmberTools-24-CUDA-11.8.0
         label: Picard
       - value: module load amber/24
@@ -240,12 +263,18 @@ artifacts:
     kind: number
     path: values/n_replicas
     value: 3
+    min: 1
+    max: 20
+    step: 1
 
   - id: temperature
     name: Temperature (K)
     kind: number
     path: values/temperature
     value: 300
+    min: 250
+    max: 400
+    step: 1
 
   - id: length_ns
     name: Production length (ns)
@@ -253,6 +282,9 @@ artifacts:
     kind: number
     path: values/length_ns
     value: 200
+    min: 1
+    max: 2000
+    step: 1
 
   - id: timestep_fs
     name: Timestep (fs)
@@ -260,6 +292,9 @@ artifacts:
     kind: number
     path: values/timestep_fs
     value: 0
+    min: 0
+    max: 4
+    step: 1
 
   - &prod_ensemble
     id: prod_ensemble
@@ -279,12 +314,18 @@ artifacts:
     kind: number
     path: values/chunk_ns
     value: 10
+    min: 1
+    max: 100
+    step: 1
 
   - id: save_every_ps
     name: Save frame every (ps)
     kind: number
     path: values/save_every_ps
     value: 10
+    min: 1
+    max: 1000
+    step: 1
 
   - id: write_solvent
     name: Save solvent in trajectories
@@ -301,6 +342,9 @@ artifacts:
     kind: number
     path: values/equil_scale
     value: 1.0
+    min: 0.01
+    max: 10
+    step: 0.01
 
   - id: restraint_scale
     name: Restraint strength scale
@@ -309,6 +353,9 @@ artifacts:
     kind: number
     path: values/restraint_scale
     value: 1.0
+    min: 0
+    max: 10
+    step: 0.1
 
   - id: restraint_mask
     name: Solute restraint mask
@@ -323,24 +370,36 @@ artifacts:
     kind: number
     path: values/heat_start_k
     value: 100
+    min: 0
+    max: 300
+    step: 1
 
   - id: cutoff
     name: Nonbonded cutoff (Å)
     kind: number
     path: values/cutoff
     value: 9.0
+    min: 8
+    max: 12
+    step: 0.5
 
   - id: gamma_ln
     name: Langevin collision frequency (ps⁻¹)
     kind: number
     path: values/gamma_ln
     value: 3.0
+    min: 0.5
+    max: 10
+    step: 0.5
 
   - id: pressure_bar
     name: Pressure (bar)
     kind: number
     path: values/pressure_bar
     value: 1.0
+    min: 0.5
+    max: 10
+    step: 0.5
 
   - id: seed
     name: Random seed
@@ -349,6 +408,9 @@ artifacts:
     kind: number
     path: values/seed
     value: -1
+    min: -1
+    max: 2147483647
+    step: 1
 
   # --- 3. analysis ----------------------------------------------------------------
   - id: analysis_stride
@@ -357,6 +419,9 @@ artifacts:
     kind: number
     path: values/analysis_stride
     value: 1
+    min: 1
+    max: 100
+    step: 1
 
   - id: n_clusters
     name: Clusters
@@ -364,6 +429,9 @@ artifacts:
     kind: number
     path: values/n_clusters
     value: 5
+    min: 0
+    max: 20
+    step: 1
 
   # --- helper scripts (copied to the cluster) ---------------------------------
   - id: parameterize_ligand_script
@@ -408,11 +476,12 @@ artifacts:
 tasks:
   - kind: horus_task
     id: fetch_pdb
-    name: 1a. Fetch PDB
-    description: Downloads the structure from RCSB. To use your own PDB,
-      delete this block and connect a file artifact to the build block.
+    name: 1a. Fetch or upload structure
+    description: Downloads the structure from RCSB, or copies the uploaded
+      PDB when the PDB ID is empty.
     inputs:
       - {id: pdb_id_in, kind: string, path: values/pdb_id}
+      - {id: structure_upload_in, kind: file, path: examples/1aki.pdb}
     outputs:
       - {id: structure, name: Structure, kind: file, path: structure/structure.pdb}
     executor: *shell
@@ -420,7 +489,7 @@ tasks:
       kind: python_script
       script: scripts/fetch_pdb.py
       python: python3
-      args: --pdb-id=${pdb_id_in} --out ${structure}
+      args: --pdb-id=${pdb_id_in} --upload ${structure_upload_in} --out ${structure}
     target: *local
     skip_if_complete: true
 
@@ -472,7 +541,8 @@ tasks:
         --resname=${ligand_resname_in} --charge=${ligand_charge_in}
         --ph ${ph_in} --protonate ${protonate_ligand_in}
         --out-mol2 ${ligand_mol2} --out-frcmod ${ligand_frcmod}
-    target: *cpu
+    resources: {cpus: 2, memory_gb: 8, walltime: "01:00:00"}
+    target: *local
     skip_if_complete: true
 
   - kind: horus_task
@@ -515,7 +585,8 @@ tasks:
         --padding ${padding_in} --salt-mM ${salt_mM_in} --hmr ${hmr_in}
         --out-prmtop ${system_prmtop} --out-inpcrd ${system_inpcrd}
         --out-pdb ${system_pdb} --out-report ${system_report}
-    target: *cpu
+    resources: {cpus: 2, memory_gb: 8, walltime: "01:00:00"}
+    target: *local
     skip_if_complete: true
 
   # Protein-only alternative to build_complex. In this default (ligand)
@@ -555,7 +626,8 @@ tasks:
         --padding ${padding_in} --salt-mM ${salt_mM_in} --hmr ${hmr_in}
         --out-prmtop ${protein_prmtop} --out-inpcrd ${protein_inpcrd}
         --out-pdb ${protein_pdb} --out-report ${protein_report}
-    target: *cpu
+    resources: {cpus: 2, memory_gb: 8, walltime: "01:00:00"}
+    target: *local
     skip_if_complete: true
 
   - kind: horus_task
@@ -647,15 +719,19 @@ tasks:
         kind: folder
         path: equilibrated_out/
     executor: *shell
-    target: *gpu_equilibrate
+    target: *local
     runtime:
       kind: command
       command: >-
         cp -r ${slot}/. ${equilibrated}/ &&
         . ${equilibrated}/amber.sh &&
         bash ${equilibrated}/equilibrate.sh ${equilibrated}
+    # 15 ns at equil_scale=1, ~2 h for the 18k-atom example on one GPU.
     resources:
+      cpus: 4
       gpus: 1
+      memory_gb: 16
+      walltime: "05:00:00"
 
   - kind: horus_map
     id: produce
@@ -679,14 +755,18 @@ tasks:
         kind: folder
         path: produced_out/
     executor: *shell
-    target: *gpu_produce
+    target: *local
     runtime:
       kind: command
       command: >-
         . ${slot}/amber.sh &&
         bash ${slot}/production.sh ${slot} ${slot}/preprod ${produced}
+    # Scales with length_ns; 10 days covers the 200 ns default.
     resources:
+      cpus: 4
       gpus: 1
+      memory_gb: 16
+      walltime: "10-00:00:00"
 
   - kind: horus_map
     id: analyze
@@ -708,7 +788,8 @@ tasks:
         kind: folder
         path: analyzed_out/
     executor: *tools
-    target: *cpu
+    resources: {cpus: 4, memory_gb: 16, walltime: "04:00:00"}
+    target: *local
     runtime:
       kind: command
       command: >-
@@ -735,11 +816,13 @@ tasks:
         python3 ${report_script_in} --analyses ${analyzed_in}
         --n-clusters ${n_clusters_in}
         --out "$(dirname ${report_html})"
-    target: *cpu
+    resources: {cpus: 2, memory_gb: 8, walltime: "01:00:00"}
+    target: *local
 
 edges:
   # structure and ligand
   - {source: artifact-pdb_id, source_output: pdb_id, target: fetch_pdb, target_input: pdb_id_in}
+  - {source: artifact-structure_upload, source_output: structure_upload, target: fetch_pdb, target_input: structure_upload_in}
   - {source: fetch_pdb, source_output: structure, target: extract_ligand, target_input: structure_in}
   - {source: artifact-ligand_resname, source_output: ligand_resname, target: extract_ligand, target_input: ligand_resname_in}
   - {source: artifact-ligand_chain, source_output: ligand_chain, target: extract_ligand, target_input: ligand_chain_in}
