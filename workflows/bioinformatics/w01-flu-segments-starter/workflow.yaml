@@ -18,6 +18,26 @@ artifacts:
     kind: file
     path: examples/metadata.csv
 
+  - id: max_n_frac
+    name: Max N / ambiguous fraction
+    description: A segment fails QC when more than this fraction of its bases are not A/C/G/T.
+    kind: number
+    path: params/max_n_frac.txt
+    value: 0.01
+    min: 0
+    max: 0.5
+    step: 0.005
+
+  - id: len_tolerance
+    name: Length tolerance
+    description: Widens each segment's expected length range by this fraction (0.05 = 5 %).
+    kind: number
+    path: params/len_tolerance.txt
+    value: 0
+    min: 0
+    max: 0.5
+    step: 0.01
+
 tasks:
   # TASK 1 -- shell executor: runs the script with the host's python3 (stdlib only).
   # `${id}` in `args` expands to the path of the input/output artifact with that id.
@@ -54,7 +74,7 @@ tasks:
     target:
       kind: local
 
-  # TASK 2 -- QC thresholds are plain CLI flags in `args`: edit and re-run.
+  # TASK 2 -- QC thresholds come from the max_n_frac / len_tolerance inputs.
   - kind: horus_task
     id: qc_segments
     name: QC segments
@@ -65,6 +85,14 @@ tasks:
         name: Per-sample FASTA files
         kind: folder
         path: results/samples/
+      - id: max_n_frac
+        name: Max N / ambiguous fraction
+        kind: number
+        path: params/max_n_frac.txt
+      - id: len_tolerance
+        name: Length tolerance
+        kind: number
+        path: params/len_tolerance.txt
     outputs:
       - id: qc
         name: QC table
@@ -76,7 +104,7 @@ tasks:
       kind: python_script
       script: scripts/qc_segments.py
       python: python3 # stdlib-only
-      args: --samples-dir ${samples} --out ${qc} --max-n-frac 0.01
+      args: --samples-dir ${samples} --out ${qc} --max-n-frac ${max_n_frac} --len-tolerance ${len_tolerance}
     target:
       kind: local
 
@@ -172,6 +200,8 @@ edges:
   - {source: qc_segments, source_output: qc, target: summary_report, target_input: qc}
   - {source: translate_cds, source_output: proteins_csv, target: summary_report, target_input: proteins_csv}
   - {source: artifact-metadata, source_output: metadata, target: summary_report, target_input: metadata}
+  - {source: artifact-max_n_frac, source_output: max_n_frac, target: qc_segments, target_input: max_n_frac}
+  - {source: artifact-len_tolerance, source_output: len_tolerance, target: qc_segments, target_input: len_tolerance}
 
 orchestrator_target:
   kind: local
