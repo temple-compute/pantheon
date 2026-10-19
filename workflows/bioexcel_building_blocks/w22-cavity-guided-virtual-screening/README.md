@@ -1,6 +1,12 @@
 # W-30 · Cavity-Guided Virtual Screening
 
+<img src="assets/logo.png" width="96" align="right" alt="W-30 logo">
+
+Find the most druggable cavity of a receptor with fpocket, box it, and dock a ligand library into it with AutoDock Vina as a parallel map, ranked by affinity.
+
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel--building--blocks-blue)
+
+![W-30 cover](assets/cover.png)
 
 ## Overview
 
@@ -20,7 +26,7 @@ concurrent clone per batch.
 It needs HPC for the same reason every screen does: docking is embarrassingly
 parallel and linear in library size. The bundled 8-ligand example runs in about
 two minutes on a laptop; a 100k-compound library is a cluster job, and the only
-thing that changes is `--batch-size` and the clones' `target:`.
+thing that changes is `batch_size` and the clones' `target:`.
 
 ## Quick start
 
@@ -40,7 +46,7 @@ uv run horus run workflow.yaml
 
 | Stage | Task(s) | Executor | Concurrency | Est. walltime (example) |
 |---|---|---|---|---|
-| Receptor fetch + prep | `fetch_pdb`, `extract_protein`, `str_check_add_hydrogens` | conda | serial | ~10 s |
+| Receptor fetch/upload + prep | `fetch_pdb`, `extract_protein`, `str_check_add_hydrogens` | conda | serial | ~10 s |
 | Cavity detection | `fpocket_run`, `fpocket_filter` | docker | serial | ~50 s |
 | Pocket selection | `select_pocket`, `fpocket_select`, `box` | conda + docker | serial | ~5 s |
 | Library split | `split_ligands` | conda | serial | <1 s |
@@ -52,7 +58,7 @@ which is why the split is where the batch-size dial lives.
 
 ## Tools & Dependencies
 
-- **horus-runtime** ≥ 0.2.1 (the `map:` construct), **horus-environments**, **horus-docker**
+- **horus-runtime** ≥ 0.8.0 (`horus_map`), **horus-environments**, **horus-docker**
 - **BioBB blocks**: `biobb_io.pdb`, `biobb_structure_utils.extract_molecule`,
   `biobb_structure_utils.str_check_add_hydrogens`, `biobb_vs.fpocket_run`,
   `biobb_vs.fpocket_filter`, `biobb_vs.fpocket_select`, `biobb_vs.utils.box`,
@@ -80,9 +86,9 @@ fetch_pdb ─► extract_protein ─┬─► fpocket_run ─► fpocket_filter 
                                                                                                        │
                                                                                      ligand_batches/batch_NNN/
                                                                                                        ▼
-                                                                        dock[00..NN]  (map: N concurrent clones)
+                                                                        dock[00..NN]  (horus_map: N concurrent clones)
                                                                                                        │
-                                                                                         dock.gathered/<i>/
+                                                                                       results/docked/<slot>/
                                                                                                        ▼
                                                                                                      rank
 ```
@@ -95,23 +101,47 @@ its pocket only through `--config`, so `select_pocket` writes
 it to `fpocket_select`. A task producing its downstream neighbour's config is how
 a runtime-chosen value reaches a CLI with no flag for it.
 
-**Shared data rides inside each map slice.** A map clone cannot receive an edge —
-every edge `MapExpander` creates is ordering-only, and the only inputs a clone
-gets are its slice and its index. So `split_ligands` takes the prepared receptor
-and the docking box as real inputs and copies both into every `batch_NNN/`
-folder. Each clone is then self-contained and target-agnostic. Pointing clones at
-the prep tasks' run-directory paths instead would work only while every clone
-shares one filesystem.
+**Shared data rides inside each map slice.** `split_ligands` copies the prepared
+receptor and the docking box into every `batch_NNN/` folder, so each clone is
+self-contained and target-agnostic: on an auto-provisioned or remote target it
+only needs its own slice.
 
-To move docking onto a cluster, give the `map.template` a `target:` (e.g.
-`slurm_target`) and a `resources:` block; nothing else in the DAG changes.
+To move docking onto a cluster, give the `dock` map a `target:` (e.g. a Slurm
+target); its `resources:` block already sizes each clone. Nothing else in the DAG changes.
+
+## Inputs
+
+Root artifacts in `workflow.yaml`; tc-os shows them in the campaign form.
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `pdb_id` | string | 3HEC | PDB ID, or empty | 4-character PDB code to download (default 3HEC). Leave empty to use the uploaded receptor instead. |
+| `structure` | file | `examples/3hec.pdb` | PDB | PDB file used when pdb_id is empty. Default: 3HEC from the RCSB PDB. |
+| `ligand_library` | file | `examples/ligands.sdf` | SDF | SDF (or SMILES) library of candidate ligands to screen against the receptor. |
+| `rank_by` | choice | druggability_score | `druggability_score`, `score`, `volume` | fpocket metric used to pick the cavity to dock into. |
+| `batch_size` | number | 2 | 1–500, step 1 | Ligands docked by each parallel clone. |
+| `exhaustiveness` | number | 8 | 1–64, step 1 | AutoDock Vina search exhaustiveness per ligand. |
+| `top_n` | number | 10 | 1–1000, step 1 | Best-ranked ligands whose poses are written to results/poses/. |
+
+Expert settings stay in the biobb property files under `configs/`.
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes
+`params/<id>.txt` only when it is missing and fingerprints that file for the skip check.
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: give a PDB ID
+(default 3HEC) or clear it and upload a receptor, upload the ligand library (SDF or SMILES),
+and set the cavity ranking metric, ligands per batch, Vina exhaustiveness and the number
+of poses to keep. Each docking clone carries a `resources` hint (2 CPU, 4 GB, 1 h) and up
+to 8 run at once, so an auto-provisioned target sizes one general-purpose machine for
+the map; raise `max_concurrency` on `dock` for larger libraries.
 
 ## Input / Output
 
 **Input**
 
-- `configs/fetch_pdb.yaml` — the PDB code to screen against (default `3HEC`, p38α)
-- `examples/ligands.sdf` — the ligand library; 8 ZINC compounds are bundled.
+- `pdb_id` — the PDB code to screen against (default `3HEC`, p38α); clear it to use the uploaded `structure` instead
+- `ligand_library` — the ligand library (default `examples/ligands.sdf`, 8 ZINC compounds).
   `.smi` (`SMILES [name]`, one per line) works too, dispatched on extension.
 - `configs/*.yaml` — one per BioBB step
 
@@ -124,7 +154,7 @@ To move docking onto a cluster, give the `map.template` a `target:` (e.g.
 - `results/poses/<ligand>_poses.pdb` — the top-K poses as PDB
 - `results/pocket_report.json` — every candidate cavity, which survived
   filtering, and why the winner won
-- `dock.gathered/<i>/` — one slot per clone, with that batch's PDBQT outputs,
+- `results/docked/<slot>/` — one slot per clone, with that batch's PDBQT outputs,
   Vina logs, and `status.json`
 
 Bundled example result: pocket 1 selected (druggability 0.876), 8/8 ligands
@@ -134,17 +164,17 @@ docked, best affinity −5.157 kcal/mol (`ZINC000004204034_0`).
 
 | What | Where |
 |---|---|
-| Target receptor | `configs/fetch_pdb.yaml` → `pdb_code` |
-| Ligand library | `examples/ligands.sdf`, or repoint the `ligand_library` artifact |
-| **Parallelism** | `split_ligands` task → `--batch-size` (ligands per clone) |
-| Docking accuracy/speed | `dock` template → `--exhaustiveness` (4 fast, 8 default, 32 thorough), `--cpu` |
+| Target receptor | `pdb_id`, or `structure` upload |
+| Ligand library | `ligand_library` upload (default `examples/ligands.sdf`) |
+| **Parallelism** | `batch_size` (ligands per clone); `dock` → `max_concurrency` (clones at once, 8) |
+| Docking accuracy/speed | `exhaustiveness` (4 fast, 8 default, 32 thorough); Vina `--cpu` follows the `dock` `resources.cpus` (2) |
 | Cavity filter windows | `configs/fpocket_filter.yaml` |
-| Which pocket wins | `select_pocket` task → `--rank-by` (`druggability_score`, `score`, `volume`) |
+| Which pocket wins | `rank_by` (`druggability_score`, `score`, `volume`) |
 | Restrict to a known site | `select_pocket` task → `--residue-selection` (MDAnalysis syntax, e.g. `"resid 37 or resid 49"`) + `--distance-threshold` |
 | Box size | `configs/box.yaml` → `offset` |
-| How many poses | `rank` task → `--top` (0 = every ligand) |
+| How many poses | `top_n` |
 
-`--batch-size` is the dial that matters. It trades clone count against per-clone
+`batch_size` is the dial that matters. It trades clone count against per-clone
 environment start-up: one clone per ligand maximises parallelism and per-ligand
 resume granularity, but pays an env activation per ligand.
 
@@ -169,7 +199,7 @@ resume granularity, but pays an env activation per ligand.
   and that id becomes its directory name. BioBB stages files into a sandbox under
   the current directory and shells out unquoted, so a bracketed path is treated
   as a glob, matches nothing, and fails with `zsh:1: no matches found`. The
-  script runs from `dock.gathered/<i>/work/` instead, which is bracket-free.
+  script runs from `results/docked/<slot>/work/` instead, which is bracket-free.
   This is a workaround for an engine-level issue, not a BioBB quirk — any map
   workflow whose tasks shell out will hit it.
 - **Ranking parses `REMARK VINA RESULT` directly**, taking only the first match

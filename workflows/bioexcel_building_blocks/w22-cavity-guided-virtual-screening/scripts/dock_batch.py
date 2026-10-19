@@ -113,7 +113,7 @@ def run(args: argparse.Namespace) -> dict:
     # files into a sandbox under the *current* directory and shells out to
     # obabel/vina through an unquoted shell command, so a bracketed path makes
     # the shell treat it as a glob, match nothing, and fail with
-    # "zsh:1: no matches found". `work` sits under dock.gathered/<i>/, which
+    # "zsh:1: no matches found". `work` sits under results/docked/<slot>/, which
     # has no brackets, so every path BioBB constructs is shell-safe.
     import os  # noqa: PLC0415 - only needed for this workaround
 
