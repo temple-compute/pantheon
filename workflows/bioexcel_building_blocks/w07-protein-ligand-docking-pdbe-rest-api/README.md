@@ -1,6 +1,12 @@
-# W-12 · Protein-Ligand Docking (PDBe REST-API Binding Site)
+# W-12 · Protein-Ligand Docking with PDBe Binding Sites
+
+<img src="assets/logo.png" width="96" align="right" alt="W-12 logo">
+
+Dock a ligand into the binding site PDBe annotates for a chosen ligand of your receptor: give a PDB ID and a site ligand, dock a ligand by code or SDF upload with AutoDock Vina.
 
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel-green)
+
+![W-12 cover](assets/cover.png)
 
 ## Overview
 
@@ -9,15 +15,17 @@ This workflow performs structure-based virtual screening of a single ligand agai
 ## Pipeline
 
 ```
-download_pdb                Download 3LFA structure from PDB (protein + ligand complex)
+download_pdb                Download pdb_id (default 3LFA) from the PDB (protein + ligand complex)
    │
    ├─ extract_protein         Extract protein chain (remove ligands, water, ions)
    │
    ├─ get_binding_sites       Query PDBe REST-API for binding sites (residues.json)
    │
-   └─ generate_cavity_box     Generate docking box around selected binding site cavity
+   ├─ select_binding_site     Pick the PDBe site of site_ligand (scripts/select_site.py)
+   │
+   └─ generate_cavity_box     Generate docking box around those residues
          │
-download_ligand_sdf          Download Dasatinib (1N1) ideal SDF from PDBe
+download_ligand_sdf          Download ligand_code (default 1N1, dasatinib) as SDF, or use the upload
    │
 convert_sdf_to_pdb            Convert ligand SDF to PDB format (OpenBabel)
    │
@@ -56,11 +64,25 @@ uv run horus run workflow.yaml
 
 The first run builds the conda environment (this takes a few minutes). Subsequent runs reuse the cached environment at `../.horus_conda_env`.
 
+## Inputs
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `pdb_id` | string | `3LFA` | PDB code or empty | RCSB PDB code of the receptor (default 3LFA, p38 MAP kinase). Required: the binding sites come from the PDBe annotations of this entry. |
+| `site_ligand` | string | `1N1` | `[A-Za-z0-9]{1,3}` | Ligand whose PDBe-annotated binding site defines the docking box (default 1N1, dasatinib); the run fails with the list of available sites if this entry has none for it. |
+| `ligand_code` | string | `1N1` | `([A-Za-z0-9]{1,3})?` | PDB Chemical Component code of the ligand to dock, downloaded as an idealized SDF (default 1N1, dasatinib). Clear it to dock the uploaded ligand instead. |
+| `ligand_sdf` | file | `examples/1n1_ideal.sdf` | SDF | 3D ligand structure used when the ligand code is empty. Default: examples/1n1_ideal.sdf (dasatinib). |
+| `box_offset_a` | number | `12` | 2–30, step 1 | Extra space added around the binding-site residues on each side of the docking box. |
+
+The receptor must be a PDB entry: its binding sites come from the PDBe REST API by `pdb_id`, so there is no receptor upload here (W-13 takes an uploaded receptor). `select_binding_site` picks the PDBe site of `site_ligand` from `residues.json`; when the entry has none for it, the run stops and lists the ligands it does have sites for. `ligand_code` wins when set; clear it to dock the uploaded `ligand_sdf` (any 3D SDF; it is converted to PDBQT with OpenBabel).
+
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes `params/<id>.txt` only when it is missing and fingerprints that file for the skip check, so a stale file keeps the old value. In Temple Compute, set it in the campaign form.
+
 ## Inputs / Outputs
 
-This workflow has no file inputs — it fetches the 3LFA receptor and the Dasatinib (1N1) ligand automatically, and queries the PDBe REST API directly for binding-site annotations.
+By default it fetches the 3LFA receptor and the dasatinib (1N1) ligand and queries the PDBe REST API for binding-site annotations; see Inputs to change them or upload a ligand.
 
-> **Note:** `configs/generate_cavity_box.yaml` ships with an empty `resid_list`. The binding-site residue indices are only known after `get_binding_sites` runs and `results/residues.json` can be inspected — populate `resid_list` with the residues for your chosen cavity before (re-)running `generate_cavity_box`. This is a manual, two-pass step inherited from the original tutorial notebook.
+The original tutorial picks the binding-site residues by hand after a first pass. Here `select_binding_site` (`scripts/select_site.py`, stdlib, `--selftest`) takes the site of `site_ligand` from `residues.json` and writes the `box_residues` config, so the workflow runs in one pass.
 
 **Outputs** (all under `workflow_results/results/`):
 - `download.pdb`, `pdb_protein.pdb` — fetched receptor structure
@@ -74,12 +96,14 @@ This workflow has no file inputs — it fetches the 3LFA receptor and the Dasati
 
 ## Configuration
 
-- `configs/download_pdb.yaml`, `configs/get_binding_sites.yaml` — target PDB code (3LFA)
-- `configs/generate_cavity_box.yaml` — binding-site residue selection (`resid_list`) and box offset
-- `configs/download_ligand_sdf.yaml` — ligand code (1N1)
+- PDB ID, site ligand, docking ligand and box padding are workflow inputs (see Inputs); the residue list comes from `select_binding_site`
 - `configs/convert_sdf_to_pdb.yaml`, `configs/prepare_ligand_pdbqt.yaml`, `configs/convert_pose_to_pdb.yaml` — OpenBabel format conversion options
 - `configs/prepare_receptor_pdbqt.yaml` — receptor protonation settings
 - `configs/extract_docking_pose.yaml` — which Vina pose to extract
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: the form shows the receptor PDB ID, the site ligand, the ligand code or SDF upload (with a Mol* preview) and the box padding. AutoDock Vina carries a `resources` hint (8 CPU / 16 GB, 2 h), so an auto-provisioned target picks an 8-core node; the other steps take seconds. Several steps run in the `biobb_vs` Docker image, so the target needs Docker. Expert settings (OpenBabel conversions, protonation, pose to extract) stay in `configs/*.yaml`, which also show up as editable file inputs.
 
 ## References
 

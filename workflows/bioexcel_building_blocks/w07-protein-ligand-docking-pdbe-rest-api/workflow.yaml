@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: Virtual Screening - Protein-Ligand Docking via EBI PDBe API (p38-alpha / Dasatinib)
+name: Protein-Ligand Docking with PDBe Binding Sites
 
 _executor: &executor
   kind: conda_python_environment
@@ -12,6 +12,37 @@ _docker_executor: &docker_executor
   image: quay.io/biocontainers/biobb_vs:5.2.1--pyhdfd78af_0
 
 artifacts:
+  - id: pdb_id
+    name: PDB ID
+    description: 'RCSB PDB code of the receptor (default 3LFA, p38 MAP kinase). Required: the binding sites come from the PDBe annotations of this entry.'
+    kind: string
+    path: params/pdb_id.txt
+    value: 3LFA
+    pattern: '[0-9][A-Za-z0-9]{3}'
+    min_length: 4
+    max_length: 4
+  - id: site_ligand
+    name: Site ligand code
+    description: Ligand whose PDBe-annotated binding site defines the docking box (default 1N1, dasatinib); the run fails with the list of available sites if this entry has none for it.
+    kind: string
+    path: params/site_ligand.txt
+    value: 1N1
+    pattern: '[A-Za-z0-9]{1,3}'
+    min_length: 1
+    max_length: 3
+  - id: ligand_code
+    name: Ligand code (PDB CCD)
+    description: PDB Chemical Component code of the ligand to dock, downloaded as an idealized SDF (default 1N1, dasatinib). Clear it to dock the uploaded ligand instead.
+    kind: string
+    path: params/ligand_code.txt
+    value: 1N1
+    pattern: ([A-Za-z0-9]{1,3})?
+    max_length: 3
+  - id: ligand_sdf
+    name: Ligand upload (SDF)
+    description: '3D ligand structure used when the ligand code is empty. Default: examples/1n1_ideal.sdf (dasatinib).'
+    kind: file
+    path: examples/1n1_ideal.sdf
   - id: convert_pose_to_pdb_config
     name: Pose-to-PDB conversion config
     description: OpenBabel options for converting the top docking pose from PDBQT to PDB format.
@@ -24,35 +55,11 @@ artifacts:
     kind: file
     path: configs/convert_sdf_to_pdb.yaml
 
-  - id: download_ligand_sdf_config
-    name: Ligand SDF download config
-    description: Specifies the PDBe ligand code (1N1 / Dasatinib) to fetch the ideal SDF for.
-    kind: file
-    path: configs/download_ligand_sdf.yaml
-
-  - id: download_pdb_config
-    name: PDB download config
-    description: Specifies the PDB code (3LFA) to fetch the receptor structure for.
-    kind: file
-    path: configs/download_pdb.yaml
-
   - id: extract_docking_pose_config
     name: Docking pose extraction config
     description: Specifies which Vina pose (model 1) to extract from the docking output.
     kind: file
     path: configs/extract_docking_pose.yaml
-
-  - id: generate_cavity_box_config
-    name: Cavity box generation config
-    description: Specifies the binding-site residue list and box offset used to build the docking cavity.
-    kind: file
-    path: configs/generate_cavity_box.yaml
-
-  - id: get_binding_sites_config
-    name: Binding site query config
-    description: Specifies the PDB code used to query the PDBe REST API for annotated binding sites.
-    kind: file
-    path: configs/get_binding_sites.yaml
 
   - id: prepare_ligand_pdbqt_config
     name: Ligand PDBQT preparation config
@@ -66,16 +73,25 @@ artifacts:
     kind: file
     path: configs/prepare_receptor_pdbqt.yaml
 
+  - id: box_offset_a
+    name: Box padding (Å)
+    description: Extra space added around the binding-site residues on each side of the docking box.
+    kind: number
+    path: params/box_offset_a.txt
+    value: 12
+    min: 2
+    max: 30
+    step: 1
 tasks:
   - kind: horus_task
     id: download_pdb
     name: Download 3LFA structure from PDB (protein + ligand complex)
     description: Downloads the 3LFA protein-ligand complex structure from the PDB.
     inputs:
-      - id: download_pdb_config
-        name: PDB download config
-        kind: file
-        path: configs/download_pdb.yaml
+      - id: pdb_id
+        name: PDB ID
+        kind: string
+        path: params/pdb_id.txt
     outputs:
       - id: downloaded_pdb
         name: Downloaded PDB structure
@@ -85,9 +101,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        pdb
-        --config ${download_pdb_config}
-        --output_pdb_path ${downloaded_pdb}
+        pdb --config '{"properties":{"pdb_code":"${pdb_id}","filter":["ATOM","HETATM"]}}' --output_pdb_path ${downloaded_pdb}
     target:
       kind: local
 
@@ -120,35 +134,63 @@ tasks:
     name: Query PDBe REST-API for binding sites (residues.json)
     description: Queries the PDBe REST API for annotated ligand-binding site residues of the target structure.
     inputs:
-      - id: get_binding_sites_config
-        name: Binding site query config
-        kind: file
-        path: configs/get_binding_sites.yaml
+      - id: pdb_id
+        name: PDB ID
+        kind: string
+        path: params/pdb_id.txt
     outputs:
       - id: residues_json
         name: Binding site residues
         description: PDBe-annotated binding-site residues for 3LFA; used to populate resid_list in the cavity box config for the next run.
         kind: file
         path: results/residues.json
-    executor: *docker_executor
+    executor: *executor # api_binding_site is biobb_io, not in the biobb_vs image
     runtime:
       kind: command
       command: >-
-        api_binding_site
-        --config ${get_binding_sites_config}
-        --output_json_path ${residues_json}
+        api_binding_site --config '{"properties":{"pdb_code":"${pdb_id}"}}' --output_json_path ${residues_json}
     target:
       kind: local
 
+  - kind: horus_task
+    id: select_binding_site
+    name: Select the binding site of site_ligand
+    description: Picks the PDBe-annotated binding site of site_ligand from residues.json and writes the box_residues config with its residue numbers.
+    inputs:
+      - id: residues_json
+        name: Binding site residues
+        kind: file
+        path: results/residues.json
+      - id: site_ligand
+        name: Site ligand code
+        kind: string
+        path: params/site_ligand.txt
+      - id: box_offset_a
+        name: Box padding (Å)
+        kind: number
+        path: params/box_offset_a.txt
+    outputs:
+      - id: box_config
+        name: Selected binding site (box config)
+        kind: file
+        path: results/box_residues.json
+    executor: *executor
+    runtime:
+      kind: python_script
+      script: scripts/select_site.py
+      args: >-
+        --residues ${residues_json} --ligand ${site_ligand} --offset ${box_offset_a} --out ${box_config}
+    target:
+      kind: local
   - kind: horus_task
     id: generate_cavity_box
     name: Generate docking box around selected binding site cavity
     description: Builds an AutoDock Vina docking box around the selected binding-site cavity residues.
     inputs:
       - id: generate_cavity_box_config
-        name: Cavity box generation config
+        name: Selected binding site (box config)
         kind: file
-        path: configs/generate_cavity_box.yaml
+        path: results/box_residues.json
       - id: downloaded_pdb
         name: Downloaded PDB structure
         kind: file
@@ -171,13 +213,17 @@ tasks:
 
   - kind: horus_task
     id: download_ligand_sdf
-    name: Download Dasatinib (1N1) ideal SDF from PDBe
-    description: Downloads the ideal SDF structure of the Dasatinib (1N1) ligand from PDBe.
+    name: Fetch (ligand code) or load the uploaded ligand
+    description: Downloads the idealized SDF of ligand_code from the PDB Chemical Component Dictionary, or copies the uploaded SDF when the code is empty.
     inputs:
-      - id: download_ligand_sdf_config
-        name: Ligand SDF download config
+      - id: ligand_code
+        name: Ligand code (PDB CCD)
+        kind: string
+        path: params/ligand_code.txt
+      - id: ligand_sdf
+        name: Ligand upload (SDF)
         kind: file
-        path: configs/download_ligand_sdf.yaml
+        path: examples/1n1_ideal.sdf
     outputs:
       - id: sdf_ideal
         name: Ligand ideal SDF
@@ -187,9 +233,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        ideal_sdf
-        --config ${download_ligand_sdf_config}
-        --output_sdf_path ${sdf_ideal}
+        if [ -n ${ligand_code} ]; then ideal_sdf --config '{"properties":{"ligand_code":"${ligand_code}"}}' --output_sdf_path ${sdf_ideal}; else cp ${ligand_sdf} ${sdf_ideal}; fi
     target:
       kind: local
 
@@ -307,6 +351,10 @@ tasks:
         description: Log of the docking run listing binding affinity scores for all generated poses.
         kind: file
         path: results/output_vina.log
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -479,30 +527,10 @@ edges:
     target: convert_sdf_to_pdb
     target_input: convert_sdf_to_pdb_config
 
-  - source: artifact-download_ligand_sdf_config
-    source_output: download_ligand_sdf_config
-    target: download_ligand_sdf
-    target_input: download_ligand_sdf_config
-
-  - source: artifact-download_pdb_config
-    source_output: download_pdb_config
-    target: download_pdb
-    target_input: download_pdb_config
-
   - source: artifact-extract_docking_pose_config
     source_output: extract_docking_pose_config
     target: extract_docking_pose
     target_input: extract_docking_pose_config
-
-  - source: artifact-generate_cavity_box_config
-    source_output: generate_cavity_box_config
-    target: generate_cavity_box
-    target_input: generate_cavity_box_config
-
-  - source: artifact-get_binding_sites_config
-    source_output: get_binding_sites_config
-    target: get_binding_sites
-    target_input: get_binding_sites_config
 
   - source: artifact-prepare_ligand_pdbqt_config
     source_output: prepare_ligand_pdbqt_config
@@ -515,6 +543,38 @@ edges:
     target_input: prepare_receptor_pdbqt_config
 
 
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: download_pdb
+    target_input: pdb_id
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: get_binding_sites
+    target_input: pdb_id
+  - source: artifact-ligand_code
+    source_output: ligand_code
+    target: download_ligand_sdf
+    target_input: ligand_code
+  - source: artifact-ligand_sdf
+    source_output: ligand_sdf
+    target: download_ligand_sdf
+    target_input: ligand_sdf
+  - source: artifact-site_ligand
+    source_output: site_ligand
+    target: select_binding_site
+    target_input: site_ligand
+  - source: artifact-box_offset_a
+    source_output: box_offset_a
+    target: select_binding_site
+    target_input: box_offset_a
+  - source: get_binding_sites
+    source_output: residues_json
+    target: select_binding_site
+    target_input: residues_json
+  - source: select_binding_site
+    source_output: box_config
+    target: generate_cavity_box
+    target_input: generate_cavity_box_config
 orchestrator_target:
   kind: local
   working_directory: "./workflow_results"

@@ -1,5 +1,0 @@
-properties:
-  pdb_code: 3LFA
-  filter:
-    - ATOM
-    - HETATM
