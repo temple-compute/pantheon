@@ -17,7 +17,7 @@ cavity's alpha spheres against the centre of mass of a residue selection and
 keeps the cavities within a distance threshold.
 
 Everything lands in a single output folder, which the engine pins at
-``analyze.gathered/<i>/`` for the ``summarize`` task to read.
+``results/analyzed/<slot>/`` for the ``summarize`` task to read.
 
 Like the docking clone in W-28, this script tolerates a per-model failure rather
 than exiting non-zero: horus-runtime has no per-task ``allow_failure``, so a

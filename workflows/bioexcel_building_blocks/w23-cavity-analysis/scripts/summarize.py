@@ -16,7 +16,7 @@ orderings exist because the three metrics disagree, and which one matters
 depends on what the cavity is for.
 
 Usage:
-    summarize.py --results analyze.gathered/ --out results/
+    summarize.py --results results/analyzed/ --out results/
     summarize.py --selftest
 """
 
