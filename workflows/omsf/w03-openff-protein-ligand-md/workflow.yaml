@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: OpenFF Protein-Ligand MD (Toolkit Showcase)
+name: OpenFF Protein-Ligand MD
 
 # One pinned conda env (conda_env.yaml) shared by every task. The path is
 # relative to each task's working dir (<results>/<task-id>/<run-id>), so
@@ -31,104 +31,89 @@ _gpu: &gpu
   extra_sbatch_args: ["--export=ALL,REQUIRE_GPU=1"]
 
 artifacts:
-  - id: protein_url
-    name: Receptor URL
+  - id: receptor
+    name: Prepared receptor (PDB)
     description: >-
-      Prepared receptor PDB (protonated, capped) to download. file:///abs/path
-      works for a local file.
-    kind: string
-    path: params/protein_url.txt
-    value: https://raw.githubusercontent.com/openforcefield/openff-toolkit/0.19.0/examples/toolkit_showcase/5tbm_prepared.pdb
-  - id: ligand_url
-    name: Ligand URL
+      Receptor PDB, protonated and capped, without the ligand. Default:
+      HIF-2a PAS-B (5tbm_prepared.pdb) from the openff-toolkit 0.19.0
+      toolkit_showcase example.
+    kind: file
+    path: examples/5tbm_prepared.pdb
+  - id: ligand
+    name: Ligand pose (SDF)
     description: >-
-      Ligand SDF with explicit hydrogens, posed in the pocket. file:///abs/path
-      works for a local file.
-    kind: string
-    path: params/ligand_url.txt
-    value: https://raw.githubusercontent.com/openforcefield/openff-toolkit/0.19.0/examples/toolkit_showcase/PT2385.sdf
+      Ligand with explicit hydrogens, posed in the pocket. Default: PT2385
+      from the openff-toolkit 0.19.0 toolkit_showcase example.
+    kind: file
+    path: examples/PT2385.sdf
   - id: n_replicas
     name: Replicas
     description: Independent MD replicas (seeds 2026, 2027, ...).
     kind: number
     path: params/n_replicas.txt
     value: 3
+    min: 1
+    max: 100
+    step: 1
   - id: n_steps
     name: MD steps per replica
     description: Production steps per replica (500000 x 2 fs = 1 ns).
     kind: number
     path: params/n_steps.txt
     value: 500000
+    min: 1000
+    max: 50000000
+    step: 1000
   - id: padding_nm
     name: Solvent padding (nm)
     description: Minimum distance from the protein to the box edge.
     kind: number
     path: params/padding_nm.txt
     value: 1.0
+    min: 0.5
+    max: 5
+    step: 0.1
   - id: ionic_strength_molar
     name: NaCl ionic strength (M)
     description: Salt added by PDBFixer on top of neutralizing ions.
     kind: number
     path: params/ionic_strength_molar.txt
     value: 0.15
+    min: 0
+    max: 2
+    step: 0.05
   - id: temperature_k
     name: Temperature (K)
     description: Langevin thermostat and initial velocity temperature.
     kind: number
     path: params/temperature_k.txt
     value: 300
+    min: 250
+    max: 400
+    step: 5
   - id: timestep_fs
     name: Timestep (fs)
     description: Integrator timestep; bonds to hydrogen are constrained.
     kind: number
     path: params/timestep_fs.txt
     value: 2
+    min: 0.5
+    max: 4
+    step: 0.5
   - id: report_interval_steps
     name: Report interval (steps)
     description: Steps between saved frames and log.csv rows (5000 x 2 fs = 10 ps).
     kind: number
     path: params/report_interval_steps.txt
     value: 5000
+    min: 100
+    max: 1000000
+    step: 100
 
 tasks:
   - kind: horus_task
-    id: fetch_inputs
-    name: 1. Fetch receptor and ligand
-    description: Downloads the receptor PDB and ligand SDF (by default
-      5tbm_prepared.pdb, HIF-2a PAS-B, and PT2385.sdf from the openff-toolkit
-      0.19.0 toolkit_showcase example).
-    inputs:
-      - id: protein_url
-        name: Receptor URL
-        kind: string
-        path: params/protein_url.txt
-      - id: ligand_url
-        name: Ligand URL
-        kind: string
-        path: params/ligand_url.txt
-    outputs:
-      - id: receptor
-        name: Prepared receptor
-        kind: file
-        path: inputs/5tbm_prepared.pdb
-      - id: ligand
-        name: Ligand pose
-        kind: file
-        path: inputs/PT2385.sdf
-    executor: *shell
-    runtime:
-      kind: command
-      command: >-
-        mkdir -p "$(dirname ${receptor})" &&
-        curl -fL --retry 3 -o ${receptor}.part ${protein_url}
-        && mv ${receptor}.part ${receptor} &&
-        curl -fL --retry 3 -o ${ligand}.part ${ligand_url}
-        && mv ${ligand}.part ${ligand}
-    target: *local
-
-  - kind: horus_task
     id: build_system
-    name: 2. Solvate and insert ligand
+    name: 1. Solvate and insert ligand
     description: PDBFixer adds a water box (padding_nm) with NaCl
       (ionic_strength_molar), the ligand is inserted and clashing waters are
       removed. Writes an OpenFF Topology.
@@ -136,11 +121,11 @@ tasks:
       - id: receptor
         name: Prepared receptor
         kind: file
-        path: inputs/5tbm_prepared.pdb
+        path: examples/5tbm_prepared.pdb
       - id: ligand
         name: Ligand pose
         kind: file
-        path: inputs/PT2385.sdf
+        path: examples/PT2385.sdf
       - id: padding_nm
         name: Solvent padding (nm)
         kind: number
@@ -157,6 +142,7 @@ tasks:
     resources:
       cpus: 1
       memory_gb: 4
+      walltime: "00:30:00"
     executor: *conda
     runtime:
       kind: python_script
@@ -168,7 +154,7 @@ tasks:
 
   - kind: horus_task
     id: parameterize
-    name: 3. Parameterize (Sage 2.3.0 + ff14SB)
+    name: 2. Parameterize (Sage 2.3.0 + ff14SB)
     description: Applies openff-2.3.0 and ff14sb_off_impropers_0.0.4 with
       Interchange, exports an OpenMM system, and writes n_replicas slots.
     inputs:
@@ -188,6 +174,7 @@ tasks:
     resources:
       cpus: 2
       memory_gb: 4
+      walltime: "00:30:00"
     executor: *conda
     runtime:
       kind: python_script
@@ -200,7 +187,7 @@ tasks:
   # the target to *gpu (one field); nothing else changes.
   - kind: horus_map
     id: simulate
-    name: 4. Run MD per replica (parallel)
+    name: 3. Run MD per replica (parallel)
     description: Minimizes, then runs n_steps of NVT Langevin dynamics at
       temperature_k with a timestep_fs step and writes a DCD trajectory.
     over:
@@ -238,6 +225,7 @@ tasks:
       cpus: 2
       gpus: 1
       memory_gb: 4
+      walltime: "04:00:00"
     executor: *conda
     runtime:
       kind: python_script
@@ -250,7 +238,7 @@ tasks:
 
   - kind: horus_task
     id: analyze
-    name: 5. RMSD and report
+    name: 4. RMSD and report
     description: Protein C-alpha and ligand RMSD per replica (mdtraj), the
       final frame as PDB, and an HTML report with a Mol* view.
     inputs:
@@ -279,6 +267,7 @@ tasks:
     resources:
       cpus: 1
       memory_gb: 4
+      walltime: "00:30:00"
     executor: *conda
     runtime:
       kind: python_script
@@ -289,14 +278,6 @@ tasks:
     target: *local
 
 edges:
-  - source: artifact-protein_url
-    source_output: protein_url
-    target: fetch_inputs
-    target_input: protein_url
-  - source: artifact-ligand_url
-    source_output: ligand_url
-    target: fetch_inputs
-    target_input: ligand_url
   - source: artifact-padding_nm
     source_output: padding_nm
     target: build_system
@@ -305,11 +286,11 @@ edges:
     source_output: ionic_strength_molar
     target: build_system
     target_input: ionic_strength_molar
-  - source: fetch_inputs
+  - source: artifact-receptor
     source_output: receptor
     target: build_system
     target_input: receptor
-  - source: fetch_inputs
+  - source: artifact-ligand
     source_output: ligand
     target: build_system
     target_input: ligand

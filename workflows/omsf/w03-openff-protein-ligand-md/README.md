@@ -1,6 +1,12 @@
 # W-39 · OpenFF Protein-Ligand MD
 
+<img src="assets/logo.png" width="96" align="right" alt="W-39 logo">
+
+Solvate a protein-ligand complex, parameterize it with OpenFF Sage + ff14SB, run independent OpenMM replicas in parallel and report protein and ligand RMSD.
+
 ![Domain: OMSF](https://img.shields.io/badge/domain-omsf-blue)
+
+![W-39 cover](assets/cover.png)
 
 ## Overview
 
@@ -20,11 +26,10 @@ GPU target while everything else stays local.
 
 | Stage | Task | Where | CPU / GPU | Defaults (3 x 1 ns) |
 |---|---|---|---|---|
-| 1 | `fetch_inputs` | local | shell, network | ~1 s |
-| 2 | `build_system` | local | 1 CPU, ~2 GB | 4.5-7.5 min (measured) |
-| 3 | `parameterize` | local | 2 CPU, ~3 GB | 0.5-1 min (measured) |
-| 4 | `simulate` (map, 1 clone per replica) | Slurm GPU (`_gpu` target) | 1 GPU + 2 CPU each | 3 x 1 ns in parallel, a few minutes each on a modern GPU (estimate) |
-| 5 | `analyze` | local | 1 CPU | ~30 s |
+| 1 | `build_system` | local | 1 CPU, ~2 GB | 4.5-7.5 min (measured) |
+| 2 | `parameterize` | local | 2 CPU, ~3 GB | 0.5-1 min (measured) |
+| 3 | `simulate` (map, 1 clone per replica) | Slurm GPU (`_gpu` target) | 1 GPU + 2 CPU each | 3 x 1 ns in parallel, a few minutes each on a modern GPU (estimate) |
+| 4 | `analyze` | local | 1 CPU | ~30 s |
 
 With the defaults the run is meant for one GPU per replica; setup takes
 about 10 min on CPU. The system has about 24,000 atoms. On CPU OpenMM runs
@@ -55,13 +60,14 @@ the four `python_script` tasks would need to become
 ## Horus Configuration
 
 ```
-fetch_inputs ─► build_system ─► parameterize ─► simulate[0..n] ─► analyze
-   curl          PDBFixer +       Interchange     horus_map:        mdtraj RMSD,
-                 OpenFF Topology  system.xml,     OpenMM minimize   Mol* report
+receptor ─┐
+ligand ───┴► build_system ─► parameterize ─► simulate[0..n] ─► analyze
+             PDBFixer +       Interchange     horus_map:        mdtraj RMSD,
+             OpenFF Topology  system.xml,     OpenMM minimize   Mol* report
                                   replicas/<i>/   + Langevin MD
 ```
 
-- All tasks except `fetch_inputs` share one conda env at
+- All tasks share one conda env at
   `horus_workflow_results/.horus_conda_env` (`environment_dir: ../../.horus_conda_env`,
   relative to each task's `<results>/<task-id>/<run-id>` working dir).
 - `parameterize` writes `replicas/<i>/{system.xml,complex.pdb,seed}`; the
@@ -120,10 +126,9 @@ every finished task.
 
 ## Input / Output
 
-**Inputs**: the receptor PDB at `protein_url` and the ligand SDF at
-`ligand_url`, downloaded at run time with `curl` (defaults: `5tbm_prepared.pdb`
-and `PT2385.sdf` from openff-toolkit tag `0.19.0`). `file:///abs/path` URLs
-work, so local files can be used. The receptor must already be prepared
+**Inputs**: the `receptor` PDB and the `ligand` SDF, uploadable in tc-os or
+replaced in `examples/` locally (defaults: `examples/5tbm_prepared.pdb` and
+`examples/PT2385.sdf`, copied from openff-toolkit tag `0.19.0`). The receptor must already be prepared
 (protonated, capped, no missing atoms) and the ligand must have explicit
 hydrogens and a pose in the pocket; the ligand residue is named `UNK`.
 
@@ -142,17 +147,17 @@ Per replica, `horus_workflow_results/trajectories/<i>/` holds `trajectory.dcd`,
 
 Root variables in `workflow.yaml`. Defaults are the production setup.
 
-| id | default | meaning |
-|---|---|---|
-| `protein_url` | openff-toolkit 0.19.0 `toolkit_showcase/5tbm_prepared.pdb` | receptor PDB to download (`file:///abs/path` works) |
-| `ligand_url` | openff-toolkit 0.19.0 `toolkit_showcase/PT2385.sdf` | ligand SDF to download (`file:///abs/path` works) |
-| `n_replicas` | 3 | independent replicas, 1-100 |
-| `n_steps` | 500000 | MD steps per replica (1 ns at 2 fs) |
-| `padding_nm` | 1.0 | solvent padding around the protein, 0.5-5 nm |
-| `ionic_strength_molar` | 0.15 | NaCl ionic strength, 0-2 M |
-| `temperature_k` | 300 | thermostat temperature, 1-1000 K |
-| `timestep_fs` | 2 | integrator timestep, 0.1-4 fs (H bonds constrained, no HMR) |
-| `report_interval_steps` | 5000 | steps between DCD frames and `log.csv` rows (10 ps at 2 fs), 1 to `n_steps` |
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `receptor` | file | `examples/5tbm_prepared.pdb` | PDB | prepared receptor (protonated, capped, no ligand) |
+| `ligand` | file | `examples/PT2385.sdf` | SDF | ligand with explicit H, posed in the pocket |
+| `n_replicas` | number | 3 | 1–100, step 1 | independent replicas |
+| `n_steps` | number | 500000 | 1000–50,000,000, step 1000 | MD steps per replica (1 ns at 2 fs) |
+| `padding_nm` | number | 1.0 | 0.5–5, step 0.1 | solvent padding around the protein (nm) |
+| `ionic_strength_molar` | number | 0.15 | 0–2, step 0.05 | NaCl ionic strength (M) |
+| `temperature_k` | number | 300 | 250–400, step 5 | thermostat temperature (K) |
+| `timestep_fs` | number | 2 | 0.5–4, step 0.5 | integrator timestep (fs; H bonds constrained, no HMR) |
+| `report_interval_steps` | number | 5000 | 100–1,000,000, step 100 | steps between DCD frames and `log.csv` rows (10 ps at 2 fs); must not exceed `n_steps` |
 
 Out-of-range values stop the task with a message naming the variable.
 Fixed: Sage 2.3.0 + ff14SB, 1/ps friction, minimization until converged,
@@ -165,6 +170,15 @@ value through `${id}`, but the skip check hashes `params/<id>.txt`, which
 horus writes only when it is missing; without the `rm` every task reports
 "Already complete" and the old results stay. Only the tasks downstream of
 the changed variable re-run.
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: the
+form shows the receptor and ligand uploads (with a Mol* preview) and the MD
+settings as sliders, with the production defaults above. The `resources` hints
+size auto-provisioned machines: `build_system`, `parameterize` and `analyze`
+fit a small general purpose machine, and each `simulate` replica asks for one
+GPU (2 CPU, 4 GB, 4 h), i.e. one single-GPU node per replica.
 
 ## Implementation Notes
 
