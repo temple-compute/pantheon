@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: BioExcel AMBER ABC Setup - Drew-Dickerson Dodecamer DNA
+name: ABC DNA MD Setup (AMBER)
 
 _executor: &executor
   kind: conda_python_environment
@@ -16,6 +16,54 @@ _target: &target
   kind: local
 
 artifacts:
+  - id: dna_pdb
+    name: DNA starting structure (PDB)
+    description: DNA duplex starting structure (PDB); default the Drew-Dickerson dodecamer CGCGAATTCGCG.
+    kind: file
+    path: CGCGAATTCGCG.pdb
+
+  - id: positive_ion
+    name: Counter-ion
+    description: Cation used to neutralise the DNA and set the salt concentration.
+    kind: choice
+    options:
+    - value: K+
+      label: K+ (potassium)
+    - value: Na+
+      label: Na+ (sodium)
+    value: K+
+    path: params/positive_ion.txt
+
+  - id: box_padding_a
+    name: Box padding (Å)
+    description: Minimum distance between the DNA and the edge of the truncated octahedron box.
+    kind: number
+    min: 8
+    max: 25
+    step: 0.5
+    value: 15.0
+    path: params/box_padding_a.txt
+
+  - id: ionic_concentration_mm
+    name: Salt concentration (mM)
+    description: Added salt on top of neutralisation.
+    kind: number
+    min: 0
+    max: 1000
+    step: 10
+    value: 100
+    path: params/ionic_concentration_mm.txt
+
+  - id: md_steps
+    name: Production MD steps
+    description: Free MD steps at 4 fs (500 = 2 ps, the tutorial length; 25,000,000 = 100 ns).
+    kind: number
+    min: 100
+    max: 50000000
+    step: 100
+    value: 500
+    path: params/md_steps.txt
+
   - id: md_mdin
     name: MD production mdin
     description: AMBER sander input file for the free MD production run.
@@ -82,35 +130,17 @@ artifacts:
     kind: file
     path: ABCix_config_files/step9.in
 
-  - id: dna_pdb
-    name: DNA starting structure (PDB)
-    description: Initial Drew-Dickerson dodecamer DNA structure.
-    kind: file
-    path: CGCGAATTCGCG.pdb
-
   - id: cpptraj_randomize_ions_config
     name: Ion randomization config
     description: Parameters for randomizing ion positions with cpptraj.
     kind: file
     path: configs/cpptraj_randomize_ions.yaml
 
-  - id: leap_add_ions_config
-    name: Ion addition config
-    description: Parameters for adding ions at 100 mM with leap.
-    kind: file
-    path: configs/leap_add_ions.yaml
-
   - id: leap_gen_top_config
     name: Topology generation config
     description: Parameters for building the DNA system topology with leap.
     kind: file
     path: configs/leap_gen_top.yaml
-
-  - id: leap_solvate_config
-    name: Solvation config
-    description: Parameters for building the solvent box with leap.
-    kind: file
-    path: configs/leap_solvate.yaml
 
   - id: process_eq1_config
     name: Eq1 energy extraction config
@@ -232,12 +262,6 @@ artifacts:
     kind: file
     path: configs/sander_eq9.yaml
 
-  - id: sander_md_config
-    name: MD production sander config
-    description: Parameters for the free MD production run.
-    kind: file
-    path: configs/sander_md.yaml
-
 tasks:
   - kind: horus_task
     id: leap_gen_top
@@ -251,7 +275,7 @@ tasks:
         path: configs/leap_gen_top.yaml
       - id: dna_pdb
         name: DNA starting structure (PDB)
-        description: Initial Drew-Dickerson dodecamer DNA structure.
+        description: DNA duplex starting structure (PDB); default the Drew-Dickerson dodecamer CGCGAATTCGCG.
         kind: file
         path: CGCGAATTCGCG.pdb
     outputs:
@@ -284,11 +308,19 @@ tasks:
     name: Create solvent box and solvate DNA system (leap)
     description: Builds an explicit solvent box around the DNA system with LEaP.
     inputs:
-      - id: leap_solvate_config
-        name: Solvation config
-        description: Parameters for building the solvent box with leap.
-        kind: file
-        path: configs/leap_solvate.yaml
+      - id: box_padding_a
+        name: "Box padding (\xC5)"
+        kind: number
+        path: params/box_padding_a.txt
+      - id: positive_ion
+        name: Counter-ion
+        kind: choice
+        path: params/positive_ion.txt
+        options:
+        - value: K+
+          label: K+ (potassium)
+        - value: Na+
+          label: Na+ (sodium)
       - id: leap_pdb
         name: DNA structure (leap)
         kind: file
@@ -311,7 +343,7 @@ tasks:
       kind: command
       command: >-
         leap_solvate
-        --config ${leap_solvate_config}
+        --config '{"properties":{"forcefield":["DNA.bsc1"],"water_type":"OPCBOX","ions_type":"ionsjc_tip4pew","box_type":"truncated_octahedron","distance_to_molecule":${box_padding_a},"neutralise":true,"iso":true,"closeness":0.97,"positive_ions_type":"${positive_ion}"}}'
         --input_pdb_path ${leap_pdb}
         --output_pdb_path ${solv_pdb}
         --output_top_path ${solv_top}
@@ -320,14 +352,22 @@ tasks:
 
   - kind: horus_task
     id: leap_add_ions
-    name: Add ions at 100 mM concentration (leap)
-    description: Neutralizes and adds ions at 100 mM concentration with LEaP.
+    name: Add ions to the set salt concentration (leap)
+    description: Neutralizes and adds salt at the ionic_concentration_mm concentration with LEaP.
     inputs:
-      - id: leap_add_ions_config
-        name: Ion addition config
-        description: Parameters for adding ions at 100 mM with leap.
-        kind: file
-        path: configs/leap_add_ions.yaml
+      - id: ionic_concentration_mm
+        name: Salt concentration (mM)
+        kind: number
+        path: params/ionic_concentration_mm.txt
+      - id: positive_ion
+        name: Counter-ion
+        kind: choice
+        path: params/positive_ion.txt
+        options:
+        - value: K+
+          label: K+ (potassium)
+        - value: Na+
+          label: Na+ (sodium)
       - id: solv_pdb
         name: Solvated structure
         kind: file
@@ -350,7 +390,7 @@ tasks:
       kind: command
       command: >-
         leap_add_ions
-        --config ${leap_add_ions_config}
+        --config '{"properties":{"forcefield":["DNA.bsc1"],"water_type":"OPCBOX","ions_type":"ionsjc_tip4pew","box_type":"truncated_octahedron","ionic_concentration":${ionic_concentration_mm},"positive_ions_type":"${positive_ion}"}}'
         --input_pdb_path ${solv_pdb}
         --output_pdb_path ${ions_pdb}
         --output_top_path ${ions_top}
@@ -459,6 +499,10 @@ tasks:
         name: Eq1 run info
         kind: file
         path: results/sander.eq1.mdinfo
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -544,6 +588,10 @@ tasks:
         name: Eq2 run info
         kind: file
         path: results/sander.eq2.mdinfo
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -629,6 +677,10 @@ tasks:
         name: Eq3 run info
         kind: file
         path: results/sander.eq3.mdinfo
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -714,6 +766,10 @@ tasks:
         name: Eq4 run info
         kind: file
         path: results/sander.eq4.mdinfo
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -799,6 +855,10 @@ tasks:
         name: Eq5 run info
         kind: file
         path: results/sander.eq5.mdinfo
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -884,6 +944,10 @@ tasks:
         name: Eq6 run info
         kind: file
         path: results/sander.eq6.mdinfo
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -969,6 +1033,10 @@ tasks:
         name: Eq7 run info
         kind: file
         path: results/sander.eq7.mdinfo
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -1054,6 +1122,10 @@ tasks:
         name: Eq8 run info
         kind: file
         path: results/sander.eq8.mdinfo
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -1139,6 +1211,10 @@ tasks:
         name: Eq9 run info
         kind: file
         path: results/sander.eq9.mdinfo
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -1224,6 +1300,10 @@ tasks:
         name: Eq10 run info
         kind: file
         path: results/sander.eq10.mdinfo
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -1274,11 +1354,10 @@ tasks:
     name: Free MD production simulation (sander)
     description: Runs the free (unrestrained) MD production simulation with sander.
     inputs:
-      - id: sander_md_config
-        name: MD production sander config
-        description: Parameters for the free MD production run.
-        kind: file
-        path: configs/sander_md.yaml
+      - id: md_steps
+        name: Production MD steps
+        kind: number
+        path: params/md_steps.txt
       - id: top_4fs
         name: 4 fs-timestep topology
         kind: file
@@ -1309,12 +1388,16 @@ tasks:
         name: MD production run info
         kind: file
         path: results/sander.md.mdinfo
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "24:00:00"
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         sander_mdrun
-        --config ${sander_md_config}
+        --config '{"properties":{"mdin":{"nstlim":${md_steps},"ntpr":50}}}'
         --input_top_path ${top_4fs}
         --input_mdin_path ${md_mdin}
         --input_crd_path ${eq10_rst}
@@ -1326,6 +1409,31 @@ tasks:
     target: *target
 
 edges:
+  - source: artifact-box_padding_a
+    source_output: box_padding_a
+    target: leap_solvate
+    target_input: box_padding_a
+
+  - source: artifact-positive_ion
+    source_output: positive_ion
+    target: leap_solvate
+    target_input: positive_ion
+
+  - source: artifact-ionic_concentration_mm
+    source_output: ionic_concentration_mm
+    target: leap_add_ions
+    target_input: ionic_concentration_mm
+
+  - source: artifact-positive_ion
+    source_output: positive_ion
+    target: leap_add_ions
+    target_input: positive_ion
+
+  - source: artifact-md_steps
+    source_output: md_steps
+    target: sander_md
+    target_input: md_steps
+
   - source: leap_gen_top
     source_output: leap_pdb
     target: leap_solvate
@@ -1576,20 +1684,10 @@ edges:
     target: cpptraj_randomize_ions
     target_input: cpptraj_randomize_ions_config
 
-  - source: artifact-leap_add_ions_config
-    source_output: leap_add_ions_config
-    target: leap_add_ions
-    target_input: leap_add_ions_config
-
   - source: artifact-leap_gen_top_config
     source_output: leap_gen_top_config
     target: leap_gen_top
     target_input: leap_gen_top_config
-
-  - source: artifact-leap_solvate_config
-    source_output: leap_solvate_config
-    target: leap_solvate
-    target_input: leap_solvate_config
 
   - source: artifact-process_eq1_config
     source_output: process_eq1_config
@@ -1690,11 +1788,6 @@ edges:
     source_output: sander_eq9_config
     target: sander_eq9
     target_input: sander_eq9_config
-
-  - source: artifact-sander_md_config
-    source_output: sander_md_config
-    target: sander_md
-    target_input: sander_md_config
 
 
 orchestrator_target:
