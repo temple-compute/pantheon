@@ -1,6 +1,12 @@
 # W-27 · Subworkflow Reuse Showcase
 
+<img src="assets/logo.png" width="96" align="right" alt="W-27 logo">
+
+One trim-then-shout child workflow written once and reused twice through a YAML anchor, each instance on its own quote.
+
 ![Domain: Engine Showcases](https://img.shields.io/badge/domain-engine--showcases-orange)
+
+![W-27 cover](assets/cover.png)
 
 ## Overview
 
@@ -63,10 +69,19 @@ directory), and `results/report.txt`.
 
 ## Parameterization
 
-- `examples/quotes.txt` — swap in your own two lines.
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `quotes` | file | `examples/quotes.txt` | text, two lines | One quote per line; each goes through its own subworkflow instance |
+
 - The `clean_pipeline` body (`workflow.yaml`) — change what `trim`/`shout`
   do (or add a stage) and both `clean_a` and `clean_b` pick it up, since
   they share the one YAML-anchored body.
+
+## Running in Temple Compute
+
+Start a campaign from the library and upload a two-line text file (or keep the
+example); the canvas shows both subworkflow instances inlined as `clean_a/*` and
+`clean_b/*`. Every task takes milliseconds, so no `resources` hints are set.
 
 ## Implementation notes
 
