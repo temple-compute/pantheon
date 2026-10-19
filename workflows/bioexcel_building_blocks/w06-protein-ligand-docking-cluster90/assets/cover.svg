@@ -1,0 +1,59 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06122a"/><stop offset="1" stop-color="#0b2a5c"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#60a5fa" stop-opacity="0.22"/><stop offset="1" stop-color="#60a5fa" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#bfdbfe"/>
+    </marker>
+
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="198" height="36" fill="#1e3a8a"/>
+  <text x="163" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#bfdbfe">W-11 · BioExcel</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#eff6ff">Docking with a</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#eff6ff">Cluster90 Site</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#60a5fa">biobb · Cluster90 · AutoDock Vina</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">Find the binding site from homologous PDB</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">structures that bind the same ligand, box it</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">and dock a ligand by code or upload.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#5b7299">PANTHEON · TEMPLE COMPUTE</text>
+  <g opacity="0.35" transform="rotate(-8 900 300)"><g transform="translate(900,300) scale(1.05)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-110,40 C-90,-40 -60,-40 -50,0 C-40,40 -10,40 0,0 C10,-40 40,-40 50,0 C60,40 90,40 100,-10" stroke="#93c5fd" stroke-width="10"/>
+    <path d="M-120,-60 C-60,-110 40,-110 110,-70" stroke="#93c5fd" stroke-width="8.0"/>
+    <path d="M110,-70 l-26,-6 m26,6 l-14,22" stroke="#93c5fd" stroke-width="8.0"/>
+    <path d="M-100,90 C-40,120 50,115 105,70" stroke="#60a5fa" stroke-width="8.0"/>
+  </g></g>
+  <g opacity="0.45" transform="rotate(5 900 300)"><g transform="translate(900,300) scale(1.05)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-110,40 C-90,-40 -60,-40 -50,0 C-40,40 -10,40 0,0 C10,-40 40,-40 50,0 C60,40 90,40 100,-10" stroke="#60a5fa" stroke-width="10"/>
+    <path d="M-120,-60 C-60,-110 40,-110 110,-70" stroke="#93c5fd" stroke-width="8.0"/>
+    <path d="M110,-70 l-26,-6 m26,6 l-14,22" stroke="#93c5fd" stroke-width="8.0"/>
+    <path d="M-100,90 C-40,120 50,115 105,70" stroke="#60a5fa" stroke-width="8.0"/>
+  </g></g>
+  <g opacity="1" transform="rotate(0 900 300)"><g transform="translate(900,300) scale(1.05)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-110,40 C-90,-40 -60,-40 -50,0 C-40,40 -10,40 0,0 C10,-40 40,-40 50,0 C60,40 90,40 100,-10" stroke="#fbbf24" stroke-width="10"/>
+    <path d="M-120,-60 C-60,-110 40,-110 110,-70" stroke="#93c5fd" stroke-width="8.0"/>
+    <path d="M110,-70 l-26,-6 m26,6 l-14,22" stroke="#93c5fd" stroke-width="8.0"/>
+    <path d="M-100,90 C-40,120 50,115 105,70" stroke="#60a5fa" stroke-width="8.0"/>
+  </g></g>
+  <g fill="none" stroke="#eff6ff" stroke-width="3" stroke-dasharray="10 7" opacity="0.9">
+      <rect x="830" y="330" width="150" height="110"/>
+      <polyline points="830,330 870,290 1020,290 1020,400 980,440"/>
+      <line x1="980" y1="330" x2="1020" y2="290"/>
+    </g>
+  <g transform="translate(880,390) scale(0.9)" stroke-linecap="round" stroke-linejoin="round">
+      <polygon points="-15,11 -34,22 -53,11 -53,-11 -34,-22 -15,-11" fill="none" stroke="#fbbf24" stroke-width="6"/>
+      <polygon points="49,11 30,22 11,11 11,-11 30,-22 49,-11" fill="none" stroke="#fbbf24" stroke-width="6"/>
+      <line x1="-15" y1="0" x2="11" y2="0" stroke="#fbbf24" stroke-width="6"/>
+      <line x1="49" y1="-11" x2="74" y2="-26" stroke="#fbbf24" stroke-width="6"/>
+      <circle cx="80" cy="-30" r="8" fill="#f87171"/>
+    </g>
+  <g font-family="DejaVu Sans" font-size="19" fill="#bfdbfe">
+    <text x="700" y="140">Cluster90 homologs, superposed</text>
+    <text x="700" y="555">site = where they bind the ligand</text>
+  </g>
+</svg>

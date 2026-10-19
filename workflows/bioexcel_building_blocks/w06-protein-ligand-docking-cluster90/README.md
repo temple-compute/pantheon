@@ -1,6 +1,12 @@
-# W-11 · Protein-Ligand Docking (PDB Cluster90 Binding Site)
+# W-11 · Protein-Ligand Docking with a Cluster90 Binding Site
+
+<img src="assets/logo.png" width="96" align="right" alt="W-11 logo">
+
+Dock a ligand into a receptor whose binding site is inferred from PDB Cluster90 homologs that bind a chosen ligand: give a PDB ID and a site ligand, dock a ligand by code or SDF upload with AutoDock Vina.
 
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel-green)
+
+![W-11 cover](assets/cover.png)
 
 ## Overview
 
@@ -11,17 +17,17 @@ This workflow performs structure-based virtual screening of a single ligand agai
 ```
 create_results_folder      Create results folder
    │
-fetch_pdb                   Download 3HEC structure from PDB
+fetch_pdb                   Download pdb_id (default 3HEC) from the PDB
    │
    ├─ extract_molecule       Extract protein structure from downloaded PDB
    │
-   └─ pdb_cluster_zip        Download PDB Cluster90 collection for 3HEC
+   └─ pdb_cluster_zip        Download the PDB Cluster90 collection for pdb_id
          │
       bindingsite             Extract binding site from Cluster90 collection
          │
       box                     Generate cavity box around binding site
          │
-ideal_sdf                   Download Imatinib (STI) small molecule as SDF
+ideal_sdf                   Download ligand_code (default STI, imatinib) as SDF, or use the upload
    │
 babel_convert_sdf2pdb        Convert small molecule from SDF to PDB format
    │
@@ -60,9 +66,23 @@ uv run horus run workflow.yaml
 
 The first run builds the conda environment (this takes a few minutes). Subsequent runs reuse the cached environment at `../.horus_conda_env`.
 
+## Inputs
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `pdb_id` | string | `3HEC` | PDB code or empty | RCSB PDB code of the receptor (default 3HEC, p38 MAP kinase). Required: the binding site is inferred from the PDB Cluster90 homologs of this entry. |
+| `site_ligand` | string | `STI` | `[A-Za-z0-9]{1,3}` | Ligand whose binding pose in the Cluster90 homologs defines the binding site (default STI, imatinib). |
+| `ligand_code` | string | `STI` | `([A-Za-z0-9]{1,3})?` | PDB Chemical Component code of the ligand to dock, downloaded as an idealized SDF (default STI, imatinib). Clear it to dock the uploaded ligand instead. |
+| `ligand_sdf` | file | `examples/sti_ideal.sdf` | SDF | 3D ligand structure used when the ligand code is empty. Default: examples/sti_ideal.sdf (imatinib). |
+| `box_offset_a` | number | `12` | 2–30, step 1 | Extra space added around the binding site on each side of the docking box. |
+
+The receptor must be a PDB entry: the Cluster90 collection and the binding site are looked up by `pdb_id`, so there is no receptor upload here (W-13 takes an uploaded receptor). `site_ligand` must bind at least one Cluster90 homolog of that entry. `ligand_code` wins when set; clear it to dock the uploaded `ligand_sdf` (any 3D SDF; it is converted to PDBQT with OpenBabel).
+
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes `params/<id>.txt` only when it is missing and fingerprints that file for the skip check, so a stale file keeps the old value. In Temple Compute, set it in the campaign form.
+
 ## Inputs / Outputs
 
-This workflow has no file inputs — it fetches the 3HEC receptor, its PDB Cluster90 collection, and the Imatinib (STI) ligand automatically.
+By default it fetches the 3HEC receptor, its PDB Cluster90 collection and the imatinib (STI) ligand; see Inputs to change them or upload a ligand.
 
 **Outputs** (all under `workflow_results/results/`):
 - `download.pdb`, `pdb_protein.pdb` — fetched receptor structure
@@ -76,13 +96,14 @@ This workflow has no file inputs — it fetches the 3HEC receptor, its PDB Clust
 
 ## Configuration
 
-- `configs/fetch_pdb.yaml`, `configs/pdb_cluster_zip.yaml` — target PDB code (3HEC) and cluster identity threshold (90%)
-- `configs/bindingsite.yaml` — binding-site detection parameters
-- `configs/box.yaml` — docking box offset/padding around the binding site
-- `configs/ideal_sdf.yaml` — ligand code (STI)
+- PDB ID, site ligand, docking ligand and box padding are workflow inputs (see Inputs), passed to biobb as inline JSON configs (Cluster90 threshold 90%, BLOSUM62 alignment)
 - `configs/babel_convert_sdf2pdb.yaml`, `configs/babel_convert_pdb2pdbqt.yaml`, `configs/babel_convert_pdbqt2pdb.yaml` — OpenBabel format conversion options
 - `configs/str_check_add_hydrogens.yaml` — receptor protonation settings
 - `configs/extract_model_pdbqt.yaml` — which Vina pose to extract
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: the form shows the receptor PDB ID, the site ligand, the ligand code or SDF upload (with a Mol* preview) and the box padding. AutoDock Vina carries a `resources` hint (8 CPU / 16 GB, 2 h), so an auto-provisioned target picks an 8-core node; the other steps take seconds. Several steps run in the `biobb_vs` Docker image, so the target needs Docker. Expert settings (OpenBabel conversions, protonation, pose to extract) stay in `configs/*.yaml`, which also show up as editable file inputs.
 
 ## References
 
