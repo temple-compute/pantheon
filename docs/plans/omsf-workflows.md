@@ -2,7 +2,7 @@
 
 > **Revision (2026-10-16, after E2E):** the `smoke`/`full` profile was removed from all three workflows. Each workflow now exposes explicit variables (input URLs for molecules and datasets, plus sampling, model and MD settings) whose defaults are the upstream production values; see each workflow README's Parameters table. Smoke references below describe the original plan.
 
-> **Revision (2026-10-19, library-ready):** the input URLs became uploadable root `file` artifacts with the pinned upstream files committed under `examples/` (no fetch task); numbers carry `min`/`max`/`step`, enums are `choice`/`multichoice`; every heavy task has `resources` sized for auto-provisioning (GPU tasks fit one single-L4 node); runtime floor is horus-runtime 0.8.0.
+> **Revision (2026-10-19, library-ready):** the input URLs became uploadable root `file` artifacts with the pinned upstream files committed under `examples/` (no fetch task); numbers carry `min`/`max`/`step`, enums are `choice`/`multichoice`; every heavy task has `resources` sized for auto-provisioning (GPU tasks fit one single-L4 node; W-38 is CPU only); runtime floor is horus-runtime 0.8.0.
 
 ## Context
 OMSF's infra team (Open Force Field, OpenFE, OpenADMET) is evaluating Horus. Their pain is running one pipeline on Slurm, cloud GPUs and laptops without re-engineering it. We port 3 of their 16 directory workflows into native Horus workflows in `pantheon` as a demo (first ones due Sun 18 Oct 2026). Depth over breadth: real task decomposition, map fan-out, CPU and GPU steps on different targets, and a smoke profile that runs in minutes.
