@@ -1,0 +1,73 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06122a"/><stop offset="1" stop-color="#0b2a5c"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#60a5fa" stop-opacity="0.22"/><stop offset="1" stop-color="#60a5fa" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#bfdbfe"/>
+    </marker>
+
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="198" height="36" fill="#1e3a8a"/>
+  <text x="163" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#bfdbfe">W-15 · BioExcel</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#eff6ff">Protein-Ligand</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#eff6ff">AMBER MD Setup</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#60a5fa">biobb · AmberTools · ACPype</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">Fetch a complex or upload one; GAFF ligand</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">parameters, TIP3P solvation, heating and</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">equilibration, sander MD and cpptraj analysis.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#5b7299">PANTHEON · TEMPLE COMPUTE</text>
+  <polygon points="1085,377 977,485 823,485 715,377 715,223 823,115 977,115 1085,223" fill="#1e40af" opacity="0.25" stroke="#93c5fd" stroke-width="3" stroke-linejoin="round"/>
+  <circle cx="793" cy="361" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="943" cy="293" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="809" cy="394" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="999" cy="304" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="902" cy="216" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="741" cy="259" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="927" cy="162" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="994" cy="214" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="814" cy="154" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1059" cy="376" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1020" cy="337" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="751" cy="245" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="899" cy="177" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1045" cy="258" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="790" cy="402" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="780" cy="437" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="885" cy="317" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="850" cy="295" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="800" cy="152" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1017" cy="215" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="990" cy="207" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1050" cy="426" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="982" cy="384" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="926" cy="374" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="779" cy="292" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1005" cy="204" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1035" cy="424" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="871" cy="257" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="884" cy="263" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1058" cy="264" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="749" cy="170" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="970" cy="458" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="899" cy="297" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="916" cy="379" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="811" cy="335" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="918" cy="339" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="798" cy="194" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="851" cy="437" r="5" fill="#60a5fa" opacity="0.45"/>
+  <path d="M780,410 C730,300 780,170 890,160 C990,150 1050,230 1035,315 C1025,365 985,360 960,330 C935,300 890,300 870,340 C850,380 830,440 780,410 Z" fill="#3b82f6" opacity="0.55" stroke="#bfdbfe" stroke-width="4"/>
+  <g transform="translate(925,350)">
+    <polygon points="26,15 0,30 -26,15 -26,-15 -0,-30 26,-15" fill="#06122a" stroke="#fbbf24" stroke-width="6"/>
+    <line x1="26" y1="-15" x2="52" y2="-32" stroke="#fbbf24" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="58" cy="-36" r="9" fill="#f87171"/>
+  </g>
+  <g font-family="DejaVu Sans" font-size="19" fill="#bfdbfe">
+    <text x="700" y="560">ff14SB + GAFF · TIP3P · sander · cpptraj</text>
+  </g>
+</svg>
