@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: BioExcel Ligand Parameterization
+name: Ligand Parameterization (GAFF / ACPype)
 
 _executor: &executor
   kind: conda_python_environment
@@ -8,41 +8,58 @@ _executor: &executor
   environment_file: conda_env.yaml
 
 artifacts:
-  - id: add_h_config
-    name: Hydrogenation configuration
-    description: Configuration controlling how hydrogen atoms are added to the ligand with OpenBabel (e.g. target pH).
+  - id: ligand_code
+    name: Ligand code (PDB CCD)
+    description: Three-character PDB Chemical Component code to download (default IBP, ibuprofen). Clear it to use the uploaded ligand instead.
+    kind: string
+    path: params/ligand_code.txt
+    value: IBP
+    pattern: ([A-Za-z0-9]{1,3})?
+    max_length: 3
+  - id: ligand
+    name: Ligand upload (PDB)
+    description: 'Ligand structure used when the ligand code is empty (heavy atoms are enough; hydrogens are added). Default: examples/ibp.pdb.'
     kind: file
-    path: configs/add_h.yaml
-
-  - id: fetch_ligand_config
-    name: Ligand fetch configuration
-    description: Configuration specifying the PDB ligand code to fetch from the RCSB.
-    kind: file
-    path: configs/fetch_ligand.yaml
-
+    path: examples/ibp.pdb
   - id: minimize_h_config
     name: Minimization configuration
     description: Configuration controlling energetic minimization of hydrogen positions with OpenBabel and the GAFF force field.
     kind: file
     path: configs/minimize_h.yaml
 
-  - id: params_config
-    name: Parameterization configuration
-    description: Configuration for generating GROMACS force-field parameters with ACPype and the GAFF force field.
-    kind: file
-    path: configs/params.yaml
-
+  - id: ph
+    name: Protonation pH
+    description: pH at which OpenBabel adds hydrogens.
+    kind: number
+    path: params/ph.txt
+    value: 7.4
+    min: 0
+    max: 14
+    step: 0.1
+  - id: net_charge
+    name: Net charge
+    description: 'Formal net charge of the ligand at that pH, passed to ACPype (ibuprofen: -1).'
+    kind: number
+    path: params/net_charge.txt
+    value: -1
+    min: -5
+    max: 5
+    step: 1
 tasks:
   - kind: horus_task
     skip_if_complete: false
     id: fetch_ligand
-    name: Fetch ligand structure from PDB
-    description: Fetches the raw ligand structure from the RCSB PDB using the ligand code in the config.
+    name: Fetch (ligand code) or load the uploaded ligand
+    description: Downloads the ligand given in ligand_code, or copies the uploaded ligand when the code is empty.
     inputs:
-      - id: fetch_ligand_config
-        name: Ligand fetch configuration
+      - id: ligand_code
+        name: Ligand code (PDB CCD)
+        kind: string
+        path: params/ligand_code.txt
+      - id: ligand
+        name: Ligand upload (PDB)
         kind: file
-        path: configs/fetch_ligand.yaml
+        path: examples/ibp.pdb
     outputs:
       - id: ligand_pdb
         name: Ligand structure (PDB)
@@ -52,9 +69,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        ligand
-        --config ${fetch_ligand_config}
-        --output_pdb_path ${ligand_pdb}
+        if [ -n ${ligand_code} ]; then ligand --config '{"properties":{"api_id":"mmb","ligand_code":"${ligand_code}"}}' --output_pdb_path ${ligand_pdb}; else cp ${ligand} ${ligand_pdb}; fi
     target:
       kind: local
 
@@ -63,14 +78,14 @@ tasks:
     name: Add hydrogen atoms (OpenBabel)
     description: Adds hydrogen atoms to the ligand at pH 7.4 using OpenBabel.
     inputs:
-      - id: add_h_config
-        name: Hydrogenation configuration
-        kind: file
-        path: configs/add_h.yaml
       - id: ligand_pdb
         name: Ligand structure (PDB)
         kind: file
         path: results/ligand.pdb
+      - id: ph
+        name: Protonation pH
+        kind: number
+        path: params/ph.txt
     outputs:
       - id: ligand_mol2
         name: Hydrogenated ligand (MOL2)
@@ -80,10 +95,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        babel_add_hydrogens
-        --config ${add_h_config}
-        --input_path ${ligand_pdb}
-        --output_path ${ligand_mol2}
+        babel_add_hydrogens --config '{"properties":{"ph":${ph},"input_format":"pdb","output_format":"mol2"}}' --input_path ${ligand_pdb} --output_path ${ligand_mol2}
     target:
       kind: local
 
@@ -121,14 +133,14 @@ tasks:
     name: Generate GROMACS parameters (ACPype / GAFF)
     description: Generates GROMACS-compatible force-field parameters for the ligand using ACPype with the GAFF force field.
     inputs:
-      - id: params_config
-        name: Parameterization configuration
-        kind: file
-        path: configs/params.yaml
       - id: minimized_pdb
         name: Minimized ligand (PDB)
         kind: file
         path: results/ligand.H.min.pdb
+      - id: net_charge
+        name: Net charge
+        kind: number
+        path: params/net_charge.txt
     outputs:
       - id: params_gro
         name: GROMACS structure file
@@ -143,16 +155,15 @@ tasks:
         name: GROMACS topology file (TOP)
         kind: file
         path: results/ligand.params.top
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "00:30:00"
     executor: *executor
     runtime:
       kind: command
       command: >-
-        acpype_params_gmx
-        --config ${params_config}
-        --input_path ${minimized_pdb}
-        --output_path_gro ${params_gro}
-        --output_path_itp ${params_itp}
-        --output_path_top ${params_top}
+        acpype_params_gmx --config '{"properties":{"basename":"LIGparams","charge":${net_charge}}}' --input_path ${minimized_pdb} --output_path_gro ${params_gro} --output_path_itp ${params_itp} --output_path_top ${params_top}
     target:
       kind: local
 
@@ -172,27 +183,27 @@ edges:
     target: parameterize
     target_input: minimized_pdb
 
-  - source: artifact-add_h_config
-    source_output: add_h_config
-    target: add_hydrogens
-    target_input: add_h_config
-
-  - source: artifact-fetch_ligand_config
-    source_output: fetch_ligand_config
-    target: fetch_ligand
-    target_input: fetch_ligand_config
-
   - source: artifact-minimize_h_config
     source_output: minimize_h_config
     target: minimize_hydrogens
     target_input: minimize_h_config
 
-  - source: artifact-params_config
-    source_output: params_config
+  - source: artifact-ligand_code
+    source_output: ligand_code
+    target: fetch_ligand
+    target_input: ligand_code
+  - source: artifact-ligand
+    source_output: ligand
+    target: fetch_ligand
+    target_input: ligand
+  - source: artifact-ph
+    source_output: ph
+    target: add_hydrogens
+    target_input: ph
+  - source: artifact-net_charge
+    source_output: net_charge
     target: parameterize
-    target_input: params_config
-
-
+    target_input: net_charge
 orchestrator_target:
   kind: local
   working_directory: "./workflow_results"

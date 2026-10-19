@@ -1,4 +1,0 @@
-properties:
-    ph: 7.4
-    input_format: pdb
-    output_format: mol2
