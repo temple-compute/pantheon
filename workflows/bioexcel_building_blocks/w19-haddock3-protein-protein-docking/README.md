@@ -1,6 +1,12 @@
 # W-24 · HADDOCK3 Protein-Protein Docking
 
+<img src="assets/logo.png" width="96" align="right" alt="W-24 logo">
+
+Information-driven antibody-antigen docking with HADDOCK3: prepare gevokizumab and IL-1β, build ambiguous restraints from the paratope and epitope, then rigid-body docking, refinement, clustering and CAPRI evaluation.
+
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel-green)
+
+![W-24 cover](assets/cover.png)
 
 ## Overview
 
@@ -58,9 +64,32 @@ uv run horus run workflow.yaml
 
 The first run builds the conda environment (this takes a few minutes). Subsequent runs reuse the cached environment at `../.horus_conda_env`.
 
+## Inputs
+
+Root artifacts in `workflow.yaml`; tc-os shows them in the campaign form.
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `rigid_body_models` | number | 10 | 10–10000, step 10 | Models sampled by rigid-body docking (the tutorial uses 10 for speed; HADDOCK production runs use 1000). |
+| `refine_top_models` | number | 8 | 1–1000, step 1 | Best rigid-body models passed to flexible and energy-minimisation refinement. |
+| `models_per_cluster` | number | 4 | 1–50, step 1 | Top models kept from each FCC cluster for the final evaluation. |
+
+Expert settings stay in the biobb property files under `configs/`.
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes
+`params/<id>.txt` only when it is missing and fingerprints that file for the skip check.
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: set how many
+rigid-body models to sample (10 in the tutorial, 1000 for a production run), how many to
+refine and how many to keep per cluster; keep `refine_top_models` at or below
+`rigid_body_models`. The three HADDOCK3 docking stages carry `resources` hints (8 CPU,
+16 GB, 4-8 h), so an auto-provisioned target picks an 8-core general-purpose machine; the
+~70 preparation steps are light.
+
 ## Inputs / Outputs
 
-This workflow has no file inputs — it fetches 4G6K (antibody), 4I1B (antigen), and 4G6M (reference complex) automatically from the PDBe.
+The workflow fetches 4G6K (antibody), 4I1B (antigen) and 4G6M (reference complex) from the PDBe. The structures are not inputs: the chain IDs, VH/VL residue ranges and paratope/epitope residue lists in `configs/` and in `write_ab_actpass` / `passive_from_active` are specific to these entries, so another antibody-antigen pair means editing those together. The sampling depth (`rigid_body_models`, `refine_top_models`, `models_per_cluster`) is the input.
 
 **Outputs** (all under `workflow_results/results/`):
 - `4G6K_clean.pdb`, `4I1B_clean.pdb` — prepared single-chain antibody and antigen structures
@@ -75,7 +104,7 @@ This workflow has no file inputs — it fetches 4G6K (antibody), 4I1B (antigen),
 
 ## Configuration
 
-`configs/fetch_antibody.yaml`, `fetch_antigen.yaml`, `fetch_complex.yaml` set the PDB codes (4G6K, 4I1B, 4G6M). `configs/selres_1_120.yaml` and `selres_1_107.yaml` define the antibody VH/VL domain residue ranges. `configs/selchain_A.yaml`, `selchain_H.yaml`, `selchain_L.yaml` select individual chains. `configs/rigid_body.yaml`, `flex_ref.yaml`, `em_ref.yaml` control the sampling/refinement parameters (number of models, force-field, restraints) for each HADDOCK3 docking stage; `configs/clust_fcc.yaml` controls FCC clustering thresholds.
+`configs/fetch_antibody.yaml`, `fetch_antigen.yaml`, `fetch_complex.yaml` set the PDB codes (4G6K, 4I1B, 4G6M). `configs/selres_1_120.yaml` and `selres_1_107.yaml` define the antibody VH/VL domain residue ranges. `configs/selchain_A.yaml`, `selchain_H.yaml`, `selchain_L.yaml` select individual chains. `configs/flex_ref.yaml` and `em_ref.yaml` control the refinement parameters (the rigid-body sampling and the selections are inputs); `configs/clust_fcc.yaml` controls FCC clustering thresholds.
 
 ## References
 
