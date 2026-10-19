@@ -1,0 +1,114 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1f0a0a"/><stop offset="1" stop-color="#3f1212"/></linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.5" r="0.5"><stop offset="0" stop-color="#f87171" stop-opacity="0.18"/><stop offset="1" stop-color="#f87171" stop-opacity="0"/></radialGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#fecaca"/></marker>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="280" height="36" fill="#7f1d1d"/>
+  <text x="204.0" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#fecaca">W-40 · CLINICAL TRIALS</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#fef2f2">Protocol</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#fef2f2">Stress-Test</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#f87171">which criteria cost patients and diversity?</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#c9a3a3">Dapa-CKD eligibility as computable rules</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#c9a3a3">on a Synthea population; every criterion</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#c9a3a3">dropped or swept, one batch per clone.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#c9a3a3" opacity="0.7">PANTHEON · TEMPLE COMPUTE</text>
+<circle cx="679" cy="330" r="6" fill="#fbbf24"/>
+<circle cx="760" cy="306" r="6" fill="#fecaca"/>
+<circle cx="723" cy="450" r="6" fill="#93c5fd"/>
+<circle cx="681" cy="227" r="6" fill="#93c5fd"/>
+<circle cx="715" cy="331" r="6" fill="#93c5fd"/>
+<circle cx="727" cy="200" r="6" fill="#f87171"/>
+<circle cx="754" cy="323" r="6" fill="#fecaca"/>
+<circle cx="731" cy="171" r="6" fill="#fecaca"/>
+<circle cx="686" cy="160" r="6" fill="#fbbf24"/>
+<circle cx="707" cy="387" r="6" fill="#93c5fd"/>
+<circle cx="736" cy="454" r="6" fill="#93c5fd"/>
+<circle cx="737" cy="340" r="6" fill="#f87171"/>
+<circle cx="755" cy="182" r="6" fill="#f87171"/>
+<circle cx="709" cy="235" r="6" fill="#93c5fd"/>
+<circle cx="743" cy="432" r="6" fill="#93c5fd"/>
+<circle cx="711" cy="277" r="6" fill="#fbbf24"/>
+<circle cx="714" cy="285" r="6" fill="#f87171"/>
+<circle cx="759" cy="375" r="6" fill="#fecaca"/>
+<circle cx="753" cy="477" r="6" fill="#f87171"/>
+<circle cx="734" cy="258" r="6" fill="#fecaca"/>
+<circle cx="736" cy="220" r="6" fill="#fbbf24"/>
+<circle cx="684" cy="171" r="6" fill="#93c5fd"/>
+<circle cx="661" cy="414" r="6" fill="#93c5fd"/>
+<circle cx="758" cy="157" r="6" fill="#93c5fd"/>
+<circle cx="742" cy="438" r="6" fill="#fecaca"/>
+<circle cx="723" cy="401" r="6" fill="#93c5fd"/>
+<circle cx="736" cy="259" r="6" fill="#fbbf24"/>
+<circle cx="711" cy="480" r="6" fill="#fbbf24"/>
+<circle cx="651" cy="186" r="6" fill="#fecaca"/>
+<circle cx="764" cy="471" r="6" fill="#fbbf24"/>
+<circle cx="723" cy="202" r="6" fill="#fecaca"/>
+<circle cx="768" cy="262" r="6" fill="#fbbf24"/>
+<circle cx="765" cy="446" r="6" fill="#93c5fd"/>
+<circle cx="695" cy="437" r="6" fill="#93c5fd"/>
+<circle cx="727" cy="347" r="6" fill="#fecaca"/>
+<circle cx="724" cy="460" r="6" fill="#fbbf24"/>
+<circle cx="702" cy="388" r="6" fill="#f87171"/>
+<circle cx="762" cy="294" r="6" fill="#fbbf24"/>
+<circle cx="713" cy="331" r="6" fill="#fecaca"/>
+<circle cx="745" cy="476" r="6" fill="#fbbf24"/>
+<circle cx="652" cy="353" r="6" fill="#f87171"/>
+<circle cx="657" cy="357" r="6" fill="#93c5fd"/>
+<circle cx="692" cy="453" r="6" fill="#fbbf24"/>
+<circle cx="739" cy="157" r="6" fill="#fecaca"/>
+<circle cx="765" cy="157" r="6" fill="#fbbf24"/>
+<circle cx="680" cy="301" r="6" fill="#fbbf24"/>
+<circle cx="671" cy="211" r="6" fill="#fbbf24"/>
+<circle cx="751" cy="237" r="6" fill="#93c5fd"/>
+<circle cx="663" cy="418" r="6" fill="#f87171"/>
+<circle cx="687" cy="223" r="6" fill="#fbbf24"/>
+<circle cx="679" cy="212" r="6" fill="#93c5fd"/>
+<circle cx="728" cy="182" r="6" fill="#fbbf24"/>
+<circle cx="764" cy="373" r="6" fill="#f87171"/>
+<circle cx="703" cy="432" r="6" fill="#f87171"/>
+<circle cx="660" cy="395" r="6" fill="#f87171"/>
+<circle cx="756" cy="299" r="6" fill="#f87171"/>
+<circle cx="744" cy="161" r="6" fill="#f87171"/>
+<circle cx="688" cy="426" r="6" fill="#f87171"/>
+<circle cx="754" cy="262" r="6" fill="#fecaca"/>
+<circle cx="747" cy="264" r="6" fill="#f87171"/>
+<rect x="800" y="165.0" width="14" height="300" rx="7" fill="#f87171"/>
+<text x="807" y="493.0" text-anchor="middle" font-family="DejaVu Sans" font-size="15" fill="#fecaca">eGFR</text>
+<rect x="860" y="200.0" width="14" height="230" rx="7" fill="#f87171"/>
+<text x="867" y="458.0" text-anchor="middle" font-family="DejaVu Sans" font-size="15" fill="#fecaca">UACR</text>
+<rect x="920" y="235.0" width="14" height="160" rx="7" fill="#f87171"/>
+<text x="927" y="423.0" text-anchor="middle" font-family="DejaVu Sans" font-size="15" fill="#fecaca">ACE-I/ARB</text>
+<circle cx="977" cy="317" r="6" fill="#fbbf24"/>
+<circle cx="979" cy="330" r="6" fill="#fbbf24"/>
+<circle cx="977" cy="305" r="6" fill="#93c5fd"/>
+<circle cx="966" cy="261" r="6" fill="#93c5fd"/>
+<circle cx="982" cy="368" r="6" fill="#f87171"/>
+<circle cx="961" cy="310" r="6" fill="#fbbf24"/>
+<circle cx="982" cy="358" r="6" fill="#fecaca"/>
+<circle cx="994" cy="367" r="6" fill="#fecaca"/>
+<circle cx="992" cy="265" r="6" fill="#f87171"/>
+<circle cx="996" cy="359" r="6" fill="#fecaca"/>
+<circle cx="961" cy="342" r="6" fill="#f87171"/>
+<circle cx="980" cy="286" r="6" fill="#fecaca"/>
+<circle cx="981" cy="306" r="6" fill="#fecaca"/>
+<circle cx="974" cy="288" r="6" fill="#93c5fd"/>
+<g transform="translate(1020,130)"><line x1="0" y1="0" x2="0" y2="140" stroke="#c9a3a3" stroke-width="3"/><line x1="0" y1="140" x2="140" y2="140" stroke="#c9a3a3" stroke-width="3"/>
+<circle cx="14" cy="22" r="6" fill="#fef2f2"/>
+<circle cx="40" cy="40" r="6" fill="#fef2f2"/>
+<circle cx="70" cy="62" r="6" fill="#fef2f2"/>
+<circle cx="100" cy="92" r="6" fill="#fef2f2"/>
+<circle cx="126" cy="124" r="6" fill="#fef2f2"/>
+<circle cx="30" cy="90" r="5" fill="#7f1d1d" stroke="#f87171" stroke-width="2"/>
+<circle cx="60" cy="110" r="5" fill="#7f1d1d" stroke="#f87171" stroke-width="2"/>
+<circle cx="90" cy="120" r="5" fill="#7f1d1d" stroke="#f87171" stroke-width="2"/>
+<circle cx="50" cy="70" r="5" fill="#7f1d1d" stroke="#f87171" stroke-width="2"/>
+<circle cx="110" cy="130" r="5" fill="#7f1d1d" stroke="#f87171" stroke-width="2"/>
+<circle cx="80" cy="100" r="5" fill="#7f1d1d" stroke="#f87171" stroke-width="2"/>
+<polyline points="14,22 40,40 70,62 100,92 126,124" fill="none" stroke="#f87171" stroke-width="3"/>
+<text x="70" y="168" text-anchor="middle" font-family="DejaVu Sans" font-size="14" fill="#c9a3a3">pool vs diversity</text></g>
+<text x="1030" y="470" text-anchor="middle" font-family="DejaVu Sans" font-size="18" fill="#fef2f2">eligible</text>
+<text x="1030" y="495" text-anchor="middle" font-family="DejaVu Sans" font-size="15" fill="#c9a3a3">× 2,412 variants</text>
+</svg>

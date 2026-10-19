@@ -1,6 +1,12 @@
 # W-40 · Protocol Stress-Test
 
+<img src="assets/logo.png" width="96" align="right" alt="W-40 logo">
+
+A public trial's eligibility criteria as computable rules on a Synthea population, with thousands of protocol variants fanned out to rank each criterion by the patients and the diversity it costs.
+
 ![Domain: Clinical Trials](https://img.shields.io/badge/domain-clinical--trials-blue)
+
+![W-40 cover](assets/cover.png)
 
 ## Overview
 
@@ -36,12 +42,13 @@ generate_variants ────────────────────�
 | Stage | Kind | Executor / target | CPU / RAM (advisory `resources:`) | Walltime (measured) |
 |---|---|---|---|---|
 | parse_criteria | task | uv env (`anthropic`), local | 1 CPU | <1 s skipped; one API call when a key is set |
+| configure | task | shell (`python3`, stdlib), local | 1 CPU | <0.1 s |
 | plan_shards | task | uv env, local | 1 CPU | 3 s on first run (includes building the shared env) |
-| generate_population | `horus_map`, 4 clones, `max_concurrency: 2` | uv env (`jdk4py`), local or SLURM | 4 CPU / 3 GB each | 7 min 36 s for all 4 shards |
-| build_features | task | uv env (`polars`), local | 2 CPU / 4 GB | 12 s |
+| generate_population | `horus_map`, 4 clones, `max_concurrency: 2` | uv env (`jdk4py`), local or SLURM | 4 CPU / 4 GB / 1 h each | 7 min 36 s for all 4 shards |
+| build_features | task | uv env (`polars`), local | 2 CPU / 8 GB / 30 min | 12 s |
 | generate_variants | task | shell (`python3`, stdlib), local | 1 CPU | 0.1 s |
-| evaluate | `horus_map`, 49 clones | uv env (`polars`, `numpy`), local or SLURM | 1 CPU / 2 GB each | about 1 to 2 s per clone |
-| gather_report | task | uv env (`matplotlib`), local | 1 CPU | 1 to 2 s |
+| evaluate | `horus_map`, 49 clones | uv env (`polars`, `numpy`), local or SLURM | 1 CPU / 2 GB / 15 min each | about 1 to 2 s per clone |
+| gather_report | task | uv env (`matplotlib`), local | 2 CPU / 4 GB / 15 min | 1 to 2 s |
 
 A full default run (`--no-skip-all`, Synthea jar and uv environment already cached) took **7 min 42 s** of wall-clock time on a 16-core laptop. The first run, which also built the uv environment, took about 8 minutes; the stage times in the table come from it. The one-time 192 MB jar download is not included. Synthea dominates the runtime. Each shard's JVM peaked at about 2.6 GB RSS, which is why the population map is capped at two concurrent clones.
 
@@ -49,7 +56,7 @@ The variant sweep is the HPC story. Each batch file is one independent job, so t
 
 ## Tools & Dependencies
 
-- [horus-runtime](https://pypi.org/project/horus-runtime/) ≥0.7.1 (`horus_map`) and [horus-environments](https://pypi.org/project/horus-environments/) ≥0.1.5 (`uv_python_environment`).
+- [horus-runtime](https://pypi.org/project/horus-runtime/) ≥0.8.0 (`horus_map`, value limits) and [horus-environments](https://pypi.org/project/horus-environments/) ≥0.1.5 (`uv_python_environment`).
 - [Synthea](https://github.com/synthetichealth/synthea) v4.0.0, a pinned release jar verified by SHA-256 and cached in `~/.cache/pantheon/` (override with `PANTHEON_CACHE`). Apache-2.0.
 - Java from the [jdk4py](https://pypi.org/project/jdk4py/) wheel inside the task's uv environment. No system JDK, conda or Docker is needed.
 - polars, numpy, pyarrow and matplotlib, pinned in `workflow.yaml`.
@@ -58,11 +65,10 @@ The variant sweep is the HPC story. Each batch file is one independent job, so t
 ## Horus Configuration
 
 - **Executors:** `uv_python_environment` for every data task, and `shell` for the stdlib-only `generate_variants`. No conda or Docker.
-  - The data tasks share one environment via `environment_dir: ../../.horus_uv_env_w37`, so every map clone reuses it.
+  - The data tasks share one environment via `environment_dir: ../../.horus_uv_env_w40`, so every map clone reuses it.
   - `plan_shards` builds that environment before any map clone starts, so clones never race to create it.
   - `parse_criteria` has its own small environment.
 - **Fan-out:** `generate_population` and `evaluate` are `kind: horus_map` tasks. A map runs one clone per direct child of its `over.input_id` folder, with the child bound to `${shard}` or `${batch}`, and writes each clone's output to `<output>/<slot>/`. The downstream task reads the whole folder through an ordinary edge.
-  - This is the current form of the fan-out/fan-in pattern shown in `engine-showcases/w01-fanout-map-gather`. That showcase uses the older `map:` / `gather:` block, which `horus_map` replaced in horus-runtime 0.5.0.
 - **Targets:** every task runs on `kind: local`.
   - `workflow.yaml` has commented SLURM target anchors (`_slurm_population`, `_slurm_evaluate`) in the style of `drug-discovery/w04-cmd`, with empty `partition` and `account`.
   - To use them, run `uv add horus-slurm`, uncomment an anchor, fill in your site values, and set the task's `target:`.
@@ -153,15 +159,27 @@ When data is missing, an inclusion rule fails (no evidence of eligibility) and a
 
 ## Parameterization
 
-| What | Where |
-|---|---|
-| Population size, shards, seed, state, age range, Synthea modules, JVM heap | `config.json` → `population` |
-| Use an existing Synthea CSV folder instead of generating | `config.json` → `population.synthea_csv` (a folder with `patients.csv`, `conditions.csv`, `observations.csv`, `medications.csv`, `procedures.csv`) |
-| Index date (also pins Synthea's reference and end date) | `config.json` → `index_date` |
-| Thresholds, lookbacks, codes, sweep grids | `criteria.reviewed.json` |
-| Batch size, random combinations | `config.json` → `variants` |
-| LLM model | `config.json` → `llm.model` (default `claude-opus-5-5`) |
-| Synthea concurrency | `generate_population` → `max_concurrency` in `workflow.yaml` |
+The common knobs are typed workflow inputs. The `configure` task lays them over `config.json` and writes `results/config.json`, which every other task reads.
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `protocol` | file | `examples/protocol/NCT03036150.json` | ClinicalTrials.gov API v2 JSON | The trial record (eligibility text) |
+| `rules` | file | `examples/criteria.reviewed.json` | JSON | Reviewed computable criteria: thresholds, lookbacks, codes, sweep grids |
+| `config` | file | `examples/config.json` | JSON | Advanced settings: age range, Synthea modules, JVM heap, `synthea_csv`, `variants.random_seed` |
+| `population_size` | number | 5000 | 100–100000, step 100 | Synthetic patients to generate |
+| `population_shards` | number | 4 | 1–64, step 1 | Parallel Synthea runs, one map clone each |
+| `population_seed` | number | 42 | 0–1000000, step 1 | Seed of shard 0; shard i uses seed + i |
+| `state` | string | `Massachusetts` | letters and spaces | US state for Synthea's demographics |
+| `index_date` | string | `2026-01-01` | `YYYY-MM-DD` | Eligibility is evaluated at this date (also pins Synthea's reference and end date) |
+| `variant_batch_size` | number | 50 | 10–1000, step 10 | Variants per `evaluate` clone |
+| `random_combinations` | number | 0 | 0–20000, step 100 | Extra random multi-criterion variants |
+| `llm_model` | string | `claude-opus-5-5` | model id | Model for the optional rule draft |
+
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes `params/<id>.txt` only when it is missing. To use an existing Synthea CSV folder instead of generating, set `population.synthea_csv` in `config.json` (a folder with `patients.csv`, `conditions.csv`, `observations.csv`, `medications.csv`, `procedures.csv`). Synthea concurrency is `generate_population` → `max_concurrency` in `workflow.yaml`.
+
+## Running in Temple Compute
+
+Start a campaign from the library: the form shows the protocol, rules and config uploads (keep the examples for Dapa-CKD) and the population, date, variant and LLM inputs. Each Synthea shard asks for 4 CPU / 4 GB / 1 h and each evaluate batch for 1 CPU / 2 GB / 15 min, so an auto-provisioned target picks general-purpose machines and no GPU. Raise `population_shards` together with the `generate_population` `max_concurrency` to spread a large population. The LLM draft runs only when the target has `ANTHROPIC_API_KEY` set; without it the step logs a skip and the report omits the diff.
 
 The default grid is eGFR low (5 values) × eGFR high (6) × UACR low (5) × ACE-I/ARB weeks (4) × cardiovascular washout (4). That gives 2,400 sweep variants, plus the baseline and 12 leave-one-out variants. One sweep point is identical to the baseline and is deduplicated by hash, leaving 2,412 variants.
 

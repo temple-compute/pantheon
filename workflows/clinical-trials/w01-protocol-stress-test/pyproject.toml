@@ -5,6 +5,6 @@ requires-python = ">=3.13"
 dependencies = [
   "horus-environments>=0.1.5",
   # horus_map (the fan-out used by generate_population and evaluate) needs >=0.5.0;
-  # 0.7.1 is the version this workflow was run with.
-  "horus-runtime>=0.7.1",
+  # 0.8.0 adds the value limits the campaign inputs use.
+  "horus-runtime>=0.8.0",
 ]
