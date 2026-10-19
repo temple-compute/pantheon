@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: BioExcel MD Setup - Lysozyme 1AKI
+name: GROMACS Protein MD Setup
 
 _executor: &executor
   kind: conda_python_environment
@@ -8,6 +8,19 @@ _executor: &executor
   environment_file: conda_env.yaml
 
 artifacts:
+  - id: pdb_id
+    name: PDB ID
+    description: RCSB PDB code to download (default 1AKI). Clear it to use the uploaded structure instead.
+    kind: string
+    path: params/pdb_id.txt
+    value: 1AKI
+    pattern: ([0-9][A-Za-z0-9]{3})?
+    max_length: 4
+  - id: structure
+    name: Structure upload (PDB)
+    description: 'Structure used when PDB ID is empty. Default: examples/1aki.pdb (1AKI).'
+    kind: file
+    path: examples/1aki.pdb
   - id: center_config
     name: Centering configuration
     description: GROMACS configuration for re-centering the protein and removing periodic boundary condition artifacts from the trajectory.
@@ -19,30 +32,6 @@ artifacts:
     description: Configuration for extracting the final solvent-stripped protein structure from the trajectory.
     kind: file
     path: configs/dry_trjconv.yaml
-
-  - id: editconf_config
-    name: Simulation box configuration
-    description: Configuration defining the cubic simulation box dimensions and padding.
-    kind: file
-    path: configs/editconf.yaml
-
-  - id: fetch_pdb_config
-    name: PDB fetch configuration
-    description: Configuration specifying which PDB entry (1AKI) to download from the RCSB.
-    kind: file
-    path: configs/fetch_pdb.yaml
-
-  - id: genion_config
-    name: Ion addition configuration
-    description: Configuration for genion controlling the ion type and concentration used to neutralize the system.
-    kind: file
-    path: configs/genion.yaml
-
-  - id: grompp_free_config
-    name: Free MD run configuration
-    description: GROMACS mdp parameters for the unrestrained production MD run.
-    kind: file
-    path: configs/grompp_free.yaml
 
   - id: grompp_ions_config
     name: Ion step run configuration
@@ -56,28 +45,56 @@ artifacts:
     kind: file
     path: configs/grompp_minimize.yaml
 
-  - id: grompp_npt_config
-    name: NPT equilibration configuration
-    description: GROMACS mdp parameters for the NPT (constant pressure) equilibration run.
-    kind: file
-    path: configs/grompp_npt.yaml
-
-  - id: grompp_nvt_config
-    name: NVT equilibration configuration
-    description: GROMACS mdp parameters for the NVT (constant volume) equilibration run.
-    kind: file
-    path: configs/grompp_nvt.yaml
-
+  - id: box_padding_nm
+    name: Box padding (nm)
+    description: Minimum distance between the protein and the cubic box edge.
+    kind: number
+    path: params/box_padding_nm.txt
+    value: 1.0
+    min: 0.5
+    max: 3.0
+    step: 0.1
+  - id: ion_concentration_m
+    name: NaCl concentration (M)
+    description: Salt concentration added on top of the neutralizing ions; 0 only neutralizes.
+    kind: number
+    path: params/ion_concentration_m.txt
+    value: 0
+    min: 0
+    max: 1
+    step: 0.01
+  - id: equilibration_steps
+    name: Equilibration steps (NVT and NPT)
+    description: Steps of each restrained equilibration stage (2 fs per step; 5000 = 10 ps).
+    kind: number
+    path: params/equilibration_steps.txt
+    value: 5000
+    min: 500
+    max: 5000000
+    step: 500
+  - id: production_steps
+    name: Production steps
+    description: Steps of the free production run (2 fs per step; 50000 = 100 ps).
+    kind: number
+    path: params/production_steps.txt
+    value: 50000
+    min: 1000
+    max: 50000000
+    step: 1000
 tasks:
   - kind: horus_task
     id: fetch_pdb
-    name: Download 1AKI structure from PDB
-    description: Downloads the 1AKI lysozyme structure from the RCSB PDB.
+    name: Fetch (PDB ID) or load the uploaded structure
+    description: Downloads the PDB entry given in pdb_id from the RCSB, or copies the uploaded structure when pdb_id is empty.
     inputs:
-      - id: fetch_pdb_config
-        name: PDB fetch configuration
+      - id: pdb_id
+        name: PDB ID
+        kind: string
+        path: params/pdb_id.txt
+      - id: structure
+        name: Structure upload (PDB)
         kind: file
-        path: configs/fetch_pdb.yaml
+        path: examples/1aki.pdb
     outputs:
       - id: downloaded_pdb
         name: Downloaded PDB structure
@@ -87,9 +104,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        pdb
-        --config ${fetch_pdb_config}
-        --output_pdb_path ${downloaded_pdb}
+        if [ -n ${pdb_id} ]; then pdb --config '{"properties":{"pdb_code":"${pdb_id}"}}' --output_pdb_path ${downloaded_pdb}; else cp ${structure} ${downloaded_pdb}; fi
     target:
       kind: local
 
@@ -152,14 +167,14 @@ tasks:
     name: Define cubic simulation box
     description: Runs GROMACS editconf to place the protein in a cubic simulation box.
     inputs:
-      - id: editconf_config
-        name: Simulation box configuration
-        kind: file
-        path: configs/editconf.yaml
       - id: system_gro
         name: Initial system coordinates
         kind: file
         path: results/system.gro
+      - id: box_padding_nm
+        name: Box padding (nm)
+        kind: number
+        path: params/box_padding_nm.txt
     outputs:
       - id: boxed_gro
         name: Boxed system coordinates
@@ -169,10 +184,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        editconf
-        --config ${editconf_config}
-        --input_gro_path ${system_gro}
-        --output_gro_path ${boxed_gro}
+        editconf --config '{"properties":{"box_type":"cubic","distance_to_molecule":${box_padding_nm}}}' --input_gro_path ${system_gro} --output_gro_path ${boxed_gro}
     target:
       kind: local
 
@@ -251,10 +263,6 @@ tasks:
     name: Add neutralizing ions
     description: Runs GROMACS genion to replace solvent molecules with Na+/Cl- ions and neutralize the system.
     inputs:
-      - id: genion_config
-        name: Ion addition configuration
-        kind: file
-        path: configs/genion.yaml
       - id: ions_tpr
         name: Ion step run file
         kind: file
@@ -263,6 +271,10 @@ tasks:
         name: Solvated topology archive
         kind: file
         path: results/solvated_top.zip
+      - id: ion_concentration_m
+        name: NaCl concentration (M)
+        kind: number
+        path: params/ion_concentration_m.txt
     outputs:
       - id: ionized_gro
         name: Ionized system coordinates
@@ -277,12 +289,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        genion
-        --config ${genion_config}
-        --input_tpr_path ${ions_tpr}
-        --input_top_zip_path ${solvated_top}
-        --output_gro_path ${ionized_gro}
-        --output_top_zip_path ${ionized_top}
+        genion --config '{"properties":{"neutral":true,"concentration":${ion_concentration_m}}}' --input_tpr_path ${ions_tpr} --input_top_zip_path ${solvated_top} --output_gro_path ${ionized_gro} --output_top_zip_path ${ionized_top}
     target:
       kind: local
 
@@ -335,6 +342,10 @@ tasks:
         name: Minimized system coordinates
         kind: file
         path: results/minimized.gro
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "00:30:00"
     executor: *executor
     runtime:
       kind: command
@@ -353,10 +364,6 @@ tasks:
     name: Compile NVT run file (grompp)
     description: Runs GROMACS grompp to compile the run input file for restrained NVT equilibration.
     inputs:
-      - id: grompp_nvt_config
-        name: NVT equilibration configuration
-        kind: file
-        path: configs/grompp_nvt.yaml
       - id: minimized_gro
         name: Minimized system coordinates
         kind: file
@@ -365,6 +372,10 @@ tasks:
         name: Ionized topology archive
         kind: file
         path: results/ionized_top.zip
+      - id: equilibration_steps
+        name: Equilibration steps (NVT and NPT)
+        kind: number
+        path: params/equilibration_steps.txt
     outputs:
       - id: nvt_tpr
         name: NVT run file
@@ -375,11 +386,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        grompp
-        --config ${grompp_nvt_config}
-        --input_gro_path ${minimized_gro}
-        --input_top_zip_path ${ionized_top}
-        --output_tpr_path ${nvt_tpr}
+        grompp --config '{"properties":{"simulation_type":"nvt","mdp":{"nsteps":"${equilibration_steps}","dt":0.002,"Define":"-DPOSRES"}}}' --input_gro_path ${minimized_gro} --input_top_zip_path ${ionized_top} --output_tpr_path ${nvt_tpr}
     target:
       kind: local
 
@@ -402,6 +409,10 @@ tasks:
         description: GROMACS checkpoint file for resuming or continuing from the NVT equilibration state.
         kind: file
         path: results/nvt.cpt
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "01:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -421,10 +432,6 @@ tasks:
     name: Compile NPT run file (grompp)
     description: Runs GROMACS grompp to compile the run input file for restrained NPT equilibration.
     inputs:
-      - id: grompp_npt_config
-        name: NPT equilibration configuration
-        kind: file
-        path: configs/grompp_npt.yaml
       - id: nvt_gro
         name: NVT equilibrated coordinates
         kind: file
@@ -437,6 +444,10 @@ tasks:
         name: Ionized topology archive
         kind: file
         path: results/ionized_top.zip
+      - id: equilibration_steps
+        name: Equilibration steps (NVT and NPT)
+        kind: number
+        path: params/equilibration_steps.txt
     outputs:
       - id: npt_tpr
         name: NPT run file
@@ -447,12 +458,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        grompp
-        --config ${grompp_npt_config}
-        --input_gro_path ${nvt_gro}
-        --input_cpt_path ${nvt_cpt}
-        --input_top_zip_path ${ionized_top}
-        --output_tpr_path ${npt_tpr}
+        grompp --config '{"properties":{"simulation_type":"npt","mdp":{"nsteps":"${equilibration_steps}"}}}' --input_gro_path ${nvt_gro} --input_cpt_path ${nvt_cpt} --input_top_zip_path ${ionized_top} --output_tpr_path ${npt_tpr}
     target:
       kind: local
 
@@ -475,6 +481,10 @@ tasks:
         description: GROMACS checkpoint file for resuming or continuing from the NPT equilibration state.
         kind: file
         path: results/npt.cpt
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "01:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -494,10 +504,6 @@ tasks:
     name: Compile free MD run file (grompp)
     description: Runs GROMACS grompp to compile the run input file for the unrestrained production MD run.
     inputs:
-      - id: grompp_free_config
-        name: Free MD run configuration
-        kind: file
-        path: configs/grompp_free.yaml
       - id: npt_gro
         name: NPT equilibrated coordinates
         kind: file
@@ -510,6 +516,10 @@ tasks:
         name: Ionized topology archive
         kind: file
         path: results/ionized_top.zip
+      - id: production_steps
+        name: Production steps
+        kind: number
+        path: params/production_steps.txt
     outputs:
       - id: md_tpr
         name: Production MD run file
@@ -520,12 +530,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        grompp
-        --config ${grompp_free_config}
-        --input_gro_path ${npt_gro}
-        --input_cpt_path ${npt_cpt}
-        --input_top_zip_path ${ionized_top}
-        --output_tpr_path ${md_tpr}
+        grompp --config '{"properties":{"simulation_type":"free","mdp":{"nsteps":"${production_steps}"}}}' --input_gro_path ${npt_gro} --input_cpt_path ${npt_cpt} --input_top_zip_path ${ionized_top} --output_tpr_path ${md_tpr}
     target:
       kind: local
 
@@ -547,6 +552,10 @@ tasks:
         name: Production MD trajectory
         kind: file
         path: results/md.trr
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "12:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -774,26 +783,6 @@ edges:
     target: gmx_trjconv_str
     target_input: dry_trjconv_config
 
-  - source: artifact-editconf_config
-    source_output: editconf_config
-    target: editconf
-    target_input: editconf_config
-
-  - source: artifact-fetch_pdb_config
-    source_output: fetch_pdb_config
-    target: fetch_pdb
-    target_input: fetch_pdb_config
-
-  - source: artifact-genion_config
-    source_output: genion_config
-    target: genion
-    target_input: genion_config
-
-  - source: artifact-grompp_free_config
-    source_output: grompp_free_config
-    target: grompp_free
-    target_input: grompp_free_config
-
   - source: artifact-grompp_ions_config
     source_output: grompp_ions_config
     target: grompp_ions
@@ -804,17 +793,34 @@ edges:
     target: grompp_minimize
     target_input: grompp_minimize_config
 
-  - source: artifact-grompp_npt_config
-    source_output: grompp_npt_config
-    target: grompp_npt
-    target_input: grompp_npt_config
-
-  - source: artifact-grompp_nvt_config
-    source_output: grompp_nvt_config
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: fetch_pdb
+    target_input: pdb_id
+  - source: artifact-structure
+    source_output: structure
+    target: fetch_pdb
+    target_input: structure
+  - source: artifact-box_padding_nm
+    source_output: box_padding_nm
+    target: editconf
+    target_input: box_padding_nm
+  - source: artifact-ion_concentration_m
+    source_output: ion_concentration_m
+    target: genion
+    target_input: ion_concentration_m
+  - source: artifact-equilibration_steps
+    source_output: equilibration_steps
     target: grompp_nvt
-    target_input: grompp_nvt_config
-
-
+    target_input: equilibration_steps
+  - source: artifact-equilibration_steps
+    source_output: equilibration_steps
+    target: grompp_npt
+    target_input: equilibration_steps
+  - source: artifact-production_steps
+    source_output: production_steps
+    target: grompp_free
+    target_input: production_steps
 orchestrator_target:
   kind: local
   working_directory: "./workflow_results"

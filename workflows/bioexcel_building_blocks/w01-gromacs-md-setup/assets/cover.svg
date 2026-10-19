@@ -1,0 +1,105 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06122a"/><stop offset="1" stop-color="#0b2a5c"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#60a5fa" stop-opacity="0.22"/><stop offset="1" stop-color="#60a5fa" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#bfdbfe"/>
+    </marker>
+
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="198" height="36" fill="#1e3a8a"/>
+  <text x="163" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#bfdbfe">W-03 · BioExcel</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#eff6ff">GROMACS Protein</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#eff6ff">MD Setup</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#60a5fa">biobb · GROMACS · CHARMM36</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">Fetch a PDB entry or upload a structure;</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">solvate, add ions, minimize, equilibrate</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">and run production MD on CPU nodes.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#5b7299">PANTHEON · TEMPLE COMPUTE</text>
+  <g>
+    <!-- water box (isometric cube) -->
+    <polygon points="700,170 960,120 1120,190 860,240" fill="#1e3a8a" opacity="0.35"/>
+    <polygon points="700,170 860,240 860,520 700,450" fill="#1e40af" opacity="0.30"/>
+    <polygon points="860,240 1120,190 1120,470 860,520" fill="#1d4ed8" opacity="0.22"/>
+    <g fill="none" stroke="#93c5fd" stroke-width="3" stroke-linejoin="round" opacity="0.9">
+      <polygon points="700,170 960,120 1120,190 860,240"/>
+      <polyline points="700,170 700,450 860,520 1120,470 1120,190"/>
+      <line x1="860" y1="240" x2="860" y2="520"/>
+    </g>
+    <circle cx="841" cy="244" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="969" cy="221" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="924" cy="306" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="738" cy="347" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="730" cy="326" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="742" cy="226" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="881" cy="440" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="763" cy="265" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="960" cy="475" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="940" cy="315" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1096" cy="214" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1050" cy="284" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="771" cy="234" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="835" cy="437" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="785" cy="369" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="964" cy="308" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="929" cy="218" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="738" cy="260" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="980" cy="324" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="838" cy="370" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="892" cy="287" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1025" cy="403" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="810" cy="367" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="920" cy="454" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="999" cy="284" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1097" cy="234" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="878" cy="420" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="774" cy="342" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="730" cy="394" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1013" cy="366" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1056" cy="291" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="986" cy="372" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="941" cy="332" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1043" cy="474" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="900" cy="393" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="739" cy="403" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="967" cy="488" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1036" cy="283" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="865" cy="394" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="724" cy="334" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="781" cy="234" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="738" cy="423" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="765" cy="272" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="867" cy="453" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="746" cy="330" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="929" cy="456" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1035" cy="451" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="824" cy="320" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="855" cy="456" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1089" cy="244" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="784" cy="267" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="806" cy="341" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="945" cy="276" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="717" cy="321" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="859" cy="364" r="5" fill="#60a5fa" opacity="0.45"/>
+    <g transform="translate(905,330) scale(0.95)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-110,40 C-90,-40 -60,-40 -50,0 C-40,40 -10,40 0,0 C10,-40 40,-40 50,0 C60,40 90,40 100,-10" stroke="#fbbf24" stroke-width="14"/>
+    <path d="M-120,-60 C-60,-110 40,-110 110,-70" stroke="#93c5fd" stroke-width="11.200000000000001"/>
+    <path d="M110,-70 l-26,-6 m26,6 l-14,22" stroke="#93c5fd" stroke-width="11.200000000000001"/>
+    <path d="M-100,90 C-40,120 50,115 105,70" stroke="#60a5fa" stroke-width="11.200000000000001"/>
+  </g>
+    <g font-family="DejaVu Sans" font-weight="bold" font-size="22" text-anchor="middle">
+      <circle cx="760" cy="300" r="15" fill="#f472b6"/><text x="760" y="308" fill="#06122a">+</text>
+      <circle cx="1060" cy="420" r="15" fill="#34d399"/><text x="1060" y="428" fill="#06122a">−</text>
+      <circle cx="1040" cy="250" r="15" fill="#f472b6"/><text x="1040" y="258" fill="#06122a">+</text>
+    </g>
+    <g font-family="DejaVu Sans" font-size="18" fill="#bfdbfe">
+      <text x="700" y="580">min → NVT → NPT → production</text>
+    </g>
+  </g>
+</svg>

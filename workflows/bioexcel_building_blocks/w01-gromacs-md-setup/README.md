@@ -1,15 +1,21 @@
-# W-03 · GROMACS MD Setup
+# W-03 · GROMACS Protein MD Setup
+
+<img src="assets/logo.png" width="96" align="right" alt="W-03 logo">
+
+Set up and run a GROMACS MD simulation of a protein: fetch a PDB entry (or upload a structure), solvate, add ions, minimize, equilibrate and run production MD.
 
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel-green)
 
+![W-03 cover](assets/cover.png)
+
 ## Overview
 
-This workflow runs a complete molecular dynamics setup for hen egg-white lysozyme (PDB: 1AKI) using GROMACS and the CHARMM36 force field. Starting from the raw PDB file, it builds a topology, solvates the protein in a water box, adds neutralizing NaCl ions, energy-minimizes the system, runs NVT and NPT equilibration, and finishes with a free production MD simulation. Horus provisions the full GROMACS/biobb conda environment automatically for each stage and routes every task to the local machine — swapping any stage to a remote cluster is a one-line `target:` change.
+This workflow runs a complete molecular dynamics setup for a protein (by default hen egg-white lysozyme, PDB 1AKI) using GROMACS and the CHARMM36 force field. Starting from the raw PDB file, it builds a topology, solvates the protein in a water box, adds neutralizing NaCl ions, energy-minimizes the system, runs NVT and NPT equilibration, and finishes with a free production MD simulation. Horus provisions the full GROMACS/biobb conda environment automatically for each stage and routes every task to the local machine — swapping any stage to a remote cluster is a one-line `target:` change.
 
 ## Pipeline
 
 ```
-fetch_pdb          Download 1AKI from the PDB
+fetch_pdb          Download pdb_id (default 1AKI) or use the uploaded structure
    │
 fix_side_chain     Model missing side-chain atoms (biobb_structure_utils)
    │
@@ -56,9 +62,24 @@ uv run horus run workflow.yaml
 
 The first run builds the conda environment (this takes a few minutes). Subsequent runs reuse the cached environment at `../.horus_conda_env`.
 
+## Inputs
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `pdb_id` | string | `1AKI` | PDB code or empty | RCSB PDB code to download (default 1AKI). Clear it to use the uploaded structure instead. |
+| `structure` | file | `examples/1aki.pdb` | PDB | Structure used when PDB ID is empty. Default: examples/1aki.pdb (1AKI). |
+| `box_padding_nm` | number | `1.0` | 0.5–3.0, step 0.1 | Minimum distance between the protein and the cubic box edge. |
+| `ion_concentration_m` | number | `0` | 0–1, step 0.01 | Salt concentration added on top of the neutralizing ions; 0 only neutralizes. |
+| `equilibration_steps` | number | `5000` | 500–5000000, step 500 | Steps of each restrained equilibration stage (2 fs per step; 5000 = 10 ps). |
+| `production_steps` | number | `50000` | 1000–50000000, step 1000 | Steps of the free production run (2 fs per step; 50000 = 100 ps). |
+
+`pdb_id` wins when set; clear it to run on the uploaded `structure`. Everything else (force field, water model, thermostat, restraints) stays in the biobb property files under `configs/`.
+
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes `params/<id>.txt` only when it is missing and fingerprints that file for the skip check, so a stale file keeps the old value. In Temple Compute, set it in the campaign form.
+
 ## Inputs / Outputs
 
-This workflow has no file inputs — it fetches 1AKI from the RCSB PDB automatically.
+The structure comes from `pdb_id` (fetched from the RCSB) or, when that is empty, from the `structure` upload; see Inputs.
 
 **Outputs** (all under `workflow_results/`):
 - `results/downloaded.pdb` — raw PDB from RCSB
@@ -70,7 +91,11 @@ This workflow has no file inputs — it fetches 1AKI from the RCSB PDB automatic
 
 ## Configuration
 
-Config files in `configs/` control GROMACS `mdp` parameters (time step, temperature, pressure, restraints) for each simulation stage. Edit them to adjust simulation length, temperature, force field, or barostat settings before running.
+Box padding, salt concentration and the step counts are workflow inputs (see Inputs) and are passed to biobb as inline JSON configs. The remaining config files in `configs/` control the other GROMACS `mdp` parameters (time step, temperature, pressure, restraints); edit them before running for expert changes.
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign. The form shows the PDB ID, the structure upload (with a Mol* preview) and the simulation knobs above as sliders. The four `mdrun` tasks carry `resources` hints (8 CPU / 16 GB; walltime 30 min to 12 h), so an auto-provisioned target sizes a CPU node from them; the short biobb preparation steps run without hints on the orchestrator's default target. Expert settings (force field, thermostat, restraints) stay in `configs/*.yaml`, which also show up as editable file inputs.
 
 ## References
 
