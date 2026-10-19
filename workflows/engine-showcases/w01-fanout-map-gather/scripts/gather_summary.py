@@ -2,8 +2,8 @@
 """
 Stage 3 (gather) — aggregate the mapped stage's per-batch folders into one.
 
-The ``score`` task's ``map:`` block runs one clone per batch; the fan-in sets
-each clone's output path to ``score.gathered/<i>/``, so each clone's ``count.txt``
+The ``score`` task's ``horus_map`` runs one clone per batch; the fan-in sets
+each clone's output path to ``scored/<i>/``, so each clone's ``count.txt``
 + ``upper.txt`` land directly there. This stage walks that gathered folder, sums
 the per-batch word counts, concatenates the uppercased text, and writes a single
 combined ``summary.json`` + ``combined_upper.txt``.
@@ -11,7 +11,7 @@ combined ``summary.json`` + ``combined_upper.txt``.
 stdlib only.
 
 Usage:
-    gather_summary.py --results score.gathered/ --out results/summary/
+    gather_summary.py --results scored/ --out results/summary/
     gather_summary.py --selftest
 """
 
@@ -26,8 +26,8 @@ from pathlib import Path
 def collect(results: Path) -> list[dict]:
     """Read one record per ``<i>/{count,upper}.txt`` under *results*.
 
-    The ``map:`` fan-in sets each clone's output path directly to
-    ``score.gathered/<i>/``, so the clone's ``scored/`` folder contents land at
+    The ``horus_map`` sets each clone's output path directly to
+    ``scored/<i>/``, so the clone's ``scored/`` folder contents land at
     ``<i>/count.txt`` and ``<i>/upper.txt`` — there is no ``scored/`` sub-level.
     """
     batches: list[dict] = []
@@ -71,7 +71,7 @@ def _selftest() -> None:
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:
-        results = Path(tmp) / "score.gathered"
+        results = Path(tmp) / "scored"
         for i, (word, count) in enumerate([("apple", 1), ("banana", 1), ("cherry pie", 2)]):
             batch_dir = results / str(i)
             batch_dir.mkdir(parents=True)

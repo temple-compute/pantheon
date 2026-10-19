@@ -106,9 +106,9 @@ features rather than a science domain.
 
 | ID | Workflow | Description |
 |---|---|---|
-| W-06 | [Fan-out / Map / Gather](workflows/engine-showcases/w01-fanout-map-gather/README.md) | Split a collection into batches, map a stage over them concurrently, gather N results into one folder |
+| W-06 | [Fan-out / Map / Gather](workflows/engine-showcases/w01-fanout-map-gather/README.md) | Split a collection into batches, run a `horus_map` stage over them concurrently, gather N results into one folder |
 | W-07 | [Programmatic Dynamic DAG](workflows/engine-showcases/w02-programmatic-dynamic-dag/README.md) | A task generates downstream tasks at runtime from the data it reads, via `add_task`/`expand` |
-| W-08 | [Bounded Loop (Range Map)](workflows/engine-showcases/w03-loop-map/README.md) | Run a fixed number of deterministic iterations with `map: {range: N}` and gather the results |
+| W-08 | [Bounded Loop (Range Map)](workflows/engine-showcases/w03-loop-map/README.md) | Run N deterministic iterations as a `horus_map` over a generated index list and gather the results |
 | W-27 | [Subworkflow Reuse](workflows/engine-showcases/w04-subworkflow-reuse/README.md) | Inline a child workflow into the parent with `sub:`, reusing one YAML-anchored body across two instances |
 | W-28 | [Execution Path Coverage](workflows/engine-showcases/w05-execution-path-coverage/README.md) | One measurable task per execution mechanism (subprocess, venv, container, in-process) as an acceptance harness for per-task resource measurement |
 

@@ -5,7 +5,7 @@ Stage 1 (split) — chunk a small JSON list into batch files.
 Reads a JSON array of items and writes one sub-directory per batch
 (``batch_0/data.txt``, ``batch_1/data.txt``, ...) into the output folder, one
 item per line. The output folder is what the ``score`` task's declarative
-``map:`` block fans out over — each batch sub-directory becomes one item, copied
+``horus_map`` fans out over — each batch sub-directory becomes one item, copied
 whole into a concurrent clone as its folder input.
 
 stdlib only.
@@ -33,7 +33,7 @@ def split_batches(items: list[str], batch_size: int) -> list[list[str]]:
 def write_batches(batches: list[list[str]], out: Path) -> None:
     """Write each batch as ``batch_<i>/data.txt``, one item per line, into *out*.
 
-    Each batch is its own sub-directory so the ``score`` task's ``map:`` block
+    Each batch is its own sub-directory so the ``score`` task's ``horus_map``
     can fan out over ``out``'s children — the engine hands each clone a *copy of
     the i-th child directory* as its folder input.
     """
