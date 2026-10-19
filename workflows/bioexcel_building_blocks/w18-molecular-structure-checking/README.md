@@ -1,6 +1,12 @@
 # W-23 · Molecular Structure Checking
 
+<img src="assets/logo.png" width="96" align="right" alt="W-23 logo">
+
+Check and repair a PDB entry before MD: model/chain selection, alternate locations, disulfides, amides, chirality, missing side chains and backbone (Modeller), then a short AMBER minimization and a final quality report.
+
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel-green)
+
+![W-23 cover](assets/cover.png)
 
 ## Overview
 
@@ -9,7 +15,7 @@ This workflow runs a comprehensive structure-quality check and repair pipeline o
 ## Pipeline
 
 ```
-fetch_pdb                Download 1Z83 from the PDB (pdb)
+fetch_pdb                Download pdb_id (default 1Z83) from the PDB
    │
 structure_check           Initial structure-quality report (structure_check)
    │
@@ -66,9 +72,31 @@ uv run horus run workflow.yaml
 
 The first run builds the conda environment (this takes a few minutes). Subsequent runs reuse the cached environment at `../.horus_conda_env`.
 
+## Inputs
+
+Root artifacts in `workflow.yaml`; tc-os shows them in the campaign form.
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `pdb_id` | string | 1z83 | PDB ID | 4-character PDB code to check and repair. Also used to fetch the canonical sequence that Modeller rebuilds missing backbone from, so an upload is not offered. |
+| `chain` | string | A | `[A-Za-z0-9]` | Chain to keep. |
+| `altlocs` | string | `["A45:A","A67:A","A85:A"]` | JSON list | JSON list of alternate-location picks, one "A45:A" per residue (chain A, residue 45, keep altloc A); [] skips the step. The default is for 1Z83. |
+| `minimization_steps` | number | 500 | 0–20000, step 50 | sander steepest-descent/conjugate-gradient cycles used to relieve clashes. |
+
+Expert settings stay in the biobb property files under `configs/`.
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes
+`params/<id>.txt` only when it is missing and fingerprints that file for the skip check.
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: give a PDB ID
+(default 1Z83), the chain, the alternate-location picks for that entry and the minimization
+length. Modeller (`fix_backbone`) and sander carry `resources` hints (2 CPU, 8 GB, 1 h);
+the checks are light. An auto-provisioned target picks a small general-purpose machine.
+
 ## Inputs / Outputs
 
-This workflow has no file inputs — it fetches 1Z83 from the RCSB PDB automatically.
+The workflow fetches `pdb_id` (default 1Z83) from the RCSB PDB. It takes a PDB ID rather than an upload because `canonical_fasta` fetches the entry's canonical sequence, which Modeller needs to rebuild missing backbone. The metal (ZN) and ligand (SO4, AP5) removal lists stay in `configs/`; for another entry they are no-ops unless you edit them, and set `altlocs` to that entry's picks (or `[]`).
 
 **Outputs** (all under `workflow_results/results/`):
 - `downloaded.pdb`, `report.json` — raw structure and its initial quality report
@@ -83,7 +111,7 @@ This workflow has no file inputs — it fetches 1Z83 from the RCSB PDB automatic
 
 ## Configuration
 
-`configs/fetch_pdb.yaml` sets the PDB code (1Z83). `configs/extract_model.yaml` and `extract_chain.yaml` control which model/chain is kept. `configs/fix_altlocs.yaml` and `remove_molecules_metals.yaml` / `remove_molecules_ligands.yaml` define which alternate locations, metals, and ligands to drop. `configs/leap_gen_top.yaml` and `sander_mdrun.yaml` control the AMBER topology and minimization parameters.
+The PDB code, chain, alternate locations and minimization length are the inputs above. `configs/extract_model.yaml` picks the model, `remove_molecules_metals.yaml` / `remove_molecules_ligands.yaml` the metals and ligands to drop, and `configs/leap_gen_top.yaml` the AMBER force field.
 
 ## References
 

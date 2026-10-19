@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: BioExcel Structure Checking - 1Z83 (AK1A)
+name: Molecular Structure Checking
 
 _executor: &executor
   kind: conda_python_environment
@@ -13,35 +13,50 @@ _docker_executor: &docker_executor
   image: quay.io/biocontainers/biobb_amber:5.2.1--py312hc5e4ab4_0
 
 artifacts:
-  - id: canonical_fasta_config
-    name: Canonical FASTA config
-    description: Configuration for fetching the canonical FASTA sequence used to model missing backbone atoms.
-    kind: file
-    path: configs/canonical_fasta.yaml
+  - id: pdb_id
+    name: PDB ID
+    description: 4-character PDB code to check and repair. Also used to fetch the canonical sequence
+      that Modeller rebuilds missing backbone from, so an upload is not offered.
+    kind: string
+    pattern: '[0-9][A-Za-z0-9]{3}'
+    max_length: 4
+    value: 1z83
+    path: params/pdb_id.txt
 
-  - id: extract_chain_config
-    name: Chain extraction config
-    description: Configuration specifying which chain to keep when extracting from the structure.
-    kind: file
-    path: configs/extract_chain.yaml
+  - id: chain
+    name: Chain
+    description: Chain to keep.
+    kind: string
+    pattern: '[A-Za-z0-9]'
+    max_length: 1
+    value: A
+    path: params/chain.txt
+
+  - id: altlocs
+    name: Alternate locations
+    description: >-
+      JSON list of alternate-location picks, one "A45:A" per residue (chain A,
+      residue 45, keep altloc A); [] skips the step. The default is for 1Z83.
+    kind: string
+    pattern: \[.*\]
+    value: '["A45:A","A67:A","A85:A"]'
+    path: params/altlocs.txt
+
+  - id: minimization_steps
+    name: Minimization steps
+    description: sander steepest-descent/conjugate-gradient cycles used to relieve clashes.
+    kind: number
+    min: 0
+    max: 20000
+    step: 50
+    value: 500
+    path: params/minimization_steps.txt
 
   - id: extract_model_config
     name: Model selection config
     description: Configuration specifying which model to keep from the multi-model structure.
     kind: file
     path: configs/extract_model.yaml
-
-  - id: fetch_pdb_config
-    name: PDB fetch config
-    description: Configuration setting the PDB code (1Z83) to download from the RCSB.
-    kind: file
-    path: configs/fetch_pdb.yaml
-
-  - id: fix_altlocs_config
-    name: Altloc resolution config
-    description: Configuration specifying which alternate location to keep when resolving altlocs.
-    kind: file
-    path: configs/fix_altlocs.yaml
 
   - id: leap_gen_top_config
     name: AMBER topology config
@@ -61,22 +76,16 @@ artifacts:
     kind: file
     path: configs/remove_molecules_metals.yaml
 
-  - id: sander_mdrun_config
-    name: Energy minimization config
-    description: Configuration controlling the AMBER sander energy minimization parameters.
-    kind: file
-    path: configs/sander_mdrun.yaml
-
 tasks:
   - kind: horus_task
     id: fetch_pdb
-    name: Download 1Z83 structure from PDB
+    name: Download the structure from the PDB
     description: Downloads the human Adenylate Kinase 1A / AP5A inhibitor complex structure (PDB 1Z83) from the RCSB.
     inputs:
-      - id: fetch_pdb_config
-        name: PDB fetch config
-        kind: file
-        path: configs/fetch_pdb.yaml
+      - id: pdb_id
+        name: PDB ID
+        kind: string
+        path: params/pdb_id.txt
     outputs:
       - id: downloaded_pdb
         name: Raw downloaded structure
@@ -87,7 +96,7 @@ tasks:
       kind: command
       command: >-
         pdb
-        --config ${fetch_pdb_config}
+        --config '{"properties":{"pdb_code":"${pdb_id}","filter":["ATOM","HETATM"]}}'
         --output_pdb_path ${downloaded_pdb}
     target:
       kind: local
@@ -147,13 +156,13 @@ tasks:
 
   - kind: horus_task
     id: extract_chain
-    name: Extract chain A from structure
+    name: Extract the selected chain
     description: Extracts chain A from the structure using the biobb extract_chain tool.
     inputs:
-      - id: extract_chain_config
-        name: Chain extraction config
-        kind: file
-        path: configs/extract_chain.yaml
+      - id: chain
+        name: Chain
+        kind: string
+        path: params/chain.txt
       - id: models_pdb
         name: Model 1 structure
         kind: file
@@ -168,7 +177,7 @@ tasks:
       kind: command
       command: >-
         extract_chain
-        --config ${extract_chain_config}
+        --config '{"properties":{"chains":["${chain}"]}}'
         --input_structure_path ${models_pdb}
         --output_structure_path ${chains_pdb}
     target:
@@ -176,13 +185,13 @@ tasks:
 
   - kind: horus_task
     id: fix_altlocs
-    name: Resolve alternative locations (keep altloc A)
+    name: Resolve alternative locations
     description: Resolves alternate atom locations, keeping altloc A, using the biobb fix_altlocs tool.
     inputs:
-      - id: fix_altlocs_config
-        name: Altloc resolution config
-        kind: file
-        path: configs/fix_altlocs.yaml
+      - id: altlocs
+        name: Alternate locations
+        kind: string
+        path: params/altlocs.txt
       - id: chains_pdb
         name: Chain A structure
         kind: file
@@ -197,7 +206,7 @@ tasks:
       kind: command
       command: >-
         fix_altlocs
-        --config ${fix_altlocs_config}
+        --config "$$(printf '{"properties":{"altlocs":%s}}' ${altlocs})"
         --input_pdb_path ${chains_pdb}
         --output_pdb_path ${altloc_pdb}
     target:
@@ -407,13 +416,13 @@ tasks:
 
   - kind: horus_task
     id: canonical_fasta
-    name: Fetch canonical FASTA sequence for 1Z83
+    name: Fetch the canonical FASTA sequence
     description: Fetches the canonical (full-length) FASTA sequence for the structure, used as a reference for backbone modeling.
     inputs:
-      - id: canonical_fasta_config
-        name: Canonical FASTA config
-        kind: file
-        path: configs/canonical_fasta.yaml
+      - id: pdb_id
+        name: PDB ID
+        kind: string
+        path: params/pdb_id.txt
     outputs:
       - id: fasta
         name: Canonical FASTA sequence
@@ -424,7 +433,7 @@ tasks:
       kind: command
       command: >-
         canonical_fasta
-        --config ${canonical_fasta_config}
+        --config '{"properties":{"pdb_code":"${pdb_id}","api_id":"pdb"}}'
         --output_fasta_path ${fasta}
     target:
       kind: local
@@ -447,6 +456,10 @@ tasks:
         name: Backbone-modeled structure
         kind: file
         path: results/backbone.pdb
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -502,10 +515,10 @@ tasks:
     name: Energy minimization to relieve atomic clashes (AMBER sander)
     description: Runs a short AMBER sander energy minimization to relieve steric clashes introduced by the modeling steps.
     inputs:
-      - id: sander_mdrun_config
-        name: Energy minimization config
-        kind: file
-        path: configs/sander_mdrun.yaml
+      - id: minimization_steps
+        name: Minimization steps
+        kind: number
+        path: params/minimization_steps.txt
       - id: amber_top
         name: AMBER topology
         kind: file
@@ -527,12 +540,16 @@ tasks:
         name: Minimization log
         kind: file
         path: results/trj.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         sander_mdrun
-        --config ${sander_mdrun_config}
+        --config '{"properties":{"simulation_type":"minimization","mdin":{"ntb":0,"cut":12,"maxcyc":${minimization_steps},"ntwx":50,"ncyc":50}}}'
         --input_top_path ${amber_top}
         --input_crd_path ${amber_crd}
         --output_traj_path ${trj_crd}
@@ -619,6 +636,31 @@ tasks:
       kind: local
 
 edges:
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: fetch_pdb
+    target_input: pdb_id
+
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: canonical_fasta
+    target_input: pdb_id
+
+  - source: artifact-chain
+    source_output: chain
+    target: extract_chain
+    target_input: chain
+
+  - source: artifact-altlocs
+    source_output: altlocs
+    target: fix_altlocs
+    target_input: altlocs
+
+  - source: artifact-minimization_steps
+    source_output: minimization_steps
+    target: sander_mdrun
+    target_input: minimization_steps
+
   - source: fetch_pdb
     source_output: downloaded_pdb
     target: structure_check
@@ -724,30 +766,10 @@ edges:
     target: structure_check_final
     target_input: final_pdb
 
-  - source: artifact-canonical_fasta_config
-    source_output: canonical_fasta_config
-    target: canonical_fasta
-    target_input: canonical_fasta_config
-
-  - source: artifact-extract_chain_config
-    source_output: extract_chain_config
-    target: extract_chain
-    target_input: extract_chain_config
-
   - source: artifact-extract_model_config
     source_output: extract_model_config
     target: extract_model
     target_input: extract_model_config
-
-  - source: artifact-fetch_pdb_config
-    source_output: fetch_pdb_config
-    target: fetch_pdb
-    target_input: fetch_pdb_config
-
-  - source: artifact-fix_altlocs_config
-    source_output: fix_altlocs_config
-    target: fix_altlocs
-    target_input: fix_altlocs_config
 
   - source: artifact-leap_gen_top_config
     source_output: leap_gen_top_config
@@ -763,11 +785,6 @@ edges:
     source_output: remove_molecules_metals_config
     target: remove_molecules_metals
     target_input: remove_molecules_metals_config
-
-  - source: artifact-sander_mdrun_config
-    source_output: sander_mdrun_config
-    target: sander_mdrun
-    target_input: sander_mdrun_config
 
 
 orchestrator_target:
