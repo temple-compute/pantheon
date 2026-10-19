@@ -1,4 +1,4 @@
-# W-37 · Protocol Stress-Test
+# W-40 · Protocol Stress-Test
 
 ![Domain: Clinical Trials](https://img.shields.io/badge/domain-clinical--trials-blue)
 

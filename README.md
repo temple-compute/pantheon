@@ -103,7 +103,7 @@ uv run horus run workflow.yaml
 
 | ID | Workflow | Description |
 |---|---|---|
-| W-37 | [Protocol Stress-Test](workflows/clinical-trials/w01-protocol-stress-test/README.md) | A public trial's eligibility criteria as computable rules on a Synthea population; thousands of protocol variants fanned out to rank criteria by the patients and diversity they cost |
+| W-40 | [Protocol Stress-Test](workflows/clinical-trials/w01-protocol-stress-test/README.md) | A public trial's eligibility criteria as computable rules on a Synthea population; thousands of protocol variants fanned out to rank criteria by the patients and diversity they cost |
 
 ### Engine Showcases
 
