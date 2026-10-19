@@ -39,102 +39,74 @@ _slurm: &slurm
   time_limit: "12:00:00"
 
 artifacts:
-  - id: dataset_url
-    name: Training dataset URL
+  - id: dataset
+    name: Training dataset (parquet)
     description: >-
-      OpenADMET data-catalogs aggregated parquet with one row per compound
-      and the columns OPENADMET_CANONICAL_SMILES and pchembl_value_mean
-      (the regression target). Default: ChEMBL35 CYP3A4 IC50 aggregate at a
-      pinned commit. file:///abs/path works for a local file.
-    kind: string
-    path: params/dataset_url.txt
-    value: https://raw.githubusercontent.com/OpenADMET/data-catalogs/65dd4ee35b16f532707d790ea4fa61d1fa46bbad/catalogs/activities/ChEMBL_pChEMBL_IC50/ChEMBL35_IC50/ChEMBL_IC50_CYP3A4_CHEMBL340_aggregated.parquet
-  - id: inference_url
-    name: Inference compounds URL
+      OpenADMET data-catalogs aggregated parquet, one row per compound, with
+      OPENADMET_CANONICAL_SMILES (input) and pchembl_value_mean (regression
+      target) columns. Default: ChEMBL35 CYP3A4 IC50 aggregate
+      (OpenADMET/data-catalogs, pinned commit 65dd4ee).
+    kind: file
+    path: examples/ChEMBL_IC50_CYP3A4_CHEMBL340_aggregated.parquet
+  - id: compounds
+    name: Compounds to predict (CSV)
     description: >-
-      CSV of compounds to predict, with the SMILES in an
-      OPENADMET_CANONICAL_SMILES column (OPENADMET_INCHIKEY is copied to the
-      top list if present). Default: the showcase's 10,000 ZINC compounds at
-      a pinned commit. file:///abs/path works for a local file.
-    kind: string
-    path: params/inference_url.txt
-    value: https://raw.githubusercontent.com/OpenADMET/openadmet-demos/8b2c5f34ac892a3aa256d8564bd33c707fe9d11b/showcase/compounds_for_inference.csv
-  - id: models
+      CSV with SMILES in an OPENADMET_CANONICAL_SMILES column
+      (OPENADMET_INCHIKEY is copied to the top list if present). Default: the
+      showcase's 10,000 ZINC compounds (OpenADMET/openadmet-demos, pinned
+      commit 8b2c5f3).
+    kind: file
+    path: examples/compounds_for_inference.csv
+  - &models
+    id: models
     name: Models
     description: >-
-      Comma list of the models to train and compare, from lgbm, rf, xgboost,
-      catboost and chemprop. Everything runs on CPU, where chemprop takes
-      hours, so it is not in the default list.
-    kind: string
+      Models to train, cross-validate, compare and pick the best from.
+      Everything runs on CPU, where Chemprop takes hours, so it is not
+      picked by default.
+    kind: multichoice
     path: params/models.txt
-    value: lgbm,rf,xgboost,catboost
+    value: [lgbm, rf, xgboost, catboost]
+    min_picks: 1
+    options:
+      - {value: lgbm, label: LightGBM}
+      - {value: rf, label: Random forest}
+      - {value: xgboost, label: XGBoost}
+      - {value: catboost, label: CatBoost}
+      - {value: chemprop, label: Chemprop (GNN, slow on CPU)}
   - id: cv_folds
     name: CV folds
-    description: k of the repeated k-fold cross-validation (integer >= 2, upstream 5).
+    description: k of the repeated k-fold cross-validation (upstream 5).
     kind: number
     path: params/cv_folds.txt
     value: 5
+    min: 2
+    max: 10
+    step: 1
   - id: cv_repeats
     name: CV repeats
-    description: Repeats of the k-fold cross-validation (integer >= 1, upstream 5).
+    description: Repeats of the k-fold cross-validation (upstream 5).
     kind: number
     path: params/cv_repeats.txt
     value: 5
+    min: 1
+    max: 10
+    step: 1
 
 tasks:
   - kind: horus_task
-    id: fetch_data
-    name: 1. Fetch CYP3A4 data
-    description: >-
-      Downloads the ChEMBL35 CYP3A4 IC50 aggregate (OpenADMET/data-catalogs)
-      and the showcase's inference compounds (OpenADMET/openadmet-demos),
-      both at pinned commits by default.
-    inputs:
-      - id: dataset_url
-        name: Training dataset URL
-        kind: string
-        path: params/dataset_url.txt
-      - id: inference_url
-        name: Inference compounds URL
-        kind: string
-        path: params/inference_url.txt
-    outputs:
-      - id: chembl_parquet
-        name: ChEMBL35 CYP3A4 IC50 aggregate
-        kind: file
-        path: data/ChEMBL_IC50_CYP3A4_CHEMBL340_aggregated.parquet
-      - id: compounds
-        name: Compounds for inference
-        kind: file
-        path: data/compounds_for_inference.csv
-    executor: *shell
-    runtime:
-      kind: command
-      # The command runtime shell-quotes every substitution, so ${dataset_url}
-      # needs no quotes of its own.
-      command: >-
-        curl -fL --retry 3 -o ${chembl_parquet}.part ${dataset_url}
-        && mv ${chembl_parquet}.part ${chembl_parquet}
-        && curl -fL --retry 3 -o ${compounds}.part ${inference_url}
-        && mv ${compounds}.part ${compounds}
-    target: *local
-
-  - kind: horus_task
     id: make_recipes
-    name: 2. Clean data and write anvil recipes
+    name: 1. Clean data and write anvil recipes
     description: >-
       Adds the OPENADMET_* headers (showcase cells 9-13) and writes one
       cross-validation recipe per selected model, each in its own slot with
       a copy of the data.
     inputs:
-      - id: chembl_parquet
-        name: ChEMBL35 CYP3A4 IC50 aggregate
+      - id: dataset
+        name: Training dataset (parquet)
         kind: file
-        path: data/ChEMBL_IC50_CYP3A4_CHEMBL340_aggregated.parquet
-      - id: models
-        name: Models
-        kind: string
-        path: params/models.txt
+        path: examples/ChEMBL_IC50_CYP3A4_CHEMBL340_aggregated.parquet
+      - *models
       - id: cv_folds
         name: CV folds
         kind: number
@@ -152,12 +124,16 @@ tasks:
         name: Anvil recipes (one slot per model)
         kind: folder
         path: recipes/
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "00:15:00"
     executor: *conda
     runtime:
       kind: python_script
       script: scripts/make_recipes.py
       args: >-
-        --parquet ${chembl_parquet} --models ${models}
+        --parquet ${dataset} --models ${models}
         --cv-folds ${cv_folds} --cv-repeats ${cv_repeats}
         --cleaned ${cleaned} --out ${recipes}
     target: *local
@@ -166,7 +142,7 @@ tasks:
   # a shared machine runs as many 8-CPU clones as its vCPUs allow.
   - kind: horus_map
     id: train
-    name: 3. Train and cross-validate each model (parallel)
+    name: 2. Train and cross-validate each model (parallel)
     description: >-
       Runs `openadmet anvil` on one recipe: featurize, train, test-set
       metrics and repeated k-fold cross-validation.
@@ -196,14 +172,16 @@ tasks:
         --output-dir ${trained}/model > ${trained}/anvil.log 2>&1
         || { tail -n 40 ${trained}/anvil.log; exit 1; }; } &&
         grep -v Warning ${trained}/anvil.log | grep -v '^ ' | tail -n 8
+    # One 8-CPU machine per clone (N_JOBS in make_recipes.py).
     resources:
       cpus: 8
       memory_gb: 8
+      walltime: "12:00:00"
     target: *local
 
   - kind: horus_task
     id: compare
-    name: 4. Compare models
+    name: 3. Compare models
     description: >-
       `openadmet compare` over every model's cross_validation_metrics.json:
       ANOVA, Levene, Tukey HSD and the PDF plots.
@@ -217,6 +195,10 @@ tasks:
         name: Model comparison
         kind: folder
         path: results/comparisons/
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "00:30:00"
     executor: *conda
     runtime:
       kind: python_script
@@ -226,7 +208,7 @@ tasks:
 
   - kind: horus_task
     id: predict
-    name: 5. Predict with the best model
+    name: 4. Predict with the best model
     description: >-
       Picks the model with the highest mean CV R2 and runs `openadmet
       predict` on every inference compound.
@@ -236,14 +218,18 @@ tasks:
         kind: folder
         path: trained/
       - id: compounds
-        name: Compounds for inference
+        name: Compounds to predict (CSV)
         kind: file
-        path: data/compounds_for_inference.csv
+        path: examples/compounds_for_inference.csv
     outputs:
       - id: predictions
         name: Predictions
         kind: file
         path: results/predictions.csv
+    resources:
+      cpus: 4
+      memory_gb: 16
+      walltime: "02:00:00"
     executor: *conda
     runtime:
       kind: python_script
@@ -255,7 +241,7 @@ tasks:
 
   - kind: horus_task
     id: report
-    name: 6. Report
+    name: 5. Report
     description: One row of CV metrics per model, plus the top predicted CYP3A4 inhibitors.
     inputs:
       - id: trained_in
@@ -285,18 +271,10 @@ tasks:
     target: *local
 
 edges:
-  - source: artifact-dataset_url
-    source_output: dataset_url
-    target: fetch_data
-    target_input: dataset_url
-  - source: artifact-inference_url
-    source_output: inference_url
-    target: fetch_data
-    target_input: inference_url
-  - source: fetch_data
-    source_output: chembl_parquet
+  - source: artifact-dataset
+    source_output: dataset
     target: make_recipes
-    target_input: chembl_parquet
+    target_input: dataset
   - source: artifact-models
     source_output: models
     target: make_recipes
@@ -321,7 +299,7 @@ edges:
     source_output: trained
     target: predict
     target_input: trained_in
-  - source: fetch_data
+  - source: artifact-compounds
     source_output: compounds
     target: predict
     target_input: compounds

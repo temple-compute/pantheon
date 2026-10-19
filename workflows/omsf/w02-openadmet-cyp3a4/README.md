@@ -1,6 +1,12 @@
 # W-38 · OpenADMET CYP3A4 Inhibition Models
 
+<img src="assets/logo.png" width="96" align="right" alt="W-38 logo">
+
+Train and cross-validate OpenADMET models on CYP3A4 IC50 data in parallel, compare them statistically, and predict new compounds with the best one.
+
 ![Domain: OMSF](https://img.shields.io/badge/domain-omsf-blue)
+
+![W-38 cover](assets/cover.png)
 
 ## Overview
 
@@ -12,7 +18,7 @@ anti-target. Upstream it is one notebook
 `showcase/OpenADMET_Models_Showcase.ipynb`, plus `demos/02`-`05`). Here each
 notebook stage is its own task:
 
-1. fetch the ChEMBL35 CYP3A4 IC50 aggregate and a set of ZINC compounds,
+1. take a training set (default: the ChEMBL35 CYP3A4 IC50 aggregate) and a set of compounds to predict (default: 10,000 ZINC compounds), both uploadable,
 2. write one `openadmet anvil` cross-validation recipe per model type,
 3. train every model in parallel (one map clone each),
 4. compare the models statistically with `openadmet compare`,
@@ -26,8 +32,6 @@ be added to `models`, but on CPU it takes hours.
 ## Pipeline
 
 ```
-fetch_data    (local, shell)   curl ${dataset_url} + ${inference_url}
-   │
 make_recipes  (local, conda)   OPENADMET_* headers, recipes/<model>/{recipe.yaml,data.csv}
    │
 train         (map, conda)     openadmet anvil, one clone per model (all at once)
@@ -69,16 +73,15 @@ Root value artifacts of `workflow.yaml`. Each is written to
 `params/<id>.txt` (next to `workflow.yaml`) the first time a task uses it and
 reaches the tasks only through `${id}`.
 
-| id | kind | Default | Meaning |
-|---|---|---|---|
-| `dataset_url` | string | ChEMBL35 CYP3A4 IC50 aggregate, [OpenADMET/data-catalogs](https://github.com/OpenADMET/data-catalogs) at `65dd4ee3` | Training set: any OpenADMET data-catalogs aggregated parquet, one row per compound, with `OPENADMET_CANONICAL_SMILES` (input) and `pchembl_value_mean` (target) columns |
-| `inference_url` | string | `showcase/compounds_for_inference.csv` from openadmet-demos at `8b2c5f34` (10,000 ZINC compounds) | CSV to predict; needs an `OPENADMET_CANONICAL_SMILES` column (`OPENADMET_INCHIKEY` is copied to the top list if present) |
-| `models` | string | `lgbm,rf,xgboost,catboost` | Comma list of models to train, compare and pick from; any distinct subset of those four and `chemprop` (hours on CPU) |
-| `cv_folds` | number | `5` (upstream) | k of the repeated k-fold CV, integer >= 2 |
-| `cv_repeats` | number | `5` (upstream) | Repeats of the k-fold CV, integer >= 1 |
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `dataset` | file | `examples/ChEMBL_IC50_CYP3A4_CHEMBL340_aggregated.parquet` (ChEMBL35 CYP3A4 IC50 aggregate, [OpenADMET/data-catalogs](https://github.com/OpenADMET/data-catalogs) at `65dd4ee3`) | parquet | Training set: any OpenADMET data-catalogs aggregated parquet, one row per compound, with `OPENADMET_CANONICAL_SMILES` (input) and `pchembl_value_mean` (target) columns |
+| `compounds` | file | `examples/compounds_for_inference.csv` (openadmet-demos `showcase/` at `8b2c5f34`, 10,000 ZINC compounds) | CSV | Compounds to predict; needs an `OPENADMET_CANONICAL_SMILES` column (`OPENADMET_INCHIKEY` is copied to the top list if present) |
+| `models` | multichoice | `lgbm`, `rf`, `xgboost`, `catboost` | those four and `chemprop` (hours on CPU); at least 1 | Models to train, compare and pick from |
+| `cv_folds` | number | `5` (upstream) | 2–10, step 1 | k of the repeated k-fold CV |
+| `cv_repeats` | number | `5` (upstream) | 1–10, step 1 | Repeats of the k-fold CV |
 
-Both URLs are fetched with `curl`, so `file:///abs/path/to/file` works for a
-local file. `make_recipes.py` and `models.py` reject an unknown model, a
+`make_recipes.py` and `models.py` reject an unknown model, a
 repeated model and a non-integer or out-of-range CV count with an error
 naming the parameter. The best model is
 picked by mean CV R2 (`--metric` of `models.py predict`).
@@ -96,11 +99,18 @@ rm -rf params/
 delete, finished tasks are skipped with the old value. `params/` is run
 state, not something to commit.
 
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: the
+form shows the two data uploads, the model picker (chips) and the CV folds
+and repeats as sliders. Everything runs on CPU. The `resources` hints size
+auto-provisioned machines: one 8-vCPU machine per training clone (12 h cap),
+a 4-vCPU machine for `predict`, and a small one for recipes and comparison.
+
 ## Compute Pattern
 
 | Stage | Where (defaults) | Time |
 |---|---|---|
-| fetch_data | local, shell | seconds |
 | make_recipes | local CPU (builds the env on first run) | seconds, plus the env build |
 | train (map) | 4 clones (lgbm, rf, xgboost, catboost), 8 threads each, at once when the target has the CPUs | minutes per tree model (chemprop, if added: hours) |
 | compare | local CPU | under a minute |
@@ -196,8 +206,9 @@ On Slurm, the train map still needs `target: *slurm`.
 
 ## Input / Output
 
-**Inputs**: none to provide. Both data files are fetched from
-`dataset_url` and `inference_url` (see **Parameters**).
+**Inputs**: the `dataset` parquet and the `compounds` CSV, uploadable in
+tc-os or replaced in `examples/` locally (see **Parameters**). The defaults
+are committed copies of the pinned upstream files.
 
 **Outputs** (under `horus_workflow_results/`):
 
@@ -214,7 +225,7 @@ On Slurm, the train map still needs `target: *slurm`.
 
 - Measured on this repo's 16-core shared dev host, CPU only, the four tree
   models with `cv_folds: 5`, `cv_repeats: 1`, env already built: **8 min 49 s**
-  (fetch and make_recipes about 1 s each, train 7 min 43 s with all four
+  (fetch (since removed) and make_recipes about 1 s each, train 7 min 43 s with all four
   clones at once, each clone 6.5 to 7.7 min, compare 36 s, predict 65 s on all
   10,000 compounds, report < 1 s). About 67 CPU-minutes in total, under
   2 GB RAM. lgbm was picked (mean CV R2 0.58; xgboost 0.57, rf 0.57,
@@ -255,8 +266,8 @@ On Slurm, the train map still needs `target: *slurm`.
 - anvil prints many sklearn warnings. They go to `trained/<slot>/anvil.log`,
   and the task log shows only the tail, or the last 40 lines on failure.
 - `openadmet compare` needs its `--output-dir` to exist; `models.py` creates it.
-- The command runtime shell-quotes every `${id}` substitution, so the URLs
-  in `fetch_data` carry no quotes of their own.
+- `models` is a multichoice; Horus renders it as separate shell words, so
+  `make_recipes.py --models` takes one or more names (a comma list also works).
 
 ## Open Questions
 
@@ -276,7 +287,9 @@ on data from [OpenADMET/data-catalogs](https://github.com/OpenADMET/data-catalog
 (Apache-2.0; derived from ChEMBL 35, CC BY-SA 3.0). Recipes generated by
 `make_recipes.py` are derived from the upstream showcase recipes and carry an
 Apache-2.0 credit header. Credit for the science, models and data goes to the
-OpenADMET contributors.
+OpenADMET contributors. The files in `examples/` are unmodified copies of
+those pinned upstream files and keep their licenses (the training parquet is
+CC BY-SA 3.0 via ChEMBL).
 
 ## References
 

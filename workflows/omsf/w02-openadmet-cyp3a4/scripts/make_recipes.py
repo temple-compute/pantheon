@@ -193,7 +193,8 @@ def main():
     ap.add_argument("--selftest", action="store_true", help="run the unit test and exit")
     ap.add_argument("--parquet", type=Path, help="ChEMBL CYP3A4 aggregated parquet")
     ap.add_argument("--cleaned", type=Path, help="where to write the cleaned CSV")
-    ap.add_argument("--models", help=f"comma list from {','.join(SUPPORTED)}")
+    # nargs: horus renders a multichoice as separate words; a comma list also works.
+    ap.add_argument("--models", nargs="+", help=f"models from {','.join(SUPPORTED)}")
     ap.add_argument("--cv-folds", help="k of the repeated k-fold CV (>= 2)")
     ap.add_argument("--cv-repeats", help="repeats of the k-fold CV (>= 1)")
     ap.add_argument("--out", type=Path)
@@ -203,7 +204,7 @@ def main():
     if not (a.parquet and a.cleaned and a.models and a.cv_folds and a.cv_repeats and a.out):
         ap.error("--parquet, --cleaned, --models, --cv-folds, --cv-repeats and --out are required")
     try:
-        models = parse_models(a.models)
+        models = parse_models(",".join(a.models))
         n_splits = parse_count("cv_folds", a.cv_folds, 2)
         n_repeats = parse_count("cv_repeats", a.cv_repeats, 1)
     except ValueError as e:
