@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: BioExcel MD Setup - Protein-Ligand Complex (3HTB + JZ4)
+name: GROMACS Protein-Ligand Complex MD Setup
 
 _executor: &executor
   kind: conda_python_environment
@@ -8,18 +8,28 @@ _executor: &executor
   environment_file: conda_env.yaml
 
 artifacts:
-  - id: acpype_params_gmx_config
-    name: ACPype parameterization config
-    description: Settings controlling ACPype/GAFF ligand topology generation.
+  - id: pdb_id
+    name: PDB ID
+    description: RCSB PDB code to download (default 3HTB). Clear it to use the uploaded structure instead.
+    kind: string
+    path: params/pdb_id.txt
+    value: 3HTB
+    pattern: ([0-9][A-Za-z0-9]{3})?
+    max_length: 4
+  - id: structure
+    name: Complex upload (PDB)
+    description: 'Protein-ligand complex used when PDB ID is empty; must contain the ligand as HETATM records with the residue name given in Ligand code. Default: examples/3htb.pdb (3HTB).'
     kind: file
-    path: configs/acpype_params_gmx.yaml
-
-  - id: append_ligand_config
-    name: Ligand topology merge config
-    description: Settings controlling how the ligand topology and restraints are appended to the protein topology.
-    kind: file
-    path: configs/append_ligand.yaml
-
+    path: examples/3htb.pdb
+  - id: ligand_code
+    name: Ligand code (residue name)
+    description: Residue name of the ligand in the structure (default JZ4); it is extracted, parameterized with GAFF and restrained during equilibration.
+    kind: string
+    path: params/ligand_code.txt
+    value: JZ4
+    pattern: '[A-Za-z0-9]{1,3}'
+    min_length: 1
+    max_length: 3
   - id: babel_minimize_config
     name: OpenBabel minimization config
     description: Settings for the OpenBabel GAFF energy minimization of the ligand's hydrogens.
@@ -37,18 +47,6 @@ artifacts:
     description: Settings defining the simulation box type and size.
     kind: file
     path: configs/editconf.yaml
-
-  - id: extract_heteroatoms_config
-    name: Ligand extraction config
-    description: Settings specifying the JZ4 ligand heteroatom code to extract from the PDB.
-    kind: file
-    path: configs/extract_heteroatoms.yaml
-
-  - id: fetch_pdb_config
-    name: PDB fetch config
-    description: Settings specifying the PDB code (3HTB) to download.
-    kind: file
-    path: configs/fetch_pdb.yaml
 
   - id: genion_config
     name: Ion addition config
@@ -98,12 +96,6 @@ artifacts:
     kind: file
     path: configs/gmx_rms.yaml
 
-  - id: grompp_free_config
-    name: Free MD mdp config
-    description: GROMACS mdp parameters (time step, length) for the unrestrained production MD run.
-    kind: file
-    path: configs/grompp_free.yaml
-
   - id: grompp_ions_config
     name: Ion step mdp config
     description: GROMACS mdp parameters for the ion-placement preprocessing step.
@@ -115,18 +107,6 @@ artifacts:
     description: GROMACS mdp parameters for the energy minimization run.
     kind: file
     path: configs/grompp_minimize.yaml
-
-  - id: grompp_npt_config
-    name: NPT mdp config
-    description: GROMACS mdp parameters (pressure coupling, temperature) for NPT equilibration.
-    kind: file
-    path: configs/grompp_npt.yaml
-
-  - id: grompp_nvt_config
-    name: NVT mdp config
-    description: GROMACS mdp parameters (temperature coupling) for NVT equilibration.
-    kind: file
-    path: configs/grompp_nvt.yaml
 
   - id: make_ndx_complex_config
     name: Complex index config
@@ -158,16 +138,47 @@ artifacts:
     kind: file
     path: configs/trjconv_system.yaml
 
+  - id: ligand_charge
+    name: Ligand net charge
+    description: 'Formal net charge of the ligand, passed to ACPype (JZ4: 0).'
+    kind: number
+    path: params/ligand_charge.txt
+    value: 0
+    min: -5
+    max: 5
+    step: 1
+  - id: equilibration_steps
+    name: Equilibration steps (NVT and NPT)
+    description: Steps of each restrained equilibration stage (2 fs per step; 5000 = 10 ps).
+    kind: number
+    path: params/equilibration_steps.txt
+    value: 5000
+    min: 500
+    max: 5000000
+    step: 500
+  - id: production_steps
+    name: Production steps
+    description: Steps of the free production run (2 fs per step; 25000 = 50 ps).
+    kind: number
+    path: params/production_steps.txt
+    value: 25000
+    min: 1000
+    max: 50000000
+    step: 1000
 tasks:
   - kind: horus_task
     id: fetch_pdb
-    name: Download 3HTB structure from PDB
-    description: Downloads the 3HTB (T4 lysozyme L99A/M102Q + JZ4) structure from the RCSB PDB.
+    name: Fetch (PDB ID) or load the uploaded complex
+    description: Downloads the PDB entry given in pdb_id from the RCSB (default 3HTB, T4 lysozyme L99A/M102Q with JZ4), or copies the uploaded complex when pdb_id is empty.
     inputs:
-      - id: fetch_pdb_config
-        name: PDB fetch config
+      - id: pdb_id
+        name: PDB ID
+        kind: string
+        path: params/pdb_id.txt
+      - id: structure
+        name: Complex upload (PDB)
         kind: file
-        path: configs/fetch_pdb.yaml
+        path: examples/3htb.pdb
     outputs:
       - id: downloaded_pdb
         name: Downloaded PDB structure
@@ -177,25 +188,23 @@ tasks:
     runtime:
       kind: command
       command: >-
-        pdb
-        --config ${fetch_pdb_config}
-        --output_pdb_path ${downloaded_pdb}
+        if [ -n ${pdb_id} ]; then pdb --config '{"properties":{"pdb_code":"${pdb_id}","filter":false}}' --output_pdb_path ${downloaded_pdb}; else cp ${structure} ${downloaded_pdb}; fi
     target:
       kind: local
 
   - kind: horus_task
     id: extract_heteroatoms
-    name: Extract JZ4 ligand from PDB
-    description: Extracts the JZ4 ligand heteroatoms from the downloaded structure using biobb_structure_utils.
+    name: Extract the ligand from the complex
+    description: Extracts the ligand (ligand_code) heteroatoms from the structure using biobb_structure_utils.
     inputs:
-      - id: extract_heteroatoms_config
-        name: Ligand extraction config
-        kind: file
-        path: configs/extract_heteroatoms.yaml
       - id: downloaded_pdb
         name: Downloaded PDB structure
         kind: file
         path: results/downloaded.pdb
+      - id: ligand_code
+        name: Ligand code (residue name)
+        kind: string
+        path: params/ligand_code.txt
     outputs:
       - id: ligand_pdb
         name: Extracted ligand structure
@@ -205,10 +214,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        extract_heteroatoms
-        --config ${extract_heteroatoms_config}
-        --input_structure_path ${downloaded_pdb}
-        --output_heteroatom_path ${ligand_pdb}
+        extract_heteroatoms --config '{"properties":{"heteroatoms":[{"name":"${ligand_code}"}]}}' --input_structure_path ${downloaded_pdb} --output_heteroatom_path ${ligand_pdb}
     target:
       kind: local
 
@@ -360,15 +366,15 @@ tasks:
     name: Generate ligand GROMACS topology (ACPype / amberGAFF)
     description: Generates a GROMACS-compatible ligand topology with ACPype using amberGAFF parameters.
     inputs:
-      - id: acpype_params_gmx_config
-        name: ACPype parameterization config
-        kind: file
-        path: configs/acpype_params_gmx.yaml
       - id: ligand_H_min_mol2
         name: Minimized ligand structure
         description: Ligand structure with hydrogens energy-minimized, in MOL2 format.
         kind: file
         path: results/ligand.H.min.mol2
+      - id: ligand_charge
+        name: Ligand net charge
+        kind: number
+        path: params/ligand_charge.txt
     outputs:
       - id: ligand_params_gro
         name: Ligand coordinates
@@ -384,16 +390,15 @@ tasks:
         description: Standalone GROMACS topology file for the ligand.
         kind: file
         path: results/ligand.params.top
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "00:30:00"
     executor: *executor
     runtime:
       kind: command
       command: >-
-        acpype_params_gmx
-        --config ${acpype_params_gmx_config}
-        --input_path ${ligand_H_min_mol2}
-        --output_path_gro ${ligand_params_gro}
-        --output_path_itp ${ligand_params_itp}
-        --output_path_top ${ligand_params_top}
+        acpype_params_gmx --config '{"properties":{"basename":"LIGparams","charge":${ligand_charge}}}' --input_path ${ligand_H_min_mol2} --output_path_gro ${ligand_params_gro} --output_path_itp ${ligand_params_itp} --output_path_top ${ligand_params_top}
     target:
       kind: local
 
@@ -554,10 +559,6 @@ tasks:
     name: Append ligand topology to protein topology
     description: Merges the ligand topology and position restraints into the protein topology to form the complex topology.
     inputs:
-      - id: append_ligand_config
-        name: Ligand topology merge config
-        kind: file
-        path: configs/append_ligand.yaml
       - id: pdb2gmx_top
         name: Protein topology
         kind: file
@@ -571,6 +572,10 @@ tasks:
         description: GAFF/ACPype ligand topology to be included in the merged complex topology.
         kind: file
         path: results/ligand.params.itp
+      - id: ligand_code
+        name: Ligand code (residue name)
+        kind: string
+        path: params/ligand_code.txt
     outputs:
       - id: complex_top
         name: Complex topology
@@ -581,12 +586,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        append_ligand
-        --config ${append_ligand_config}
-        --input_top_zip_path ${pdb2gmx_top}
-        --input_posres_itp_path ${ligand_posres_itp}
-        --input_itp_path ${ligand_params_itp}
-        --output_top_zip_path ${complex_top}
+        append_ligand --config '{"properties":{"posres_name":"POSRES_${ligand_code}"}}' --input_top_zip_path ${pdb2gmx_top} --input_posres_itp_path ${ligand_posres_itp} --input_itp_path ${ligand_params_itp} --output_top_zip_path ${complex_top}
     target:
       kind: local
 
@@ -784,6 +784,10 @@ tasks:
         description: GROMACS energy log (edr) from the minimization run.
         kind: file
         path: results/min.edr
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "00:30:00"
     executor: *executor
     runtime:
       kind: command
@@ -861,10 +865,6 @@ tasks:
     name: Compile NVT equilibration run file (grompp)
     description: Runs GROMACS grompp to compile the run input file for NVT equilibration.
     inputs:
-      - id: grompp_nvt_config
-        name: NVT mdp config
-        kind: file
-        path: configs/grompp_nvt.yaml
       - id: minimized_gro
         name: Minimized complex structure
         kind: file
@@ -877,6 +877,14 @@ tasks:
         name: Complex index groups
         kind: file
         path: results/complex_index.ndx
+      - id: equilibration_steps
+        name: Equilibration steps (NVT and NPT)
+        kind: number
+        path: params/equilibration_steps.txt
+      - id: ligand_code
+        name: Ligand code (residue name)
+        kind: string
+        path: params/ligand_code.txt
     outputs:
       - id: nvt_tpr
         name: NVT run input
@@ -887,12 +895,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        grompp
-        --config ${grompp_nvt_config}
-        --input_gro_path ${minimized_gro}
-        --input_top_zip_path ${ionized_top}
-        --input_ndx_path ${complex_index_ndx}
-        --output_tpr_path ${nvt_tpr}
+        grompp --config '{"properties":{"simulation_type":"nvt","mdp":{"nsteps":"${equilibration_steps}","tc-grps":"Protein_Other Water_and_ions","Define":"-DPOSRES -DPOSRES_${ligand_code}"}}}' --input_gro_path ${minimized_gro} --input_top_zip_path ${ionized_top} --input_ndx_path ${complex_index_ndx} --output_tpr_path ${nvt_tpr}
     target:
       kind: local
 
@@ -921,6 +924,10 @@ tasks:
         description: GROMACS energy log (edr) from NVT equilibration.
         kind: file
         path: results/nvt.edr
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "01:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -970,10 +977,6 @@ tasks:
     name: Compile NPT equilibration run file (grompp)
     description: Runs GROMACS grompp to compile the run input file for NPT equilibration.
     inputs:
-      - id: grompp_npt_config
-        name: NPT mdp config
-        kind: file
-        path: configs/grompp_npt.yaml
       - id: nvt_gro
         name: NVT-equilibrated structure
         kind: file
@@ -991,6 +994,14 @@ tasks:
         name: Complex index groups
         kind: file
         path: results/complex_index.ndx
+      - id: equilibration_steps
+        name: Equilibration steps (NVT and NPT)
+        kind: number
+        path: params/equilibration_steps.txt
+      - id: ligand_code
+        name: Ligand code (residue name)
+        kind: string
+        path: params/ligand_code.txt
     outputs:
       - id: npt_tpr
         name: NPT run input
@@ -1001,13 +1012,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        grompp
-        --config ${grompp_npt_config}
-        --input_gro_path ${nvt_gro}
-        --input_cpt_path ${nvt_cpt}
-        --input_top_zip_path ${ionized_top}
-        --input_ndx_path ${complex_index_ndx}
-        --output_tpr_path ${npt_tpr}
+        grompp --config '{"properties":{"simulation_type":"npt","mdp":{"nsteps":"${equilibration_steps}","tc-grps":"Protein_Other Water_and_ions","Define":"-DPOSRES -DPOSRES_${ligand_code}"}}}' --input_gro_path ${nvt_gro} --input_cpt_path ${nvt_cpt} --input_top_zip_path ${ionized_top} --input_ndx_path ${complex_index_ndx} --output_tpr_path ${npt_tpr}
     target:
       kind: local
 
@@ -1036,6 +1041,10 @@ tasks:
         description: GROMACS energy log (edr) from NPT equilibration.
         kind: file
         path: results/npt.edr
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "01:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -1085,10 +1094,6 @@ tasks:
     name: Compile free MD run file (grompp)
     description: Runs GROMACS grompp to compile the run input file for the unrestrained production MD run.
     inputs:
-      - id: grompp_free_config
-        name: Free MD mdp config
-        kind: file
-        path: configs/grompp_free.yaml
       - id: npt_gro
         name: NPT-equilibrated structure
         kind: file
@@ -1102,6 +1107,10 @@ tasks:
         name: Neutralized complex topology
         kind: file
         path: results/ionized_top.zip
+      - id: production_steps
+        name: Production steps
+        kind: number
+        path: params/production_steps.txt
     outputs:
       - id: md_tpr
         name: Production MD run input
@@ -1112,12 +1121,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        grompp
-        --config ${grompp_free_config}
-        --input_gro_path ${npt_gro}
-        --input_cpt_path ${npt_cpt}
-        --input_top_zip_path ${ionized_top}
-        --output_tpr_path ${md_tpr}
+        grompp --config '{"properties":{"simulation_type":"free","mdp":{"nsteps":"${production_steps}"}}}' --input_gro_path ${npt_gro} --input_cpt_path ${npt_cpt} --input_top_zip_path ${ionized_top} --output_tpr_path ${md_tpr}
     target:
       kind: local
 
@@ -1140,6 +1144,10 @@ tasks:
         name: Production MD trajectory
         kind: file
         path: results/md.trr
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "12:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -1621,16 +1629,6 @@ edges:
     target: gmx_trjconv_str_dry
     target_input: md_gro
 
-  - source: artifact-acpype_params_gmx_config
-    source_output: acpype_params_gmx_config
-    target: acpype_params_gmx
-    target_input: acpype_params_gmx_config
-
-  - source: artifact-append_ligand_config
-    source_output: append_ligand_config
-    target: append_ligand
-    target_input: append_ligand_config
-
   - source: artifact-babel_minimize_config
     source_output: babel_minimize_config
     target: babel_minimize
@@ -1645,16 +1643,6 @@ edges:
     source_output: editconf_config
     target: editconf
     target_input: editconf_config
-
-  - source: artifact-extract_heteroatoms_config
-    source_output: extract_heteroatoms_config
-    target: extract_heteroatoms
-    target_input: extract_heteroatoms_config
-
-  - source: artifact-fetch_pdb_config
-    source_output: fetch_pdb_config
-    target: fetch_pdb
-    target_input: fetch_pdb_config
 
   - source: artifact-genion_config
     source_output: genion_config
@@ -1701,11 +1689,6 @@ edges:
     target: gmx_rms_exp
     target_input: gmx_rms_config
 
-  - source: artifact-grompp_free_config
-    source_output: grompp_free_config
-    target: grompp_free
-    target_input: grompp_free_config
-
   - source: artifact-grompp_ions_config
     source_output: grompp_ions_config
     target: grompp_ions
@@ -1715,16 +1698,6 @@ edges:
     source_output: grompp_minimize_config
     target: grompp_minimize
     target_input: grompp_minimize_config
-
-  - source: artifact-grompp_npt_config
-    source_output: grompp_npt_config
-    target: grompp_npt
-    target_input: grompp_npt_config
-
-  - source: artifact-grompp_nvt_config
-    source_output: grompp_nvt_config
-    target: grompp_nvt
-    target_input: grompp_nvt_config
 
   - source: artifact-make_ndx_complex_config
     source_output: make_ndx_complex_config
@@ -1757,6 +1730,46 @@ edges:
     target_input: trjconv_system_config
 
 
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: fetch_pdb
+    target_input: pdb_id
+  - source: artifact-structure
+    source_output: structure
+    target: fetch_pdb
+    target_input: structure
+  - source: artifact-ligand_code
+    source_output: ligand_code
+    target: extract_heteroatoms
+    target_input: ligand_code
+  - source: artifact-ligand_charge
+    source_output: ligand_charge
+    target: acpype_params_gmx
+    target_input: ligand_charge
+  - source: artifact-ligand_code
+    source_output: ligand_code
+    target: append_ligand
+    target_input: ligand_code
+  - source: artifact-equilibration_steps
+    source_output: equilibration_steps
+    target: grompp_nvt
+    target_input: equilibration_steps
+  - source: artifact-ligand_code
+    source_output: ligand_code
+    target: grompp_nvt
+    target_input: ligand_code
+  - source: artifact-equilibration_steps
+    source_output: equilibration_steps
+    target: grompp_npt
+    target_input: equilibration_steps
+  - source: artifact-ligand_code
+    source_output: ligand_code
+    target: grompp_npt
+    target_input: ligand_code
+  - source: artifact-production_steps
+    source_output: production_steps
+    target: grompp_free
+    target_input: production_steps
 orchestrator_target:
   kind: local
   working_directory: "./workflow_results"
