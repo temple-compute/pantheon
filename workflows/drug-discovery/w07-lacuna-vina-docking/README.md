@@ -1,6 +1,12 @@
 # W-34 · Lacuna + AutoDock Vina Docking
 
+<img src="assets/logo.png" width="96" align="right" alt="W-34 logo">
+
+Find cryptic pockets in a protein with Lacuna, box the pocket you pick, and dock a ligand library into it with AutoDock Vina, one parallel job per ligand.
+
 ![Domain: Drug Discovery](https://img.shields.io/badge/domain-drug--discovery-blue)
+
+![W-34 cover](assets/cover.png)
 
 ## Overview
 
@@ -61,9 +67,9 @@ tool on `PATH` for OpenBabel/Meeko/RDKit/Vina, the same prerequisite as
 
 | Stage | Task | Executor | Concurrency | Est. walltime (example) |
 |---|---|---|---|---|
-| Ensemble generation + pocket discovery | `discover` | uv venv | serial | ~1-2 min (20 conformers, NMA backend, CPU-only) |
+| Ensemble generation + pocket discovery | `discover` | uv venv | serial | ~20 s - 2 min (20 conformers, NMA backend, CPU-only) |
 | Docking-input export | `dock_prep` | uv venv | serial | <1 s |
-| Receptor/ligand prep, boxed on the top pocket | `prep` | conda | serial | ~15 s (+ first-run env build) |
+| Receptor/ligand prep, boxed on the chosen pocket | `prep` | conda | serial | ~15 s (+ first-run env build) |
 | **AutoDock Vina docking** | `dock[00..NN]` | conda | **N clones in parallel** | ~1 min total for 3 demo ligands, CPU-only |
 | HTML report + CSV table | `report` | shell (stdlib) | serial | <1 s |
 | Ranked energy tables | `summary` | shell (stdlib) | serial | <1 s |
@@ -91,17 +97,17 @@ at one). Every other stage is serial and CPU-only.
 ## Horus Configuration
 
 ```
-examples/structures/receptor.pdb ──► discover ──► results/pockets/
+receptor.pdb or RCSB pdb_id ──► discover ──► results/pockets/
                         │               │             pocket_report.json
-                        │               │             pocket_*.pdb
+                        │               │             pocket_*.pdb, receptor.pdb (the one used)
                         │               ▼
                         │          dock_prep ──► results/docking_inputs/
-                        │                            pocket_0_vina.conf  (top-ranked pocket's box)
+                        │                            pocket_<i>_vina.conf (box per ranked pocket)
                         │                            pocket_*_constraint.yaml (Boltz)
                         │                            pocket_*_site.pdb
                         │               │
       examples/ligands.smi              ▼
-                    │              prep (boxed on pocket_0_vina.conf)
+                    │              prep (boxed on pocket_${pocket})
                     └────────────────►  │ ──► results/receptor_box/   (receptor.pdbqt, box.json)
                                          │ ──► results/ligands_pdbqt/ (one *.pdbqt per ligand)
                                          │
@@ -121,19 +127,18 @@ must contain nothing but ligand files — mapping over it treats every child as
 one item — while `receptor_box/` (receptor + box, shared by every clone) has
 to live in a separate folder that ligands cannot also occupy.
 
-Single local target for every task. To scale ensemble generation onto a
-cluster, give the `discover` task a `target:`/`resources:` block; nothing else
-changes, since the pipeline is one CLI call rather than a fan-out. To move
-docking onto a cluster, give the `dock` task's own `target:`/`resources:` a
-Slurm or container target — every clone inherits it, since `horus_map` has no
-separate per-clone template to configure.
+Single local target for every task, with `resources` hints on the heavy ones:
+`discover` 4 CPU / 16 GB / 1 h, `prep` 2 CPU / 8 GB, and each `dock` clone
+2 CPU / 8 GB / 30 min (Vina's `--cpu` follows `resources.cpus`). A Slurm or
+auto-provisioned target on `dock` applies to every clone.
 
 ## Input / Output
 
 **Input**
 
-- `examples/structures/receptor.pdb` — apo KRAS(G12C), PDB 4LDJ. Any single PDB
-  or mmCIF file works; repoint the `receptor` artifact to use your own.
+- `receptor` — apo KRAS(G12C), PDB 4LDJ, by default. Any single PDB or mmCIF file
+  works; upload your own, or set `pdb_id` to fetch one from RCSB (protein `ATOM`
+  records of the first model).
 - `examples/ligands.smi` — a 3-compound SMILES demo set (imatinib, caffeine,
   aspirin), reused from W-02. It exists to prove the docking mechanics work
   end to end, not as a curated KRAS screening library; repoint the `ligands`
@@ -150,29 +155,43 @@ separate per-clone template to configure.
 - `docking_inputs/` — for the top 5 ranked pockets: AutoDock Vina box configs,
   Boltz-2 YAML constraints, and pocket PDBs
 - `receptor_box/` — the receptor PDBQT and the resolved box, boxed on
-  `docking_inputs/pocket_0_vina.conf` (Lacuna's rank-1 pocket);
+  `docking_inputs/pocket_${pocket}_vina.conf` (rank 1 by default);
   `ligands_pdbqt/` — one PDBQT per ligand
 - `docked/<i>/` — one slot per `dock` map clone: `{ligand}_out.pdbqt` (poses +
   affinities) and `status.json` recording whether that ligand docked
 - `scores.csv` — ligands ranked by best affinity (kcal/mol, more negative is
   stronger); `poses.csv` — every pose of every ligand
 
-## Parameterization
+## Parameters
 
-| What | Where |
-|---|---|
-| Ensemble size | `discover` task → `--conformers` |
-| Ensemble backend | `discover` task → `--backend` (`nma` default, `openmm`/`boltz` need the matching extra) |
-| Pocket detector | `discover` task → `--detector` (`alpha`, `surface`, `surface-fusion`, `p2rank`, `fusion`) |
-| Ranking strategy | `discover` task → `--rank-by` (`learned`, `learned-plm`, `crypticity`, `druggability`, `balanced`, `persistence`) |
-| Result filters | `discover` task → `--min-druggability`, `--min-persistence`, `--min-crypticity` |
-| Dimer-interface pockets | `discover` task → `--homodimer` (needs a biological-assembly PDB with BIOMT records) |
-| How many pockets to export for docking | `dock_prep` task → `--top` |
-| Docking format | `dock_prep` task → `--format` (`vina`, `boltz`, `pdb`, `all`) |
-| Which ranked pocket to dock into | `prep` task → `--box-config`, e.g. swap `pocket_0_vina.conf` for `pocket_3_vina.conf` to dock the switch-II cryptic pocket from the Overview instead of the default rank-1 (GDP) site |
-| Ligand library | `ligands` artifact → point at your own `.smi`/`.sdf` (each ligand becomes its own `dock` clone automatically) |
-| Docking search effort | `dock` task → `--exhaustiveness`, `--n-poses`, `--cpu` |
-| Docking concurrency cap | `dock` task → `max_concurrency` (default: a conservative built-in cap; see Implementation Notes) |
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `receptor` | file | `examples/structures/receptor.pdb` (4LDJ) | PDB / mmCIF | Apo structure, used when `pdb_id` is empty |
+| `pdb_id` | string | empty | 4-char PDB code or empty | Fetch the structure from RCSB instead of the upload |
+| `ligands` | file | `examples/ligands.smi` | SMILES or SDF | Ligand library; each ligand becomes one `dock` clone |
+| `conformers` | number | 20 | 5–200 | Ensemble size (`--conformers`) |
+| `detector` | choice | `surface-fusion` | `surface-fusion`, `surface`, `alpha` | Pocket detector |
+| `rank_by` | choice | `learned` | `learned`, `crypticity`, `druggability`, `balanced`, `persistence` | Pocket ranking |
+| `pocket` | choice | Rank 1 | Rank 1–5 | Which ranked pocket gets the Vina box; on the KRAS example, Rank 4 is the switch-II cryptic pocket from the Overview |
+| `exhaustiveness` | number | 8 | 1–64 | Vina search effort per ligand |
+| `n_poses` | number | 9 | 1–20 | Poses per ligand |
+
+Fixed in `workflow.yaml`: `discover --top 10`, `dock_prep --top 5 --format all`,
+and the `dock` map's `max_concurrency` (see Implementation Notes). Further
+`lacuna discover` flags (`--backend`, the `--min-*` filters, `--homodimer`) can be
+added to the `discover` command.
+
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`:
+Horus writes `params/<id>` only when it is missing, so a stale file keeps the old value.
+
+## Running in Temple Compute
+
+Start a campaign from the library entry: the form shows the structure and ligand
+uploads, the PDB ID field, the pocket-search settings, the pocket to dock into and
+the Vina settings. Each heavy step carries its own `resources`, so auto-provisioned
+targets size `discover` as a 4-CPU node and the `dock` clones as small 2-CPU nodes;
+open `report.html` in the run view to check the ranked pockets before re-running
+with a different `pocket`.
 
 ## Implementation Notes
 
