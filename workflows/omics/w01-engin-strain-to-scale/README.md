@@ -1,12 +1,12 @@
-# W-33 · Engin Strain-to-Scale
+# W-42 · Engin Strain-to-Scale
 
-<img src="assets/logo.png" width="96" align="right" alt="W-33 logo">
+<img src="assets/logo.png" width="96" align="right" alt="W-42 logo">
 
 One Engin project file in; which host, which route and which runs to do next, each with a 90% band, merged into one decision brief.
 
 ![Domain: Omics](https://img.shields.io/badge/domain-omics-blue)
 
-![W-33 cover](assets/cover.png)
+![W-42 cover](assets/cover.png)
 
 ## Overview
 

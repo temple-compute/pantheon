@@ -6,7 +6,7 @@
 
 Workflow directories are named `wXX-short-description` where `XX` is the next available two-digit number *within the domain*. Check existing directories in the domain for the current highest ID.
 
-Each workflow also has a global **W-number** (`W-01` through `W-31`, unique across the whole repo) assigned in the root `README.md` workflow table. Keep the two schemes straight: the directory is `workflows/bioexcel_building_blocks/w09-amber-protein-md-setup/`, but its README header and root-table entry are `W-14`. When you add a workflow, reserve the next free W-number (largest existing `W-NN` + 1) and put it in both the new README header and the root table.
+Each workflow also has a global **W-number** (`W-01` through `W-43` so far, unique across the whole repo) assigned in the root `README.md` workflow table. Keep the two schemes straight: the directory is `workflows/bioexcel_building_blocks/w09-amber-protein-md-setup/`, but its README header and root-table entry are `W-14`. When you add a workflow, reserve the next free W-number (largest existing `W-NN` + 1) and put it in both the new README header and the root table.
 
 ### 2. Create the directory
 

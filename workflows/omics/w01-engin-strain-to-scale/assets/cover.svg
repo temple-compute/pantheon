@@ -13,7 +13,7 @@
   <rect width="1200" height="630" fill="url(#bg)"/>
   <rect width="1200" height="630" fill="url(#glow)"/>
   <rect x="64" y="64" rx="18" width="190" height="36" fill="#78350f"/>
-  <text x="159" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#fde68a">W-33 · OMICS</text>
+  <text x="159" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#fde68a">W-42 · OMICS</text>
   <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#fffbeb">Engin</text>
   <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#fffbeb">Strain-to-Scale</text>
   <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#fbbf24">host · route · next runs, with 90% bands</text>

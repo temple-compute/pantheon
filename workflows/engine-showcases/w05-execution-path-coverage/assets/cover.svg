@@ -7,7 +7,7 @@
   <rect width="1200" height="630" fill="url(#bg)"/>
   <rect width="1200" height="630" fill="url(#glow)"/>
   <rect x="64" y="64" rx="18" width="200" height="36" fill="#334155"/>
-  <text x="164.0" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#e2e8f0">W-28 · ENGINE</text>
+  <text x="164.0" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#e2e8f0">W-41 · ENGINE</text>
   <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f8fafc">Execution Path</text>
   <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f8fafc">Coverage</text>
   <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#94a3b8">one burn per execution mechanism</text>

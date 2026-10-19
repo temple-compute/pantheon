@@ -10,7 +10,7 @@
   <rect width="1200" height="630" fill="url(#bg)"/>
   <rect width="1200" height="630" fill="url(#glow)"/>
   <rect x="64" y="64" rx="18" width="270" height="36" fill="#14532d"/>
-  <text x="199" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#bbf7d0">W-35 · BIOINFORMATICS</text>
+  <text x="199" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#bbf7d0">W-43 · BIOINFORMATICS</text>
   <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f0fdf4">Influenza</text>
   <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f0fdf4">Segments Starter</text>
   <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#4ade80">FASTA → QC → protein → report</text>

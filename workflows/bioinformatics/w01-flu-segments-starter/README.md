@@ -1,12 +1,12 @@
-# W-35 · Influenza Segments Starter
+# W-43 · Influenza Segments Starter
 
-<img src="assets/logo.png" width="96" align="right" alt="W-35 logo">
+<img src="assets/logo.png" width="96" align="right" alt="W-43 logo">
 
 Influenza segment FASTA in, per-segment QC, longest-ORF protein translation and an HTML sample × segment report out, in about a second.
 
 ![Domain: Bioinformatics](https://img.shields.io/badge/domain-bioinformatics-teal)
 
-![W-35 cover](assets/cover.png)
+![W-43 cover](assets/cover.png)
 
 ## Overview
 

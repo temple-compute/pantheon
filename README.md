@@ -84,7 +84,7 @@ uv run horus run workflow.yaml
 
 | ID | Workflow | Description |
 |---|---|---|
-| W-35 | [Influenza Segments Starter](workflows/bioinformatics/w01-flu-segments-starter/README.md) | Influenza segment FASTA → header parsing, QC, longest-ORF translation and an HTML report; fully local, runs in seconds. |
+| W-43 | [Influenza Segments Starter](workflows/bioinformatics/w01-flu-segments-starter/README.md) | Influenza segment FASTA → header parsing, QC, longest-ORF translation and an HTML report; fully local, runs in seconds. |
 
 ### AI
 
@@ -97,7 +97,7 @@ uv run horus run workflow.yaml
 
 | ID | Workflow | Description |
 |---|---|---|
-| W-33 | [Engin Strain-to-Scale](workflows/omics/w01-engin-strain-to-scale/README.md) | Which host, which route, and what to run next for a bioprocess target, via Engin's three independent decision-aid CLIs, merged into one calibrated decision brief |
+| W-42 | [Engin Strain-to-Scale](workflows/omics/w01-engin-strain-to-scale/README.md) | Which host, which route, and what to run next for a bioprocess target, via Engin's three independent decision-aid CLIs, merged into one calibrated decision brief |
 
 ### Engine Showcases
 
@@ -110,7 +110,7 @@ features rather than a science domain.
 | W-07 | [Programmatic Dynamic DAG](workflows/engine-showcases/w02-programmatic-dynamic-dag/README.md) | A task generates downstream tasks at runtime from the data it reads, via `add_task`/`expand` |
 | W-08 | [Bounded Loop (Range Map)](workflows/engine-showcases/w03-loop-map/README.md) | Run N deterministic iterations as a `horus_map` over a generated index list and gather the results |
 | W-27 | [Subworkflow Reuse](workflows/engine-showcases/w04-subworkflow-reuse/README.md) | Inline a child workflow into the parent with `sub:`, reusing one YAML-anchored body across two instances |
-| W-28 | [Execution Path Coverage](workflows/engine-showcases/w05-execution-path-coverage/README.md) | One measurable task per execution mechanism (subprocess, venv, container, in-process) as an acceptance harness for per-task resource measurement |
+| W-41 | [Execution Path Coverage](workflows/engine-showcases/w05-execution-path-coverage/README.md) | One measurable task per execution mechanism (subprocess, venv, container, in-process) as an acceptance harness for per-task resource measurement |
 
 ## Contributing
 
