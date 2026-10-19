@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: LLM From Scratch - Pretrain, SFT & Eval
+name: LLM From Scratch - Pretrain, SFT and Eval
 
 _executor: &executor
   kind: conda_python_environment
@@ -9,6 +9,57 @@ _executor: &executor
 
 _shell: &shell
   kind: shell
+
+artifacts:
+  - &config_scale
+    id: config_scale
+    name: Model and training scale
+    description: >-
+      Which config set of the training repo to use for the base model,
+      pretraining and SFT. Smoke is a 2-block model trained for 20 steps on
+      CPU (minutes); full is the repo's 24-block, 50k-step setup (days on one GPU).
+    kind: choice
+    path: params/config_scale.txt
+    value: configs/smoke
+    options:
+      - {value: configs/smoke, label: Smoke (tiny model, minutes)}
+      - {value: configs, label: Full (24 blocks, 50k steps)}
+  - id: pretrain_steps
+    name: Pretraining steps
+    description: Optimizer steps for pretraining; 0 keeps the config's value (smoke 20, full 50000).
+    kind: number
+    path: params/pretrain_steps.txt
+    value: 0
+    min: 0
+    max: 200000
+    step: 10
+  - id: sft_steps
+    name: SFT steps
+    description: Optimizer steps for supervised fine-tuning; 0 keeps the config's value.
+    kind: number
+    path: params/sft_steps.txt
+    value: 0
+    min: 0
+    max: 100000
+    step: 10
+  - id: num_shards
+    name: Pile training shards
+    description: Pile training shards to stream and tokenize (each is several GB of text).
+    kind: number
+    path: params/num_shards.txt
+    value: 1
+    min: 1
+    max: 30
+    step: 1
+  - id: max_per_source
+    name: Preference pairs per source
+    description: Cap on preference pairs taken from each of HH-RLHF and UltraFeedback.
+    kind: number
+    path: params/max_per_source.txt
+    value: 40000
+    min: 1000
+    max: 200000
+    step: 1000
 
 tasks:
   - kind: horus_task
@@ -23,10 +74,11 @@ tasks:
     executor: *shell
     runtime:
       kind: command
+      # Pinned commit so a rerun trains the same code.
       command: >-
-        git clone --depth 1
-        https://github.com/FareedKhan-dev/train-llm-from-scratch.git
-        $repo_dir
+        git clone -q --filter=blob:none
+        https://github.com/FareedKhan-dev/train-llm-from-scratch.git $repo_dir &&
+        git -C $repo_dir checkout -q bdd480a518094ca834e05ab32131dc126b522d3d
     target:
       kind: local
 
@@ -44,6 +96,10 @@ tasks:
         name: Pretraining dev tokens
         kind: file
         path: data/pretrain/pile_dev.h5
+    resources:
+      cpus: 4
+      memory_gb: 16
+      walltime: "02:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -64,18 +120,26 @@ tasks:
         name: Repository checkout
         kind: folder
         path: repo
+      - id: num_shards
+        name: Pile training shards
+        kind: number
+        path: params/num_shards.txt
     outputs:
       - id: pile_train_h5
         name: Pretraining train tokens
         kind: file
         path: data/pretrain/pile_train.h5
+    resources:
+      cpus: 4
+      memory_gb: 16
+      walltime: "12:00:00"
     executor: *executor
     runtime:
       kind: command
       command: >-
         PYTHONPATH=${repo_dir} python ${repo_dir}/scripts/prepare_pretrain_data.py
         --split train
-        --num_shards 1
+        --num_shards ${num_shards}
         --raw_dir data/pretrain_raw
         --out $pile_train_h5
     target:
@@ -101,6 +165,10 @@ tasks:
         name: SFT packed dev rows
         kind: file
         path: data/sft/sft_dev_packed.h5
+    resources:
+      cpus: 4
+      memory_gb: 16
+      walltime: "02:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -123,6 +191,10 @@ tasks:
         name: Repository checkout
         kind: folder
         path: repo
+      - id: max_per_source
+        name: Preference pairs per source
+        kind: number
+        path: params/max_per_source.txt
     outputs:
       - id: preferences_train
         name: Preference pairs (train)
@@ -132,6 +204,10 @@ tasks:
         name: Preference pairs (held-out test)
         kind: file
         path: data/preference/preferences_test.jsonl
+    resources:
+      cpus: 4
+      memory_gb: 16
+      walltime: "02:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -139,7 +215,7 @@ tasks:
         PYTHONPATH=${repo_dir} HF_HOME=data/hf_cache
         python ${repo_dir}/scripts/prepare_preference_data.py
         --source both
-        --max_per_source 40000
+        --max_per_source ${max_per_source}
         --out_dir data/preference
     target:
       kind: local
@@ -171,6 +247,10 @@ tasks:
         name: Arithmetic curriculum warm-up
         kind: file
         path: data/rl/arithmetic_prompts.jsonl
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -187,7 +267,7 @@ tasks:
     name: Pretrain base model
     description: >-
       Trains the from-scratch decoder-only Transformer on tokenized Pile data,
-      using the smoke-scale model/step-count config for a single local GPU/CPU run.
+      at the scale chosen by config_scale.
     inputs:
       - id: repo_dir
         name: Repository checkout
@@ -201,6 +281,11 @@ tasks:
         name: Pretraining dev tokens
         kind: file
         path: data/pretrain/pile_dev.h5
+      - *config_scale
+      - id: pretrain_steps
+        name: Pretraining steps
+        kind: number
+        path: params/pretrain_steps.txt
     outputs:
       - id: pretrained_ckpt
         name: Pretrained base checkpoint
@@ -210,17 +295,23 @@ tasks:
         name: Pretraining metrics log
         kind: file
         path: logs/pretrain.jsonl
+    resources:
+      cpus: 4
+      gpus: 1
+      memory_gb: 16
+      walltime: "72:00:00"
     executor: *executor
     runtime:
       kind: command
       command: >-
         PYTHONPATH=${repo_dir} python ${repo_dir}/scripts/pretrain_base.py
-        --config ${repo_dir}/configs/smoke/pretrain.json
+        --config ${repo_dir}/${config_scale}/pretrain.json
         --train_path $pile_train_h5
         --dev_path $pile_dev_h5
         --out_ckpt $pretrained_ckpt
         --ckpt_dir ckpts
         --log_dir logs
+        $$([ ${pretrain_steps} -gt 0 ] && echo --train_steps ${pretrain_steps})
     target:
       kind: local
 
@@ -230,7 +321,7 @@ tasks:
     name: Supervised fine-tune (SFT)
     description: >-
       Fine-tunes the pretrained checkpoint on packed Alpaca/Dolly/GSM8K rows
-      with a loss mask, using the smoke-scale step-count config.
+      with a loss mask, at the scale chosen by config_scale.
     inputs:
       - id: repo_dir
         name: Repository checkout
@@ -244,6 +335,11 @@ tasks:
         name: SFT packed train rows
         kind: file
         path: data/sft/sft_packed.h5
+      - *config_scale
+      - id: sft_steps
+        name: SFT steps
+        kind: number
+        path: params/sft_steps.txt
     outputs:
       - id: sft_ckpt
         name: SFT checkpoint
@@ -253,17 +349,23 @@ tasks:
         name: SFT metrics log
         kind: file
         path: logs/sft.jsonl
+    resources:
+      cpus: 4
+      gpus: 1
+      memory_gb: 16
+      walltime: "24:00:00"
     executor: *executor
     runtime:
       kind: command
       command: >-
         PYTHONPATH=${repo_dir} python ${repo_dir}/scripts/train_sft.py
-        --config ${repo_dir}/configs/smoke/sft.json
+        --config ${repo_dir}/${config_scale}/sft.json
         --pretrained_ckpt $pretrained_ckpt
         --data_path $sft_train_h5
         --out_ckpt $sft_ckpt
         --ckpt_dir ckpts
         --log_dir logs
+        $$([ ${sft_steps} -gt 0 ] && echo --train_steps ${sft_steps})
     target:
       kind: local
 
@@ -288,6 +390,11 @@ tasks:
         name: GSM8K accuracy table
         kind: file
         path: logs/stage_table.jsonl
+    resources:
+      cpus: 4
+      gpus: 1
+      memory_gb: 16
+      walltime: "02:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -365,6 +472,36 @@ edges:
     source_output: sft_ckpt
     target: eval_sft
     target_input: sft_ckpt
+
+  - source: artifact-config_scale
+    source_output: config_scale
+    target: train_pretrain
+    target_input: config_scale
+
+  - source: artifact-config_scale
+    source_output: config_scale
+    target: train_sft
+    target_input: config_scale
+
+  - source: artifact-pretrain_steps
+    source_output: pretrain_steps
+    target: train_pretrain
+    target_input: pretrain_steps
+
+  - source: artifact-sft_steps
+    source_output: sft_steps
+    target: train_sft
+    target_input: sft_steps
+
+  - source: artifact-num_shards
+    source_output: num_shards
+    target: prepare_pretrain_train
+    target_input: num_shards
+
+  - source: artifact-max_per_source
+    source_output: max_per_source
+    target: prepare_preference_data
+    target_input: max_per_source
 
 orchestrator_target:
   kind: local
