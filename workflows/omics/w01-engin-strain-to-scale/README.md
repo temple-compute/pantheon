@@ -1,6 +1,12 @@
 # W-33 · Engin Strain-to-Scale
 
+<img src="assets/logo.png" width="96" align="right" alt="W-33 logo">
+
+One Engin project file in; which host, which route and which runs to do next, each with a 90% band, merged into one decision brief.
+
 ![Domain: Omics](https://img.shields.io/badge/domain-omics-blue)
+
+![W-33 cover](assets/cover.png)
 
 ## Overview
 
@@ -98,7 +104,11 @@ Implementation Notes).
 
 ## Parameterization
 
-Everything a user would change lives in `examples/project.yaml`:
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `project` | file | `examples/project.yaml` | YAML | Engin project file read by all three stages |
+
+Everything a user would change lives in that project file:
 
 | Section | Knob | Default |
 |---|---|---|
@@ -108,6 +118,14 @@ Everything a user would change lives in `examples/project.yaml`:
 | `process.cost` | substrate price, vessel occupancy, downstream cost, target $/kg | target `$200/kg` |
 | `process.batch_size` / `seed` | how many runs to recommend; reproducibility | 4 runs, `seed: 0` |
 | `host`/`pathway`/`process` executor `requirements` | pinned Engin version | `==0.1.1` |
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: the only input
+is the project file, so upload your own `project.yaml` (start from
+`examples/project.yaml`). The three Engin stages carry `resources` hints of 1 CPU /
+2 GB / 10 min each, so an auto-provisioned target picks the smallest general-purpose
+machine; the whole run takes under a minute, most of it building the uv venvs.
 
 ## Implementation Notes
 

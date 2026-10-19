@@ -4,5 +4,5 @@ version = "0.1.0"
 requires-python = ">=3.13"
 dependencies = [
   "horus-environments>=0.1.2",
-  "horus-runtime>=0.3.0",
+  "horus-runtime>=0.8.0",
 ]
