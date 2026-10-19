@@ -2,18 +2,43 @@ kind: horus_workflow
 name: Execution Path Coverage Harness
 # One task per distinct way horus-runtime can execute work, chained so they run
 # one at a time (overlapping tasks would make in-process measurement ambiguous).
-# Every task does the same job: touch ~300 MiB of pages, burn CPU for ~4s, write
+# Every task does the same job: touch alloc_mb MiB of pages, burn CPU for burn_seconds, write
 # a stamp JSON naming the interpreter and pid that did it.
 #
 # The `python_function` executor is NOT here: its runtime takes a live Python
 # callable (`func`), which no YAML can express. That path lives in `run.py`,
 # which loads this file and appends the task. See README.md.
+artifacts:
+  - &alloc_mb
+    id: alloc_mb
+    name: Memory to touch (MiB)
+    description: Pages each task allocates and touches, so the memory shows up in a sampling monitor.
+    kind: number
+    path: params/alloc_mb.txt
+    value: 300
+    min: 4
+    max: 4096
+    step: 4
+  - &burn_seconds
+    id: burn_seconds
+    name: CPU burn (s)
+    description: Seconds each task spins one core.
+    kind: number
+    path: params/burn_seconds.txt
+    value: 4
+    min: 1
+    max: 60
+    step: 1
+
 tasks:
   - kind: horus_task
     id: shell_command
     name: Shell executor + command runtime
     description: Plain subprocess path — the shell executor runs a literal command string on the target.
     skip_if_complete: false
+    inputs:
+      - *alloc_mb
+      - *burn_seconds
     outputs:
       - id: stamp
         name: Shell command stamp
@@ -33,7 +58,7 @@ tasks:
       # shipped to the target. `iter(fn, None)` is the sentinel form of a
       # while-loop, so the whole burn fits on one line.
       command: >-
-        python3 -c "import json,os,sys,time;b=bytearray(300<<20);[b.__setitem__(i,1) for i in range(0,len(b),4096)];t=time.monotonic()+4;n=sum(1 for _ in iter(lambda: pow(3,100000,99991) if time.monotonic()<t else None, None));os.makedirs(os.path.dirname('${stamp}'),exist_ok=True);json.dump({'label':'shell_command','python':sys.executable,'pid':os.getpid(),'allocated_mb':len(b)>>20,'cpu_iterations':n,'chain':['shell_command']},open('${stamp}','w'),indent=2)"
+        python3 -c "import json,os,sys,time;b=bytearray(${alloc_mb}<<20);[b.__setitem__(i,1) for i in range(0,len(b),4096)];t=time.monotonic()+${burn_seconds};n=sum(1 for _ in iter(lambda: pow(3,100000,99991) if time.monotonic()<t else None, None));os.makedirs(os.path.dirname('${stamp}'),exist_ok=True);json.dump({'label':'shell_command','python':sys.executable,'pid':os.getpid(),'allocated_mb':len(b)>>20,'cpu_iterations':n,'chain':['shell_command']},open('${stamp}','w'),indent=2)"
     target:
       kind: local
 
@@ -47,6 +72,8 @@ tasks:
         name: Upstream stamp
         kind: file
         path: results/shell_command.json
+      - *alloc_mb
+      - *burn_seconds
     outputs:
       - id: stamp
         name: Python script stamp
@@ -62,7 +89,9 @@ tasks:
       kind: python_script
       script: scripts/burn.py
       python: python3 # stdlib-only; use the target's python3
-      args: --label shell_python_script --prev ${prev} --out ${stamp}
+      args: >-
+        --label shell_python_script --prev ${prev} --out ${stamp}
+        --mb ${alloc_mb} --seconds ${burn_seconds}
     target:
       kind: local
 
@@ -76,6 +105,8 @@ tasks:
         name: Upstream stamp
         kind: file
         path: results/shell_python_script.json
+      - *alloc_mb
+      - *burn_seconds
     outputs:
       - id: stamp
         name: uv environment stamp
@@ -99,7 +130,9 @@ tasks:
       # venv and then runs the runtime's interpreter, so leaving the default
       # (`python`) is what routes the script through the venv. Pinning
       # `python3` would silently run outside the environment.
-      args: --label uv_environment --prev ${prev} --out ${stamp}
+      args: >-
+        --label uv_environment --prev ${prev} --out ${stamp}
+        --mb ${alloc_mb} --seconds ${burn_seconds}
     target:
       kind: local
 
@@ -113,6 +146,8 @@ tasks:
         name: Upstream stamp
         kind: file
         path: results/uv_environment.json
+      - *alloc_mb
+      - *burn_seconds
     outputs:
       - id: stamp
         name: Python exec stamp
@@ -131,10 +166,10 @@ tasks:
       code: |
         import json, os, sys, time
 
-        buf = bytearray(300 << 20)
+        buf = bytearray(${alloc_mb} << 20)
         for i in range(0, len(buf), 4096):
             buf[i] = 1
-        end = time.monotonic() + 4
+        end = time.monotonic() + ${burn_seconds}
         iterations = 0
         while time.monotonic() < end:
             pow(3, 100_000, 99991)
@@ -173,6 +208,15 @@ edges:
     source_output: stamp
     target: python_exec_string
     target_input: prev
+
+  - {source: artifact-alloc_mb, source_output: alloc_mb, target: shell_command, target_input: alloc_mb}
+  - {source: artifact-burn_seconds, source_output: burn_seconds, target: shell_command, target_input: burn_seconds}
+  - {source: artifact-alloc_mb, source_output: alloc_mb, target: shell_python_script, target_input: alloc_mb}
+  - {source: artifact-burn_seconds, source_output: burn_seconds, target: shell_python_script, target_input: burn_seconds}
+  - {source: artifact-alloc_mb, source_output: alloc_mb, target: uv_environment, target_input: alloc_mb}
+  - {source: artifact-burn_seconds, source_output: burn_seconds, target: uv_environment, target_input: burn_seconds}
+  - {source: artifact-alloc_mb, source_output: alloc_mb, target: python_exec_string, target_input: alloc_mb}
+  - {source: artifact-burn_seconds, source_output: burn_seconds, target: python_exec_string, target_input: burn_seconds}
 
 orchestrator_target:
   kind: local

@@ -1,6 +1,12 @@
 # W-28 · Execution Path Coverage Harness
 
+<img src="assets/logo.png" width="96" align="right" alt="Execution path coverage logo">
+
+The same CPU-and-memory burn run once through every way horus-runtime can execute work, chained so each path's usage can be measured on its own.
+
 ![Domain: Engine Showcases](https://img.shields.io/badge/domain-engine--showcases-orange)
+
+![Execution path coverage cover](assets/cover.png)
 
 ## Overview
 
@@ -157,14 +163,26 @@ is the previous task's stamp.
 
 ## Parameterization
 
-- `--mb` / `--seconds` in `scripts/burn.py`'s invocations (`workflow.yaml`
-  `args:`), and the equivalent literals in the two inline snippets
-  (`shell_command`'s `command:` and `python_exec_string`'s `code:`). Defaults
-  are 300 MiB / 4s per task — big and long enough to be unmistakable in a
-  sampling monitor, small and short enough that the whole harness runs in
-  ~20s.
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `alloc_mb` | number | 300 | 4–4096, step 4 | MiB each task allocates and touches |
+| `burn_seconds` | number | 4 | 1–60, step 1 | Seconds each task spins one core |
+
+The defaults are big and long enough to be unmistakable in a sampling monitor,
+small and short enough that the whole harness runs in ~20s. Both feed every task in
+`workflow.yaml`, including the inline `command:` and `code:` snippets. To change a value
+locally, edit its `value:`, then `rm -rf params/`: Horus writes `params/<id>.txt` only
+when it is missing. `run.py`'s `python_function` task and `workflow.docker.yaml` keep
+their fixed 300 MiB / 4 s.
 - `resources:` blocks — advisory only; nothing enforces them here. They exist
   so a run has a request to compare measured usage against.
+
+## Running in Temple Compute
+
+Start a campaign from the library (it publishes `workflow.yaml`; the Docker variant and
+the `python_function` path stay local) and set the burn size and length. Every task
+carries the same deliberately generous `resources` hint (4 CPU / 8 GB / 5–10 min), so
+the tc-os resources dashboard shows asked versus used for each execution path.
 
 ## Notes
 
