@@ -1,51 +1,80 @@
 kind: horus_workflow
 name: Bounded Loop Map Showcase
+
+artifacts:
+  - id: iterations
+    name: Iterations
+    description: Number of clones to run, indices 0..N-1; the result is the sum of their squares.
+    kind: number
+    path: params/iterations.txt
+    value: 5
+    min: 1
+    max: 100
+    step: 1
+
 tasks:
-  # `iterate` has no `over:` — a bounded loop is just `map:` with `range:`
-  # instead of an upstream collection: N clones (`iterate[00]`..`iterate[04]`),
-  # no producer task required. `index_input` names the template input artifact
-  # that receives each clone's 0-based iteration index (here written into a
-  # one-line `idx.txt` the clone's command reads).
+  # A bounded loop is a horus_map over a JSON list: `indices` writes
+  # [0, 1, ..., N-1] and the map runs one clone per element. Iterating a
+  # `json` artifact gives each clone a one-element JSON file holding its index.
   - kind: horus_task
+    id: indices
+    name: List the iteration indices
+    description: Writes the JSON list [0, 1, ..., N-1] for the range map.
+    inputs:
+      - id: iterations
+        name: Iterations
+        kind: number
+        path: params/iterations.txt
+    outputs:
+      - id: indices
+        name: Iteration indices
+        kind: json
+        path: indices.json
+    executor:
+      kind: shell
+    runtime:
+      kind: command
+      command: >-
+        python3 -c "import json, sys; print(json.dumps(list(range(int(sys.argv[1])))))"
+        ${iterations} > $indices
+    target:
+      kind: local
+
+  - kind: horus_map
     id: iterate
     name: Square each iteration index (bounded range map)
-    description: Fans out one clone per iteration index (0..4) and squares that index.
-    map:
-      range: 5
-      index_input: idx
-      template:
-        inputs:
-          - id: idx
-            name: Iteration index
-            kind: file
-            path: idx.txt # populated per-clone with its iteration index
-        outputs:
-          - id: square
-            name: Squared value
-            kind: file
-            path: square.txt
-        runtime:
-          kind: command
-          command: 'n=$(cat $idx); echo $((n * n)) > $square'
-        executor:
-          kind: shell
-        target:
-          kind: local
-      gather:
-        task: gather
-        input: results
+    description: Fans out one clone per iteration index (0..N-1) and squares that index.
+    over:
+      input_id: indices
+      as: idx
+    max_concurrency: 0 # all clones at once
+    inputs:
+      - id: indices
+        name: Iteration indices
+        kind: json
+        path: indices.json
+    outputs:
+      - id: squares
+        name: Squared values
+        kind: folder
+        path: squares/
+    runtime:
+      kind: command
+      command: 'n=$$(cat $idx); mkdir -p $squares && echo $$((n * n)) > $squares/square.txt'
+    executor:
+      kind: shell
+    target:
+      kind: local
 
   - kind: horus_task
     id: gather
     name: Sum the squares
     description: Sums every clone's squared value into a single total.
     inputs:
-      # Fed by the map's fan-in: one FolderArtifact with every clone's
-      # square.txt under iterate.gathered/<i>/.
       - id: results
-        name: Gathered squares
+        name: Squared values
         kind: folder
-        path: iterate.gathered/
+        path: squares/
     outputs:
       - id: total
         name: Sum of squares
@@ -60,6 +89,11 @@ tasks:
       args: --results ${results} --out ${total}
     target:
       kind: local
+
+edges:
+  - {source: artifact-iterations, source_output: iterations, target: indices, target_input: iterations}
+  - {source: indices, source_output: indices, target: iterate, target_input: indices}
+  - {source: iterate, source_output: squares, target: gather, target_input: results}
 
 orchestrator_target:
   kind: local

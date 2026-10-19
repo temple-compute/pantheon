@@ -2,16 +2,16 @@
 """
 Stage 2 (gather) — sum the squares produced by a bounded range map.
 
-The `iterate` task's `map:` block runs a fixed number of clones (`range: 5`,
-no upstream collection), one per iteration index `0..4`, each writing its
-index squared to `square.txt`. Clone outputs land under
-`iterate.gathered/<i>/square.txt`. This stage walks that folder and sums them:
+The `iterate` horus_map runs one clone per index in `indices.json`
+(`0..N-1`, N = the `iterations` input), each writing its index squared to
+`square.txt` in its own slot: `squares/<slot>/square.txt`. This stage walks
+that folder and sums them; for N = 5:
 0**2 + 1**2 + 2**2 + 3**2 + 4**2 == 30.
 
 stdlib only.
 
 Usage:
-    sum_squares.py --results iterate.gathered/ --out results/total.txt
+    sum_squares.py --results squares/ --out results/total.txt
     sum_squares.py --selftest
 """
 
@@ -48,7 +48,7 @@ def _selftest() -> None:
     import tempfile
 
     with tempfile.TemporaryDirectory() as tmp:
-        results = Path(tmp) / "iterate.gathered"
+        results = Path(tmp) / "squares"
         for i, n in enumerate([0, 1, 4, 9, 16]):
             clone = results / str(i)
             clone.mkdir(parents=True)
