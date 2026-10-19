@@ -33,11 +33,13 @@ from __future__ import annotations  # portable across python3 (>=3.9)
 import argparse
 import importlib.util
 import json
+import re
 import shutil
 import subprocess
 import sys
 import tarfile
 import tempfile
+import urllib.request
 from pathlib import Path
 
 DEFAULT_SIZE = (25.0, 25.0, 25.0)
@@ -212,10 +214,51 @@ def prepare_ligands(ligands: Path, staging: Path) -> int:
 # --------------------------------------------------------------------------- #
 # Orchestration                                                                #
 # --------------------------------------------------------------------------- #
+def parse_center(text: str | None) -> tuple[float, float, float] | None:
+    """Parse "X Y Z" (Angstrom) for --center; blank means no center (blind)."""
+    if text is None or not text.strip():
+        return None
+    parts = text.replace(",", " ").split()
+    try:
+        xyz = tuple(float(p) for p in parts)
+    except ValueError:
+        xyz = ()
+    if len(xyz) != 3:
+        raise ValueError(f"box_center must be three numbers 'X Y Z', got {text!r}")
+    return xyz
+
+
+PDB_ID = re.compile(r"[0-9][A-Za-z0-9]{3}")
+
+
+def protein_only(pdb_text: str) -> str:
+    """ATOM/TER records of the first model: drops waters, ligands, ions."""
+    keep = []
+    for line in pdb_text.splitlines():
+        if line.startswith("ENDMDL"):
+            break
+        if line.startswith(("ATOM", "TER")):
+            keep.append(line)
+    if not keep:
+        raise ValueError("no protein ATOM records in the fetched structure")
+    return "\n".join(keep + ["END"]) + "\n"
+
+
+def fetch_receptor(pdb_id: str, dest: Path) -> Path:
+    """Download *pdb_id* from RCSB and write its protein atoms to *dest*."""
+    if not PDB_ID.fullmatch(pdb_id):
+        raise ValueError(f"pdb_id must be a 4-character PDB code, got {pdb_id!r}")
+    url = f"https://files.rcsb.org/download/{pdb_id.upper()}.pdb"
+    with urllib.request.urlopen(url, timeout=60) as resp:
+        dest.write_text(protein_only(resp.read().decode()))
+    print(f"prep.py: receptor = protein atoms of {pdb_id.upper()} from RCSB")
+    return dest
+
+
 def resolve_center(args: argparse.Namespace) -> tuple[float, float, float]:
     """Resolve the box center from --center, --ref-ligand, or receptor centroid."""
     if args.center is not None:
-        return tuple(args.center)
+        return args.center
     if args.ref_ligand is not None:
         ref = Path(args.ref_ligand)
         coords = (
@@ -236,15 +279,16 @@ def resolve_center(args: argparse.Namespace) -> tuple[float, float, float]:
 
 def build_inputs(args: argparse.Namespace) -> int:
     """Prepare receptor + ligands + box and tar them. Returns ligand count."""
-    center = resolve_center(args)
     size = tuple(args.size)
 
     with tempfile.TemporaryDirectory() as tmp:
+        if args.pdb_id:
+            args.receptor = fetch_receptor(args.pdb_id, Path(tmp) / "receptor.pdb")
         staging = Path(tmp) / "vina_inputs"
         staging.mkdir(parents=True)
         prepare_receptor(args.receptor, staging)
         n = prepare_ligands(args.ligands, staging)
-        write_box(staging / "box.json", center, size)
+        write_box(staging / "box.json", resolve_center(args), size)
         make_archive(staging, args.out)
 
     print(f"prep.py: wrote {n} ligand(s) + receptor + box to {args.out}")
@@ -305,6 +349,26 @@ def _selftest() -> None:
         assert "vina_inputs/receptor.pdbqt" in names, names
         assert "vina_inputs/ligands/benzene.pdbqt" in names, names
         assert "vina_inputs/box.json" in names, names
+        # Inputs from the workflow variables.
+        assert parse_center("15.19 53.9 -16.9") == (15.19, 53.9, -16.9)
+        assert parse_center("") is None and parse_center("  ") is None
+        try:
+            parse_center("1 2")
+            raise AssertionError("expected ValueError for 2 coordinates")
+        except ValueError as e:
+            assert "box_center" in str(e)
+        pdb_text = (
+            "HETATM    1  O   HOH A 900       0.000   0.000   0.000\n"
+            "ATOM      1  N   ALA A   1       0.000   0.000   0.000\n"
+            "TER\nENDMDL\nATOM      9  N   ALA A   1       9.000   9.000   9.000\n"
+        )
+        assert protein_only(pdb_text).splitlines() == [
+            "ATOM      1  N   ALA A   1       0.000   0.000   0.000", "TER", "END"]
+        try:
+            fetch_receptor("bad!", d / "x.pdb")
+            raise AssertionError("expected ValueError for a bad pdb_id")
+        except ValueError as e:
+            assert "pdb_id" in str(e)
     print("prep.py selftest: OK")
 
 
@@ -314,8 +378,12 @@ def main(argv: list[str] | None = None) -> int:
     parser.add_argument("--ligands", type=Path)
     parser.add_argument("--out", type=Path)
     parser.add_argument(
-        "--center", type=float, nargs=3, metavar=("X", "Y", "Z"),
-        help="docking box center in Angstrom",
+        "--center", type=parse_center, metavar="'X Y Z'",
+        help="docking box center in Angstrom; blank for blind docking",
+    )
+    parser.add_argument(
+        "--pdb-id", default="",
+        help="fetch the receptor from RCSB (protein atoms only) instead of --receptor",
     )
     parser.add_argument(
         "--size", type=float, nargs=3, metavar=("X", "Y", "Z"),
