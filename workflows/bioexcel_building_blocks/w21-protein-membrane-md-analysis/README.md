@@ -1,6 +1,12 @@
 # W-26 · Protein-Membrane MD Analysis
 
+<img src="assets/logo.png" width="96" align="right" alt="W-26 logo">
+
+Analyse a protein-membrane MD trajectory from MDDB: leaflets, lipid z-positions, order parameters, area per lipid, density profile, channel pore radius and lipid flip-flop.
+
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel-green)
+
+![W-26 cover](assets/cover.png)
 
 ## Overview
 
@@ -50,9 +56,31 @@ uv run horus run workflow.yaml
 
 The first run builds the conda environment (this takes a few minutes). Subsequent runs reuse the cached environment at `../.horus_conda_env`.
 
+## Inputs
+
+Root artifacts in `workflow.yaml`; tc-os shows them in the campaign form.
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `mddb_project` | string | A023K | `[A-Za-z0-9]+` | MDDB accession of a protein in a DPPC membrane (structure, trajectory and GROMACS .tpr are downloaded). |
+| `frame_stride` | number | 1000 | 1–10000, step 1 | Keep every Nth trajectory frame when downloading. |
+| `pore_frame_step` | number | 20 | 1–1000, step 1 | Analyse the channel pore radius every Nth downloaded frame (HOLE). |
+
+Expert settings stay in the biobb property files under `configs/`.
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes
+`params/<id>.txt` only when it is missing and fingerprints that file for the skip check.
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: give an MDDB
+accession of a protein in a DPPC membrane (default A023K), the frame stride for the
+download and the frame step of the pore analysis. The lipid and pore analyses carry
+`resources` hints (2 CPU, 8 GB, 1 h), so an auto-provisioned target picks a small
+general-purpose machine.
+
 ## Inputs / Outputs
 
-This workflow has no file inputs — it fetches the structure (`.pdb`), trajectory (`.xtc`), and topology (`.tpr`) for MDDB entry A023K automatically.
+The workflow fetches the structure (`.pdb`), trajectory (`.xtc`) and topology (`.tpr`) of MDDB entry `mddb_project` (default A023K, a GABA-gated chloride channel). The lipid selections in `configs/` assume a DPPC bilayer, so another entry should also be DPPC (or edit those selections). Output file names keep the `A023K` prefix.
 
 **Outputs** (all under `workflow_results/results/`):
 - `A023K_10.pdb`, `A023K_10.xtc`, `A023K.tpr` — downloaded structure, trajectory, and topology
@@ -68,7 +96,7 @@ This workflow has no file inputs — it fetches the structure (`.pdb`), trajecto
 
 ## Configuration
 
-`configs/download_trajectory.yaml` sets the MDDB node/project ID, trajectory format, and frame stride. `configs/assign_leaflets.yaml`, `compute_zpositions.yaml`, `compute_zpositions_around.yaml`, `identify_leaflets_fatslim.yaml` control the lipid headgroup selection (`resname DPPC and element P`) used to identify leaflets. `configs/fit_membrane.yaml` and `fit_protein.yaml` control the GROMACS fitting mode (rot+trans vs. transxy) and reference selection.
+The MDDB project and frame stride are inputs; the download settings are inlined in `download_trajectory`. `configs/assign_leaflets.yaml`, `compute_zpositions.yaml`, `compute_zpositions_around.yaml`, `identify_leaflets_fatslim.yaml` control the lipid headgroup selection (`resname DPPC and element P`) used to identify leaflets. `configs/fit_membrane.yaml` and `fit_protein.yaml` control the GROMACS fitting mode (rot+trans vs. transxy) and reference selection.
 
 ## References
 
