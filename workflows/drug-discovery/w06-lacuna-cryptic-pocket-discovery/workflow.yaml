@@ -14,10 +14,84 @@ _executor: &executor
 
 artifacts:
   - id: receptor
-    name: Target receptor structure
-    description: Unbound (apo) PDB/mmCIF structure to search for cryptic pockets.
+    name: Receptor structure (PDB upload)
+    description: >-
+      Unbound (apo) PDB/mmCIF structure to search for cryptic pockets; used
+      when no PDB ID is given. Default: KRAS G12C (4LDJ).
     kind: file
     path: examples/structures/receptor.pdb
+
+  - &pdb_id
+    id: pdb_id
+    name: PDB ID (fetch instead of upload)
+    description: >-
+      Four-character PDB code to fetch from RCSB (protein atoms of the first
+      model). Leave empty to use the uploaded receptor.
+    kind: string
+    path: params/pdb_id.txt
+    value: ""
+    pattern: '([0-9][A-Za-z0-9]{3})?'
+
+  - &conformers
+    id: conformers
+    name: Conformers
+    description: Size of the generated conformational ensemble.
+    kind: number
+    path: params/conformers.json
+    value: 20
+    min: 5
+    max: 200
+    step: 1
+
+  - &detector
+    id: detector
+    name: Pocket detector
+    description: >-
+      surface-fusion pools the geometric and the learned-surface detector and
+      reaches sites that are not yet concave; alpha is geometry only.
+    kind: choice
+    path: params/detector.txt
+    value: surface-fusion
+    options:
+      - {value: surface-fusion, label: Surface fusion (geometric + learned)}
+      - {value: surface, label: Learned surface}
+      - {value: alpha, label: Alpha spheres (geometric)}
+
+  - &rank_by
+    id: rank_by
+    name: Rank pockets by
+    description: Ranking strategy for the reported pockets.
+    kind: choice
+    path: params/rank_by.txt
+    value: learned
+    options:
+      - {value: learned, label: Learned ranker}
+      - {value: crypticity, label: Crypticity}
+      - {value: druggability, label: Druggability}
+      - {value: balanced, label: Balanced}
+      - {value: persistence, label: Persistence x druggability}
+
+  - &top
+    id: top
+    name: Pockets to report
+    description: Maximum number of ranked pockets in the report.
+    kind: number
+    path: params/top.json
+    value: 10
+    min: 1
+    max: 50
+    step: 1
+
+  - &min_druggability
+    id: min_druggability
+    name: Minimum druggability
+    description: Drop pockets whose druggability score (0-1) is below this.
+    kind: number
+    path: params/min_druggability.json
+    value: 0
+    min: 0
+    max: 1
+    step: 0.05
 
 tasks:
   # Runs the full pipeline in one CLI call: ensemble generation, per-conformer
@@ -35,22 +109,40 @@ tasks:
         name: Target receptor structure
         kind: file
         path: examples/structures/receptor.pdb
+      - *pdb_id
+      - *conformers
+      - *detector
+      - *rank_by
+      - *top
+      - *min_druggability
     outputs:
       - id: pockets
         name: Ranked pocket report + pocket PDBs
         kind: folder
         path: results/pockets/
+    resources:
+      cpus: 4
+      memory_gb: 16
+      walltime: "01:00:00"
     executor: *executor
     runtime:
+      # With a PDB ID, fetch from RCSB and keep the protein atoms of model 1.
+      # The receptor actually used is copied into the output for the report.
       kind: command
       command: >-
-        lacuna discover ${receptor}
-        --conformers 20
-        --detector surface-fusion
-        --rank-by learned
-        --top 10
+        R=${receptor} &&
+        if [ -n ${pdb_id} ]; then
+        curl -fL --retry 3 -o rcsb.pdb.part https://files.rcsb.org/download/${pdb_id}.pdb &&
+        awk '/^ENDMDL/{exit} /^(ATOM|TER)/' rcsb.pdb.part > rcsb.pdb && R=rcsb.pdb; fi &&
+        lacuna discover $$R
+        --conformers ${conformers}
+        --detector ${detector}
+        --rank-by ${rank_by}
+        --top ${top}
+        --min-druggability ${min_druggability}
         --emit-pocket-pdbs
-        --output ${pockets}
+        --output ${pockets} &&
+        cp $$R ${pockets}/receptor.pdb
     target:
       kind: local
 
@@ -66,10 +158,6 @@ tasks:
         name: Ranked pocket report + pocket PDBs
         kind: folder
         path: pockets/
-      - id: receptor
-        name: Target receptor structure
-        kind: file
-        path: examples/structures/receptor.pdb
     outputs:
       - id: report
         name: Pocket report (HTML)
@@ -85,7 +173,7 @@ tasks:
       kind: python_script
       script: scripts/report.py
       python: python3 # stdlib-only; use the target's python3
-      args: --pockets ${pockets} --receptor ${receptor} --report ${report} --table ${table}
+      args: --pockets ${pockets} --receptor ${pockets}/receptor.pdb --report ${report} --table ${table}
     target:
       kind: local
 
@@ -100,10 +188,12 @@ edges:
     target: report
     target_input: pockets
 
-  - source: artifact-receptor
-    source_output: receptor
-    target: report
-    target_input: receptor
+  - {source: artifact-pdb_id, source_output: pdb_id, target: discover, target_input: pdb_id}
+  - {source: artifact-conformers, source_output: conformers, target: discover, target_input: conformers}
+  - {source: artifact-detector, source_output: detector, target: discover, target_input: detector}
+  - {source: artifact-rank_by, source_output: rank_by, target: discover, target_input: rank_by}
+  - {source: artifact-top, source_output: top, target: discover, target_input: top}
+  - {source: artifact-min_druggability, source_output: min_druggability, target: discover, target_input: min_druggability}
 
 orchestrator_target:
   kind: local
