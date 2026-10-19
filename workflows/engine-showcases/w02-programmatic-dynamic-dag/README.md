@@ -1,6 +1,12 @@
 # W-07 · Programmatic Dynamic DAG Showcase
 
+<img src="assets/logo.png" width="96" align="right" alt="W-07 logo">
+
+A task that reads its data and grows the rest of the DAG while it runs: one processing task per group it finds, plus a fan-in.
+
 ![Domain: Engine Showcases](https://img.shields.io/badge/domain-engine--showcases-orange)
+
+![W-07 cover](assets/cover.png)
 
 ## Overview
 
@@ -14,7 +20,7 @@ There is no science and no YAML here (this is the pure-Python builder path);
 the point is the `HorusContext.get_context().workflow` / `add_task` /
 `expand` pattern, which is the mechanism a real pipeline would use for e.g.
 "one task per file format actually present in this upload" or "one task per
-cluster returned by a discovery step" — cases the declarative `map:` block
+cluster returned by a discovery step" — cases a `horus_map`
 (see W-06) can't express because the fan-out isn't over a static collection,
 it's a decision the task itself makes.
 
@@ -66,6 +72,12 @@ spanning 3 groups (`alpha`: 2 records, `beta`: 3, `gamma`: 1).
 - `examples/dataset.json` — add/remove records or groups; `plan` adapts the
   number of generated tasks to whatever groups are actually present, with no
   code changes.
+
+## Running in Temple Compute
+
+This showcase is Python-only (`run.py`, closures over runtime data), so it has no
+`workflow.yaml` and is not published to the tc-os library: the library seeds from YAML
+workflows. Run it locally with `uv run python run.py`.
 
 ## Implementation notes
 
