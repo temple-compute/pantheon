@@ -1,0 +1,53 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071a1c"/><stop offset="1" stop-color="#0c2f33"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity="0.22"/><stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#99f6e4"/>
+    </marker>
+    <g id="ligA" fill="none" stroke-width="5" stroke-linejoin="round">
+      <polygon points="0,-34 29,-17 29,17 0,34 -29,17 -29,-17" stroke="#f0fdfa"/>
+      <line x1="29" y1="-17" x2="58" y2="-34" stroke="#f0fdfa"/>
+      <circle cx="66" cy="-39" r="8" fill="#5eead4" stroke="none"/>
+    </g>
+    <g id="ligB" fill="none" stroke-width="5" stroke-linejoin="round">
+      <polygon points="0,-34 29,-17 29,17 0,34 -29,17 -29,-17" stroke="#f0fdfa"/>
+      <line x1="29" y1="-17" x2="58" y2="-34" stroke="#f0fdfa"/>
+      <circle cx="66" cy="-39" r="8" fill="#fbbf24" stroke="none"/>
+      <line x1="-29" y1="17" x2="-56" y2="34" stroke="#f0fdfa"/>
+      <circle cx="-64" cy="39" r="8" fill="#fb7185" stroke="none"/>
+    </g>
+    <path id="pocket" d="M-80,40 C-95,-40 -40,-85 0,-85 C40,-85 95,-40 80,40" fill="none" stroke="#2dd4bf" stroke-width="10" stroke-linecap="round" opacity="0.75"/>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <!-- left: text -->
+  <rect x="64" y="64" rx="18" width="190" height="36" fill="#134e4a"/>
+  <text x="159" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#99f6e4">W-37 · OMSF</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f0fdfa">Relative Binding</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f0fdfa">Free Energies</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#5eead4">OpenFE · alchemical RBFE network</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#a7c4c2">Upload a ligand series and a prepared</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#a7c4c2">protein; get ΔΔG per edge and ΔG per</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#a7c4c2">ligand, one GPU per alchemical leg.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#5f8784">PANTHEON · TEMPLE COMPUTE</text>
+  <!-- right: thermodynamic cycle -->
+  <g transform="translate(0,10)">
+    <g transform="translate(760,190)"><use href="#pocket"/><use href="#ligA" transform="scale(0.8)"/></g>
+    <g transform="translate(1060,190)"><use href="#pocket"/><use href="#ligB" transform="scale(0.8)"/></g>
+    <g transform="translate(760,450)"><use href="#ligA" transform="scale(0.8)"/></g>
+    <g transform="translate(1060,450)"><use href="#ligB" transform="scale(0.8)"/></g>
+    <line x1="860" y1="180" x2="960" y2="180" stroke="#99f6e4" stroke-width="4" marker-end="url(#ar)"/>
+    <line x1="860" y1="450" x2="960" y2="450" stroke="#99f6e4" stroke-width="4" marker-end="url(#ar)"/>
+    <line x1="760" y1="390" x2="760" y2="270" stroke="#99f6e4" stroke-width="4" stroke-dasharray="10 8" marker-end="url(#ar)"/>
+    <line x1="1060" y1="390" x2="1060" y2="270" stroke="#99f6e4" stroke-width="4" stroke-dasharray="10 8" marker-end="url(#ar)"/>
+    <text x="910" y="160" text-anchor="middle" font-family="DejaVu Sans" font-size="20" fill="#f0fdfa">complex leg</text>
+    <text x="910" y="430" text-anchor="middle" font-family="DejaVu Sans" font-size="20" fill="#f0fdfa">solvent leg</text>
+    <text x="910" y="330" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="40" fill="#fbbf24">ΔΔG</text>
+    <text x="910" y="362" text-anchor="middle" font-family="DejaVu Sans" font-size="17" fill="#a7c4c2">A → B</text>
+  </g>
+</svg>

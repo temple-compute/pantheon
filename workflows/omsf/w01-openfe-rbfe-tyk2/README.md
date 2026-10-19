@@ -1,6 +1,12 @@
 # W-37 · OpenFE Relative Binding Free Energies (TYK2)
 
+<img src="assets/logo.png" width="96" align="right" alt="W-37 logo">
+
+Relative binding free energies for a congeneric ligand series with OpenFE: upload the ligands and a prepared protein, get ddG per edge and dG per ligand.
+
 ![Domain: OMSF](https://img.shields.io/badge/domain-omsf-blue)
+
+![W-37 cover](assets/cover.png)
 
 ## Overview
 
@@ -22,7 +28,6 @@ and the report waiting for all of them.
 ## Horus Configuration
 
 ```
-fetch_inputs    (local, shell)   curl ${ligands_url} + ${protein_url} (default: TYK2, pinned commit)
 charge_ligands  (local, conda)   openfe charge-molecules  (AM1-BCC, ambertools), all ligands
 plan_network    (local, conda)   scripts/plan.py: Kartograf + minimal spanning network
                                  --> transformations/<leg>.json + ligand_network.graphml
@@ -33,10 +38,11 @@ report          (local, shell)   scripts/report.py --> report.html (tables + Mol
 
 | Piece | Kind | Used by |
 |---|---|---|
-| executors | `shell` (stdlib Python, curl); `conda_python_environment` (one openfe 1.13.0 env at `horus_workflow_results/.horus_conda_env`) | shell: fetch, report; conda: charge, plan, quickrun, gather |
+| executors | `shell` (stdlib Python); `conda_python_environment` (one openfe 1.13.0 env at `horus_workflow_results/.horus_conda_env`) | shell: report; conda: charge, plan, quickrun, gather |
 | targets | `local` (`*local`); `slurm` with a local inner target (`*gpu`, partition/account per site) | everything local; `quickrun` can switch to `*gpu` |
 | map | `horus_map` over the `transformations/` folder, one clone per leg JSON, `max_concurrency: 2` | `quickrun` |
-| variables | root `string` / `number` artifacts (`params/<id>.txt`), see Parameters | fetch, plan, gather |
+| inputs | root `file` artifacts `ligands`, `protein` (uploads); root `number` / `choice` artifacts (`params/<id>.txt`), see Parameters | charge, plan, gather, report |
+| resources | `resources` hints on charge (4 CPU / 8 GB), plan (2 CPU / 8 GB) and each quickrun leg (4 CPU, 1 GPU, 16 GB, 24 h) | auto-provisioned targets, Slurm |
 
 ## Compute Pattern
 
@@ -45,10 +51,9 @@ For the defaults (10 TYK2 ligands, 9 edges, 18 legs; 3 repeats x 11 windows x
 
 | Stage | Where | CPU / GPU | Time |
 |---|---|---|---|
-| fetch | local | CPU | seconds |
 | charge_ligands | local | 4 CPU | a few min (10 ligands) |
 | plan_network | local | 1 CPU | ~1 min |
-| quickrun (map) | local / Slurm | 1 GPU + 2 CPU per leg, `max_concurrency` legs at a time | hours per leg (198 ns of hybrid-topology sampling); not measured here |
+| quickrun (map) | local / Slurm | 1 GPU + 4 CPU per leg, `max_concurrency` legs at a time | hours per leg (198 ns of hybrid-topology sampling); not measured here |
 | gather, report | local | CPU | seconds |
 
 The openfe conda env is built once on the first run (a few minutes). Each complex leg
@@ -130,11 +135,11 @@ resume from.
 
 ## Input / Output
 
-**Input**: the `ligands_url` (SDF, every record is charged and planned) and
-`protein_url` (PDB) variables, fetched by `fetch_inputs` with `curl`. The defaults are
-`tyk2_ligands.sdf` and `tyk2_protein.pdb` from OpenFreeEnergy/ExampleNotebooks at commit
-`d083c283b96e976d2e90c03d94e57e3ef6bc2c8c`. Any URL curl can read works, including
-`file:///abs/path/ligands.sdf` for a local file.
+**Input**: two files, uploadable in tc-os or replaced in `examples/` locally:
+`ligands` (SDF, 3D poses in the site; every record is charged and planned) and
+`protein` (prepared PDB). The defaults are `examples/tyk2_ligands.sdf` and
+`examples/tyk2_protein.pdb`, copied from OpenFreeEnergy/ExampleNotebooks at commit
+`d083c283b96e976d2e90c03d94e57e3ef6bc2c8c`.
 
 **Output** (in `results/`):
 
@@ -157,19 +162,19 @@ Root value artifacts in `workflow.yaml`. The defaults are the openfe 1.13.0
 `scripts/plan.py` range-checks them and runs the protocol's own divisibility checks
 before planning.
 
-| id | Default | Meaning |
-|---|---|---|
-| `ligands_url` | TYK2 `tyk2_ligands.sdf` (pinned commit) | Ligand SDF URL; `file:///abs/path` for a local file |
-| `protein_url` | TYK2 `tyk2_protein.pdb` (pinned commit) | Protein PDB URL; `file:///abs/path` for a local file |
-| `n_repeats` | 3 | Repeats per leg (`protocol_repeats`), >= 1; `gather --report dg` needs >= 2 |
-| `lambda_windows` | 11 | Lambda windows per leg, >= 2; `n_replicas` is set equal |
-| `equilibration_ns` | 1.0 | Equilibration per replica (ns) |
-| `production_ns` | 5.0 | Production per replica (ns) |
-| `time_per_iteration_ps` | 2.5 | MD time between replica-exchange attempts (ps); must divide the lengths and intervals |
-| `minimization_steps` | 5000 | Minimization steps before equilibration, >= 0 |
-| `real_time_analysis_ps` | 250.0 | Online free energy analysis interval (ps); 0 turns it off |
-| `checkpoint_interval_ns` | 1.0 | Checkpoint interval (ns), what `quickrun --resume` restarts from |
-| `compute_platform` | `cuda` | OpenMM platform: `cuda`, `opencl` or `cpu` |
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `ligands` | file | `examples/tyk2_ligands.sdf` | SDF | Ligand series, 3D poses in the binding site |
+| `protein` | file | `examples/tyk2_protein.pdb` | PDB | Prepared receptor |
+| `n_repeats` | number | 3 | 1–10, step 1 | Repeats per leg (`protocol_repeats`); `gather --report dg` needs >= 2 |
+| `lambda_windows` | number | 11 | 2–32, step 1 | Lambda windows per leg; `n_replicas` is set equal |
+| `equilibration_ns` | number | 1.0 | 0.1–20, step 0.1 | Equilibration per replica (ns) |
+| `production_ns` | number | 5.0 | 0.5–50, step 0.5 | Production per replica (ns) |
+| `time_per_iteration_ps` | number | 2.5 | 0.5–10, step 0.5 | MD time between replica-exchange attempts (ps); must divide the lengths and intervals |
+| `minimization_steps` | number | 5000 | 0–100000, step 500 | Minimization steps before equilibration |
+| `real_time_analysis_ps` | number | 250 | 0–5000, step 50 | Online free energy analysis interval (ps); 0 turns it off |
+| `checkpoint_interval_ns` | number | 1.0 | 0.25–10, step 0.25 | Checkpoint interval (ns), what `quickrun --resume` restarts from |
+| `compute_platform` | choice | `cuda` | `cuda`, `opencl`, `cpu` | OpenMM platform |
 
 To change a value, edit its `value:` in `workflow.yaml` (or in the tc-os UI), then
 `rm -rf params/`. Horus writes `params/<id>.txt` only when it is missing and
@@ -180,6 +185,16 @@ cleared before its leg runs.
 
 Other knobs: charging cores (`charge_ligands` `resources.cpus`, 4, passed to `-n`),
 the quickrun `target` (`*local` or `*gpu`) and `max_concurrency` (2).
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: the form shows
+the two uploads (with a Mol* preview) and the sampling settings as sliders, with the
+production defaults above. Every heavy task carries `resources` hints, so an
+auto-provisioned target sizes itself from them: charging and planning fit a general
+purpose 2xlarge-class machine, and each quickrun leg asks for one GPU (4 vCPU, 16 GB,
+24 h), i.e. one single-GPU node per leg. Raise the quickrun `max_concurrency` to run
+more legs at once.
 
 ## Implementation Notes
 
@@ -196,7 +211,7 @@ the quickrun `target` (`*local` or `*gpu`) and `max_concurrency` (2).
   alone took over 25 min, so `cpu` is only usable with ps-scale sampling. Very short
   production with few samples per state makes openfe's fixed 1000-sample MBAR
   bootstrap slow; keep `time_per_iteration_ps` small enough for ~20 samples per state.
-  `OPENMM_CPU_THREADS` is set from the quickrun `resources.cpus` (2).
+  `OPENMM_CPU_THREADS` is set from the quickrun `resources.cpus` (4).
 - The solvent padding stays at the protocol default (1.5 nm). With 1.0 or 1.2 nm the
   solvent-leg box ended up smaller than twice the 0.9 nm cutoff and the leg failed.
 - A failing leg fails the map (default `on_item_failure: fail`), which cancels the
