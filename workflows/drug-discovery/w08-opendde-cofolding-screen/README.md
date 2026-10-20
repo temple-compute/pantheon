@@ -1,6 +1,12 @@
 # W-36 · OpenDDE Co-folding Screen
 
+<img src="assets/logo.png" width="96" align="right" alt="W-36 logo">
+
+Co-fold every ligand in a SMILES library with a protein sequence using OpenDDE and rank the predicted complexes by interface confidence.
+
 ![Domain: Drug Discovery](https://img.shields.io/badge/domain-drug--discovery-blue)
+
+![W-36 cover](assets/cover.png)
 
 ## Overview
 
@@ -9,8 +15,8 @@ each protein–ligand pair with [OpenDDE](https://github.com/aurekaresearch/Open
 (Aureka Research, Apache-2.0), an open-source all-atom biomolecular foundation
 model, then returns a ranked shortlist with the predicted complex structures.
 
-It mirrors the Boltz-2 screen (W-01): cheap CPU prep and ranking run locally; the
-single expensive stage is co-folding. Unlike Boltz-2, OpenDDE has **no affinity
+It mirrors the Boltz-2 screen (W-01): cheap CPU prep and ranking; the single
+expensive stage is co-folding, which asks for one GPU. Unlike Boltz-2, OpenDDE has **no affinity
 head** — see the ranking note below.
 
 > **Preview release.** OpenDDE's maintainers warn that CLI flags, I/O formats and
@@ -20,9 +26,9 @@ head** — see the ranking note below.
 ## Pipeline
 
 ```
-prep (local, CPU)     target.fasta + ligands.smi ──► opendde_inputs.tar.gz  (jobs.json)
+prep (CPU, stdlib)    target.fasta + ligands.smi ──► opendde_inputs.tar.gz  (jobs.json)
    │
-predict (local)       [opendde msa]  →  opendde pred ──► predictions.tar.gz
+predict (1 GPU)       [opendde msa]  →  opendde pred ──► predictions.tar.gz
    │                  device auto: CUDA → Apple MPS → CPU
 rank (local, CPU)     parse summary confidence    ──► top_hits.csv
 ```
@@ -40,21 +46,35 @@ uv sync
 uv run horus run workflow.yaml
 ```
 
-Executor: `uv_python_environment` (Python 3.11, `opendde` from PyPI). The first run
+Executor: `uv_python_environment` (Python 3.11, `opendde[gpu]` from PyPI; the GPU
+extra only installs on linux x86_64). The first run
 downloads the OpenDDE checkpoint to `~/.cache/opendde` (override with
 `OPENDDE_ROOT_DIR`).
 
 Outputs land in `horus_workflow_results/results/`: `opendde_inputs.tar.gz`,
 `predictions.tar.gz` (CIF structures + confidence JSONs) and `top_hits.csv`.
 
-## Parameterization
+## Parameters
 
-| Parameter | Where | Default | Meaning |
-|---|---|---|---|
-| `use_msa` | `use_msa` boolean artifact (UI toggle) | `true` | Fetch a protein MSA via the public ColabFold MMseqs2 API before co-folding. Needs internet; turn off for an offline smoke test (poses are weaker). |
-| `--sample` | `predict` command | `1` | Diffusion samples per job; `rank.py` keeps the best per ligand. |
-| `modelSeeds` | `scripts/prep.py` | `[101]` | Seed(s) per job. |
-| target | `predict` task | `local` | Switch to an SSH GPU target with `opendde[gpu]` (CUDA 12.6) for real screens. |
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `fasta` | file | `examples/target.fasta` | FASTA | Target protein; the first record is used |
+| `ligands` | file | `examples/ligands.smi` | SMILES | One `SMILES [name]` per line; the name becomes the job and output id |
+| `use_msa` | boolean | on | on / off | Fetch a protein MSA via the public ColabFold MMseqs2 API before co-folding. Needs internet; off is faster but poses are weaker |
+| `n_samples` | number | 1 | 1–10 | Diffusion samples per job (`--sample`); `rank.py` keeps the best per ligand |
+
+Fixed: `modelSeeds` `[101]` in `scripts/prep.py`, and `--device auto` (CUDA, then
+Apple MPS, then CPU).
+
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`:
+Horus writes `params/<id>` only when it is missing, so a stale file keeps the old value.
+
+## Running in Temple Compute
+
+Start a campaign from the library entry: the form shows the FASTA and SMILES uploads,
+the MSA toggle and the samples slider. `predict` carries
+`resources: {cpus: 4, gpus: 1, memory_gb: 16, walltime: 8h}`, so an auto-provisioned
+target gives it a single-GPU node; `prep` and `rank` are stdlib-only and light.
 
 ## Inputs / Outputs
 

@@ -1,0 +1,45 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#120a24"/><stop offset="1" stop-color="#2a1450"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.75" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#a78bfa" stop-opacity="0.25"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+    <radialGradient id="pk" cx="0.5" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#fbbf24" stop-opacity="0.8"/><stop offset="1" stop-color="#fbbf24" stop-opacity="0"/>
+    </radialGradient>
+    <g id="hex" fill="none" stroke="#fbbf24" stroke-width="4" stroke-linejoin="round">
+      <polygon points="0,-16 14,-8 14,8 0,16 -14,8 -14,-8"/>
+    </g>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="300" height="36" fill="#3b1f6e"/>
+  <text x="214" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#c4b5fd">W-34 · DRUG DISCOVERY</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f5f3ff">Cryptic Pocket</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f5f3ff">Docking</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#a78bfa">Lacuna pockets → AutoDock Vina</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#b8b0d0">Discover cryptic pockets, pick one, and</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#b8b0d0">dock a ligand library into it, one</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#b8b0d0">parallel Vina job per ligand.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#7c6f9c">PANTHEON · TEMPLE COMPUTE</text>
+  <!-- protein with opened pocket -->
+  <path d="M660,500 C630,380 660,220 760,200 C780,290 860,290 880,200 C960,220 980,380 950,500 Z" fill="#3b1f6e" stroke="#a78bfa" stroke-width="5" stroke-linejoin="round"/>
+  <circle cx="820" cy="250" r="60" fill="url(#pk)"/>
+  <rect x="765" y="195" width="110" height="110" fill="none" stroke="#c4b5fd" stroke-width="3" stroke-dasharray="10 7"/>
+  <use href="#hex" x="820" y="250"/>
+  <!-- ligand fan-out -->
+  <g stroke="#a78bfa" stroke-width="3" fill="none" opacity="0.8">
+    <path d="M1060,160 C980,160 930,210 880,240"/>
+    <path d="M1060,250 C980,250 940,250 880,250"/>
+    <path d="M1060,340 C980,340 930,290 880,262"/>
+    <path d="M1060,430 C960,430 920,320 875,275"/>
+  </g>
+  <use href="#hex" x="1085" y="160"/><use href="#hex" x="1085" y="250"/>
+  <use href="#hex" x="1085" y="340"/><use href="#hex" x="1085" y="430"/>
+  <g font-family="DejaVu Sans" font-size="15" fill="#c4b5fd">
+    <text x="1110" y="165">dock[0]</text><text x="1110" y="255">dock[1]</text>
+    <text x="1110" y="345">dock[2]</text><text x="1110" y="435">dock[n]</text>
+  </g>
+</svg>

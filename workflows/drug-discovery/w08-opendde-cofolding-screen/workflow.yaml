@@ -13,7 +13,8 @@ artifacts:
     kind: file
     path: examples/target.fasta
 
-  - id: use_msa
+  - &use_msa
+    id: use_msa
     name: Use protein MSA
     description: >-
       Fetch a protein MSA (ColabFold MMseqs2 public API) before co-folding.
@@ -22,6 +23,17 @@ artifacts:
     kind: boolean
     path: params/use_msa.json
     value: true
+
+  - &n_samples
+    id: n_samples
+    name: Samples per ligand
+    description: Diffusion samples per protein-ligand job; the ranking keeps the best one.
+    kind: number
+    path: params/n_samples.json
+    value: 1
+    min: 1
+    max: 10
+    step: 1
 
 tasks:
   - kind: horus_task
@@ -64,21 +76,25 @@ tasks:
         name: OpenDDE input archive
         path: results/opendde_inputs.tar.gz
         kind: file
-      - id: use_msa
-        name: Use protein MSA
-        kind: boolean
-        path: params/use_msa.json
-        value: true
+      - *use_msa
+      - *n_samples
     outputs:
       - id: predictions
         name: OpenDDE predictions archive
         path: results/predictions.tar.gz
         kind: file
+    # One L4-class GPU; the [gpu] extra (cuEquivariance kernels) only
+    # installs on linux x86_64 and is a no-op elsewhere.
+    resources:
+      cpus: 4
+      gpus: 1
+      memory_gb: 16
+      walltime: "08:00:00"
     executor:
       kind: uv_python_environment
       python: "3.11"
       requirements:
-        - opendde
+        - opendde[gpu]
     runtime:
       kind: command
       # OpenDDE's checkpoint download prints a \r-only progress bar; Horus' line
@@ -93,7 +109,7 @@ tasks:
         else IN=inputs/jobs.json; fi &&
         opendde pred -i "$IN" -o out -n opendde_v1
         --use_msa ${use_msa} --use_template false --use_rna_msa false
-        --device auto --sample 1;
+        --device auto --sample ${n_samples};
         } > opendde.log 2>&1
         || { tr '\r' '\n' < opendde.log | tail -n 40; exit 1; }; } &&
         COPYFILE_DISABLE=1 tar czf ${predictions} --exclude .opendde_preprocessed -C out .
@@ -147,6 +163,8 @@ edges:
     source_output: use_msa
     target: predict
     target_input: use_msa
+
+  - {source: artifact-n_samples, source_output: n_samples, target: predict, target_input: n_samples}
 
 orchestrator_target:
   kind: local

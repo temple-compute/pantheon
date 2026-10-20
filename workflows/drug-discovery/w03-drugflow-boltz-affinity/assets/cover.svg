@@ -1,0 +1,47 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#120a24"/><stop offset="1" stop-color="#2a1450"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.75" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#a78bfa" stop-opacity="0.25"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#c4b5fd"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="300" height="36" fill="#3b1f6e"/>
+  <text x="214" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#c4b5fd">W-32 · DRUG DISCOVERY</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f5f3ff">DrugFlow +</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f5f3ff">Boltz-2 Affinity</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#a78bfa">De novo design, then score</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#b8b0d0">Upload a protein and a reference ligand;</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#b8b0d0">DrugFlow generates pocket molecules and</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#b8b0d0">Boltz-2 ranks them by predicted ΔG.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#7c6f9c">PANTHEON · TEMPLE COMPUTE</text>
+  <!-- noise to molecule flow -->
+  <g fill="#c4b5fd">
+    <circle cx="700" cy="170" r="5" opacity="0.4"/><circle cx="735" cy="215" r="4" opacity="0.5"/>
+    <circle cx="690" cy="250" r="6" opacity="0.35"/><circle cx="745" cy="150" r="3" opacity="0.6"/>
+    <circle cx="720" cy="290" r="4" opacity="0.45"/><circle cx="770" cy="260" r="5" opacity="0.55"/>
+    <circle cx="790" cy="200" r="4" opacity="0.7"/><circle cx="815" cy="240" r="5" opacity="0.8"/>
+  </g>
+  <path d="M790,230 C830,230 850,250 870,270" fill="none" stroke="#c4b5fd" stroke-width="3" marker-end="url(#ar)"/>
+  <!-- pocket -->
+  <path d="M820,420 C800,330 850,270 930,265 C1010,262 1060,320 1040,420" fill="none" stroke="#7c3aed" stroke-width="26" stroke-linecap="round"/>
+  <g transform="translate(930,355)" fill="none" stroke="#fbbf24" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+    <polygon points="0,-24 21,-12 21,12 0,24 -21,12 -21,-12"/>
+    <polyline points="21,12 42,24 42,46"/>
+    <polygon points="-21,-12 -42,-24 -60,-12 -60,12 -42,24 -21,12" />
+  </g>
+  <!-- ΔG table -->
+  <g font-family="DejaVu Sans" font-size="17">
+    <rect x="1000" y="110" width="160" height="150" rx="12" fill="#120a24" stroke="#a78bfa" stroke-width="2"/>
+    <text x="1080" y="140" text-anchor="middle" fill="#c4b5fd" font-weight="bold">ΔG kcal/mol</text>
+    <text x="1020" y="172" fill="#fbbf24">mol_4</text><text x="1140" y="172" text-anchor="end" fill="#fbbf24">−9.6</text>
+    <text x="1020" y="200" fill="#ddd6fe">mol_1</text><text x="1140" y="200" text-anchor="end" fill="#ddd6fe">−8.9</text>
+    <text x="1020" y="228" fill="#ddd6fe" opacity="0.7">mol_7</text><text x="1140" y="228" text-anchor="end" fill="#ddd6fe" opacity="0.7">−8.1</text>
+  </g>
+</svg>

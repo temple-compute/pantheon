@@ -8,10 +8,69 @@ artifacts:
     path: examples/ligands.smi
 
   - id: receptor
-    name: Target receptor structure
-    description: PDB file of the target receptor protein to dock ligands into.
+    name: Receptor structure (PDB upload)
+    description: >-
+      PDB of the receptor to dock into; used when no PDB ID is given.
+      Default: chain A of 1IEP (Abl kinase), ligand removed.
     kind: file
     path: examples/receptor.pdb
+
+  - &pdb_id
+    id: pdb_id
+    name: PDB ID (fetch instead of upload)
+    description: >-
+      Four-character PDB code to fetch from RCSB (protein atoms of the first
+      model; waters, ions and ligands dropped). Leave empty to use the
+      uploaded receptor.
+    kind: string
+    path: params/pdb_id.txt
+    value: ""
+    pattern: '([0-9][A-Za-z0-9]{3})?'
+
+  - &box_center
+    id: box_center
+    name: Box center (X Y Z, Å)
+    description: >-
+      Docking box center in Angstrom as three numbers. Default: the ATP pocket
+      of 1IEP. Leave empty for blind docking on the receptor centroid (then
+      raise the box size).
+    kind: string
+    path: params/box_center.txt
+    value: 15.190 53.903 16.917
+    pattern: '(\s*-?[0-9]+(\.[0-9]+)?\s+-?[0-9]+(\.[0-9]+)?\s+-?[0-9]+(\.[0-9]+)?\s*)?'
+
+  - &box_size
+    id: box_size
+    name: Box edge (Å)
+    description: Edge length of the cubic docking box in Angstrom.
+    kind: number
+    path: params/box_size.json
+    value: 20
+    min: 10
+    max: 60
+    step: 1
+
+  - &exhaustiveness
+    id: exhaustiveness
+    name: Exhaustiveness
+    description: Vina search effort per ligand; higher is more thorough and slower.
+    kind: number
+    path: params/exhaustiveness.json
+    value: 16
+    min: 1
+    max: 64
+    step: 1
+
+  - &n_poses
+    id: n_poses
+    name: Poses per ligand
+    description: Binding poses written and scored per ligand.
+    kind: number
+    path: params/n_poses.json
+    value: 9
+    min: 1
+    max: 20
+    step: 1
 
 tasks:
   - kind: horus_task
@@ -28,6 +87,9 @@ tasks:
         name: Candidate ligand library
         kind: file
         path: examples/ligands.smi
+      - *pdb_id
+      - *box_center
+      - *box_size
     outputs:
       - id: vina_inputs
         name: Vina input archive
@@ -36,7 +98,8 @@ tasks:
 
     resources:
       cpus: 2
-      memory_gb: 4
+      memory_gb: 8
+      walltime: "00:30:00"
     executor:
       kind: conda_python_environment
       conda: micromamba # set to mamba/micromamba if that's what's on PATH
@@ -53,11 +116,11 @@ tasks:
     runtime:
       kind: python_script
       script: scripts/prep.py
-      # Docking box: edit --center / --size for your pocket. Drop --center to
-      # derive it from a --ref-ligand, or omit both for blind (whole-receptor)
-      # docking (then use a large --size). Default here is the 1iep ATP pocket.
+      # Strings render shell-quoted; the = form keeps an empty value one argument.
       args: >-
-        --receptor ${receptor} --ligands ${ligands} --out ${vina_inputs} --center 15.190 53.903 16.917 --size 20 20 20
+        --receptor ${receptor} --ligands ${ligands} --out ${vina_inputs}
+        --pdb-id=${pdb_id} --center=${box_center}
+        --size ${box_size} ${box_size} ${box_size}
     target:
       kind: local
   - kind: horus_task
@@ -69,6 +132,8 @@ tasks:
         name: Vina input archive
         path: results/vina_inputs.tar.gz
         kind: file
+      - *exhaustiveness
+      - *n_poses
     outputs:
       - id: docking_out
         name: Docking results archive
@@ -80,6 +145,7 @@ tasks:
     resources:
       cpus: 16
       memory_gb: 32
+      walltime: "04:00:00"
     executor:
       kind: conda_python_environment
       conda: micromamba # set to mamba/micromamba if that's what's on PATH
@@ -93,7 +159,7 @@ tasks:
       kind: python_script
       script: scripts/dock.py
       args: >-
-        --inputs ${vina_inputs} --out ${docking_out} --exhaustiveness 16 --n-poses 9 --cpu 0
+        --inputs ${vina_inputs} --out ${docking_out} --exhaustiveness ${exhaustiveness} --n-poses ${n_poses} --cpu 0
     target:
       kind: local
   - kind: horus_task
@@ -142,6 +208,12 @@ edges:
     source_output: receptor
     target: prep
     target_input: receptor
+
+  - {source: artifact-pdb_id, source_output: pdb_id, target: prep, target_input: pdb_id}
+  - {source: artifact-box_center, source_output: box_center, target: prep, target_input: box_center}
+  - {source: artifact-box_size, source_output: box_size, target: prep, target_input: box_size}
+  - {source: artifact-exhaustiveness, source_output: exhaustiveness, target: dock, target_input: exhaustiveness}
+  - {source: artifact-n_poses, source_output: n_poses, target: dock, target_input: n_poses}
 
 orchestrator_target:
   kind: local

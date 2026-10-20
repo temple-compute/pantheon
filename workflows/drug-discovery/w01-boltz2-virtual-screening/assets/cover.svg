@@ -1,0 +1,42 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#120a24"/><stop offset="1" stop-color="#2a1450"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.75" cy="0.45" r="0.5">
+      <stop offset="0" stop-color="#a78bfa" stop-opacity="0.25"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="300" height="36" fill="#3b1f6e"/>
+  <text x="214" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#c4b5fd">W-01 · DRUG DISCOVERY</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f5f3ff">Boltz-2 Virtual</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f5f3ff">Screening</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#a78bfa">Co-folding + binding affinity</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#b8b0d0">Upload a protein sequence and a SMILES</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#b8b0d0">library; Boltz-2 folds every complex on a</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#b8b0d0">GPU and ranks the ligands by affinity.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#7c6f9c">PANTHEON · TEMPLE COMPUTE</text>
+  <!-- protein ribbon wrapping a pocket -->
+  <g fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M700,420 C660,330 700,230 790,200 C860,178 930,210 950,270 C965,320 930,350 890,345" stroke="#a78bfa" stroke-width="22"/>
+    <path d="M890,345 C850,340 830,300 860,280" stroke="#c4b5fd" stroke-width="22"/>
+    <path d="M700,420 C740,470 820,480 880,455 C930,435 960,400 990,410" stroke="#7c3aed" stroke-width="22"/>
+    <path d="M760,250 l18,-14 l18,14 l18,-14 l18,14 l18,-14" stroke="#ddd6fe" stroke-width="8"/>
+  </g>
+  <!-- ligand in pocket -->
+  <g transform="translate(800,350)" fill="none" stroke="#fbbf24" stroke-width="6" stroke-linejoin="round">
+    <polygon points="0,-26 22,-13 22,13 0,26 -22,13 -22,-13"/>
+    <line x1="22" y1="-13" x2="44" y2="-26"/><circle cx="50" cy="-30" r="7" fill="#fbbf24" stroke="none"/>
+  </g>
+  <!-- ranked hits -->
+  <g font-family="DejaVu Sans" font-size="18" fill="#ddd6fe">
+    <text x="1010" y="180">ranked hits</text>
+    <rect x="1010" y="200" width="150" height="22" rx="6" fill="#fbbf24"/>
+    <rect x="1010" y="236" width="118" height="22" rx="6" fill="#a78bfa"/>
+    <rect x="1010" y="272" width="92" height="22" rx="6" fill="#a78bfa" opacity="0.75"/>
+    <rect x="1010" y="308" width="66" height="22" rx="6" fill="#a78bfa" opacity="0.55"/>
+    <rect x="1010" y="344" width="40" height="22" rx="6" fill="#a78bfa" opacity="0.35"/>
+  </g>
+</svg>

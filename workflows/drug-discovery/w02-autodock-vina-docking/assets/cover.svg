@@ -1,0 +1,40 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#120a24"/><stop offset="1" stop-color="#2a1450"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.75" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#a78bfa" stop-opacity="0.25"/><stop offset="1" stop-color="#a78bfa" stop-opacity="0"/>
+    </radialGradient>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="300" height="36" fill="#3b1f6e"/>
+  <text x="214" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#c4b5fd">W-02 · DRUG DISCOVERY</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f5f3ff">AutoDock Vina</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f5f3ff">Docking</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#a78bfa">Prep → dock → rank, on CPU</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#b8b0d0">Upload a receptor or fetch it by PDB ID,</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#b8b0d0">set the docking box, and rank a ligand</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#b8b0d0">library by Vina binding energy.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#7c6f9c">PANTHEON · TEMPLE COMPUTE</text>
+  <!-- receptor surface -->
+  <path d="M660,500 C640,380 680,250 760,190 C820,150 880,170 900,220 C915,260 880,280 885,320 C890,360 950,360 980,330 C1020,290 1080,300 1110,360 C1140,420 1110,500 1060,520 Z" fill="#3b1f6e" stroke="#a78bfa" stroke-width="4"/>
+  <!-- docking box (isometric wireframe) -->
+  <g fill="none" stroke="#c4b5fd" stroke-width="3" stroke-dasharray="10 7">
+    <path d="M820,250 L960,250 L960,390 L820,390 Z"/>
+    <path d="M870,210 L1010,210 L1010,350 L870,350 Z"/>
+    <path d="M820,250 L870,210 M960,250 L1010,210 M960,390 L1010,350 M820,390 L870,350"/>
+  </g>
+  <!-- docked ligand -->
+  <g transform="translate(910,300)" fill="none" stroke="#fbbf24" stroke-width="6" stroke-linejoin="round" stroke-linecap="round">
+    <polygon points="0,-24 21,-12 21,12 0,24 -21,12 -21,-12"/>
+    <polyline points="21,-12 42,-24 60,-12"/>
+    <polyline points="-21,12 -42,24 -42,46"/>
+    <circle cx="60" cy="-12" r="6" fill="#fbbf24"/>
+  </g>
+  <!-- energy readout -->
+  <rect x="980" y="430" width="180" height="64" rx="14" fill="#120a24" stroke="#fbbf24" stroke-width="2"/>
+  <text x="1070" y="460" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="24" fill="#fbbf24">−12.8</text>
+  <text x="1070" y="484" text-anchor="middle" font-family="DejaVu Sans" font-size="15" fill="#c4b5fd">kcal/mol</text>
+</svg>

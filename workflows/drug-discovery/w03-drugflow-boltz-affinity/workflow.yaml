@@ -1,10 +1,12 @@
 kind: horus_workflow
-name: DrugFlow Generate + Boltz-2 Affinity
+name: DrugFlow Design + Boltz-2 Affinity
 
 artifacts:
   - id: protein
     name: Target protein
-    description: Target protein structure (PDB) defining the system to design against.
+    description: >-
+      Target protein structure (PDB), in the same frame as the reference
+      ligand. Default: KRAS.
     path: examples/kras.pdb
     kind: file
 
@@ -15,22 +17,71 @@ artifacts:
     path: examples/kras_ref_ligand.sdf
     kind: file
 
-  # Build it once with boltz-drugflow/examples/build_drugflow_sif.sh -- the
-  # singularity executor has no build or pull step, so the image must already
-  # exist on the target.
-  #
-  # The default is relative, so it resolves inside the run directory next to
-  # drugflow.ckpt and works as-is if you build the image there. Point it at an
-  # absolute path (a shared /scratch image, say) to reuse one build across runs;
-  # that path is site-specific, which is exactly why it is declared here rather
-  # than inline on the executor -- every path an operator has to supply lives in
-  # this one block. `generate` reads it as ${drugflow_sif}.
-  - id: drugflow_sif
-    name: DrugFlow Singularity image
-    description: Singularity/Apptainer image holding DrugFlow's dependencies. Built
-      from docker://igashov/drugflow:0.0.3; supplies the environment, not the code.
-    path: drugflow.sif
-    kind: file
+  - &n_samples
+    id: n_samples
+    name: Molecules to generate
+    description: Number of molecules DrugFlow proposes for the pocket.
+    kind: number
+    path: params/n_samples.json
+    value: 10
+    min: 1
+    max: 1000
+    step: 1
+
+  - &pocket_cutoff
+    id: pocket_cutoff
+    name: Pocket cutoff (Å)
+    description: Residues within this distance of the reference ligand define the pocket.
+    kind: number
+    path: params/pocket_cutoff.json
+    value: 8.0
+    min: 4
+    max: 12
+    step: 0.5
+
+  - &seed
+    id: seed
+    name: Random seed
+    description: Seed for DrugFlow sampling and Boltz-2 prediction.
+    kind: number
+    path: params/seed.json
+    value: 42
+    min: 0
+    max: 99999
+    step: 1
+
+  - &use_gpu
+    id: use_gpu
+    name: Use GPU
+    description: Run DrugFlow and Boltz-2 on a CUDA GPU; off runs both on CPU (slow).
+    kind: boolean
+    path: params/use_gpu.json
+    value: true
+    "on": {value: gpu, label: GPU}
+    "off": {value: cpu, label: CPU}
+
+  - &use_msa
+    id: use_msa
+    name: Use MSA server
+    description: >-
+      Fetch the protein MSA from the public ColabFold server for Boltz-2;
+      needs outbound internet from the predict step.
+    kind: boolean
+    path: params/use_msa.json
+    value: true
+    "on": {value: --use_msa_server, label: MSA server}
+    "off": {value: "", label: Single sequence}
+
+  - &diffusion_samples
+    id: diffusion_samples
+    name: Boltz structure samples
+    description: Boltz-2 diffusion samples per molecule.
+    kind: number
+    path: params/diffusion_samples.json
+    value: 1
+    min: 1
+    max: 10
+    step: 1
 
 tasks:
   - kind: horus_task
@@ -105,54 +156,42 @@ tasks:
         description: DrugFlow model checkpoint downloaded by the download_checkpoint stage.
         kind: file
         path: drugflow.ckpt
-      - id: drugflow_sif
-        name: DrugFlow Singularity image
-        description: Singularity image supplying DrugFlow's dependencies. Declared as
-          an input so its path lives in the workflow's artifacts block.
-        kind: file
-        path: drugflow.sif
+      - *n_samples
+      - *pocket_cutoff
+      - *seed
+      - *use_gpu
     outputs:
       - id: samples
         name: Generated molecules
         description: SDF of the molecules DrugFlow generated for the pocket.
         kind: file
         path: results/samples.sdf
+    # DrugFlow's upstream env (CUDA 12.1 pytorch; also runs on CPU). One env
+    # for every run, next to the workflow results.
     executor:
-      # The .sif ships DrugFlow's dependencies, not its code: src/generate.py
-      # comes from the fetch_source clone, so the repo has to be visible inside
-      # the container. The executor auto-binds every artifact's parent dir at
-      # its own path, which covers it. Set nv: false and --device cpu below for
-      # a CPU-only run.
-      #
-      # ${drugflow_sif} resolves to the image path declared in the artifacts
-      # block at the top of this file -- set it there, not here. Requires
-      # horus-singularity >= 0.2.0, which added placeholder substitution on
-      # executor fields.
-      kind: singularity
-      image: ${drugflow_sif}
-      nv: true
+      kind: conda_python_environment
+      conda: micromamba
+      environment_file: conda_env_gpu.yaml
+      environment_dir: "../../.horus_drugflow_env"
     runtime:
-      # `cd` is required: src/generate.py does `from src... import ...`, so the
-      # repo root has to be the working directory. Every ${...} resolves to an
-      # absolute path that is valid both inside and outside the container
-      # (Singularity does no path translation), so the inputs and output are
-      # unaffected by it. Do not also set the executor's working_dir/--pwd.
+      # `cd` is required: src/generate.py does `from src... import ...`, so
+      # the repo root has to be the working directory. ${use_gpu} is gpu/cpu.
       kind: command
       command: >-
+        DEVICE=$$([ ${use_gpu} = gpu ] && echo cuda:0 || echo cpu) &&
         cd ${drugflow_src} && python src/generate.py
         --protein ${protein} --ref_ligand ${ref_ligand}
         --checkpoint ${checkpoint} --output ${samples}
-        --n_samples 10 --batch_size 32 --pocket_distance_cutoff 8.0
-        --device cuda:0 --seed 42
+        --n_samples ${n_samples} --batch_size 32
+        --pocket_distance_cutoff ${pocket_cutoff}
+        --device $$DEVICE --seed ${seed}
     resources:
+      cpus: 4
       gpus: 1
-      cpus: 8
+      memory_gb: 16
+      walltime: "02:00:00"
     target:
-      kind: slurm
-      inner:
-        kind: local
-      gres: gpu:1
-      time_limit: "02:00:00"
+      kind: local
 
   - kind: horus_task
     id: prepare_inputs
@@ -205,6 +244,10 @@ tasks:
         description: Folder holding one Boltz affinity YAML per molecule.
         kind: folder
         path: results/boltz_inputs/
+      - *use_msa
+      - *use_gpu
+      - *diffusion_samples
+      - *seed
     outputs:
       - id: predictions
         name: Boltz-2 predictions
@@ -219,9 +262,14 @@ tasks:
     runtime:
       kind: command
       command: >-
-        boltz predict ${boltz_inputs} --out_dir ${predictions} --use_msa_server
-        --accelerator cpu --devices 1 --diffusion_samples 1
-        --seed 42 --override
+        boltz predict ${boltz_inputs} --out_dir ${predictions} ${use_msa}
+        --accelerator ${use_gpu} --devices 1 --diffusion_samples ${diffusion_samples}
+        --seed ${seed} --override
+    resources:
+      cpus: 4
+      gpus: 1
+      memory_gb: 16
+      walltime: "04:00:00"
     target:
       kind: local
 
@@ -297,11 +345,14 @@ edges:
     target: generate
     target_input: ref_ligand
 
-  - source: artifact-drugflow_sif
-    source_output: drugflow_sif
-    target: generate
-    target_input: drugflow_sif
-
+  - {source: artifact-n_samples, source_output: n_samples, target: generate, target_input: n_samples}
+  - {source: artifact-pocket_cutoff, source_output: pocket_cutoff, target: generate, target_input: pocket_cutoff}
+  - {source: artifact-seed, source_output: seed, target: generate, target_input: seed}
+  - {source: artifact-use_gpu, source_output: use_gpu, target: generate, target_input: use_gpu}
+  - {source: artifact-use_msa, source_output: use_msa, target: predict, target_input: use_msa}
+  - {source: artifact-use_gpu, source_output: use_gpu, target: predict, target_input: use_gpu}
+  - {source: artifact-diffusion_samples, source_output: diffusion_samples, target: predict, target_input: diffusion_samples}
+  - {source: artifact-seed, source_output: seed, target: predict, target_input: seed}
 
 orchestrator_target:
   kind: local

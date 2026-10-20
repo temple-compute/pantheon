@@ -1,6 +1,12 @@
 # W-02 · AutoDock Vina Docking
 
+<img src="assets/logo.png" width="96" align="right" alt="W-02 logo">
+
+Dock a ligand library into a receptor (uploaded or fetched by PDB ID) with AutoDock Vina and get ranked binding energies per ligand and per pose.
+
 ![Domain: Drug Discovery](https://img.shields.io/badge/domain-drug--discovery-blue)
+
+![W-02 cover](assets/cover.png)
 
 ## Overview
 
@@ -12,8 +18,8 @@ energy tables (CSV). Vina's empirical scoring is fast enough to screen a library
 on CPU, which makes it a natural cheap-first pass before more expensive physics
 (FEP) or ML affinity models.
 
-The point on Horus: prep and summary are light CPU steps that run locally; the
-docking step is the compute-heavy stage and is the one you route to a bigger box.
+The point on Horus: prep and summary are light CPU steps; the docking step is the
+compute-heavy stage and asks for a 16-core machine through its `resources`.
 Horus provisions the per-stage environments from **conda-forge** (Meeko/OpenBabel
 for prep, Vina for docking) and moves the data across the boundary automatically —
 swapping where the docking stage runs is a one-line `target:` change.
@@ -21,9 +27,9 @@ swapping where the docking stage runs is a one-line `target:` change.
 ## Pipeline
 
 ```
-prep (local, CPU)        receptor.pdb + ligands.smi ──► vina_inputs.tar.gz
+prep (2 CPU)             receptor.pdb (or RCSB pdb_id) + ligands.smi ──► vina_inputs.tar.gz
    │  OpenBabel → receptor.pdbqt, Meeko → ligands/*.pdbqt, box.json
-dock (CPU, Vina)         AutoDock Vina per ligand   ──► docking_out.tar.gz
+dock (16 CPU, Vina)      AutoDock Vina per ligand   ──► docking_out.tar.gz
    │  best poses + REMARK VINA RESULT affinities
 summary (local, CPU)     parse affinities           ──► summary.csv + poses.csv
 ```
@@ -39,16 +45,12 @@ uv sync
 # or: pip install horus-runtime horus-environments
 
 # The prep/dock stages build conda envs from conda-forge, so a conda-family
-# tool must be on PATH. workflow.yaml defaults to `conda:` — set it to `mamba`
-# or `micromamba` in the prep/dock executors if that's what you have.
+# tool must be on PATH. workflow.yaml uses `micromamba` — set it to `conda`
+# or `mamba` in the prep/dock executors if that's what you have.
 
 # Run the workflow
 uv run horus run workflow.yaml
 ```
-
-> Requires a `horus-environments` with conda channel / `conda_requirements`
-> support (temple-compute/horus-environments#3). Until that ships in a release,
-> install it from that branch.
 
 Outputs land in `horus_workflow_results/results/`: `vina_inputs.tar.gz`,
 `docking_out.tar.gz`, and the two energy tables `summary.csv` (ranked best-first)
@@ -57,11 +59,12 @@ and `poses.csv` (per pose).
 ## Inputs / Outputs
 
 **Inputs**
-- `receptor.pdb` — the target protein. Hydrogens are added automatically at
-  pH 7.4; the bundled example is chain A of [1IEP](https://www.rcsb.org/structure/1IEP)
-  (Abl kinase).
-- `ligands.smi` — one `SMILES [name]` per line (`name` becomes the table id), or
-  point `--ligands` at a 3D `.sdf` file instead (auto-detected by extension).
+- `receptor` — the target protein, uploaded as PDB, or `pdb_id` to fetch it from
+  RCSB (protein `ATOM` records of the first model; waters, ions and ligands are
+  dropped). Hydrogens are added automatically at pH 7.4; the bundled example is
+  chain A of [1IEP](https://www.rcsb.org/structure/1IEP) (Abl kinase).
+- `ligands` — one `SMILES [name]` per line (`name` becomes the table id), or a 3D
+  `.sdf` file (auto-detected by extension).
 
 **Outputs**
 - `summary.csv` — one row per ligand, ranked best (most negative) first:
@@ -70,21 +73,32 @@ and `poses.csv` (per pose).
 
 Lower (more negative) affinity = stronger predicted binding.
 
-## Parameterization
+## Parameters
 
-Edit the `prep` task's `args:` in `workflow.yaml`:
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `receptor` | file | `examples/receptor.pdb` (1IEP chain A) | PDB | Receptor to dock into, used when `pdb_id` is empty |
+| `pdb_id` | string | empty | 4-char PDB code or empty | Fetch the receptor from RCSB instead of the upload |
+| `ligands` | file | `examples/ligands.smi` | SMILES or SDF | Ligand library |
+| `box_center` | string | `15.190 53.903 16.917` (1IEP ATP pocket) | `X Y Z` in Å, or empty | Docking box center; empty = blind docking on the receptor centroid |
+| `box_size` | number | 20 | 10–60 Å | Edge of the cubic docking box; raise it for blind docking |
+| `exhaustiveness` | number | 16 | 1–64 | Vina search effort per ligand |
+| `n_poses` | number | 9 | 1–20 | Poses written and scored per ligand |
 
-- **Docking box** — the key knob. Set `--center X Y Z` and `--size X Y Z` (Å) to
-  your pocket (the example uses the 1IEP ATP pocket, `15.190 53.903 16.917`).
-  Alternatively pass `--ref-ligand <file>` to center the box on a bound reference
-  ligand, or omit `--center` entirely for blind, whole-receptor docking (then use
-  a large `--size`).
+The box center must match the receptor: when you fetch or upload another
+structure, set `box_center` to its pocket (or leave it empty for blind docking).
+`scripts/prep.py --ref-ligand <file>` can also center the box on a bound ligand
+when run by hand.
 
-Edit the `dock` task's `args:` for search effort:
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`:
+Horus writes `params/<id>` only when it is missing, so a stale file keeps the old value.
 
-- `--exhaustiveness` (default 16) — higher is more thorough but slower.
-- `--n-poses` (default 9) — poses written/scored per ligand.
-- `--cpu` (default 0 = autodetect).
+## Running in Temple Compute
+
+Start a campaign from the library entry: the form shows the receptor upload (Mol*
+preview), the PDB ID field, the ligand upload and the box and search settings. The
+`dock` task asks for 16 CPUs / 32 GB / 4 h and `prep` for 2 CPUs / 8 GB, so
+auto-provisioned targets size each step on its own; `summary` is stdlib-only and light.
 
 ## Implementation notes
 

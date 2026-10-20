@@ -1,6 +1,12 @@
 # W-33 · Lacuna Cryptic Pocket Discovery
 
+<img src="assets/logo.png" width="96" align="right" alt="W-33 logo">
+
+Find cryptic binding pockets in a protein (uploaded or fetched by PDB ID) across a generated conformational ensemble with Lacuna, ranked in an interactive report.
+
 ![Domain: Drug Discovery](https://img.shields.io/badge/domain-drug--discovery-blue)
+
+![W-33 cover](assets/cover.png)
 
 ## Overview
 
@@ -54,7 +60,7 @@ uv run horus run workflow.yaml
 
 | Stage | Task | Executor | Concurrency | Est. walltime (example) |
 |---|---|---|---|---|
-| Ensemble generation + pocket discovery | `discover` | uv venv | serial | ~1-2 min (20 conformers, NMA backend, CPU-only) |
+| Ensemble generation + pocket discovery | `discover` | uv venv | serial | ~20 s - 2 min (20 conformers, NMA backend, CPU-only); `resources`: 4 CPU / 16 GB / 1 h |
 | HTML report + CSV table | `report` | shell (stdlib) | serial | <1 s |
 
 Serial, CPU-only tasks.
@@ -70,23 +76,24 @@ Serial, CPU-only tasks.
 ## Horus Configuration
 
 ```
-examples/structures/receptor.pdb ──► discover ──► results/pockets/
+receptor.pdb or RCSB pdb_id ──► discover ──► results/pockets/
                                                      pocket_report.json
-                                                     pocket_*.pdb
+                                                     pocket_*.pdb, receptor.pdb (the one used)
                                           │
                                        report ──► results/report.html
                                               └─► results/pockets.csv
 ```
 
-Single local target. To scale ensemble generation onto a cluster, give the
-`discover` task a `target:`/`resources:` block.
+Single local target; `discover` carries `resources` hints for auto-provisioned or
+Slurm targets.
 
 ## Input / Output
 
 **Input**
 
-- `examples/structures/receptor.pdb` — apo KRAS(G12C), PDB 4LDJ. Any single PDB
-  or mmCIF file works; repoint the `receptor` artifact to use your own.
+- `receptor` — apo KRAS(G12C), PDB 4LDJ, by default. Any single PDB or mmCIF file
+  works; upload your own, or set `pdb_id` to fetch one from RCSB (protein `ATOM`
+  records of the first model).
 
 **Output** (under `horus_workflow_results/results/`)
 
@@ -97,16 +104,32 @@ Single local target. To scale ensemble generation onto a cluster, give the
 - `report.html` — single-file ranked-pocket report (stats plus a sortable, filterable AG Grid table) with an interactive Mol* view of the receptor; each row's View button selects that pocket's lining residues and moves the camera to them; renders as a live page in the Horus UI. Mol* and AG Grid are loaded from the jsDelivr CDN, so the report needs internet access
 - `pockets.csv` — the same ranking as a flat table; renders as a table in the Horus UI
 
-## Parameterization
+## Parameters
 
-| What | Where |
-|---|---|
-| Ensemble size | `discover` task → `--conformers` |
-| Ensemble backend | `discover` task → `--backend` (`nma` default, `openmm`/`boltz` need the matching extra) |
-| Pocket detector | `discover` task → `--detector` (`alpha`, `surface`, `surface-fusion`, `p2rank`, `fusion`) |
-| Ranking strategy | `discover` task → `--rank-by` (`learned`, `learned-plm`, `crypticity`, `druggability`, `balanced`, `persistence`) |
-| Result filters | `discover` task → `--min-druggability`, `--min-persistence`, `--min-crypticity` |
-| Dimer-interface pockets | `discover` task → `--homodimer` (needs a biological-assembly PDB with BIOMT records) |
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `receptor` | file | `examples/structures/receptor.pdb` (4LDJ) | PDB / mmCIF | Apo structure, used when `pdb_id` is empty |
+| `pdb_id` | string | empty | 4-char PDB code or empty | Fetch the structure from RCSB instead of the upload |
+| `conformers` | number | 20 | 5–200 | Ensemble size (`--conformers`) |
+| `detector` | choice | `surface-fusion` | `surface-fusion`, `surface`, `alpha` | Pocket detector (`--detector`) |
+| `rank_by` | choice | `learned` | `learned`, `crypticity`, `druggability`, `balanced`, `persistence` | Ranking strategy (`--rank-by`) |
+| `top` | number | 10 | 1–50 | Pockets reported (`--top`) |
+| `min_druggability` | number | 0 | 0–1, step 0.05 | Drop pockets below this druggability |
+
+Further `lacuna discover` flags (`--backend`, `--min-persistence`,
+`--min-crypticity`, `--homodimer`, the P2Rank detectors) can be added to the
+`discover` command.
+
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`:
+Horus writes `params/<id>` only when it is missing, so a stale file keeps the old value.
+
+## Running in Temple Compute
+
+Start a campaign from the library entry: the form shows the structure upload (Mol*
+preview), the PDB ID field and the ensemble, detector and ranking settings. The
+`discover` task asks for 4 CPUs / 16 GB / 1 h, a general-purpose node; the report
+step is stdlib-only. Open `report.html` in the run view for the interactive pocket
+table and 3D view.
 
 ## Implementation Notes
 
