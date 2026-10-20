@@ -19,17 +19,17 @@ All building blocks share a unique syntax — requiring input files, output file
 | 10 | [w10-amber-protein-ligand-complex-md-setup](w10-amber-protein-ligand-complex-md-setup/) | AMBER Protein-Ligand Complex MD Setup |
 | 11 | [w11-amber-constant-ph-md-setup](w11-amber-constant-ph-md-setup/) | AMBER Constant-pH MD Setup |
 | 12 | [w12-dna-helical-parameters](w12-dna-helical-parameters/) | BioExcel DNA Helical Parameters Analysis |
-| 13 | [w13-abc-md-setup](w13-abc-md-setup/) | BioExcel AMBER ABC Setup — Drew-Dickerson Dodecamer DNA |
-| 14 | [w14-protein-conformational-ensembles](w14-protein-conformational-ensembles/) | BioExcel FlexDyn — Protein Flexibility and Dynamics Analysis |
-| 15 | [w15-protein-conformational-transitions](w15-protein-conformational-transitions/) | BioExcel GoDMD — Adenylate Kinase Conformational Transition |
-| 16 | [w16-macromolecular-coarse-grained-flexibility](w16-macromolecular-coarse-grained-flexibility/) | BioExcel FlexServ — Protein Conformational Dynamics |
-| 17 | [w17-classical-molecular-interaction-potentials](w17-classical-molecular-interaction-potentials/) | BioExcel CMIP — Classical Molecular Interaction Potentials |
-| 18 | [w18-molecular-structure-checking](w18-molecular-structure-checking/) | BioExcel Structure Checking |
-| 19 | [w19-haddock3-protein-protein-docking](w19-haddock3-protein-protein-docking/) | BioExcel HADDOCK — Antibody-Antigen Protein-Protein Docking |
-| 20 | [w20-autoencoders-md-analysis](w20-autoencoders-md-analysis/) | BioExcel Autoencoder — MD Trajectory Analysis with Machine Learning |
-| 21 | [w21-protein-membrane-md-analysis](w21-protein-membrane-md-analysis/) | BioExcel Membrane MD Analysis — GABA-gated Chloride Channel |
-| 22 | [w22-cavity-guided-virtual-screening](w22-cavity-guided-virtual-screening/) | BioExcel Cavity-Guided Virtual Screening — fpocket + AutoDock Vina |
-| 23 | [w23-cavity-analysis](w23-cavity-analysis/) | BioExcel Cavity Analysis — fpocket across a conformational ensemble |
+| 13 | [w13-abc-md-setup](w13-abc-md-setup/) | ABC DNA MD Setup (AMBER) |
+| 14 | [w14-protein-conformational-ensembles](w14-protein-conformational-ensembles/) | Protein Conformational Ensembles (FlexDyn) |
+| 15 | [w15-protein-conformational-transitions](w15-protein-conformational-transitions/) | Protein Conformational Transitions (GOdMD) |
+| 16 | [w16-macromolecular-coarse-grained-flexibility](w16-macromolecular-coarse-grained-flexibility/) | Coarse-Grained Protein Flexibility (FlexServ) |
+| 17 | [w17-classical-molecular-interaction-potentials](w17-classical-molecular-interaction-potentials/) | Molecular Interaction Potentials (CMIP) |
+| 18 | [w18-molecular-structure-checking](w18-molecular-structure-checking/) | Molecular Structure Checking |
+| 19 | [w19-haddock3-protein-protein-docking](w19-haddock3-protein-protein-docking/) | HADDOCK3 Antibody-Antigen Docking |
+| 20 | [w20-autoencoders-md-analysis](w20-autoencoders-md-analysis/) | Autoencoder Collective Variables from MD |
+| 21 | [w21-protein-membrane-md-analysis](w21-protein-membrane-md-analysis/) | Protein-Membrane MD Analysis |
+| 22 | [w22-cavity-guided-virtual-screening](w22-cavity-guided-virtual-screening/) | Cavity-Guided Virtual Screening |
+| 23 | [w23-cavity-analysis](w23-cavity-analysis/) | Cavity Analysis across a Conformational Ensemble |
 
 ## macOS ARM64 (Apple Silicon) — Executor Strategy
 

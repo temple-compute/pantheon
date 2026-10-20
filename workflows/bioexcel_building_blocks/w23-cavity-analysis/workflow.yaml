@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: BioExcel Cavity Analysis
+name: Cavity Analysis across a Conformational Ensemble
 
 # Every task runs in one conda env: the two scripts call the BioBB python API
 # in-process so a failing model can be caught per-model rather than killing the
@@ -16,6 +16,36 @@ artifacts:
     description: Folder of PDB models (MD cluster representatives, NMR models, or any conformational ensemble) to analyse.
     kind: folder
     path: examples/structures/
+
+  - id: min_druggability
+    name: Minimum druggability
+    description: Cavities with a lower fpocket druggability score are dropped.
+    kind: number
+    value: 0.2
+    min: 0
+    max: 1
+    step: 0.05
+    path: params/min_druggability.txt
+
+  - id: min_volume
+    name: Minimum cavity volume (Å³)
+    description: Smaller cavities are dropped.
+    kind: number
+    value: 100
+    min: 0
+    max: 5000
+    step: 50
+    path: params/min_volume.txt
+
+  - id: max_volume
+    name: Maximum cavity volume (Å³)
+    description: Larger cavities are dropped; keep it above min_volume.
+    kind: number
+    value: 5000
+    min: 100
+    max: 20000
+    step: 100
+    path: params/max_volume.txt
 
 tasks:
   # Wraps each input PDB in its own folder, because the `analyze` map fans out
@@ -46,70 +76,76 @@ tasks:
     target:
       kind: local
 
-  # The fan-out: one concurrent clone per model, each running the full
-  # extract -> fpocket_run -> fpocket_filter -> filter_residue_com pipeline.
-  # The template declares exactly one output (required by the engine), pinned
-  # at analyze.gathered/<i>/. No `edges:` entries are needed for
-  # prepare_models -> analyze -> summarize; the map block describes both the
-  # fan-out and the fan-in and the loader synthesizes those edges.
+  # The fan-out: one concurrent clone per model folder, each running the full
+  # extract -> fpocket_run -> fpocket_filter -> filter_residue_com pipeline
+  # into its own slot of results/analyzed/.
   #
   # Add --residue-selection "resid 31 or resid 21" (MDAnalysis syntax) to keep
   # only the cavities near a site of interest; without it every cavity that
   # passes the score/druggability/volume windows is kept.
-  - kind: horus_task
+  - kind: horus_map
     id: analyze
     name: Detect and filter cavities on each model concurrently
     description: Fans out one clone per model, running fpocket detection, metric filtering, and the residue-proximity filter.
-    map:
-      over:
-        source_task: prepare_models
-        source_output: models
-        item_input: model
-      template:
-        kind: horus_task
-        inputs:
-          - id: model
-            name: One model
-            kind: folder
-            path: model/ # overwritten per-clone with its slice of models/
-        outputs:
-          - id: analyzed
-            name: Model cavity results
-            kind: folder
-            path: analyzed/
-        executor: *executor
-        runtime:
-          kind: python_script
-          script: scripts/analyze_model.py
-          args: >-
-            --model ${model}
-            --out ${analyzed}
-            --score 0,1
-            --druggability 0.2,1
-            --volume 100,5000
-            --distance-threshold 10
-        target:
-          kind: local
-      gather:
-        task: summarize
-        input: results
+    over:
+      input_id: models
+      as: model
+    max_concurrency: 8
+    inputs:
+      - id: models
+        name: Model folders
+        kind: folder
+        path: models/
+      - id: min_druggability
+        name: Minimum druggability
+        kind: number
+        path: params/min_druggability.txt
+      - id: min_volume
+        name: Minimum cavity volume
+        kind: number
+        path: params/min_volume.txt
+      - id: max_volume
+        name: Maximum cavity volume
+        kind: number
+        path: params/max_volume.txt
+    outputs:
+      - id: analyzed
+        name: Model cavity results
+        kind: folder
+        path: results/analyzed/
+    resources:
+      cpus: 1
+      memory_gb: 2
+      walltime: "00:30:00"
+    executor: *executor
+    runtime:
+      kind: python_script
+      script: scripts/analyze_model.py
+      args: >-
+        --model ${model}
+        --out ${analyzed}
+        --score 0,1
+        --druggability ${min_druggability},1
+        --volume ${min_volume},${max_volume}
+        --distance-threshold 10
+    target:
+      kind: local
 
   - kind: horus_task
     id: summarize
     name: Rank the models by their best cavity
     description: Collects every model's surviving cavities and writes the three sorted summaries (by volume, druggability, and score).
     inputs:
-      # Fed by the map's fan-in: one folder holding every clone's output under
-      # analyze.gathered/<i>/.
+      # The map's output: one slot folder per model under results/analyzed/.
       - id: results
         name: Gathered cavity results
         kind: folder
-        path: analyze.gathered/
+        path: results/analyzed/
     outputs:
       - id: summaries
         name: Sorted cavity summaries
         kind: folder
-        path: results/
+        path: results/summaries/
     executor: *executor
     runtime:
       kind: python_script
@@ -121,6 +157,26 @@ tasks:
       kind: local
 
 edges:
+  - source: prepare_models
+    source_output: models
+    target: analyze
+    target_input: models
+  - source: analyze
+    source_output: analyzed
+    target: summarize
+    target_input: results
+  - source: artifact-min_druggability
+    source_output: min_druggability
+    target: analyze
+    target_input: min_druggability
+  - source: artifact-min_volume
+    source_output: min_volume
+    target: analyze
+    target_input: min_volume
+  - source: artifact-max_volume
+    source_output: max_volume
+    target: analyze
+    target_input: max_volume
   - source: artifact-structures
     source_output: structures
     target: prepare_models

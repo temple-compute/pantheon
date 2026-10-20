@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: BioExcel HADDOCK Antibody-Antigen Protein-Protein Docking
+name: HADDOCK3 Antibody-Antigen Docking
 
 _executor: &executor
   kind: conda_python_environment
@@ -8,6 +8,37 @@ _executor: &executor
   environment_file: conda_env.yaml
 
 artifacts:
+  - id: rigid_body_models
+    name: Rigid-body models
+    description: Models sampled by rigid-body docking (the tutorial uses 10 for speed; HADDOCK
+      production runs use 1000).
+    kind: number
+    min: 10
+    max: 10000
+    step: 10
+    value: 10
+    path: params/rigid_body_models.txt
+
+  - id: refine_top_models
+    name: Models refined
+    description: Best rigid-body models passed to flexible and energy-minimisation refinement.
+    kind: number
+    min: 1
+    max: 1000
+    step: 1
+    value: 8
+    path: params/refine_top_models.txt
+
+  - id: models_per_cluster
+    name: Models per cluster
+    description: Top models kept from each FCC cluster for the final evaluation.
+    kind: number
+    min: 1
+    max: 50
+    step: 1
+    value: 4
+    path: params/models_per_cluster.txt
+
   - id: actpass_to_ambig_config
     name: Active/passive to AIR config
     description: Configuration for converting active/passive residue lists into an ambiguous interaction restraints (AIR) table.
@@ -80,12 +111,6 @@ artifacts:
     kind: file
     path: configs/reres_1.yaml
 
-  - id: rigid_body_config
-    name: Rigid-body docking config
-    description: Configuration controlling the HADDOCK3 rigid-body sampling stage (number of models, force field, restraints).
-    kind: file
-    path: configs/rigid_body.yaml
-
   - id: cx_ag_selchain_config
     name: Chain-A selection config
     description: Configuration specifying chain A (antigen) to extract from the reference complex.
@@ -103,18 +128,6 @@ artifacts:
     description: Configuration specifying the light (L) chain to extract.
     kind: file
     path: configs/selchain_L.yaml
-
-  - id: sele_top_config
-    name: Top model selection config
-    description: Configuration controlling selection of the top-scoring rigid-body models.
-    kind: file
-    path: configs/sele_top.yaml
-
-  - id: sele_top_clusts_config
-    name: Top cluster selection config
-    description: Configuration controlling selection of the top-scoring models from each cluster.
-    kind: file
-    path: configs/sele_top_clusts.yaml
 
   - id: ab_L_selres_config
     name: VL domain residue range config
@@ -1976,14 +1989,13 @@ tasks:
 
   - kind: horus_task
     id: rigid_body
-    name: Rigid-body docking (rigidbody, 10 models)
+    name: Rigid-body docking (rigidbody)
     description: Runs HADDOCK3 rigid-body sampling (10 models) using the AIR and multi-body restraints.
     inputs:
-      - id: rigid_body_config
-        name: Rigid-body docking config
-        description: Configuration controlling the HADDOCK3 rigid-body sampling stage (number of models, force field, restraints).
-        kind: file
-        path: configs/rigid_body.yaml
+      - id: rigid_body_models
+        name: Rigid-body models
+        kind: number
+        path: params/rigid_body_models.txt
       - id: haddock_wf_data_in
         name: HADDOCK3 workflow state
         kind: file
@@ -2005,12 +2017,16 @@ tasks:
         name: Rigid-body docking model ensemble
         kind: file
         path: results/2_docking.zip
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "04:00:00"
     executor: *executor
     runtime:
       kind: command
       command: >-
         rigid_body
-        --config ${rigid_body_config}
+        --config '{"properties":{"cfg":{"sampling":${rigid_body_models},"clean":false}}}'
         --input_haddock_wf_data ${haddock_wf_data_in}
         --output_haddock_wf_data ${haddock_wf_data_rigid}
         --docking_output_zip_path ${docking_zip}
@@ -2055,14 +2071,13 @@ tasks:
 
   - kind: horus_task
     id: sele_top
-    name: Select top-8 scoring rigid-body models
+    name: Select the top-scoring rigid-body models
     description: Selects the top-8 scoring rigid-body models for refinement.
     inputs:
-      - id: sele_top_config
-        name: Top model selection config
-        description: Configuration controlling selection of the top-scoring rigid-body models.
-        kind: file
-        path: configs/sele_top.yaml
+      - id: refine_top_models
+        name: Models refined
+        kind: number
+        path: params/refine_top_models.txt
       - id: haddock_wf_data_in
         name: HADDOCK3 workflow state
         kind: file
@@ -2081,7 +2096,7 @@ tasks:
       kind: command
       command: >-
         sele_top
-        --config ${sele_top_config}
+        --config '{"properties":{"cfg":{"select":${refine_top_models}}}}'
         --input_haddock_wf_data ${haddock_wf_data_in}
         --output_haddock_wf_data ${haddock_wf_data_sele}
         --output_selection_zip_path ${selection_zip}
@@ -2119,6 +2134,10 @@ tasks:
         name: Flexible refinement model ensemble
         kind: file
         path: results/5_flexref.zip
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "08:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -2198,6 +2217,10 @@ tasks:
         name: Energy-minimised model ensemble
         kind: file
         path: results/7_emref.zip
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "04:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -2283,14 +2306,13 @@ tasks:
 
   - kind: horus_task
     id: sele_top_clusts
-    name: Select top 4 models from each cluster
+    name: Select the top models of each cluster
     description: Selects the top-4 scoring models from each FCC cluster.
     inputs:
-      - id: sele_top_clusts_config
-        name: Top cluster selection config
-        description: Configuration controlling selection of the top-scoring models from each cluster.
-        kind: file
-        path: configs/sele_top_clusts.yaml
+      - id: models_per_cluster
+        name: Models per cluster
+        kind: number
+        path: params/models_per_cluster.txt
       - id: haddock_wf_data_in
         name: HADDOCK3 workflow state
         kind: file
@@ -2309,7 +2331,7 @@ tasks:
       kind: command
       command: >-
         sele_top_clusts
-        --config ${sele_top_clusts_config}
+        --config '{"properties":{"cfg":{"top_models":${models_per_cluster},"clean":false}}}'
         --input_haddock_wf_data ${haddock_wf_data_in}
         --output_haddock_wf_data ${haddock_wf_data_seletop}
         --output_selection_zip_path ${seletopclusts_zip}
@@ -2380,6 +2402,21 @@ tasks:
       kind: local
 
 edges:
+  - source: artifact-rigid_body_models
+    source_output: rigid_body_models
+    target: rigid_body
+    target_input: rigid_body_models
+
+  - source: artifact-refine_top_models
+    source_output: refine_top_models
+    target: sele_top
+    target_input: refine_top_models
+
+  - source: artifact-models_per_cluster
+    source_output: models_per_cluster
+    target: sele_top_clusts
+    target_input: models_per_cluster
+
 
   # Download → antibody H chain prep
   - source: fetch_antibody
@@ -2965,11 +3002,6 @@ edges:
     target: cx_ab_reres
     target_input: cx_ab_reres_config
 
-  - source: artifact-rigid_body_config
-    source_output: rigid_body_config
-    target: rigid_body
-    target_input: rigid_body_config
-
   - source: artifact-cx_ag_selchain_config
     source_output: cx_ag_selchain_config
     target: cx_ag_selchain
@@ -2994,16 +3026,6 @@ edges:
     source_output: ab_L_selchain_config
     target: cx_L_selchain
     target_input: cx_L_selchain_config
-
-  - source: artifact-sele_top_config
-    source_output: sele_top_config
-    target: sele_top
-    target_input: sele_top_config
-
-  - source: artifact-sele_top_clusts_config
-    source_output: sele_top_clusts_config
-    target: sele_top_clusts
-    target_input: sele_top_clusts_config
 
   - source: artifact-ab_L_selres_config
     source_output: ab_L_selres_config

@@ -1,6 +1,12 @@
 # W-31 · Cavity Analysis
 
+<img src="assets/logo.png" width="96" align="right" alt="W-31 logo">
+
+Detect and filter cavities with fpocket on every structure of a conformational ensemble in parallel, then rank the models by their best cavity's volume, druggability and score.
+
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel--building--blocks-blue)
+
+![W-31 cover](assets/cover.png)
 
 ## Overview
 
@@ -47,7 +53,7 @@ ensemble is 100 independent ~30 s tasks — a natural cluster array job.
 
 ## Tools & Dependencies
 
-- **horus-runtime** ≥ 0.2.1 (the `map:` construct), **horus-environments**
+- **horus-runtime** ≥ 0.8.0 (`horus_map`), **horus-environments**
 - **BioBB blocks**: `biobb_structure_utils.extract_molecule`,
   `biobb_vs.fpocket_run`, `biobb_vs.fpocket_filter`
 - **repo-local step**: `filter_residue_com`, ported from
@@ -65,13 +71,13 @@ conda environment.
 examples/structures/*.pdb ──► prepare_models ──► models/model_NNN/
                                                         │
                                                         ▼
-                                  analyze[00..NN]  (map: N concurrent clones)
+                                  analyze[00..NN]  (horus_map: N concurrent clones)
                                    extract_molecule
                                      ─► fpocket_run
                                        ─► fpocket_filter
                                          ─► filter_residue_com
                                                         │
-                                                 analyze.gathered/<i>/
+                                                 results/analyzed/<slot>/
                                                         ▼
                                                    summarize ──► summary_by_volume.yml
                                                                  summary_by_drug_score.yml
@@ -80,29 +86,51 @@ examples/structures/*.pdb ──► prepare_models ──► models/model_NNN/
 ```
 
 **Why `prepare_models` exists.** The map fans out over the *children* of a
-folder, and the engine hands each clone a copy of the i-th child **directory**
-(`MapExpander._materialize_item` calls `shutil.copytree`). A folder of loose
-`.pdb` files cannot be mapped over, so each structure is first wrapped in its
-own `model_NNN/` folder. Folders are zero-padded because children are fanned out
+folder, and `analyze_model.py` works on one model folder (structure plus its
+working files), so each structure is first wrapped in its own `model_NNN/`
+folder. It also accepts a single `.pdb` instead of a folder. Folders are zero-padded because children are fanned out
 in name-sorted order — unpadded `model_10` would sort before `model_2`.
 
-**Why the four analysis steps are one task.** A map template must declare
-exactly one output, so the per-model pipeline runs inside a single clone rather
+**Why the four analysis steps are one task.** A map must declare exactly one
+output folder, so the per-model pipeline runs inside a single clone rather
 than as four chained tasks. That is also what allows a per-model failure to be
 caught and recorded instead of aborting the run, and it matches the source,
 which runs the same four steps in a Python loop body.
 
-To move analysis onto a cluster, give the `map.template` a `target:` and
-`resources:` block; nothing else changes.
+To move analysis onto a cluster, give the `analyze` map a `target:`; its
+`resources:` block already sizes each clone. Nothing else changes.
+
+## Inputs
+
+Root artifacts in `workflow.yaml`; tc-os shows them in the campaign form.
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `structures` | folder | `examples/structures/` | folder | Folder of PDB models (MD cluster representatives, NMR models, or any conformational ensemble) to analyse. |
+| `min_druggability` | number | 0.2 | 0–1, step 0.05 | Cavities with a lower fpocket druggability score are dropped. |
+| `min_volume` | number | 100 | 0–5000, step 50 | Smaller cavities are dropped. |
+| `max_volume` | number | 5000 | 100–20000, step 100 | Larger cavities are dropped; keep it above min_volume. |
+
+The score window, residue selection and chain filters stay as flags of the `analyze` map (see Parameterization).
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes
+`params/<id>.txt` only when it is missing and fingerprints that file for the skip check.
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: upload a folder
+of PDB models (MD cluster representatives, NMR models, any ensemble; default three MD
+clusters) and set the druggability and volume windows. Each analysis clone carries a
+`resources` hint (1 CPU, 2 GB, 30 min) and up to 8 run at once, so an auto-provisioned
+target sizes one small general-purpose machine for the map.
 
 ## Input / Output
 
 **Input**
 
-- `examples/structures/` — a folder of PDB models. Three MD cluster
-  representatives are bundled. A single `.pdb` file also works.
+- `structures` — a folder of PDB models (default `examples/structures/`, three MD
+  cluster representatives). A single `.pdb` file also works.
 
-**Output** (under `horus_workflow_results/results/`)
+**Output** (under `horus_workflow_results/results/summaries/`)
 
 - `summary_by_volume.yml` — models ordered by their largest cavity
 - `summary_by_drug_score.yml` — models ordered by their most druggable cavity
@@ -115,7 +143,7 @@ least one cavity, with the full fpocket metrics of its surviving cavities. Three
 orderings exist because the metrics disagree, and which one matters depends on
 what the cavity is for.
 
-Per-model detail stays in `analyze.gathered/<i>/`: `summary.json` (every cavity
+Per-model detail stays in `results/analyzed/<slot>/`: `summary.json` (every cavity
 fpocket found, pre-filter), `filtered_pockets.zip` (the survivors), `model.pdb`
 (the prepared structure), and `status.json`.
 
@@ -127,13 +155,13 @@ no druggable cavity — its best druggability score is 0.033.
 
 | What | Where |
 |---|---|
-| Input ensemble | `examples/structures/`, or repoint the `structures` artifact |
-| Cavity filter windows | `analyze` template → `--score`, `--druggability`, `--volume` (each `lo,hi`) |
-| Restrict to a known site | `analyze` template → `--residue-selection` (MDAnalysis syntax, e.g. `"resid 31 or resid 21"`) + `--distance-threshold` |
-| Keep only some chains | `analyze` template → `--chains A` (comma-separated) |
-| Keep cofactors/ions | `analyze` template → `--skip-extraction` |
+| Input ensemble | `structures` upload (default `examples/structures/`) |
+| Cavity filter windows | `min_druggability`, `min_volume`, `max_volume`; `analyze` → `--score` (`lo,hi`) |
+| Restrict to a known site | `analyze` map → `--residue-selection` (MDAnalysis syntax, e.g. `"resid 31 or resid 21"`) + `--distance-threshold` |
+| Keep only some chains | `analyze` map → `--chains A` (comma-separated) |
+| Keep cofactors/ions | `analyze` map → `--skip-extraction` |
 
-The bundled windows (`--score 0,1 --druggability 0.2,1 --volume 100,5000`) are
+The default windows (score 0–1, druggability 0.2–1, volume 100–5000 Å³) are
 looser than the source defaults (`0.4`/`0.4`/`200`), which reject every cavity in
 this ensemble. Tighten them for a larger or better-formed set of structures.
 
@@ -152,7 +180,7 @@ this ensemble. Tighten them for a larger or better-formed set of structures.
   `analyze[0]`, and that becomes its directory name; BioBB stages files into a
   sandbox under the current directory and shells out unquoted, so the brackets
   are glob-expanded and match nothing. The script runs from
-  `analyze.gathered/<i>/work/` instead. See the
+  `results/analyzed/<slot>/work/` instead. See the
   [W-30 README](../w22-cavity-guided-virtual-screening/README.md#implementation-notes).
 - **osx-arm64 cannot build the conda env**, because `biobb_vs` pins
   `fpocket ==4.1`, which conda-forge builds for linux-64 and osx-64 only. On

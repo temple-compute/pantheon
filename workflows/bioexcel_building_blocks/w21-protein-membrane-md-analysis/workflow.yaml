@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: BioExcel Membrane MD Analysis - GABA-gated Chloride Channel (A023K)
+name: Protein-Membrane MD Analysis
 
 _executor: &executor
   kind: conda_python_environment
@@ -15,6 +15,36 @@ _target: &target
   kind: local
 
 artifacts:
+  - id: mddb_project
+    name: MDDB project
+    description: MDDB accession of a protein in a DPPC membrane (structure, trajectory and GROMACS
+      .tpr are downloaded).
+    kind: string
+    pattern: '[A-Za-z0-9]+'
+    max_length: 16
+    value: A023K
+    path: params/mddb_project.txt
+
+  - id: frame_stride
+    name: Frame stride
+    description: Keep every Nth trajectory frame when downloading.
+    kind: number
+    min: 1
+    max: 10000
+    step: 1
+    value: 1000
+    path: params/frame_stride.txt
+
+  - id: pore_frame_step
+    name: Pore analysis frame step
+    description: Analyse the channel pore radius every Nth downloaded frame (HOLE).
+    kind: number
+    min: 1
+    max: 1000
+    step: 1
+    value: 20
+    path: params/pore_frame_step.txt
+
   - id: assign_leaflets_config
     name: Leaflet assignment config
     description: Configuration for the Lipyphilic per-frame leaflet assignment, including the lipid headgroup selection.
@@ -45,12 +75,6 @@ artifacts:
     kind: file
     path: configs/compute_order_parameters.yaml
 
-  - id: compute_pore_dimensions_config
-    name: Pore dimensions config
-    description: Configuration for the MDAnalysis HOLE channel pore-radius profile calculation.
-    kind: file
-    path: configs/compute_pore_dimensions.yaml
-
   - id: compute_zpositions_config
     name: Z-positions config
     description: Configuration for the whole-membrane lipid z-position/bilayer-thickness calculation, including the lipid headgroup selection.
@@ -62,12 +86,6 @@ artifacts:
     description: Configuration for the protein-local lipid z-position/bilayer-thickness calculation, including the lipid headgroup selection.
     kind: file
     path: configs/compute_zpositions_around.yaml
-
-  - id: download_trajectory_config
-    name: Trajectory download config
-    description: Configuration setting the MDDB node/project ID (A023K), trajectory format, and frame stride.
-    kind: file
-    path: configs/download_trajectory.yaml
 
   - id: fit_membrane_config
     name: Membrane fit config
@@ -90,13 +108,17 @@ artifacts:
 tasks:
   - kind: horus_task
     id: download_trajectory
-    name: Download structure and trajectory from MDDB (A023K)
+    name: Download structure and trajectory from MDDB
     description: Fetches the structure, trajectory, and topology for MDDB entry A023K (GABA-gated chloride channel in a DPPC bilayer).
     inputs:
-      - id: download_trajectory_config
-        name: Trajectory download config
-        kind: file
-        path: configs/download_trajectory.yaml
+      - id: mddb_project
+        name: MDDB project
+        kind: string
+        path: params/mddb_project.txt
+      - id: frame_stride
+        name: Frame stride
+        kind: number
+        path: params/frame_stride.txt
     outputs:
       - id: downloaded_pdb
         name: Structure (PDB)
@@ -115,7 +137,7 @@ tasks:
       kind: command
       command: >-
         mddb
-        --config ${download_trajectory_config}
+        --config '{"properties":{"node_id":"irb-dev","project_id":"${mddb_project}","trj_format":"xtc","frames":"1:-1:${frame_stride}","extra_files":[["topology.tpr","results/A023K.tpr"]]}}'
         --output_top_path ${downloaded_pdb}
         --output_trj_path ${downloaded_xtc}
     target: *target
@@ -241,6 +263,10 @@ tasks:
         name: Per-frame leaflet assignment
         kind: file
         path: results/leaflets_data.csv
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor_mem
     runtime:
       kind: command
@@ -274,6 +300,10 @@ tasks:
         name: Lipid z-positions (whole membrane)
         kind: file
         path: results/zpositions.csv
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor_mem
     runtime:
       kind: command
@@ -307,6 +337,10 @@ tasks:
         name: Lipid z-positions (protein region)
         kind: file
         path: results/zpositions_around.csv
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor_mem
     runtime:
       kind: command
@@ -340,6 +374,10 @@ tasks:
         name: Deuterium order parameters
         kind: file
         path: results/order.csv
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor_mem
     runtime:
       kind: command
@@ -373,6 +411,10 @@ tasks:
         name: Area per lipid
         kind: file
         path: results/apl.csv
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor_mem
     runtime:
       kind: command
@@ -422,10 +464,10 @@ tasks:
     name: Compute channel pore radius profile (mda_hole)
     description: Computes the channel pore-radius profile through the protein using the MDAnalysis HOLE analysis.
     inputs:
-      - id: compute_pore_dimensions_config
-        name: Pore dimensions config
-        kind: file
-        path: configs/compute_pore_dimensions.yaml
+      - id: pore_frame_step
+        name: Pore analysis frame step
+        kind: number
+        path: params/pore_frame_step.txt
       - id: downloaded_pdb
         name: Structure (PDB)
         kind: file
@@ -443,12 +485,16 @@ tasks:
         name: Pore radius profile
         kind: file
         path: results/hole_profile.csv
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor_mem
     runtime:
       kind: command
       command: >-
         mda_hole
-        --config ${compute_pore_dimensions_config}
+        --config '{"properties":{"select":"protein","steps":${pore_frame_step},"sample":0.1}}'
         --input_top_path ${downloaded_pdb}
         --input_traj_path ${memb_fit_xy_xtc}
         --output_hole_path ${hole_vmd}
@@ -481,6 +527,10 @@ tasks:
         name: Lipid flip-flop events
         kind: file
         path: results/flip_flop.csv
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor_mem
     runtime:
       kind: command
@@ -494,6 +544,21 @@ tasks:
     target: *target
 
 edges:
+  - source: artifact-mddb_project
+    source_output: mddb_project
+    target: download_trajectory
+    target_input: mddb_project
+
+  - source: artifact-frame_stride
+    source_output: frame_stride
+    target: download_trajectory
+    target_input: frame_stride
+
+  - source: artifact-pore_frame_step
+    source_output: pore_frame_step
+    target: compute_pore_dimensions
+    target_input: pore_frame_step
+
   - source: download_trajectory
     source_output: downloaded_pdb
     target: fit_membrane
@@ -634,11 +699,6 @@ edges:
     target: compute_order_parameters
     target_input: compute_order_parameters_config
 
-  - source: artifact-compute_pore_dimensions_config
-    source_output: compute_pore_dimensions_config
-    target: compute_pore_dimensions
-    target_input: compute_pore_dimensions_config
-
   - source: artifact-compute_zpositions_config
     source_output: compute_zpositions_config
     target: compute_zpositions
@@ -648,11 +708,6 @@ edges:
     source_output: compute_zpositions_around_config
     target: compute_zpositions_around
     target_input: compute_zpositions_around_config
-
-  - source: artifact-download_trajectory_config
-    source_output: download_trajectory_config
-    target: download_trajectory
-    target_input: download_trajectory_config
 
   - source: artifact-fit_membrane_config
     source_output: fit_membrane_config

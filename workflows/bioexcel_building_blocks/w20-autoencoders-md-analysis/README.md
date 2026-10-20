@@ -1,6 +1,12 @@
 # W-25 · AutoEncoders for MD Analysis
 
+<img src="assets/logo.png" width="96" align="right" alt="W-25 logo">
+
+Train an autoencoder on an apo MD trajectory, compare its latent space with the holo trajectory, check reconstruction by RMSF, and export the model as PLUMED collective variables for enhanced sampling.
+
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel-green)
+
+![W-25 cover](assets/cover.png)
 
 ## Overview
 
@@ -59,9 +65,32 @@ uv run horus run workflow.yaml
 
 The first run builds the conda environment (this takes a few minutes). Subsequent runs reuse the cached environment at `../.horus_conda_env`.
 
+## Inputs
+
+Root artifacts in `workflow.yaml`; tc-os shows them in the campaign form.
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `n_frames` | number | 10000 | 100–10000, step 100 | Frames downloaded from MDDB for the apo (training) and holo (test) trajectories, from frame 1. |
+| `n_cvs` | number | 3 | 1–10, step 1 | Size of the autoencoder latent space, i.e. the number of collective variables. |
+| `max_epochs` | number | 100 | 1–2000, step 1 | Maximum training epochs. |
+| `batch_size` | number | 128 | 8–4096, step 8 | Training batch size. |
+
+Expert settings stay in the biobb property files under `configs/`.
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes
+`params/<id>.txt` only when it is missing and fingerprints that file for the skip check.
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: set the number
+of frames to download, the latent dimensions (collective variables), the training epochs
+and the batch size. Training carries a `resources` hint (4 CPU, 16 GB, 2 h) and
+featurization/evaluation 2 CPU / 8 GB, so an auto-provisioned target picks a
+general-purpose machine; the model is small, so CPU training is enough.
+
 ## Inputs / Outputs
 
-This workflow has no file inputs — it fetches both the apo and holo 6W9C trajectories automatically from the MDDB database.
+The workflow fetches the apo (MDDB MCV1900210) and holo (MCV1900212) 6W9C trajectories from the MDDB database; `n_frames` sets how many frames. The trajectories are not inputs: the autoencoder's input layer (933 = 3 × 311 C-alpha atoms) is sized for this protein, so another system means editing the layer sizes in `build_model` as well.
 
 **Outputs** (all under `workflow_results/results/`):
 - `6W9C_apo.pdb/.xtc`, `6W9C_apo_fit.xtc` — apo training trajectory, raw and fitted
@@ -78,7 +107,7 @@ This workflow has no file inputs — it fetches both the apo and holo 6W9C traje
 
 ## Configuration
 
-`configs/fetch_train_trajectory.yaml` and `fetch_test_trajectory.yaml` set the MDDB project/node IDs, trajectory format, frame range, and atom selection. `configs/build_model.yaml` controls the AutoEncoder architecture (encoder/decoder layer sizes, latent dimension `n_cvs`, activations, optimizer learning rate). `configs/train_model.yaml` controls batch size, train/val split, and epoch count. `configs/make_plumed.yaml` controls the PLUMED bias (metadynamics parameters) and printed collective variables.
+The MDDB downloads, the AutoEncoder architecture and the training settings are inlined in the `fetch_*_trajectory`, `build_model` and `train_model` commands (layer sizes, activations, learning rate, train/val split), with the frames, latent size, epochs and batch size as inputs. `configs/make_plumed.yaml` controls the PLUMED bias (metadynamics parameters) and printed collective variables.
 
 ## References
 

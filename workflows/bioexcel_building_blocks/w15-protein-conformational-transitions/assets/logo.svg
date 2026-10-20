@@ -1,0 +1,5 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#06122a"/></linearGradient></defs>
+  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
+  <g transform="translate(256,300) scale(1.6)"><g transform="rotate(70 40 -50)"><ellipse cx="-10" cy="-70" rx="62" ry="26" fill="none" stroke="#fde68a" stroke-width="4" stroke-dasharray="10 7"/></g><g transform="rotate(35 40 -50)"><ellipse cx="-10" cy="-70" rx="62" ry="26" fill="none" stroke="#fde68a" stroke-width="4" stroke-dasharray="10 7" opacity="0.6"/></g><path d="M-90,10 C-95,-60 -30,-80 20,-60 C70,-40 95,10 70,60 C40,105 -60,100 -90,10 z" fill="#3b82f6" stroke="#bfdbfe" stroke-width="5"/><ellipse cx="-10" cy="-70" rx="62" ry="26" fill="#fbbf24" stroke="#fef3c7" stroke-width="5"/><path d="M-95,-95 C-90,-150 -40,-175 0,-170" fill="none" stroke="#bfdbfe" stroke-width="6" stroke-linecap="round"/><polygon points="12,-170 -8,-182 -6,-158" fill="#bfdbfe"/><circle cx="40" cy="-50" r="9" fill="#eff6ff"/></g>
+</svg>

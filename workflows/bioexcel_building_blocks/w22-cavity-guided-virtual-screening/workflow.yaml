@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: BioExcel Cavity-Guided Virtual Screening
+name: Cavity-Guided Virtual Screening
 
 # One conda env serves every task: the four helper scripts need MDAnalysis,
 # OpenBabel and the BioBB python API *in-process* (the per-ligand try/except in
@@ -17,6 +17,72 @@ _docker_executor: &docker_executor
   image: quay.io/biocontainers/biobb_vs:5.2.1--pyhdfd78af_0
 
 artifacts:
+  - id: pdb_id
+    name: Receptor PDB ID
+    description: 4-character PDB code to download (default 3HEC). Leave empty to use the uploaded
+      receptor instead.
+    kind: string
+    pattern: ([0-9][A-Za-z0-9]{3})?
+    max_length: 4
+    value: 3HEC
+    path: params/pdb_id.txt
+
+  - id: structure
+    name: Receptor (PDB upload)
+    description: 'PDB file used when pdb_id is empty. Default: 3HEC from the RCSB PDB.'
+    kind: file
+    path: examples/3hec.pdb
+
+  - id: ligand_library
+    name: Candidate ligand library
+    description: SDF (or SMILES) library of candidate ligands to screen against the receptor.
+    kind: file
+    path: examples/ligands.sdf
+
+  - id: rank_by
+    name: Rank cavities by
+    description: fpocket metric used to pick the cavity to dock into.
+    kind: choice
+    options:
+    - value: druggability_score
+      label: Druggability score
+    - value: score
+      label: fpocket score
+    - value: volume
+      label: Volume
+    value: druggability_score
+    path: params/rank_by.txt
+
+  - id: batch_size
+    name: Ligands per batch
+    description: Ligands docked by each parallel clone.
+    kind: number
+    min: 1
+    max: 500
+    step: 1
+    value: 2
+    path: params/batch_size.txt
+
+  - id: exhaustiveness
+    name: Vina exhaustiveness
+    description: AutoDock Vina search exhaustiveness per ligand.
+    kind: number
+    min: 1
+    max: 64
+    step: 1
+    value: 8
+    path: params/exhaustiveness.txt
+
+  - id: top_n
+    name: Top poses kept
+    description: Best-ranked ligands whose poses are written to results/poses/.
+    kind: number
+    min: 1
+    max: 1000
+    step: 1
+    value: 10
+    path: params/top_n.txt
+
   - id: box_config
     name: Docking box config
     description: Offset between the last cavity atom and the docking box boundary.
@@ -28,12 +94,6 @@ artifacts:
     description: Selects protein-only extraction, dropping water, ions, and the crystal ligand.
     kind: file
     path: configs/extract_protein.yaml
-
-  - id: fetch_pdb_config
-    name: Receptor fetch config
-    description: Specifies the target PDB code (3HEC, p38-alpha MAP kinase) to download.
-    kind: file
-    path: configs/fetch_pdb.yaml
 
   - id: fpocket_filter_config
     name: Pocket filter config
@@ -47,12 +107,6 @@ artifacts:
     kind: file
     path: configs/fpocket_run.yaml
 
-  - id: ligand_library
-    name: Candidate ligand library
-    description: SDF (or SMILES) library of candidate ligands to screen against the receptor.
-    kind: file
-    path: examples/ligands.sdf
-
   - id: str_check_add_hydrogens_config
     name: Receptor protonation config
     description: Settings for adding hydrogens and converting the receptor to PDBQT.
@@ -62,14 +116,18 @@ artifacts:
 tasks:
   - kind: horus_task
     id: fetch_pdb
-    name: Download the receptor structure from the PDB
-    description: Downloads the target receptor structure (PDB 3HEC) from the Protein Data Bank.
+    name: Fetch or upload the receptor structure
+    description: Downloads pdb_id (default 3HEC) from the Protein Data Bank, or copies the uploaded receptor when pdb_id is empty.
     skip_if_complete: false
     inputs:
-      - id: fetch_pdb_config
-        name: Receptor fetch config
+      - id: structure
+        name: Receptor (PDB upload)
         kind: file
-        path: configs/fetch_pdb.yaml
+        path: examples/3hec.pdb
+      - id: pdb_id
+        name: Receptor PDB ID
+        kind: string
+        path: params/pdb_id.txt
     outputs:
       - id: download_pdb
         name: Downloaded receptor structure
@@ -79,9 +137,9 @@ tasks:
     runtime:
       kind: command
       command: >-
-        pdb
-        --config ${fetch_pdb_config}
-        --output_pdb_path ${download_pdb}
+        if [ -n ${pdb_id} ];
+        then pdb --config '{"properties":{"pdb_code":"${pdb_id}","filter":["ATOM","HETATM"]}}' --output_pdb_path ${download_pdb};
+        else cp ${structure} ${download_pdb}; fi
     target:
       kind: local
 
@@ -196,6 +254,17 @@ tasks:
     name: Select the cavity to dock into
     description: Filters the surviving cavities by proximity to a residue selection and picks the best-ranked one.
     inputs:
+      - id: rank_by
+        name: Rank cavities by
+        kind: choice
+        path: params/rank_by.txt
+        options:
+        - value: druggability_score
+          label: Druggability score
+        - value: score
+          label: fpocket score
+        - value: volume
+          label: Volume
       - id: filtered_pockets
         name: Filtered pockets
         kind: file
@@ -227,7 +296,7 @@ tasks:
         --structure ${pdb_protein}
         --out-config ${fpocket_select_config}
         --out-report ${pocket_report}
-        --rank-by druggability_score
+        --rank-by ${rank_by}
         --distance-threshold 10
     target:
       kind: local
@@ -334,6 +403,10 @@ tasks:
     name: Split the ligand library into batches
     description: Chunks the ligand library into per-batch folders, each carrying its own copy of the receptor and box.
     inputs:
+      - id: batch_size
+        name: Ligands per batch
+        kind: number
+        path: params/batch_size.txt
       - id: ligand_library
         name: Candidate ligand library
         kind: file
@@ -360,62 +433,64 @@ tasks:
         --receptor ${prep_receptor}
         --box ${output_box}
         --out ${ligand_batches}
-        --batch-size 2
+        --batch-size ${batch_size}
     target:
       kind: local
 
-  # The fan-out. One concurrent clone per batch folder; the template declares
-  # exactly one output (required), pinned by the engine at dock.gathered/<i>/.
-  # No `edges:` entries are needed for split_ligands -> dock -> rank: the map
-  # block fully describes both the fan-out and the fan-in, and the loader
-  # synthesizes those edges.
-  - kind: horus_task
+  # The fan-out: one clone per batch folder of ligand_batches/, each docking
+  # its ligands into its own slot of results/docked/.
+  - kind: horus_map
     id: dock
     name: Dock each ligand batch concurrently
     description: Fans out one clone per ligand batch, each preparing and docking its ligands with AutoDock Vina.
-    map:
-      over:
-        source_task: split_ligands
-        source_output: ligand_batches
-        item_input: batch
-      template:
-        kind: horus_task
-        inputs:
-          - id: batch
-            name: One ligand batch
-            kind: folder
-            path: batch/ # overwritten per-clone with its slice of ligand_batches/
-        outputs:
-          - id: docked
-            name: Batch docking results
-            kind: folder
-            path: docked/
-        executor: *executor
-        runtime:
-          kind: python_script
-          script: scripts/dock_batch.py
-          args: >-
-            --batch ${batch}
-            --out ${docked}
-            --exhaustiveness 8
-            --cpu 1
-        target:
-          kind: local
-      gather:
-        task: rank
-        input: results
+    over:
+      input_id: ligand_batches
+      as: batch
+    max_concurrency: 8
+    inputs:
+      - id: ligand_batches
+        name: Ligand batch folders
+        kind: folder
+        path: ligand_batches/
+      - id: exhaustiveness
+        name: Vina exhaustiveness
+        kind: number
+        path: params/exhaustiveness.txt
+    outputs:
+      - id: docked
+        name: Batch docking results
+        kind: folder
+        path: results/docked/
+    resources:
+      cpus: 2
+      memory_gb: 4
+      walltime: "01:00:00"
+    executor: *executor
+    runtime:
+      kind: python_script
+      script: scripts/dock_batch.py
+      args: >-
+        --batch ${batch}
+        --out ${docked}
+        --exhaustiveness ${exhaustiveness}
+        --cpu ${task.resources.cpus}
+    target:
+      kind: local
 
   - kind: horus_task
     id: rank
     name: Rank the screened ligands by binding affinity
     description: Collects every batch's docking output, ranks the ligands by Vina affinity, and writes the top poses.
     inputs:
-      # Fed by the map's fan-in: one folder holding every clone's output under
-      # dock.gathered/<i>/.
+      - id: top_n
+        name: Top poses kept
+        kind: number
+        path: params/top_n.txt
+      # The map's output: one slot folder per batch under results/docked/.
       - id: results
         name: Gathered docking results
         kind: folder
-        path: dock.gathered/
+        path: results/docked/
     outputs:
       - id: scores
         name: Ranked affinity table
@@ -438,11 +513,51 @@ tasks:
         --scores ${scores}
         --summary ${screening_summary}
         --poses ${poses}
-        --top 10
+        --top ${top_n}
     target:
       kind: local
 
 edges:
+  - source: artifact-structure
+    source_output: structure
+    target: fetch_pdb
+    target_input: structure
+
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: fetch_pdb
+    target_input: pdb_id
+
+  - source: artifact-rank_by
+    source_output: rank_by
+    target: select_pocket
+    target_input: rank_by
+
+  - source: artifact-batch_size
+    source_output: batch_size
+    target: split_ligands
+    target_input: batch_size
+
+  - source: artifact-top_n
+    source_output: top_n
+    target: rank
+    target_input: top_n
+
+  - source: artifact-exhaustiveness
+    source_output: exhaustiveness
+    target: dock
+    target_input: exhaustiveness
+
+  - source: split_ligands
+    source_output: ligand_batches
+    target: dock
+    target_input: ligand_batches
+
+  - source: dock
+    source_output: docked
+    target: rank
+    target_input: results
+
   - source: fetch_pdb
     source_output: download_pdb
     target: extract_protein
@@ -517,11 +632,6 @@ edges:
     source_output: extract_protein_config
     target: extract_protein
     target_input: extract_protein_config
-
-  - source: artifact-fetch_pdb_config
-    source_output: fetch_pdb_config
-    target: fetch_pdb
-    target_input: fetch_pdb_config
 
   - source: artifact-fpocket_filter_config
     source_output: fpocket_filter_config
