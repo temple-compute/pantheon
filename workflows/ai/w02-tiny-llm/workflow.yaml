@@ -204,7 +204,9 @@ tasks:
         --out_ckpt $pretrained_ckpt
         --ckpt_dir ckpts
         --log_dir logs
-        $$([ ${pretrain_steps} -gt 0 ] && echo --train_steps ${pretrain_steps})
+        $$([ ${pretrain_steps} -gt 0 ] && echo --train_steps ${pretrain_steps}
+        --warmup_steps $$(( ${pretrain_steps} / 20 + 1 ))) &&
+        cp "$$(ls -t logs/pretrain_*.jsonl | head -1)" ${pretrain_log}
     target:
       kind: local
 

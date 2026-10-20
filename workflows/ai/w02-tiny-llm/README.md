@@ -88,7 +88,7 @@ TinyStories from Hugging Face; the knobs are typed value inputs, see Parameteriz
 | id | Kind | Default | Range | Meaning |
 |---|---|---|---|---|
 | `config_scale` | choice | `configs/smoke` | `configs/smoke`, `configs` | Smoke (`n_embed=128`, 2 blocks, 20 steps, CPU, minutes) or the repo's full 24-block, 50k-step config |
-| `pretrain_steps` | number | 0 | 0–200000, step 10 | Pretraining optimizer steps; 0 keeps the config's value. Try 500 for a more legible tiny model |
+| `pretrain_steps` | number | 0 | 0–200000, step 10 | Pretraining optimizer steps; 0 keeps the config's value. Try 500 for a more legible tiny model. An override also sets warmup to steps/20 + 1 |
 | `train_docs` | number | 20000 | 1000–2200000, step 1000 | TinyStories training stories to tokenize (full split ~2.1M) |
 | `val_docs` | number | 2000 | 100–22000, step 100 | Validation stories to tokenize |
 | `prompt` | string | `Once upon a time,` | ≤ 500 chars | Opening the model continues in the sample |
