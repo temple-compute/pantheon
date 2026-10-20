@@ -1,10 +1,16 @@
 # W-17 · DNA Helical Parameters
 
+<img src="assets/logo.png" width="96" align="right" alt="W-17 logo">
+
+Extract every DNA helical parameter, backbone torsion, stiffness and correlation from an MD trajectory with Curves+ and Canal: upload a trajectory and topology, give the sequence, and get averages and time series for each.
+
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel-green)
+
+![W-17 cover](assets/cover.png)
 
 ## Overview
 
-This workflow extracts structural and dynamical helical parameters from a DNA MD trajectory using the `biobb_dna` package (wrapping Curves+ and Canal). The example system is the Drew-Dickerson Dodecamer (sequence CGCGAATTCGCG, PDB code 1BNA), analyzed from a 500 ns MD trajectory taken from the BigNASim database. Curves+ extracts per-base-pair and per-base-pair-step helical parameters from the raw trajectory, Canal converts these into time series and histograms, and a large fan-out of downstream stages computes averages, time series, stiffness, bimodality, and correlations for every helical parameter (rise, roll, twist, shift, slide, tilt, shear, stretch, stagger, buckle, propeller, opening, inclination, tip, X/Y-displacement, groove widths/depths, backbone torsions, and sugar puckering/backbone conformational populations). Horus provisions the Curves+/biobb_dna conda environment automatically and runs all stages locally.
+This workflow extracts structural and dynamical helical parameters from a DNA MD trajectory using the `biobb_dna` package (wrapping Curves+ and Canal). The example system is the Drew-Dickerson Dodecamer (sequence CGCGAATTCGCG, PDB code 1BNA), analyzed from a 500 ns MD trajectory taken from the BigNASim database. Curves+ extracts per-base-pair and per-base-pair-step helical parameters from the raw trajectory, Canal converts these into time series and histograms, and a large fan-out of downstream stages computes averages, time series, stiffness, bimodality, and correlations for every helical parameter (rise, roll, twist, shift, slide, tilt, shear, stretch, stagger, buckle, propeller, opening, inclination, tip, X/Y-displacement, groove widths/depths, backbone torsions, and sugar puckering/backbone conformational populations). Every stage runs in the `biobb_dna` Docker image.
 
 ## Pipeline
 
@@ -38,7 +44,7 @@ canal               Generate time series and histograms (Canal)
 ## Prerequisites
 
 - **uv** (recommended) or pip — to install horus-runtime
-- **micromamba**, **mamba**, or **conda** — the workflow executor builds a shared conda environment from `conda_env.yaml` to provision Curves+, Canal, and the biobb_dna stack
+- **Docker** — every stage runs in `quay.io/biocontainers/biobb_dna:5.2.1`
 
 ## Quick Start
 
@@ -55,14 +61,23 @@ uv sync
 uv run horus run workflow.yaml
 ```
 
-The first run builds the conda environment (this takes a few minutes). Subsequent runs reuse the cached environment at `../.horus_conda_env`.
+The first run pulls the `biobb_dna` image (a few minutes); later runs reuse it.
+
+## Inputs
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `traj` | file | `TRAJ/structure.stripped.nc` | NetCDF trajectory | Solvent-stripped DNA MD trajectory. Default: 500 ns Drew-Dickerson dodecamer (BigNASim, NAFlex_DDD_II). |
+| `top` | file | `TRAJ/structure.stripped.top` | AMBER topology | Topology matching the trajectory. |
+| `sequence` | string | `CGCGAATTCGCG` | `[ACGT]{5,200}` | Strand 1, 5' to 3'. Sets the Curves+ strand ranges (strand 1 = 1..N, strand 2 = 2N..N+1) and labels every parameter. |
+
+The stiffness, bimodality and correlation stages read the series at position 3, the first interior step and base pair (Curves+ writes no series for the terminal steps): `series_<param>_step3.csv` for base-pair steps and `series_<param>_bp3.csv` for base pairs. For the default sequence that is the C3G4 CpG step. The trajectory must hold one double-stranded DNA with strand 2 numbered right after strand 1, as Curves+ expects. Every analysis setting is inline in its task (helical parameter name, Canal series/histograms on, bimodality `max_iter` 500).
+
+To change `sequence` locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes `params/<id>.txt` only when it is missing and fingerprints that file for the skip check, so a stale file keeps the old value. In Temple Compute, set it in the campaign form.
 
 ## Inputs / Outputs
 
-This workflow uses **real input trajectory data** checked into the directory (not fetched at runtime):
-- `TRAJ/structure.stripped.nc` — 500 ns Drew-Dickerson Dodecamer MD trajectory (BigNASim, NAFlex_DDD_II entry)
-- `TRAJ/structure.stripped.top` — associated AMBER topology
-- `.curvesplus/standard_{b,i,s}.lib` — Curves+ standard base/backbone reference libraries used internally by the `biobb_curves` tool
+The trajectory and topology are uploads (defaults committed in `TRAJ/`); `.curvesplus/standard_{b,i,s}.lib` are the Curves+ reference libraries `biobb_curves` uses internally.
 
 **Outputs** (all under `workflow_results/`):
 - `results/curves.out.lis`, `results/curves.out.cda` — raw Curves+ helical parameter output
@@ -74,7 +89,11 @@ This workflow uses **real input trajectory data** checked into the directory (no
 
 ## Configuration
 
-`configs/curves.yaml` sets the strand base-pair ranges (`s1range`/`s2range`) passed to Curves+. `configs/canal.yaml` enables series/histogram output. Each `configs/avg_*.yaml` and `configs/ts_*.yaml` file selects which helical parameter and strand to extract. `configs/average_stiffness.yaml`, `configs/dna_bimodality.yaml`, and the `configs/*corr.yaml` files set the DNA sequence (CGCGAATTCGCG) and analysis parameters (e.g. `max_iter` for bimodality fitting).
+All biobb settings are inline JSON in each task's command; the only per-run setting is `sequence`. The Curves+ task computes `s1range`/`s2range` from the sequence length in the shell.
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: the form shows the trajectory and topology uploads and the sequence. Curves+ and Canal carry `resources` hints (2 CPU / 8 GB, 2 h and 1 h); the ~70 analysis stages are light and run on the same machine. Every stage runs in the `biobb_dna` Docker image, so the target needs Docker.
 
 ## References
 

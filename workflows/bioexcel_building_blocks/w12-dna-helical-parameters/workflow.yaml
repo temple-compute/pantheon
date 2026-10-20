@@ -1,11 +1,5 @@
 kind: horus_workflow
-name: BioExcel DNA Helical Parameters Analysis
-
-_executor: &executor
-  kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
-  conda: micromamba
-  environment_file: conda_env.yaml
+name: DNA Helical Parameters Analysis
 
 _docker_executor: &docker_executor
   kind: docker
@@ -24,407 +18,17 @@ artifacts:
     kind: file
     path: TRAJ/structure.stripped.top
 
-  - id: average_stiffness_config
-    name: Stiffness averaging config
-    description: Parameters for computing average stiffness constants.
-    kind: file
-    path: configs/average_stiffness.yaml
-
-  - id: avg_buckle_config
-    name: Buckle averaging config
-    description: Averaging parameters for the buckle helical parameter.
-    kind: file
-    path: configs/avg_buckle.yaml
-
-  - id: avg_inclin_config
-    name: Inclination averaging config
-    description: Averaging parameters for the inclination helical parameter.
-    kind: file
-    path: configs/avg_inclin.yaml
-
-  - id: avg_majd_config
-    name: Major groove depth averaging config
-    description: Averaging parameters for the major groove depth helical parameter.
-    kind: file
-    path: configs/avg_majd.yaml
-
-  - id: avg_majw_config
-    name: Major groove width averaging config
-    description: Averaging parameters for the major groove width helical parameter.
-    kind: file
-    path: configs/avg_majw.yaml
-
-  - id: avg_mind_config
-    name: Minor groove depth averaging config
-    description: Averaging parameters for the minor groove depth helical parameter.
-    kind: file
-    path: configs/avg_mind.yaml
-
-  - id: avg_minw_config
-    name: Minor groove width averaging config
-    description: Averaging parameters for the minor groove width helical parameter.
-    kind: file
-    path: configs/avg_minw.yaml
-
-  - id: avg_opening_config
-    name: Opening averaging config
-    description: Averaging parameters for the opening helical parameter.
-    kind: file
-    path: configs/avg_opening.yaml
-
-  - id: avg_propel_config
-    name: Propeller averaging config
-    description: Averaging parameters for the propeller helical parameter.
-    kind: file
-    path: configs/avg_propel.yaml
-
-  - id: avg_rise_config
-    name: Rise averaging config
-    description: Averaging parameters for the rise helical parameter.
-    kind: file
-    path: configs/avg_rise.yaml
-
-  - id: avg_roll_config
-    name: Roll averaging config
-    description: Averaging parameters for the roll helical parameter.
-    kind: file
-    path: configs/avg_roll.yaml
-
-  - id: avg_shear_config
-    name: Shear averaging config
-    description: Averaging parameters for the shear helical parameter.
-    kind: file
-    path: configs/avg_shear.yaml
-
-  - id: avg_shift_config
-    name: Shift averaging config
-    description: Averaging parameters for the shift helical parameter.
-    kind: file
-    path: configs/avg_shift.yaml
-
-  - id: avg_slide_config
-    name: Slide averaging config
-    description: Averaging parameters for the slide helical parameter.
-    kind: file
-    path: configs/avg_slide.yaml
-
-  - id: avg_stagger_config
-    name: Stagger averaging config
-    description: Averaging parameters for the stagger helical parameter.
-    kind: file
-    path: configs/avg_stagger.yaml
-
-  - id: avg_stretch_config
-    name: Stretch averaging config
-    description: Averaging parameters for the stretch helical parameter.
-    kind: file
-    path: configs/avg_stretch.yaml
-
-  - id: avg_tilt_config
-    name: Tilt averaging config
-    description: Averaging parameters for the tilt helical parameter.
-    kind: file
-    path: configs/avg_tilt.yaml
-
-  - id: avg_tip_config
-    name: Tip averaging config
-    description: Averaging parameters for the tip helical parameter.
-    kind: file
-    path: configs/avg_tip.yaml
-
-  - id: avg_twist_config
-    name: Twist averaging config
-    description: Averaging parameters for the twist helical parameter.
-    kind: file
-    path: configs/avg_twist.yaml
-
-  - id: avg_xdisp_config
-    name: X-displacement averaging config
-    description: Averaging parameters for the x-displacement helical parameter.
-    kind: file
-    path: configs/avg_xdisp.yaml
-
-  - id: avg_ydisp_config
-    name: Y-displacement averaging config
-    description: Averaging parameters for the y-displacement helical parameter.
-    kind: file
-    path: configs/avg_ydisp.yaml
-
-  - id: bipopulations_config
-    name: BI/BII populations config
-    description: Parameters for computing BI/BII backbone populations.
-    kind: file
-    path: configs/bipopulations.yaml
-
-  - id: canal_config
-    name: Canal config
-    description: Parameters for extracting per-parameter time series from Curves+ output.
-    kind: file
-    path: configs/canal.yaml
-
-  - id: canonicalag_config
-    name: Canonical alpha/gamma config
-    description: Parameters for computing canonical alpha/gamma backbone populations.
-    kind: file
-    path: configs/canonicalag.yaml
-
-  - id: curves_config
-    name: Curves+ config
-    description: Parameters for the Curves+ helical parameter extraction run.
-    kind: file
-    path: configs/curves.yaml
-
-  - id: dna_bimodality_config
-    name: Bimodality config
-    description: Parameters for detecting bimodal distributions in helical parameters.
-    kind: file
-    path: configs/dna_bimodality.yaml
-
-  - id: interbpcorr_config
-    name: Inter-base-pair correlation config
-    description: Parameters for computing correlations between neighboring base pair steps.
-    kind: file
-    path: configs/interbpcorr.yaml
-
-  - id: interseqcorr_config
-    name: Inter-sequence correlation config
-    description: Parameters for computing sequence-dependent correlations between base pair steps.
-    kind: file
-    path: configs/interseqcorr.yaml
-
-  - id: intrabpcorr_config
-    name: Intra-base-pair correlation config
-    description: Parameters for computing correlations within a base pair.
-    kind: file
-    path: configs/intrabpcorr.yaml
-
-  - id: intraseqcorr_config
-    name: Intra-sequence correlation config
-    description: Parameters for computing sequence-dependent correlations within a base pair.
-    kind: file
-    path: configs/intraseqcorr.yaml
-
-  - id: puckering_config
-    name: Sugar puckering config
-    description: Parameters for computing sugar puckering populations.
-    kind: file
-    path: configs/puckering.yaml
-
-  - id: ts_alphaC_config
-    name: Alpha torsion (Crick strand) time-series config
-    description: Time-series parameters for the alpha torsion (crick strand) helical parameter.
-    kind: file
-    path: configs/ts_alphaC.yaml
-
-  - id: ts_alphaW_config
-    name: Alpha torsion (Watson strand) time-series config
-    description: Time-series parameters for the alpha torsion (watson strand) helical parameter.
-    kind: file
-    path: configs/ts_alphaW.yaml
-
-  - id: ts_betaC_config
-    name: Beta torsion (Crick strand) time-series config
-    description: Time-series parameters for the beta torsion (crick strand) helical parameter.
-    kind: file
-    path: configs/ts_betaC.yaml
-
-  - id: ts_betaW_config
-    name: Beta torsion (Watson strand) time-series config
-    description: Time-series parameters for the beta torsion (watson strand) helical parameter.
-    kind: file
-    path: configs/ts_betaW.yaml
-
-  - id: ts_buckle_config
-    name: Buckle time-series config
-    description: Time-series parameters for the buckle helical parameter.
-    kind: file
-    path: configs/ts_buckle.yaml
-
-  - id: ts_chiC_config
-    name: Chi torsion (Crick strand) time-series config
-    description: Time-series parameters for the chi torsion (crick strand) helical parameter.
-    kind: file
-    path: configs/ts_chiC.yaml
-
-  - id: ts_chiW_config
-    name: Chi torsion (Watson strand) time-series config
-    description: Time-series parameters for the chi torsion (watson strand) helical parameter.
-    kind: file
-    path: configs/ts_chiW.yaml
-
-  - id: ts_deltaC_config
-    name: Delta torsion (Crick strand) time-series config
-    description: Time-series parameters for the delta torsion (crick strand) helical parameter.
-    kind: file
-    path: configs/ts_deltaC.yaml
-
-  - id: ts_deltaW_config
-    name: Delta torsion (Watson strand) time-series config
-    description: Time-series parameters for the delta torsion (watson strand) helical parameter.
-    kind: file
-    path: configs/ts_deltaW.yaml
-
-  - id: ts_epsilC_config
-    name: Epsilon torsion (Crick strand) time-series config
-    description: Time-series parameters for the epsilon torsion (crick strand) helical parameter.
-    kind: file
-    path: configs/ts_epsilC.yaml
-
-  - id: ts_epsilW_config
-    name: Epsilon torsion (Watson strand) time-series config
-    description: Time-series parameters for the epsilon torsion (watson strand) helical parameter.
-    kind: file
-    path: configs/ts_epsilW.yaml
-
-  - id: ts_gammaC_config
-    name: Gamma torsion (Crick strand) time-series config
-    description: Time-series parameters for the gamma torsion (crick strand) helical parameter.
-    kind: file
-    path: configs/ts_gammaC.yaml
-
-  - id: ts_gammaW_config
-    name: Gamma torsion (Watson strand) time-series config
-    description: Time-series parameters for the gamma torsion (watson strand) helical parameter.
-    kind: file
-    path: configs/ts_gammaW.yaml
-
-  - id: ts_inclin_config
-    name: Inclination time-series config
-    description: Time-series parameters for the inclination helical parameter.
-    kind: file
-    path: configs/ts_inclin.yaml
-
-  - id: ts_majd_config
-    name: Major groove depth time-series config
-    description: Time-series parameters for the major groove depth helical parameter.
-    kind: file
-    path: configs/ts_majd.yaml
-
-  - id: ts_majw_config
-    name: Major groove width time-series config
-    description: Time-series parameters for the major groove width helical parameter.
-    kind: file
-    path: configs/ts_majw.yaml
-
-  - id: ts_mind_config
-    name: Minor groove depth time-series config
-    description: Time-series parameters for the minor groove depth helical parameter.
-    kind: file
-    path: configs/ts_mind.yaml
-
-  - id: ts_minw_config
-    name: Minor groove width time-series config
-    description: Time-series parameters for the minor groove width helical parameter.
-    kind: file
-    path: configs/ts_minw.yaml
-
-  - id: ts_opening_config
-    name: Opening time-series config
-    description: Time-series parameters for the opening helical parameter.
-    kind: file
-    path: configs/ts_opening.yaml
-
-  - id: ts_phaseC_config
-    name: Sugar phase angle (Crick strand) time-series config
-    description: Time-series parameters for the sugar phase angle (crick strand) helical parameter.
-    kind: file
-    path: configs/ts_phaseC.yaml
-
-  - id: ts_phaseW_config
-    name: Sugar phase angle (Watson strand) time-series config
-    description: Time-series parameters for the sugar phase angle (watson strand) helical parameter.
-    kind: file
-    path: configs/ts_phaseW.yaml
-
-  - id: ts_propel_config
-    name: Propeller time-series config
-    description: Time-series parameters for the propeller helical parameter.
-    kind: file
-    path: configs/ts_propel.yaml
-
-  - id: ts_rise_config
-    name: Rise time-series config
-    description: Time-series parameters for the rise helical parameter.
-    kind: file
-    path: configs/ts_rise.yaml
-
-  - id: ts_roll_config
-    name: Roll time-series config
-    description: Time-series parameters for the roll helical parameter.
-    kind: file
-    path: configs/ts_roll.yaml
-
-  - id: ts_shear_config
-    name: Shear time-series config
-    description: Time-series parameters for the shear helical parameter.
-    kind: file
-    path: configs/ts_shear.yaml
-
-  - id: ts_shift_config
-    name: Shift time-series config
-    description: Time-series parameters for the shift helical parameter.
-    kind: file
-    path: configs/ts_shift.yaml
-
-  - id: ts_slide_config
-    name: Slide time-series config
-    description: Time-series parameters for the slide helical parameter.
-    kind: file
-    path: configs/ts_slide.yaml
-
-  - id: ts_stagger_config
-    name: Stagger time-series config
-    description: Time-series parameters for the stagger helical parameter.
-    kind: file
-    path: configs/ts_stagger.yaml
-
-  - id: ts_stretch_config
-    name: Stretch time-series config
-    description: Time-series parameters for the stretch helical parameter.
-    kind: file
-    path: configs/ts_stretch.yaml
-
-  - id: ts_tilt_config
-    name: Tilt time-series config
-    description: Time-series parameters for the tilt helical parameter.
-    kind: file
-    path: configs/ts_tilt.yaml
-
-  - id: ts_tip_config
-    name: Tip time-series config
-    description: Time-series parameters for the tip helical parameter.
-    kind: file
-    path: configs/ts_tip.yaml
-
-  - id: ts_twist_config
-    name: Twist time-series config
-    description: Time-series parameters for the twist helical parameter.
-    kind: file
-    path: configs/ts_twist.yaml
-
-  - id: ts_xdisp_config
-    name: X-displacement time-series config
-    description: Time-series parameters for the x-displacement helical parameter.
-    kind: file
-    path: configs/ts_xdisp.yaml
-
-  - id: ts_ydisp_config
-    name: Y-displacement time-series config
-    description: Time-series parameters for the y-displacement helical parameter.
-    kind: file
-    path: configs/ts_ydisp.yaml
-
-  - id: ts_zetaC_config
-    name: Zeta torsion (Crick strand) time-series config
-    description: Time-series parameters for the zeta torsion (crick strand) helical parameter.
-    kind: file
-    path: configs/ts_zetaC.yaml
-
-  - id: ts_zetaW_config
-    name: Zeta torsion (Watson strand) time-series config
-    description: Time-series parameters for the zeta torsion (watson strand) helical parameter.
-    kind: file
-    path: configs/ts_zetaW.yaml
+  - &sequence
+    id: sequence
+    name: DNA sequence (strand 1, 5'->3')
+    description: >-
+      Sequence of the first strand in the trajectory, 5' to 3'; sets the
+      Curves+ strand ranges and labels every helical parameter. Default: the
+      Drew-Dickerson dodecamer CGCGAATTCGCG.
+    kind: string
+    path: params/sequence.txt
+    value: CGCGAATTCGCG
+    pattern: '[ACGT]{5,200}'
 
 tasks:
   # ── Step 1: Curves+ ─────────────────────────────────────────────────────────
@@ -433,11 +37,7 @@ tasks:
     name: Run Curves+ helical parameter extraction
     description: Runs Curves+ to extract raw helical parameters from the trajectory.
     inputs:
-      - id: curves_config
-        name: Curves+ config
-        description: Parameters for the Curves+ helical parameter extraction run.
-        kind: file
-        path: configs/curves.yaml
+      - *sequence
       - id: traj
         name: MD trajectory
         description: Stripped molecular dynamics trajectory of the DNA system.
@@ -457,12 +57,17 @@ tasks:
         name: Curves+ output (cda)
         kind: file
         path: results/curves.out.cda
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
+        N=$$(printf %s ${sequence} | wc -c) &&
         biobb_curves
-        --config ${curves_config}
+        --config "{\"properties\":{\"s1range\":\"1:$$N\",\"s2range\":\"$$((2*$$N)):$$(($$N+1))\"}}"
         --input_struc_path ${traj}
         --input_top_path ${top}
         --output_lis_path ${curves_lis}
@@ -476,11 +81,6 @@ tasks:
     name: Run Canal to generate time series and histograms
     description: Runs Canal to split the Curves+ output into one time series per helical parameter.
     inputs:
-      - id: canal_config
-        name: Canal config
-        description: Parameters for extracting per-parameter time series from Curves+ output.
-        kind: file
-        path: configs/canal.yaml
       - id: curves_cda
         name: Curves+ output (cda)
         kind: file
@@ -675,16 +275,20 @@ tasks:
         description: Canal per-frame time series for sugar phase angle (watson strand).
         kind: file
         path: results/canal_out/canal_output_phaseW.ser
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         biobb_canal
-        --config ${canal_config}
+        --config '{"properties":{"series":true,"histo":true}}'
         --input_cda_file ${curves_cda}
         --input_lis_file ${curves_lis}
         --output_zip_path ${canal_zip}
-        && unzip -o ${canal_zip} -d results/canal_out
+        && unzip -o ${canal_zip} -d "$$(dirname ${canal_rise_ser})"
     target:
       kind: local
 
@@ -694,11 +298,7 @@ tasks:
     name: Average helical parameters - Rise
     description: Computes the trajectory average and distribution plot for rise.
     inputs:
-      - id: avg_rise_config
-        name: Rise averaging config
-        description: Averaging parameters for the rise helical parameter.
-        kind: file
-        path: configs/avg_rise.yaml
+      - *sequence
       - id: canal_rise_ser
         name: Rise series (rise.ser)
         description: Canal per-frame time series for rise.
@@ -718,7 +318,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_rise_config}
+        --config '{"properties":{"helpar_name":"rise","sequence":"${sequence}"}}'
         --input_ser_path ${canal_rise_ser}
         --output_csv_path ${avg_rise_csv}
         --output_jpg_path ${avg_rise_jpg}
@@ -730,11 +330,7 @@ tasks:
     name: Average helical parameters - Roll
     description: Computes the trajectory average and distribution plot for roll.
     inputs:
-      - id: avg_roll_config
-        name: Roll averaging config
-        description: Averaging parameters for the roll helical parameter.
-        kind: file
-        path: configs/avg_roll.yaml
+      - *sequence
       - id: canal_roll_ser
         name: Roll series (roll.ser)
         description: Canal per-frame time series for roll.
@@ -754,7 +350,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_roll_config}
+        --config '{"properties":{"helpar_name":"roll","sequence":"${sequence}"}}'
         --input_ser_path ${canal_roll_ser}
         --output_csv_path ${avg_roll_csv}
         --output_jpg_path ${avg_roll_jpg}
@@ -766,11 +362,7 @@ tasks:
     name: Average helical parameters - Twist
     description: Computes the trajectory average and distribution plot for twist.
     inputs:
-      - id: avg_twist_config
-        name: Twist averaging config
-        description: Averaging parameters for the twist helical parameter.
-        kind: file
-        path: configs/avg_twist.yaml
+      - *sequence
       - id: canal_twist_ser
         name: Twist series (twist.ser)
         description: Canal per-frame time series for twist.
@@ -790,7 +382,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_twist_config}
+        --config '{"properties":{"helpar_name":"twist","sequence":"${sequence}"}}'
         --input_ser_path ${canal_twist_ser}
         --output_csv_path ${avg_twist_csv}
         --output_jpg_path ${avg_twist_jpg}
@@ -802,11 +394,7 @@ tasks:
     name: Average helical parameters - Shift
     description: Computes the trajectory average and distribution plot for shift.
     inputs:
-      - id: avg_shift_config
-        name: Shift averaging config
-        description: Averaging parameters for the shift helical parameter.
-        kind: file
-        path: configs/avg_shift.yaml
+      - *sequence
       - id: canal_shift_ser
         name: Shift series (shift.ser)
         description: Canal per-frame time series for shift.
@@ -826,7 +414,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_shift_config}
+        --config '{"properties":{"helpar_name":"shift","sequence":"${sequence}"}}'
         --input_ser_path ${canal_shift_ser}
         --output_csv_path ${avg_shift_csv}
         --output_jpg_path ${avg_shift_jpg}
@@ -838,11 +426,7 @@ tasks:
     name: Average helical parameters - Slide
     description: Computes the trajectory average and distribution plot for slide.
     inputs:
-      - id: avg_slide_config
-        name: Slide averaging config
-        description: Averaging parameters for the slide helical parameter.
-        kind: file
-        path: configs/avg_slide.yaml
+      - *sequence
       - id: canal_slide_ser
         name: Slide series (slide.ser)
         description: Canal per-frame time series for slide.
@@ -862,7 +446,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_slide_config}
+        --config '{"properties":{"helpar_name":"slide","sequence":"${sequence}"}}'
         --input_ser_path ${canal_slide_ser}
         --output_csv_path ${avg_slide_csv}
         --output_jpg_path ${avg_slide_jpg}
@@ -874,11 +458,7 @@ tasks:
     name: Average helical parameters - Tilt
     description: Computes the trajectory average and distribution plot for tilt.
     inputs:
-      - id: avg_tilt_config
-        name: Tilt averaging config
-        description: Averaging parameters for the tilt helical parameter.
-        kind: file
-        path: configs/avg_tilt.yaml
+      - *sequence
       - id: canal_tilt_ser
         name: Tilt series (tilt.ser)
         description: Canal per-frame time series for tilt.
@@ -898,7 +478,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_tilt_config}
+        --config '{"properties":{"helpar_name":"tilt","sequence":"${sequence}"}}'
         --input_ser_path ${canal_tilt_ser}
         --output_csv_path ${avg_tilt_csv}
         --output_jpg_path ${avg_tilt_jpg}
@@ -911,11 +491,7 @@ tasks:
     name: Average helical parameters - Shear
     description: Computes the trajectory average and distribution plot for shear.
     inputs:
-      - id: avg_shear_config
-        name: Shear averaging config
-        description: Averaging parameters for the shear helical parameter.
-        kind: file
-        path: configs/avg_shear.yaml
+      - *sequence
       - id: canal_shear_ser
         name: Shear series (shear.ser)
         description: Canal per-frame time series for shear.
@@ -935,7 +511,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_shear_config}
+        --config '{"properties":{"helpar_name":"shear","sequence":"${sequence}"}}'
         --input_ser_path ${canal_shear_ser}
         --output_csv_path ${avg_shear_csv}
         --output_jpg_path ${avg_shear_jpg}
@@ -947,11 +523,7 @@ tasks:
     name: Average helical parameters - Stretch
     description: Computes the trajectory average and distribution plot for stretch.
     inputs:
-      - id: avg_stretch_config
-        name: Stretch averaging config
-        description: Averaging parameters for the stretch helical parameter.
-        kind: file
-        path: configs/avg_stretch.yaml
+      - *sequence
       - id: canal_stretch_ser
         name: Stretch series (stretch.ser)
         description: Canal per-frame time series for stretch.
@@ -971,7 +543,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_stretch_config}
+        --config '{"properties":{"helpar_name":"stretch","sequence":"${sequence}"}}'
         --input_ser_path ${canal_stretch_ser}
         --output_csv_path ${avg_stretch_csv}
         --output_jpg_path ${avg_stretch_jpg}
@@ -983,11 +555,7 @@ tasks:
     name: Average helical parameters - Stagger
     description: Computes the trajectory average and distribution plot for stagger.
     inputs:
-      - id: avg_stagger_config
-        name: Stagger averaging config
-        description: Averaging parameters for the stagger helical parameter.
-        kind: file
-        path: configs/avg_stagger.yaml
+      - *sequence
       - id: canal_stagger_ser
         name: Stagger series (stagger.ser)
         description: Canal per-frame time series for stagger.
@@ -1007,7 +575,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_stagger_config}
+        --config '{"properties":{"helpar_name":"stagger","sequence":"${sequence}"}}'
         --input_ser_path ${canal_stagger_ser}
         --output_csv_path ${avg_stagger_csv}
         --output_jpg_path ${avg_stagger_jpg}
@@ -1019,11 +587,7 @@ tasks:
     name: Average helical parameters - Buckle
     description: Computes the trajectory average and distribution plot for buckle.
     inputs:
-      - id: avg_buckle_config
-        name: Buckle averaging config
-        description: Averaging parameters for the buckle helical parameter.
-        kind: file
-        path: configs/avg_buckle.yaml
+      - *sequence
       - id: canal_buckle_ser
         name: Buckle series (buckle.ser)
         description: Canal per-frame time series for buckle.
@@ -1043,7 +607,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_buckle_config}
+        --config '{"properties":{"helpar_name":"buckle","sequence":"${sequence}"}}'
         --input_ser_path ${canal_buckle_ser}
         --output_csv_path ${avg_buckle_csv}
         --output_jpg_path ${avg_buckle_jpg}
@@ -1055,11 +619,7 @@ tasks:
     name: Average helical parameters - Propeller
     description: Computes the trajectory average and distribution plot for propeller.
     inputs:
-      - id: avg_propel_config
-        name: Propeller averaging config
-        description: Averaging parameters for the propeller helical parameter.
-        kind: file
-        path: configs/avg_propel.yaml
+      - *sequence
       - id: canal_propel_ser
         name: Propeller series (propel.ser)
         description: Canal per-frame time series for propeller.
@@ -1079,7 +639,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_propel_config}
+        --config '{"properties":{"helpar_name":"propel","sequence":"${sequence}"}}'
         --input_ser_path ${canal_propel_ser}
         --output_csv_path ${avg_propel_csv}
         --output_jpg_path ${avg_propel_jpg}
@@ -1091,11 +651,7 @@ tasks:
     name: Average helical parameters - Opening
     description: Computes the trajectory average and distribution plot for opening.
     inputs:
-      - id: avg_opening_config
-        name: Opening averaging config
-        description: Averaging parameters for the opening helical parameter.
-        kind: file
-        path: configs/avg_opening.yaml
+      - *sequence
       - id: canal_opening_ser
         name: Opening series (opening.ser)
         description: Canal per-frame time series for opening.
@@ -1115,7 +671,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_opening_config}
+        --config '{"properties":{"helpar_name":"opening","sequence":"${sequence}"}}'
         --input_ser_path ${canal_opening_ser}
         --output_csv_path ${avg_opening_csv}
         --output_jpg_path ${avg_opening_jpg}
@@ -1128,11 +684,7 @@ tasks:
     name: Average helical parameters - Inclination
     description: Computes the trajectory average and distribution plot for inclination.
     inputs:
-      - id: avg_inclin_config
-        name: Inclination averaging config
-        description: Averaging parameters for the inclination helical parameter.
-        kind: file
-        path: configs/avg_inclin.yaml
+      - *sequence
       - id: canal_inclin_ser
         name: Inclination series (inclin.ser)
         description: Canal per-frame time series for inclination.
@@ -1152,7 +704,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_inclin_config}
+        --config '{"properties":{"helpar_name":"inclin","sequence":"${sequence}"}}'
         --input_ser_path ${canal_inclin_ser}
         --output_csv_path ${avg_inclin_csv}
         --output_jpg_path ${avg_inclin_jpg}
@@ -1164,11 +716,7 @@ tasks:
     name: Average helical parameters - Tip
     description: Computes the trajectory average and distribution plot for tip.
     inputs:
-      - id: avg_tip_config
-        name: Tip averaging config
-        description: Averaging parameters for the tip helical parameter.
-        kind: file
-        path: configs/avg_tip.yaml
+      - *sequence
       - id: canal_tip_ser
         name: Tip series (tip.ser)
         description: Canal per-frame time series for tip.
@@ -1188,7 +736,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_tip_config}
+        --config '{"properties":{"helpar_name":"tip","sequence":"${sequence}"}}'
         --input_ser_path ${canal_tip_ser}
         --output_csv_path ${avg_tip_csv}
         --output_jpg_path ${avg_tip_jpg}
@@ -1200,11 +748,7 @@ tasks:
     name: Average helical parameters - X-displacement
     description: Computes the trajectory average and distribution plot for X-displacement.
     inputs:
-      - id: avg_xdisp_config
-        name: X-displacement averaging config
-        description: Averaging parameters for the x-displacement helical parameter.
-        kind: file
-        path: configs/avg_xdisp.yaml
+      - *sequence
       - id: canal_xdisp_ser
         name: X-displacement series (xdisp.ser)
         description: Canal per-frame time series for x-displacement.
@@ -1224,7 +768,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_xdisp_config}
+        --config '{"properties":{"helpar_name":"xdisp","sequence":"${sequence}"}}'
         --input_ser_path ${canal_xdisp_ser}
         --output_csv_path ${avg_xdisp_csv}
         --output_jpg_path ${avg_xdisp_jpg}
@@ -1236,11 +780,7 @@ tasks:
     name: Average helical parameters - Y-displacement
     description: Computes the trajectory average and distribution plot for Y-displacement.
     inputs:
-      - id: avg_ydisp_config
-        name: Y-displacement averaging config
-        description: Averaging parameters for the y-displacement helical parameter.
-        kind: file
-        path: configs/avg_ydisp.yaml
+      - *sequence
       - id: canal_ydisp_ser
         name: Y-displacement series (ydisp.ser)
         description: Canal per-frame time series for y-displacement.
@@ -1260,7 +800,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_ydisp_config}
+        --config '{"properties":{"helpar_name":"ydisp","sequence":"${sequence}"}}'
         --input_ser_path ${canal_ydisp_ser}
         --output_csv_path ${avg_ydisp_csv}
         --output_jpg_path ${avg_ydisp_jpg}
@@ -1273,11 +813,7 @@ tasks:
     name: Average helical parameters - Major Groove Depth
     description: Computes the trajectory average and distribution plot for major groove depth.
     inputs:
-      - id: avg_majd_config
-        name: Major groove depth averaging config
-        description: Averaging parameters for the major groove depth helical parameter.
-        kind: file
-        path: configs/avg_majd.yaml
+      - *sequence
       - id: canal_majd_ser
         name: Major groove depth series (majd.ser)
         description: Canal per-frame time series for major groove depth.
@@ -1297,7 +833,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_majd_config}
+        --config '{"properties":{"helpar_name":"majd","sequence":"${sequence}"}}'
         --input_ser_path ${canal_majd_ser}
         --output_csv_path ${avg_majd_csv}
         --output_jpg_path ${avg_majd_jpg}
@@ -1309,11 +845,7 @@ tasks:
     name: Average helical parameters - Major Groove Width
     description: Computes the trajectory average and distribution plot for major groove width.
     inputs:
-      - id: avg_majw_config
-        name: Major groove width averaging config
-        description: Averaging parameters for the major groove width helical parameter.
-        kind: file
-        path: configs/avg_majw.yaml
+      - *sequence
       - id: canal_majw_ser
         name: Major groove width series (majw.ser)
         description: Canal per-frame time series for major groove width.
@@ -1333,7 +865,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_majw_config}
+        --config '{"properties":{"helpar_name":"majw","sequence":"${sequence}"}}'
         --input_ser_path ${canal_majw_ser}
         --output_csv_path ${avg_majw_csv}
         --output_jpg_path ${avg_majw_jpg}
@@ -1345,11 +877,7 @@ tasks:
     name: Average helical parameters - Minor Groove Depth
     description: Computes the trajectory average and distribution plot for minor groove depth.
     inputs:
-      - id: avg_mind_config
-        name: Minor groove depth averaging config
-        description: Averaging parameters for the minor groove depth helical parameter.
-        kind: file
-        path: configs/avg_mind.yaml
+      - *sequence
       - id: canal_mind_ser
         name: Minor groove depth series (mind.ser)
         description: Canal per-frame time series for minor groove depth.
@@ -1369,7 +897,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_mind_config}
+        --config '{"properties":{"helpar_name":"mind","sequence":"${sequence}"}}'
         --input_ser_path ${canal_mind_ser}
         --output_csv_path ${avg_mind_csv}
         --output_jpg_path ${avg_mind_jpg}
@@ -1381,11 +909,7 @@ tasks:
     name: Average helical parameters - Minor Groove Width
     description: Computes the trajectory average and distribution plot for minor groove width.
     inputs:
-      - id: avg_minw_config
-        name: Minor groove width averaging config
-        description: Averaging parameters for the minor groove width helical parameter.
-        kind: file
-        path: configs/avg_minw.yaml
+      - *sequence
       - id: canal_minw_ser
         name: Minor groove width series (minw.ser)
         description: Canal per-frame time series for minor groove width.
@@ -1405,7 +929,7 @@ tasks:
       kind: command
       command: >-
         dna_averages
-        --config ${avg_minw_config}
+        --config '{"properties":{"helpar_name":"minw","sequence":"${sequence}"}}'
         --input_ser_path ${canal_minw_ser}
         --output_csv_path ${avg_minw_csv}
         --output_jpg_path ${avg_minw_jpg}
@@ -1418,11 +942,7 @@ tasks:
     name: Compute sugar puckering populations
     description: Computes sugar puckering populations from the phase angle time series.
     inputs:
-      - id: puckering_config
-        name: Sugar puckering config
-        description: Parameters for computing sugar puckering populations.
-        kind: file
-        path: configs/puckering.yaml
+      - *sequence
       - id: canal_phaseC_ser
         name: Sugar phase angle (Crick strand) series (phaseC.ser)
         description: Canal per-frame time series for sugar phase angle (crick strand).
@@ -1447,7 +967,7 @@ tasks:
       kind: command
       command: >-
         puckering
-        --config ${puckering_config}
+        --config '{"properties":{"sequence":"${sequence}"}}'
         --input_phaseC_path ${canal_phaseC_ser}
         --input_phaseW_path ${canal_phaseW_ser}
         --output_csv_path ${puckering_csv}
@@ -1461,11 +981,7 @@ tasks:
     name: Compute canonical alpha/gamma backbone populations
     description: Computes canonical alpha/gamma backbone conformer populations.
     inputs:
-      - id: canonicalag_config
-        name: Canonical alpha/gamma config
-        description: Parameters for computing canonical alpha/gamma backbone populations.
-        kind: file
-        path: configs/canonicalag.yaml
+      - *sequence
       - id: canal_alphaC_ser
         name: Alpha torsion (Crick strand) series (alphaC.ser)
         description: Canal per-frame time series for alpha torsion (crick strand).
@@ -1500,7 +1016,7 @@ tasks:
       kind: command
       command: >-
         canonicalag
-        --config ${canonicalag_config}
+        --config '{"properties":{"sequence":"${sequence}"}}'
         --input_alphaC_path ${canal_alphaC_ser}
         --input_alphaW_path ${canal_alphaW_ser}
         --input_gammaC_path ${canal_gammaC_ser}
@@ -1516,11 +1032,7 @@ tasks:
     name: Compute BI/BII backbone populations
     description: Computes BI/BII backbone conformer populations.
     inputs:
-      - id: bipopulations_config
-        name: BI/BII populations config
-        description: Parameters for computing BI/BII backbone populations.
-        kind: file
-        path: configs/bipopulations.yaml
+      - *sequence
       - id: canal_epsilC_ser
         name: Epsilon torsion (Crick strand) series (epsilC.ser)
         description: Canal per-frame time series for epsilon torsion (crick strand).
@@ -1555,7 +1067,7 @@ tasks:
       kind: command
       command: >-
         bipopulations
-        --config ${bipopulations_config}
+        --config '{"properties":{"sequence":"${sequence}"}}'
         --input_epsilC_path ${canal_epsilC_ser}
         --input_epsilW_path ${canal_epsilW_ser}
         --input_zetaC_path ${canal_zetaC_ser}
@@ -1571,11 +1083,7 @@ tasks:
     name: Time series helical parameters - Rise
     description: Extracts the per-frame time series for rise.
     inputs:
-      - id: ts_rise_config
-        name: Rise time-series config
-        description: Time-series parameters for the rise helical parameter.
-        kind: file
-        path: configs/ts_rise.yaml
+      - *sequence
       - id: canal_rise_ser
         name: Rise series (rise.ser)
         description: Canal per-frame time series for rise.
@@ -1589,16 +1097,17 @@ tasks:
       - id: ts_rise_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_rise_CG.csv
+        path: results/timeseries/series_rise_step3.csv
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_rise_config}
+        --config '{"properties":{"helpar_name":"rise","sequence":"${sequence}"}}'
         --input_ser_path ${canal_rise_ser}
         --output_zip_path ${ts_rise_zip}
-        && unzip -o ${ts_rise_zip} -d results/timeseries
+        && unzip -o ${ts_rise_zip} -d "$$(dirname ${ts_rise_zip})/timeseries"
+        && cp "$$(dirname ${ts_rise_zip})/timeseries/series_rise_3_"*.csv ${ts_rise_CG_csv}
     target:
       kind: local
 
@@ -1607,11 +1116,7 @@ tasks:
     name: Time series helical parameters - Roll
     description: Extracts the per-frame time series for roll.
     inputs:
-      - id: ts_roll_config
-        name: Roll time-series config
-        description: Time-series parameters for the roll helical parameter.
-        kind: file
-        path: configs/ts_roll.yaml
+      - *sequence
       - id: canal_roll_ser
         name: Roll series (roll.ser)
         description: Canal per-frame time series for roll.
@@ -1625,16 +1130,17 @@ tasks:
       - id: ts_roll_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_roll_CG.csv
+        path: results/timeseries/series_roll_step3.csv
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_roll_config}
+        --config '{"properties":{"helpar_name":"roll","sequence":"${sequence}"}}'
         --input_ser_path ${canal_roll_ser}
         --output_zip_path ${ts_roll_zip}
-        && unzip -o ${ts_roll_zip} -d results/timeseries
+        && unzip -o ${ts_roll_zip} -d "$$(dirname ${ts_roll_zip})/timeseries"
+        && cp "$$(dirname ${ts_roll_zip})/timeseries/series_roll_3_"*.csv ${ts_roll_CG_csv}
     target:
       kind: local
 
@@ -1643,11 +1149,7 @@ tasks:
     name: Time series helical parameters - Twist
     description: Extracts the per-frame time series for twist.
     inputs:
-      - id: ts_twist_config
-        name: Twist time-series config
-        description: Time-series parameters for the twist helical parameter.
-        kind: file
-        path: configs/ts_twist.yaml
+      - *sequence
       - id: canal_twist_ser
         name: Twist series (twist.ser)
         description: Canal per-frame time series for twist.
@@ -1661,16 +1163,17 @@ tasks:
       - id: ts_twist_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_twist_CG.csv
+        path: results/timeseries/series_twist_step3.csv
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_twist_config}
+        --config '{"properties":{"helpar_name":"twist","sequence":"${sequence}"}}'
         --input_ser_path ${canal_twist_ser}
         --output_zip_path ${ts_twist_zip}
-        && unzip -o ${ts_twist_zip} -d results/timeseries
+        && unzip -o ${ts_twist_zip} -d "$$(dirname ${ts_twist_zip})/timeseries"
+        && cp "$$(dirname ${ts_twist_zip})/timeseries/series_twist_3_"*.csv ${ts_twist_CG_csv}
     target:
       kind: local
 
@@ -1679,11 +1182,7 @@ tasks:
     name: Time series helical parameters - Shift
     description: Extracts the per-frame time series for shift.
     inputs:
-      - id: ts_shift_config
-        name: Shift time-series config
-        description: Time-series parameters for the shift helical parameter.
-        kind: file
-        path: configs/ts_shift.yaml
+      - *sequence
       - id: canal_shift_ser
         name: Shift series (shift.ser)
         description: Canal per-frame time series for shift.
@@ -1697,16 +1196,17 @@ tasks:
       - id: ts_shift_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_shift_CG.csv
+        path: results/timeseries/series_shift_step3.csv
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_shift_config}
+        --config '{"properties":{"helpar_name":"shift","sequence":"${sequence}"}}'
         --input_ser_path ${canal_shift_ser}
         --output_zip_path ${ts_shift_zip}
-        && unzip -o ${ts_shift_zip} -d results/timeseries
+        && unzip -o ${ts_shift_zip} -d "$$(dirname ${ts_shift_zip})/timeseries"
+        && cp "$$(dirname ${ts_shift_zip})/timeseries/series_shift_3_"*.csv ${ts_shift_CG_csv}
     target:
       kind: local
 
@@ -1715,11 +1215,7 @@ tasks:
     name: Time series helical parameters - Slide
     description: Extracts the per-frame time series for slide.
     inputs:
-      - id: ts_slide_config
-        name: Slide time-series config
-        description: Time-series parameters for the slide helical parameter.
-        kind: file
-        path: configs/ts_slide.yaml
+      - *sequence
       - id: canal_slide_ser
         name: Slide series (slide.ser)
         description: Canal per-frame time series for slide.
@@ -1733,16 +1229,17 @@ tasks:
       - id: ts_slide_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_slide_CG.csv
+        path: results/timeseries/series_slide_step3.csv
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_slide_config}
+        --config '{"properties":{"helpar_name":"slide","sequence":"${sequence}"}}'
         --input_ser_path ${canal_slide_ser}
         --output_zip_path ${ts_slide_zip}
-        && unzip -o ${ts_slide_zip} -d results/timeseries
+        && unzip -o ${ts_slide_zip} -d "$$(dirname ${ts_slide_zip})/timeseries"
+        && cp "$$(dirname ${ts_slide_zip})/timeseries/series_slide_3_"*.csv ${ts_slide_CG_csv}
     target:
       kind: local
 
@@ -1751,11 +1248,7 @@ tasks:
     name: Time series helical parameters - Tilt
     description: Extracts the per-frame time series for tilt.
     inputs:
-      - id: ts_tilt_config
-        name: Tilt time-series config
-        description: Time-series parameters for the tilt helical parameter.
-        kind: file
-        path: configs/ts_tilt.yaml
+      - *sequence
       - id: canal_tilt_ser
         name: Tilt series (tilt.ser)
         description: Canal per-frame time series for tilt.
@@ -1769,16 +1262,17 @@ tasks:
       - id: ts_tilt_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_tilt_CG.csv
+        path: results/timeseries/series_tilt_step3.csv
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_tilt_config}
+        --config '{"properties":{"helpar_name":"tilt","sequence":"${sequence}"}}'
         --input_ser_path ${canal_tilt_ser}
         --output_zip_path ${ts_tilt_zip}
-        && unzip -o ${ts_tilt_zip} -d results/timeseries
+        && unzip -o ${ts_tilt_zip} -d "$$(dirname ${ts_tilt_zip})/timeseries"
+        && cp "$$(dirname ${ts_tilt_zip})/timeseries/series_tilt_3_"*.csv ${ts_tilt_CG_csv}
     target:
       kind: local
 
@@ -1788,11 +1282,7 @@ tasks:
     name: Time series helical parameters - Shear
     description: Extracts the per-frame time series for shear.
     inputs:
-      - id: ts_shear_config
-        name: Shear time-series config
-        description: Time-series parameters for the shear helical parameter.
-        kind: file
-        path: configs/ts_shear.yaml
+      - *sequence
       - id: canal_shear_ser
         name: Shear series (shear.ser)
         description: Canal per-frame time series for shear.
@@ -1806,16 +1296,17 @@ tasks:
       - id: ts_shear_C_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_shear_C.csv
+        path: results/timeseries/series_shear_bp3.csv
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_shear_config}
+        --config '{"properties":{"helpar_name":"shear","sequence":"${sequence}"}}'
         --input_ser_path ${canal_shear_ser}
         --output_zip_path ${ts_shear_zip}
-        && unzip -o ${ts_shear_zip} -d results/timeseries
+        && unzip -o ${ts_shear_zip} -d "$$(dirname ${ts_shear_zip})/timeseries"
+        && cp "$$(dirname ${ts_shear_zip})/timeseries/series_shear_3_"*.csv ${ts_shear_C_csv}
     target:
       kind: local
 
@@ -1824,11 +1315,7 @@ tasks:
     name: Time series helical parameters - Stretch
     description: Extracts the per-frame time series for stretch.
     inputs:
-      - id: ts_stretch_config
-        name: Stretch time-series config
-        description: Time-series parameters for the stretch helical parameter.
-        kind: file
-        path: configs/ts_stretch.yaml
+      - *sequence
       - id: canal_stretch_ser
         name: Stretch series (stretch.ser)
         description: Canal per-frame time series for stretch.
@@ -1842,16 +1329,17 @@ tasks:
       - id: ts_stretch_C_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_stretch_C.csv
+        path: results/timeseries/series_stretch_bp3.csv
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_stretch_config}
+        --config '{"properties":{"helpar_name":"stretch","sequence":"${sequence}"}}'
         --input_ser_path ${canal_stretch_ser}
         --output_zip_path ${ts_stretch_zip}
-        && unzip -o ${ts_stretch_zip} -d results/timeseries
+        && unzip -o ${ts_stretch_zip} -d "$$(dirname ${ts_stretch_zip})/timeseries"
+        && cp "$$(dirname ${ts_stretch_zip})/timeseries/series_stretch_3_"*.csv ${ts_stretch_C_csv}
     target:
       kind: local
 
@@ -1860,11 +1348,7 @@ tasks:
     name: Time series helical parameters - Stagger
     description: Extracts the per-frame time series for stagger.
     inputs:
-      - id: ts_stagger_config
-        name: Stagger time-series config
-        description: Time-series parameters for the stagger helical parameter.
-        kind: file
-        path: configs/ts_stagger.yaml
+      - *sequence
       - id: canal_stagger_ser
         name: Stagger series (stagger.ser)
         description: Canal per-frame time series for stagger.
@@ -1878,16 +1362,17 @@ tasks:
       - id: ts_stagger_C_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_stagger_C.csv
+        path: results/timeseries/series_stagger_bp3.csv
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_stagger_config}
+        --config '{"properties":{"helpar_name":"stagger","sequence":"${sequence}"}}'
         --input_ser_path ${canal_stagger_ser}
         --output_zip_path ${ts_stagger_zip}
-        && unzip -o ${ts_stagger_zip} -d results/timeseries
+        && unzip -o ${ts_stagger_zip} -d "$$(dirname ${ts_stagger_zip})/timeseries"
+        && cp "$$(dirname ${ts_stagger_zip})/timeseries/series_stagger_3_"*.csv ${ts_stagger_C_csv}
     target:
       kind: local
 
@@ -1896,11 +1381,7 @@ tasks:
     name: Time series helical parameters - Buckle
     description: Extracts the per-frame time series for buckle.
     inputs:
-      - id: ts_buckle_config
-        name: Buckle time-series config
-        description: Time-series parameters for the buckle helical parameter.
-        kind: file
-        path: configs/ts_buckle.yaml
+      - *sequence
       - id: canal_buckle_ser
         name: Buckle series (buckle.ser)
         description: Canal per-frame time series for buckle.
@@ -1914,16 +1395,17 @@ tasks:
       - id: ts_buckle_C_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_buckle_C.csv
+        path: results/timeseries/series_buckle_bp3.csv
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_buckle_config}
+        --config '{"properties":{"helpar_name":"buckle","sequence":"${sequence}"}}'
         --input_ser_path ${canal_buckle_ser}
         --output_zip_path ${ts_buckle_zip}
-        && unzip -o ${ts_buckle_zip} -d results/timeseries
+        && unzip -o ${ts_buckle_zip} -d "$$(dirname ${ts_buckle_zip})/timeseries"
+        && cp "$$(dirname ${ts_buckle_zip})/timeseries/series_buckle_3_"*.csv ${ts_buckle_C_csv}
     target:
       kind: local
 
@@ -1932,11 +1414,7 @@ tasks:
     name: Time series helical parameters - Propeller
     description: Extracts the per-frame time series for propeller.
     inputs:
-      - id: ts_propel_config
-        name: Propeller time-series config
-        description: Time-series parameters for the propeller helical parameter.
-        kind: file
-        path: configs/ts_propel.yaml
+      - *sequence
       - id: canal_propel_ser
         name: Propeller series (propel.ser)
         description: Canal per-frame time series for propeller.
@@ -1950,16 +1428,17 @@ tasks:
       - id: ts_propel_C_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_propel_C.csv
+        path: results/timeseries/series_propel_bp3.csv
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_propel_config}
+        --config '{"properties":{"helpar_name":"propel","sequence":"${sequence}"}}'
         --input_ser_path ${canal_propel_ser}
         --output_zip_path ${ts_propel_zip}
-        && unzip -o ${ts_propel_zip} -d results/timeseries
+        && unzip -o ${ts_propel_zip} -d "$$(dirname ${ts_propel_zip})/timeseries"
+        && cp "$$(dirname ${ts_propel_zip})/timeseries/series_propel_3_"*.csv ${ts_propel_C_csv}
     target:
       kind: local
 
@@ -1968,11 +1447,7 @@ tasks:
     name: Time series helical parameters - Opening
     description: Extracts the per-frame time series for opening.
     inputs:
-      - id: ts_opening_config
-        name: Opening time-series config
-        description: Time-series parameters for the opening helical parameter.
-        kind: file
-        path: configs/ts_opening.yaml
+      - *sequence
       - id: canal_opening_ser
         name: Opening series (opening.ser)
         description: Canal per-frame time series for opening.
@@ -1986,16 +1461,17 @@ tasks:
       - id: ts_opening_C_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_opening_C.csv
+        path: results/timeseries/series_opening_bp3.csv
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_opening_config}
+        --config '{"properties":{"helpar_name":"opening","sequence":"${sequence}"}}'
         --input_ser_path ${canal_opening_ser}
         --output_zip_path ${ts_opening_zip}
-        && unzip -o ${ts_opening_zip} -d results/timeseries
+        && unzip -o ${ts_opening_zip} -d "$$(dirname ${ts_opening_zip})/timeseries"
+        && cp "$$(dirname ${ts_opening_zip})/timeseries/series_opening_3_"*.csv ${ts_opening_C_csv}
     target:
       kind: local
 
@@ -2005,11 +1481,7 @@ tasks:
     name: Time series helical parameters - Inclination
     description: Extracts the per-frame time series for inclination.
     inputs:
-      - id: ts_inclin_config
-        name: Inclination time-series config
-        description: Time-series parameters for the inclination helical parameter.
-        kind: file
-        path: configs/ts_inclin.yaml
+      - *sequence
       - id: canal_inclin_ser
         name: Inclination series (inclin.ser)
         description: Canal per-frame time series for inclination.
@@ -2025,10 +1497,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_inclin_config}
+        --config '{"properties":{"helpar_name":"inclin","sequence":"${sequence}"}}'
         --input_ser_path ${canal_inclin_ser}
         --output_zip_path ${ts_inclin_zip}
-        && unzip -o ${ts_inclin_zip} -d results/timeseries
+        && unzip -o ${ts_inclin_zip} -d "$$(dirname ${ts_inclin_zip})/timeseries"
     target:
       kind: local
 
@@ -2037,11 +1509,7 @@ tasks:
     name: Time series helical parameters - Tip
     description: Extracts the per-frame time series for tip.
     inputs:
-      - id: ts_tip_config
-        name: Tip time-series config
-        description: Time-series parameters for the tip helical parameter.
-        kind: file
-        path: configs/ts_tip.yaml
+      - *sequence
       - id: canal_tip_ser
         name: Tip series (tip.ser)
         description: Canal per-frame time series for tip.
@@ -2057,10 +1525,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_tip_config}
+        --config '{"properties":{"helpar_name":"tip","sequence":"${sequence}"}}'
         --input_ser_path ${canal_tip_ser}
         --output_zip_path ${ts_tip_zip}
-        && unzip -o ${ts_tip_zip} -d results/timeseries
+        && unzip -o ${ts_tip_zip} -d "$$(dirname ${ts_tip_zip})/timeseries"
     target:
       kind: local
 
@@ -2069,11 +1537,7 @@ tasks:
     name: Time series helical parameters - X-displacement
     description: Extracts the per-frame time series for X-displacement.
     inputs:
-      - id: ts_xdisp_config
-        name: X-displacement time-series config
-        description: Time-series parameters for the x-displacement helical parameter.
-        kind: file
-        path: configs/ts_xdisp.yaml
+      - *sequence
       - id: canal_xdisp_ser
         name: X-displacement series (xdisp.ser)
         description: Canal per-frame time series for x-displacement.
@@ -2089,10 +1553,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_xdisp_config}
+        --config '{"properties":{"helpar_name":"xdisp","sequence":"${sequence}"}}'
         --input_ser_path ${canal_xdisp_ser}
         --output_zip_path ${ts_xdisp_zip}
-        && unzip -o ${ts_xdisp_zip} -d results/timeseries
+        && unzip -o ${ts_xdisp_zip} -d "$$(dirname ${ts_xdisp_zip})/timeseries"
     target:
       kind: local
 
@@ -2101,11 +1565,7 @@ tasks:
     name: Time series helical parameters - Y-displacement
     description: Extracts the per-frame time series for Y-displacement.
     inputs:
-      - id: ts_ydisp_config
-        name: Y-displacement time-series config
-        description: Time-series parameters for the y-displacement helical parameter.
-        kind: file
-        path: configs/ts_ydisp.yaml
+      - *sequence
       - id: canal_ydisp_ser
         name: Y-displacement series (ydisp.ser)
         description: Canal per-frame time series for y-displacement.
@@ -2121,10 +1581,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_ydisp_config}
+        --config '{"properties":{"helpar_name":"ydisp","sequence":"${sequence}"}}'
         --input_ser_path ${canal_ydisp_ser}
         --output_zip_path ${ts_ydisp_zip}
-        && unzip -o ${ts_ydisp_zip} -d results/timeseries
+        && unzip -o ${ts_ydisp_zip} -d "$$(dirname ${ts_ydisp_zip})/timeseries"
     target:
       kind: local
 
@@ -2134,11 +1594,7 @@ tasks:
     name: Time series helical parameters - Major Groove Depth
     description: Extracts the per-frame time series for major groove depth.
     inputs:
-      - id: ts_majd_config
-        name: Major groove depth time-series config
-        description: Time-series parameters for the major groove depth helical parameter.
-        kind: file
-        path: configs/ts_majd.yaml
+      - *sequence
       - id: canal_majd_ser
         name: Major groove depth series (majd.ser)
         description: Canal per-frame time series for major groove depth.
@@ -2154,10 +1610,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_majd_config}
+        --config '{"properties":{"helpar_name":"majd","sequence":"${sequence}"}}'
         --input_ser_path ${canal_majd_ser}
         --output_zip_path ${ts_majd_zip}
-        && unzip -o ${ts_majd_zip} -d results/timeseries
+        && unzip -o ${ts_majd_zip} -d "$$(dirname ${ts_majd_zip})/timeseries"
     target:
       kind: local
 
@@ -2166,11 +1622,7 @@ tasks:
     name: Time series helical parameters - Major Groove Width
     description: Extracts the per-frame time series for major groove width.
     inputs:
-      - id: ts_majw_config
-        name: Major groove width time-series config
-        description: Time-series parameters for the major groove width helical parameter.
-        kind: file
-        path: configs/ts_majw.yaml
+      - *sequence
       - id: canal_majw_ser
         name: Major groove width series (majw.ser)
         description: Canal per-frame time series for major groove width.
@@ -2186,10 +1638,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_majw_config}
+        --config '{"properties":{"helpar_name":"majw","sequence":"${sequence}"}}'
         --input_ser_path ${canal_majw_ser}
         --output_zip_path ${ts_majw_zip}
-        && unzip -o ${ts_majw_zip} -d results/timeseries
+        && unzip -o ${ts_majw_zip} -d "$$(dirname ${ts_majw_zip})/timeseries"
     target:
       kind: local
 
@@ -2198,11 +1650,7 @@ tasks:
     name: Time series helical parameters - Minor Groove Depth
     description: Extracts the per-frame time series for minor groove depth.
     inputs:
-      - id: ts_mind_config
-        name: Minor groove depth time-series config
-        description: Time-series parameters for the minor groove depth helical parameter.
-        kind: file
-        path: configs/ts_mind.yaml
+      - *sequence
       - id: canal_mind_ser
         name: Minor groove depth series (mind.ser)
         description: Canal per-frame time series for minor groove depth.
@@ -2218,10 +1666,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_mind_config}
+        --config '{"properties":{"helpar_name":"mind","sequence":"${sequence}"}}'
         --input_ser_path ${canal_mind_ser}
         --output_zip_path ${ts_mind_zip}
-        && unzip -o ${ts_mind_zip} -d results/timeseries
+        && unzip -o ${ts_mind_zip} -d "$$(dirname ${ts_mind_zip})/timeseries"
     target:
       kind: local
 
@@ -2230,11 +1678,7 @@ tasks:
     name: Time series helical parameters - Minor Groove Width
     description: Extracts the per-frame time series for minor groove width.
     inputs:
-      - id: ts_minw_config
-        name: Minor groove width time-series config
-        description: Time-series parameters for the minor groove width helical parameter.
-        kind: file
-        path: configs/ts_minw.yaml
+      - *sequence
       - id: canal_minw_ser
         name: Minor groove width series (minw.ser)
         description: Canal per-frame time series for minor groove width.
@@ -2250,10 +1694,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_minw_config}
+        --config '{"properties":{"helpar_name":"minw","sequence":"${sequence}"}}'
         --input_ser_path ${canal_minw_ser}
         --output_zip_path ${ts_minw_zip}
-        && unzip -o ${ts_minw_zip} -d results/timeseries
+        && unzip -o ${ts_minw_zip} -d "$$(dirname ${ts_minw_zip})/timeseries"
     target:
       kind: local
 
@@ -2263,11 +1707,7 @@ tasks:
     name: Time series backbone torsion - alphaC
     description: Extracts the per-frame time series for alpha torsion (Crick strand).
     inputs:
-      - id: ts_alphaC_config
-        name: Alpha torsion (Crick strand) time-series config
-        description: Time-series parameters for the alpha torsion (crick strand) helical parameter.
-        kind: file
-        path: configs/ts_alphaC.yaml
+      - *sequence
       - id: canal_alphaC_ser
         name: Alpha torsion (Crick strand) series (alphaC.ser)
         description: Canal per-frame time series for alpha torsion (crick strand).
@@ -2283,10 +1723,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_alphaC_config}
+        --config '{"properties":{"helpar_name":"alphaC","sequence":"${sequence}"}}'
         --input_ser_path ${canal_alphaC_ser}
         --output_zip_path ${ts_alphaC_zip}
-        && unzip -o ${ts_alphaC_zip} -d results/timeseries
+        && unzip -o ${ts_alphaC_zip} -d "$$(dirname ${ts_alphaC_zip})/timeseries"
     target:
       kind: local
 
@@ -2295,11 +1735,7 @@ tasks:
     name: Time series backbone torsion - alphaW
     description: Extracts the per-frame time series for alpha torsion (Watson strand).
     inputs:
-      - id: ts_alphaW_config
-        name: Alpha torsion (Watson strand) time-series config
-        description: Time-series parameters for the alpha torsion (watson strand) helical parameter.
-        kind: file
-        path: configs/ts_alphaW.yaml
+      - *sequence
       - id: canal_alphaW_ser
         name: Alpha torsion (Watson strand) series (alphaW.ser)
         description: Canal per-frame time series for alpha torsion (watson strand).
@@ -2315,10 +1751,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_alphaW_config}
+        --config '{"properties":{"helpar_name":"alphaW","sequence":"${sequence}"}}'
         --input_ser_path ${canal_alphaW_ser}
         --output_zip_path ${ts_alphaW_zip}
-        && unzip -o ${ts_alphaW_zip} -d results/timeseries
+        && unzip -o ${ts_alphaW_zip} -d "$$(dirname ${ts_alphaW_zip})/timeseries"
     target:
       kind: local
 
@@ -2327,11 +1763,7 @@ tasks:
     name: Time series backbone torsion - betaC
     description: Extracts the per-frame time series for beta torsion (Crick strand).
     inputs:
-      - id: ts_betaC_config
-        name: Beta torsion (Crick strand) time-series config
-        description: Time-series parameters for the beta torsion (crick strand) helical parameter.
-        kind: file
-        path: configs/ts_betaC.yaml
+      - *sequence
       - id: canal_betaC_ser
         name: Beta torsion (Crick strand) series (betaC.ser)
         description: Canal per-frame time series for beta torsion (crick strand).
@@ -2347,10 +1779,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_betaC_config}
+        --config '{"properties":{"helpar_name":"betaC","sequence":"${sequence}"}}'
         --input_ser_path ${canal_betaC_ser}
         --output_zip_path ${ts_betaC_zip}
-        && unzip -o ${ts_betaC_zip} -d results/timeseries
+        && unzip -o ${ts_betaC_zip} -d "$$(dirname ${ts_betaC_zip})/timeseries"
     target:
       kind: local
 
@@ -2359,11 +1791,7 @@ tasks:
     name: Time series backbone torsion - betaW
     description: Extracts the per-frame time series for beta torsion (Watson strand).
     inputs:
-      - id: ts_betaW_config
-        name: Beta torsion (Watson strand) time-series config
-        description: Time-series parameters for the beta torsion (watson strand) helical parameter.
-        kind: file
-        path: configs/ts_betaW.yaml
+      - *sequence
       - id: canal_betaW_ser
         name: Beta torsion (Watson strand) series (betaW.ser)
         description: Canal per-frame time series for beta torsion (watson strand).
@@ -2379,10 +1807,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_betaW_config}
+        --config '{"properties":{"helpar_name":"betaW","sequence":"${sequence}"}}'
         --input_ser_path ${canal_betaW_ser}
         --output_zip_path ${ts_betaW_zip}
-        && unzip -o ${ts_betaW_zip} -d results/timeseries
+        && unzip -o ${ts_betaW_zip} -d "$$(dirname ${ts_betaW_zip})/timeseries"
     target:
       kind: local
 
@@ -2391,11 +1819,7 @@ tasks:
     name: Time series backbone torsion - gammaC
     description: Extracts the per-frame time series for gamma torsion (Crick strand).
     inputs:
-      - id: ts_gammaC_config
-        name: Gamma torsion (Crick strand) time-series config
-        description: Time-series parameters for the gamma torsion (crick strand) helical parameter.
-        kind: file
-        path: configs/ts_gammaC.yaml
+      - *sequence
       - id: canal_gammaC_ser
         name: Gamma torsion (Crick strand) series (gammaC.ser)
         description: Canal per-frame time series for gamma torsion (crick strand).
@@ -2411,10 +1835,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_gammaC_config}
+        --config '{"properties":{"helpar_name":"gammaC","sequence":"${sequence}"}}'
         --input_ser_path ${canal_gammaC_ser}
         --output_zip_path ${ts_gammaC_zip}
-        && unzip -o ${ts_gammaC_zip} -d results/timeseries
+        && unzip -o ${ts_gammaC_zip} -d "$$(dirname ${ts_gammaC_zip})/timeseries"
     target:
       kind: local
 
@@ -2423,11 +1847,7 @@ tasks:
     name: Time series backbone torsion - gammaW
     description: Extracts the per-frame time series for gamma torsion (Watson strand).
     inputs:
-      - id: ts_gammaW_config
-        name: Gamma torsion (Watson strand) time-series config
-        description: Time-series parameters for the gamma torsion (watson strand) helical parameter.
-        kind: file
-        path: configs/ts_gammaW.yaml
+      - *sequence
       - id: canal_gammaW_ser
         name: Gamma torsion (Watson strand) series (gammaW.ser)
         description: Canal per-frame time series for gamma torsion (watson strand).
@@ -2443,10 +1863,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_gammaW_config}
+        --config '{"properties":{"helpar_name":"gammaW","sequence":"${sequence}"}}'
         --input_ser_path ${canal_gammaW_ser}
         --output_zip_path ${ts_gammaW_zip}
-        && unzip -o ${ts_gammaW_zip} -d results/timeseries
+        && unzip -o ${ts_gammaW_zip} -d "$$(dirname ${ts_gammaW_zip})/timeseries"
     target:
       kind: local
 
@@ -2455,11 +1875,7 @@ tasks:
     name: Time series backbone torsion - deltaC
     description: Extracts the per-frame time series for delta torsion (Crick strand).
     inputs:
-      - id: ts_deltaC_config
-        name: Delta torsion (Crick strand) time-series config
-        description: Time-series parameters for the delta torsion (crick strand) helical parameter.
-        kind: file
-        path: configs/ts_deltaC.yaml
+      - *sequence
       - id: canal_deltaC_ser
         name: Delta torsion (Crick strand) series (deltaC.ser)
         description: Canal per-frame time series for delta torsion (crick strand).
@@ -2475,10 +1891,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_deltaC_config}
+        --config '{"properties":{"helpar_name":"deltaC","sequence":"${sequence}"}}'
         --input_ser_path ${canal_deltaC_ser}
         --output_zip_path ${ts_deltaC_zip}
-        && unzip -o ${ts_deltaC_zip} -d results/timeseries
+        && unzip -o ${ts_deltaC_zip} -d "$$(dirname ${ts_deltaC_zip})/timeseries"
     target:
       kind: local
 
@@ -2487,11 +1903,7 @@ tasks:
     name: Time series backbone torsion - deltaW
     description: Extracts the per-frame time series for delta torsion (Watson strand).
     inputs:
-      - id: ts_deltaW_config
-        name: Delta torsion (Watson strand) time-series config
-        description: Time-series parameters for the delta torsion (watson strand) helical parameter.
-        kind: file
-        path: configs/ts_deltaW.yaml
+      - *sequence
       - id: canal_deltaW_ser
         name: Delta torsion (Watson strand) series (deltaW.ser)
         description: Canal per-frame time series for delta torsion (watson strand).
@@ -2507,10 +1919,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_deltaW_config}
+        --config '{"properties":{"helpar_name":"deltaW","sequence":"${sequence}"}}'
         --input_ser_path ${canal_deltaW_ser}
         --output_zip_path ${ts_deltaW_zip}
-        && unzip -o ${ts_deltaW_zip} -d results/timeseries
+        && unzip -o ${ts_deltaW_zip} -d "$$(dirname ${ts_deltaW_zip})/timeseries"
     target:
       kind: local
 
@@ -2519,11 +1931,7 @@ tasks:
     name: Time series backbone torsion - epsilC
     description: Extracts the per-frame time series for epsilon torsion (Crick strand).
     inputs:
-      - id: ts_epsilC_config
-        name: Epsilon torsion (Crick strand) time-series config
-        description: Time-series parameters for the epsilon torsion (crick strand) helical parameter.
-        kind: file
-        path: configs/ts_epsilC.yaml
+      - *sequence
       - id: canal_epsilC_ser
         name: Epsilon torsion (Crick strand) series (epsilC.ser)
         description: Canal per-frame time series for epsilon torsion (crick strand).
@@ -2539,10 +1947,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_epsilC_config}
+        --config '{"properties":{"helpar_name":"epsilC","sequence":"${sequence}"}}'
         --input_ser_path ${canal_epsilC_ser}
         --output_zip_path ${ts_epsilC_zip}
-        && unzip -o ${ts_epsilC_zip} -d results/timeseries
+        && unzip -o ${ts_epsilC_zip} -d "$$(dirname ${ts_epsilC_zip})/timeseries"
     target:
       kind: local
 
@@ -2551,11 +1959,7 @@ tasks:
     name: Time series backbone torsion - epsilW
     description: Extracts the per-frame time series for epsilon torsion (Watson strand).
     inputs:
-      - id: ts_epsilW_config
-        name: Epsilon torsion (Watson strand) time-series config
-        description: Time-series parameters for the epsilon torsion (watson strand) helical parameter.
-        kind: file
-        path: configs/ts_epsilW.yaml
+      - *sequence
       - id: canal_epsilW_ser
         name: Epsilon torsion (Watson strand) series (epsilW.ser)
         description: Canal per-frame time series for epsilon torsion (watson strand).
@@ -2571,10 +1975,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_epsilW_config}
+        --config '{"properties":{"helpar_name":"epsilW","sequence":"${sequence}"}}'
         --input_ser_path ${canal_epsilW_ser}
         --output_zip_path ${ts_epsilW_zip}
-        && unzip -o ${ts_epsilW_zip} -d results/timeseries
+        && unzip -o ${ts_epsilW_zip} -d "$$(dirname ${ts_epsilW_zip})/timeseries"
     target:
       kind: local
 
@@ -2583,11 +1987,7 @@ tasks:
     name: Time series backbone torsion - zetaC
     description: Extracts the per-frame time series for zeta torsion (Crick strand).
     inputs:
-      - id: ts_zetaC_config
-        name: Zeta torsion (Crick strand) time-series config
-        description: Time-series parameters for the zeta torsion (crick strand) helical parameter.
-        kind: file
-        path: configs/ts_zetaC.yaml
+      - *sequence
       - id: canal_zetaC_ser
         name: Zeta torsion (Crick strand) series (zetaC.ser)
         description: Canal per-frame time series for zeta torsion (crick strand).
@@ -2603,10 +2003,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_zetaC_config}
+        --config '{"properties":{"helpar_name":"zetaC","sequence":"${sequence}"}}'
         --input_ser_path ${canal_zetaC_ser}
         --output_zip_path ${ts_zetaC_zip}
-        && unzip -o ${ts_zetaC_zip} -d results/timeseries
+        && unzip -o ${ts_zetaC_zip} -d "$$(dirname ${ts_zetaC_zip})/timeseries"
     target:
       kind: local
 
@@ -2615,11 +2015,7 @@ tasks:
     name: Time series backbone torsion - zetaW
     description: Extracts the per-frame time series for zeta torsion (Watson strand).
     inputs:
-      - id: ts_zetaW_config
-        name: Zeta torsion (Watson strand) time-series config
-        description: Time-series parameters for the zeta torsion (watson strand) helical parameter.
-        kind: file
-        path: configs/ts_zetaW.yaml
+      - *sequence
       - id: canal_zetaW_ser
         name: Zeta torsion (Watson strand) series (zetaW.ser)
         description: Canal per-frame time series for zeta torsion (watson strand).
@@ -2635,10 +2031,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_zetaW_config}
+        --config '{"properties":{"helpar_name":"zetaW","sequence":"${sequence}"}}'
         --input_ser_path ${canal_zetaW_ser}
         --output_zip_path ${ts_zetaW_zip}
-        && unzip -o ${ts_zetaW_zip} -d results/timeseries
+        && unzip -o ${ts_zetaW_zip} -d "$$(dirname ${ts_zetaW_zip})/timeseries"
     target:
       kind: local
 
@@ -2647,11 +2043,7 @@ tasks:
     name: Time series backbone torsion - chiC
     description: Extracts the per-frame time series for chi torsion (Crick strand).
     inputs:
-      - id: ts_chiC_config
-        name: Chi torsion (Crick strand) time-series config
-        description: Time-series parameters for the chi torsion (crick strand) helical parameter.
-        kind: file
-        path: configs/ts_chiC.yaml
+      - *sequence
       - id: canal_chiC_ser
         name: Chi torsion (Crick strand) series (chiC.ser)
         description: Canal per-frame time series for chi torsion (crick strand).
@@ -2667,10 +2059,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_chiC_config}
+        --config '{"properties":{"helpar_name":"chiC","sequence":"${sequence}"}}'
         --input_ser_path ${canal_chiC_ser}
         --output_zip_path ${ts_chiC_zip}
-        && unzip -o ${ts_chiC_zip} -d results/timeseries
+        && unzip -o ${ts_chiC_zip} -d "$$(dirname ${ts_chiC_zip})/timeseries"
     target:
       kind: local
 
@@ -2679,11 +2071,7 @@ tasks:
     name: Time series backbone torsion - chiW
     description: Extracts the per-frame time series for chi torsion (Watson strand).
     inputs:
-      - id: ts_chiW_config
-        name: Chi torsion (Watson strand) time-series config
-        description: Time-series parameters for the chi torsion (watson strand) helical parameter.
-        kind: file
-        path: configs/ts_chiW.yaml
+      - *sequence
       - id: canal_chiW_ser
         name: Chi torsion (Watson strand) series (chiW.ser)
         description: Canal per-frame time series for chi torsion (watson strand).
@@ -2699,10 +2087,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_chiW_config}
+        --config '{"properties":{"helpar_name":"chiW","sequence":"${sequence}"}}'
         --input_ser_path ${canal_chiW_ser}
         --output_zip_path ${ts_chiW_zip}
-        && unzip -o ${ts_chiW_zip} -d results/timeseries
+        && unzip -o ${ts_chiW_zip} -d "$$(dirname ${ts_chiW_zip})/timeseries"
     target:
       kind: local
 
@@ -2711,11 +2099,7 @@ tasks:
     name: Time series backbone torsion - phaseC
     description: Extracts the per-frame time series for sugar phase angle (Crick strand).
     inputs:
-      - id: ts_phaseC_config
-        name: Sugar phase angle (Crick strand) time-series config
-        description: Time-series parameters for the sugar phase angle (crick strand) helical parameter.
-        kind: file
-        path: configs/ts_phaseC.yaml
+      - *sequence
       - id: canal_phaseC_ser
         name: Sugar phase angle (Crick strand) series (phaseC.ser)
         description: Canal per-frame time series for sugar phase angle (crick strand).
@@ -2731,10 +2115,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_phaseC_config}
+        --config '{"properties":{"helpar_name":"phaseC","sequence":"${sequence}"}}'
         --input_ser_path ${canal_phaseC_ser}
         --output_zip_path ${ts_phaseC_zip}
-        && unzip -o ${ts_phaseC_zip} -d results/timeseries
+        && unzip -o ${ts_phaseC_zip} -d "$$(dirname ${ts_phaseC_zip})/timeseries"
     target:
       kind: local
 
@@ -2743,11 +2127,7 @@ tasks:
     name: Time series backbone torsion - phaseW
     description: Extracts the per-frame time series for sugar phase angle (Watson strand).
     inputs:
-      - id: ts_phaseW_config
-        name: Sugar phase angle (Watson strand) time-series config
-        description: Time-series parameters for the sugar phase angle (watson strand) helical parameter.
-        kind: file
-        path: configs/ts_phaseW.yaml
+      - *sequence
       - id: canal_phaseW_ser
         name: Sugar phase angle (Watson strand) series (phaseW.ser)
         description: Canal per-frame time series for sugar phase angle (watson strand).
@@ -2763,10 +2143,10 @@ tasks:
       kind: command
       command: >-
         dna_timeseries
-        --config ${ts_phaseW_config}
+        --config '{"properties":{"helpar_name":"phaseW","sequence":"${sequence}"}}'
         --input_ser_path ${canal_phaseW_ser}
         --output_zip_path ${ts_phaseW_zip}
-        && unzip -o ${ts_phaseW_zip} -d results/timeseries
+        && unzip -o ${ts_phaseW_zip} -d "$$(dirname ${ts_phaseW_zip})/timeseries"
     target:
       kind: local
 
@@ -2776,11 +2156,7 @@ tasks:
     name: Compute average stiffness for Twist
     description: Computes average stiffness constants for twist from its per-frame series.
     inputs:
-      - id: average_stiffness_config
-        name: Stiffness averaging config
-        description: Parameters for computing average stiffness constants.
-        kind: file
-        path: configs/average_stiffness.yaml
+      - *sequence
       - id: canal_twist_ser
         name: Twist series (twist.ser)
         description: Canal per-frame time series for twist.
@@ -2800,7 +2176,7 @@ tasks:
       kind: command
       command: >-
         average_stiffness
-        --config ${average_stiffness_config}
+        --config '{"properties":{"sequence":"${sequence}"}}'
         --input_ser_path ${canal_twist_ser}
         --output_csv_path ${average_stiffness_csv}
         --output_jpg_path ${average_stiffness_jpg}
@@ -2815,27 +2191,27 @@ tasks:
       - id: ts_shift_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_shift_CG.csv
+        path: results/timeseries/series_shift_step3.csv
       - id: ts_slide_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_slide_CG.csv
+        path: results/timeseries/series_slide_step3.csv
       - id: ts_rise_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_rise_CG.csv
+        path: results/timeseries/series_rise_step3.csv
       - id: ts_tilt_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_tilt_CG.csv
+        path: results/timeseries/series_tilt_step3.csv
       - id: ts_roll_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_roll_CG.csv
+        path: results/timeseries/series_roll_step3.csv
       - id: ts_twist_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_twist_CG.csv
+        path: results/timeseries/series_twist_step3.csv
     outputs:
       - id: basepair_stiffness_csv
         name: Base pair step stiffness matrix (CSV)
@@ -2867,15 +2243,10 @@ tasks:
     name: Bimodality analysis of Twist at CG step
     description: Detects bimodal distributions in the twist time series at the CG step.
     inputs:
-      - id: dna_bimodality_config
-        name: Bimodality config
-        description: Parameters for detecting bimodal distributions in helical parameters.
-        kind: file
-        path: configs/dna_bimodality.yaml
       - id: ts_twist_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_twist_CG.csv
+        path: results/timeseries/series_twist_step3.csv
     outputs:
       - id: bimodality_csv
         name: Twist bimodality (CSV)
@@ -2890,7 +2261,7 @@ tasks:
       kind: command
       command: >-
         dna_bimodality
-        --config ${dna_bimodality_config}
+        --config '{"properties":{"max_iter":500}}'
         --input_csv_file ${ts_twist_CG_csv}
         --output_csv_path ${bimodality_csv}
         --output_jpg_path ${bimodality_jpg}
@@ -2903,11 +2274,7 @@ tasks:
     name: Intra-base pair sequence correlation for Twist
     description: Computes sequence-dependent correlations for twist within a base pair.
     inputs:
-      - id: intraseqcorr_config
-        name: Intra-sequence correlation config
-        description: Parameters for computing sequence-dependent correlations within a base pair.
-        kind: file
-        path: configs/intraseqcorr.yaml
+      - *sequence
       - id: canal_twist_ser
         name: Twist series (twist.ser)
         description: Canal per-frame time series for twist.
@@ -2927,7 +2294,7 @@ tasks:
       kind: command
       command: >-
         intraseqcorr
-        --config ${intraseqcorr_config}
+        --config '{"properties":{"sequence":"${sequence}"}}'
         --input_ser_path ${canal_twist_ser}
         --output_csv_path ${intraseqcorr_csv}
         --output_jpg_path ${intraseqcorr_jpg}
@@ -2939,11 +2306,7 @@ tasks:
     name: Inter-base pair step sequence correlation for Twist
     description: Computes sequence-dependent correlations for twist between base pair steps.
     inputs:
-      - id: interseqcorr_config
-        name: Inter-sequence correlation config
-        description: Parameters for computing sequence-dependent correlations between base pair steps.
-        kind: file
-        path: configs/interseqcorr.yaml
+      - *sequence
       - id: canal_twist_ser
         name: Twist series (twist.ser)
         description: Canal per-frame time series for twist.
@@ -2963,7 +2326,7 @@ tasks:
       kind: command
       command: >-
         interseqcorr
-        --config ${interseqcorr_config}
+        --config '{"properties":{"sequence":"${sequence}"}}'
         --input_ser_path ${canal_twist_ser}
         --output_csv_path ${interseqcorr_csv}
         --output_jpg_path ${interseqcorr_jpg}
@@ -2978,27 +2341,27 @@ tasks:
       - id: ts_shear_C_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_shear_C.csv
+        path: results/timeseries/series_shear_bp3.csv
       - id: ts_stretch_C_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_stretch_C.csv
+        path: results/timeseries/series_stretch_bp3.csv
       - id: ts_stagger_C_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_stagger_C.csv
+        path: results/timeseries/series_stagger_bp3.csv
       - id: ts_buckle_C_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_buckle_C.csv
+        path: results/timeseries/series_buckle_bp3.csv
       - id: ts_propel_C_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_propel_C.csv
+        path: results/timeseries/series_propel_bp3.csv
       - id: ts_opening_C_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_opening_C.csv
+        path: results/timeseries/series_opening_bp3.csv
     outputs:
       - id: intrahpcorr_csv
         name: Intra-base-pair helical parameter correlations (CSV)
@@ -3032,27 +2395,27 @@ tasks:
       - id: ts_shift_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_shift_CG.csv
+        path: results/timeseries/series_shift_step3.csv
       - id: ts_slide_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_slide_CG.csv
+        path: results/timeseries/series_slide_step3.csv
       - id: ts_rise_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_rise_CG.csv
+        path: results/timeseries/series_rise_step3.csv
       - id: ts_tilt_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_tilt_CG.csv
+        path: results/timeseries/series_tilt_step3.csv
       - id: ts_roll_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_roll_CG.csv
+        path: results/timeseries/series_roll_step3.csv
       - id: ts_twist_CG_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_twist_CG.csv
+        path: results/timeseries/series_twist_step3.csv
     outputs:
       - id: interhpcorr_csv
         name: Inter-base-pair-step helical parameter correlations (CSV)
@@ -3083,11 +2446,7 @@ tasks:
     name: Neighboring steps correlation for intra-base pair parameters
     description: Computes correlations between neighboring base pairs for intra-base-pair parameters.
     inputs:
-      - id: intrabpcorr_config
-        name: Intra-base-pair correlation config
-        description: Parameters for computing correlations within a base pair.
-        kind: file
-        path: configs/intrabpcorr.yaml
+      - *sequence
       - id: canal_shear_ser
         name: Shear series (shear.ser)
         description: Canal per-frame time series for shear.
@@ -3132,7 +2491,7 @@ tasks:
       kind: command
       command: >-
         intrabpcorr
-        --config ${intrabpcorr_config}
+        --config '{"properties":{"sequence":"${sequence}"}}'
         --input_filename_shear ${canal_shear_ser}
         --input_filename_stretch ${canal_stretch_ser}
         --input_filename_stagger ${canal_stagger_ser}
@@ -3149,11 +2508,7 @@ tasks:
     name: Neighboring steps correlation for inter-base pair parameters
     description: Computes correlations between neighboring base pair steps for inter-base-pair-step parameters.
     inputs:
-      - id: interbpcorr_config
-        name: Inter-base-pair correlation config
-        description: Parameters for computing correlations between neighboring base pair steps.
-        kind: file
-        path: configs/interbpcorr.yaml
+      - *sequence
       - id: canal_shift_ser
         name: Shift series (shift.ser)
         description: Canal per-frame time series for shift.
@@ -3198,7 +2553,7 @@ tasks:
       kind: command
       command: >-
         interbpcorr
-        --config ${interbpcorr_config}
+        --config '{"properties":{"sequence":"${sequence}"}}'
         --input_filename_shift ${canal_shift_ser}
         --input_filename_slide ${canal_slide_ser}
         --input_filename_rise ${canal_rise_ser}
@@ -3211,6 +2566,331 @@ tasks:
       kind: local
 
 edges:
+  - source: artifact-sequence
+    source_output: sequence
+    target: average_stiffness
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_buckle
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_inclin
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_majd
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_majw
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_mind
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_minw
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_opening
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_propel
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_rise
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_roll
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_shear
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_shift
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_slide
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_stagger
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_stretch
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_tilt
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_tip
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_twist
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_xdisp
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: avg_ydisp
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: bipopulations
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: canonicalag
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: curves
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: interbpcorr
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: interseqcorr
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: intrabpcorr
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: intraseqcorr
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: puckering
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_alphaC
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_alphaW
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_betaC
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_betaW
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_buckle
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_chiC
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_chiW
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_deltaC
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_deltaW
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_epsilC
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_epsilW
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_gammaC
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_gammaW
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_inclin
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_majd
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_majw
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_mind
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_minw
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_opening
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_phaseC
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_phaseW
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_propel
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_rise
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_roll
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_shear
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_shift
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_slide
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_stagger
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_stretch
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_tilt
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_tip
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_twist
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_xdisp
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_ydisp
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_zetaC
+    target_input: sequence
+
+  - source: artifact-sequence
+    source_output: sequence
+    target: ts_zetaW
+    target_input: sequence
+
   # curves → canal
   - source: curves
     source_output: curves_cda
@@ -3746,341 +3426,6 @@ edges:
     source_output: top
     target: curves
     target_input: top
-
-  - source: artifact-average_stiffness_config
-    source_output: average_stiffness_config
-    target: average_stiffness
-    target_input: average_stiffness_config
-
-  - source: artifact-avg_buckle_config
-    source_output: avg_buckle_config
-    target: avg_buckle
-    target_input: avg_buckle_config
-
-  - source: artifact-avg_inclin_config
-    source_output: avg_inclin_config
-    target: avg_inclin
-    target_input: avg_inclin_config
-
-  - source: artifact-avg_majd_config
-    source_output: avg_majd_config
-    target: avg_majd
-    target_input: avg_majd_config
-
-  - source: artifact-avg_majw_config
-    source_output: avg_majw_config
-    target: avg_majw
-    target_input: avg_majw_config
-
-  - source: artifact-avg_mind_config
-    source_output: avg_mind_config
-    target: avg_mind
-    target_input: avg_mind_config
-
-  - source: artifact-avg_minw_config
-    source_output: avg_minw_config
-    target: avg_minw
-    target_input: avg_minw_config
-
-  - source: artifact-avg_opening_config
-    source_output: avg_opening_config
-    target: avg_opening
-    target_input: avg_opening_config
-
-  - source: artifact-avg_propel_config
-    source_output: avg_propel_config
-    target: avg_propel
-    target_input: avg_propel_config
-
-  - source: artifact-avg_rise_config
-    source_output: avg_rise_config
-    target: avg_rise
-    target_input: avg_rise_config
-
-  - source: artifact-avg_roll_config
-    source_output: avg_roll_config
-    target: avg_roll
-    target_input: avg_roll_config
-
-  - source: artifact-avg_shear_config
-    source_output: avg_shear_config
-    target: avg_shear
-    target_input: avg_shear_config
-
-  - source: artifact-avg_shift_config
-    source_output: avg_shift_config
-    target: avg_shift
-    target_input: avg_shift_config
-
-  - source: artifact-avg_slide_config
-    source_output: avg_slide_config
-    target: avg_slide
-    target_input: avg_slide_config
-
-  - source: artifact-avg_stagger_config
-    source_output: avg_stagger_config
-    target: avg_stagger
-    target_input: avg_stagger_config
-
-  - source: artifact-avg_stretch_config
-    source_output: avg_stretch_config
-    target: avg_stretch
-    target_input: avg_stretch_config
-
-  - source: artifact-avg_tilt_config
-    source_output: avg_tilt_config
-    target: avg_tilt
-    target_input: avg_tilt_config
-
-  - source: artifact-avg_tip_config
-    source_output: avg_tip_config
-    target: avg_tip
-    target_input: avg_tip_config
-
-  - source: artifact-avg_twist_config
-    source_output: avg_twist_config
-    target: avg_twist
-    target_input: avg_twist_config
-
-  - source: artifact-avg_xdisp_config
-    source_output: avg_xdisp_config
-    target: avg_xdisp
-    target_input: avg_xdisp_config
-
-  - source: artifact-avg_ydisp_config
-    source_output: avg_ydisp_config
-    target: avg_ydisp
-    target_input: avg_ydisp_config
-
-  - source: artifact-bipopulations_config
-    source_output: bipopulations_config
-    target: bipopulations
-    target_input: bipopulations_config
-
-  - source: artifact-canal_config
-    source_output: canal_config
-    target: canal
-    target_input: canal_config
-
-  - source: artifact-canonicalag_config
-    source_output: canonicalag_config
-    target: canonicalag
-    target_input: canonicalag_config
-
-  - source: artifact-curves_config
-    source_output: curves_config
-    target: curves
-    target_input: curves_config
-
-  - source: artifact-dna_bimodality_config
-    source_output: dna_bimodality_config
-    target: dna_bimodality
-    target_input: dna_bimodality_config
-
-  - source: artifact-interbpcorr_config
-    source_output: interbpcorr_config
-    target: interbpcorr
-    target_input: interbpcorr_config
-
-  - source: artifact-interseqcorr_config
-    source_output: interseqcorr_config
-    target: interseqcorr
-    target_input: interseqcorr_config
-
-  - source: artifact-intrabpcorr_config
-    source_output: intrabpcorr_config
-    target: intrabpcorr
-    target_input: intrabpcorr_config
-
-  - source: artifact-intraseqcorr_config
-    source_output: intraseqcorr_config
-    target: intraseqcorr
-    target_input: intraseqcorr_config
-
-  - source: artifact-puckering_config
-    source_output: puckering_config
-    target: puckering
-    target_input: puckering_config
-
-  - source: artifact-ts_alphaC_config
-    source_output: ts_alphaC_config
-    target: ts_alphaC
-    target_input: ts_alphaC_config
-
-  - source: artifact-ts_alphaW_config
-    source_output: ts_alphaW_config
-    target: ts_alphaW
-    target_input: ts_alphaW_config
-
-  - source: artifact-ts_betaC_config
-    source_output: ts_betaC_config
-    target: ts_betaC
-    target_input: ts_betaC_config
-
-  - source: artifact-ts_betaW_config
-    source_output: ts_betaW_config
-    target: ts_betaW
-    target_input: ts_betaW_config
-
-  - source: artifact-ts_buckle_config
-    source_output: ts_buckle_config
-    target: ts_buckle
-    target_input: ts_buckle_config
-
-  - source: artifact-ts_chiC_config
-    source_output: ts_chiC_config
-    target: ts_chiC
-    target_input: ts_chiC_config
-
-  - source: artifact-ts_chiW_config
-    source_output: ts_chiW_config
-    target: ts_chiW
-    target_input: ts_chiW_config
-
-  - source: artifact-ts_deltaC_config
-    source_output: ts_deltaC_config
-    target: ts_deltaC
-    target_input: ts_deltaC_config
-
-  - source: artifact-ts_deltaW_config
-    source_output: ts_deltaW_config
-    target: ts_deltaW
-    target_input: ts_deltaW_config
-
-  - source: artifact-ts_epsilC_config
-    source_output: ts_epsilC_config
-    target: ts_epsilC
-    target_input: ts_epsilC_config
-
-  - source: artifact-ts_epsilW_config
-    source_output: ts_epsilW_config
-    target: ts_epsilW
-    target_input: ts_epsilW_config
-
-  - source: artifact-ts_gammaC_config
-    source_output: ts_gammaC_config
-    target: ts_gammaC
-    target_input: ts_gammaC_config
-
-  - source: artifact-ts_gammaW_config
-    source_output: ts_gammaW_config
-    target: ts_gammaW
-    target_input: ts_gammaW_config
-
-  - source: artifact-ts_inclin_config
-    source_output: ts_inclin_config
-    target: ts_inclin
-    target_input: ts_inclin_config
-
-  - source: artifact-ts_majd_config
-    source_output: ts_majd_config
-    target: ts_majd
-    target_input: ts_majd_config
-
-  - source: artifact-ts_majw_config
-    source_output: ts_majw_config
-    target: ts_majw
-    target_input: ts_majw_config
-
-  - source: artifact-ts_mind_config
-    source_output: ts_mind_config
-    target: ts_mind
-    target_input: ts_mind_config
-
-  - source: artifact-ts_minw_config
-    source_output: ts_minw_config
-    target: ts_minw
-    target_input: ts_minw_config
-
-  - source: artifact-ts_opening_config
-    source_output: ts_opening_config
-    target: ts_opening
-    target_input: ts_opening_config
-
-  - source: artifact-ts_phaseC_config
-    source_output: ts_phaseC_config
-    target: ts_phaseC
-    target_input: ts_phaseC_config
-
-  - source: artifact-ts_phaseW_config
-    source_output: ts_phaseW_config
-    target: ts_phaseW
-    target_input: ts_phaseW_config
-
-  - source: artifact-ts_propel_config
-    source_output: ts_propel_config
-    target: ts_propel
-    target_input: ts_propel_config
-
-  - source: artifact-ts_rise_config
-    source_output: ts_rise_config
-    target: ts_rise
-    target_input: ts_rise_config
-
-  - source: artifact-ts_roll_config
-    source_output: ts_roll_config
-    target: ts_roll
-    target_input: ts_roll_config
-
-  - source: artifact-ts_shear_config
-    source_output: ts_shear_config
-    target: ts_shear
-    target_input: ts_shear_config
-
-  - source: artifact-ts_shift_config
-    source_output: ts_shift_config
-    target: ts_shift
-    target_input: ts_shift_config
-
-  - source: artifact-ts_slide_config
-    source_output: ts_slide_config
-    target: ts_slide
-    target_input: ts_slide_config
-
-  - source: artifact-ts_stagger_config
-    source_output: ts_stagger_config
-    target: ts_stagger
-    target_input: ts_stagger_config
-
-  - source: artifact-ts_stretch_config
-    source_output: ts_stretch_config
-    target: ts_stretch
-    target_input: ts_stretch_config
-
-  - source: artifact-ts_tilt_config
-    source_output: ts_tilt_config
-    target: ts_tilt
-    target_input: ts_tilt_config
-
-  - source: artifact-ts_tip_config
-    source_output: ts_tip_config
-    target: ts_tip
-    target_input: ts_tip_config
-
-  - source: artifact-ts_twist_config
-    source_output: ts_twist_config
-    target: ts_twist
-    target_input: ts_twist_config
-
-  - source: artifact-ts_xdisp_config
-    source_output: ts_xdisp_config
-    target: ts_xdisp
-    target_input: ts_xdisp_config
-
-  - source: artifact-ts_ydisp_config
-    source_output: ts_ydisp_config
-    target: ts_ydisp
-    target_input: ts_ydisp_config
-
-  - source: artifact-ts_zetaC_config
-    source_output: ts_zetaC_config
-    target: ts_zetaC
-    target_input: ts_zetaC_config
-
-  - source: artifact-ts_zetaW_config
-    source_output: ts_zetaW_config
-    target: ts_zetaW
-    target_input: ts_zetaW_config
 
 
 orchestrator_target:
