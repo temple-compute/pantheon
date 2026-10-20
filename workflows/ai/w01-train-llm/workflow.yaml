@@ -22,8 +22,8 @@ artifacts:
     path: params/config_scale.txt
     value: configs/smoke
     options:
-      - {value: configs/smoke, label: Smoke (tiny model, minutes)}
-      - {value: configs, label: Full (24 blocks, 50k steps)}
+      - {value: configs/smoke, label: "Smoke (tiny model, minutes)"}
+      - {value: configs, label: "Full (24 blocks, 50k steps)"}
   - id: pretrain_steps
     name: Pretraining steps
     description: Optimizer steps for pretraining; 0 keeps the config's value (smoke 20, full 50000).
