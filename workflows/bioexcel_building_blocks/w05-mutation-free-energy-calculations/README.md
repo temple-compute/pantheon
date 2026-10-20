@@ -58,7 +58,7 @@ uv sync
 uv run horus run workflow.yaml
 ```
 
-The first run builds the conda environment (this takes a few minutes). Subsequent runs reuse the cached environment at `../.horus_conda_env`.
+The first run builds the conda environment (this takes a few minutes). Every task and later runs reuse that one environment at `workflow_results/.horus_conda_env`.
 
 ## Inputs
 
