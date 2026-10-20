@@ -1,18 +1,39 @@
 kind: horus_workflow
-name: cMD Replicas (AMBER)
+name: Conventional MD Replicas (AMBER)
+
+# PDB -> protonated, solvated system (optionally with a GAFF2 ligand) -> N
+# replicas of a 10-step equilibration + chunked production on GPUs ->
+# per-replica cpptraj analysis -> clustering + HTML report. MD protocol
+# ported from MolBioMedUAB/protocols/MD/cMD/create_md_custom.sh.
+#
+# The graph is built from standalone blocks that exchange plain files, so a
+# block is replaced by connecting your own file in its place:
+#   fetch_pdb           -> structure.pdb       (or connect your own PDB)
+#   extract_ligand      -> ligand pose .pdb    (or your own .pdb/.sdf/.mol2)
+#   parameterize_ligand -> ligand.mol2/.frcmod (or your own parameters)
+#   build_complex / build_system -> system.prmtop/.inpcrd (or your own)
+# build_system is the protein-only alternative to build_complex: keep the
+# one you need and connect its outputs to prepare_replicas.
+#
+# Value artifacts reach map clones only through the slot (prepare_replicas
+# bakes them into each replica's mdin files and protocol.json).
 
 # --- reusable blocks -------------------------------------------------------
-# The site-specific parts of MolBioMedUAB/protocols/MD/cMD/create_md_custom.sh
-# (the `#SBATCH` header it picks per `-m csuc|local|picard|slurm`, and the
-# `module load` line) become configuration instead of bash: these two target
-# anchors plus env/amber.sh. Save this block (and a matching env/amber.sh) as
-# a tc-os library item per cluster; swapping clusters is then editing these,
-# not the workflow.
-#
-# Two anchors, not one: equilibration and production are separate SLURM jobs
-# (see the `equilibrate`/`produce` tasks below), each with its own walltime
-# envelope instead of sharing one job's budget the way the original script
-# did. Fill in partition/account for your site.
+# Every task runs on *local and carries `resources` hints, which size
+# auto-provisioned targets. On a Slurm cluster, fill in partition/account
+# below and point the tasks at *cpu / *gpu_equilibrate / *gpu_produce
+# instead. A bare `mem` number is MB to Slurm.
+_cpu: &cpu
+  kind: slurm
+  inner:
+    kind: local
+  partition: "" # <- set per site
+  account: "" # <- set per site
+  ntasks: 1
+  cpus_per_task: 4
+  mem: 8G
+  time_limit: "04:00:00"
+
 _gpu_equilibrate: &gpu_equilibrate
   kind: slurm
   inner:
@@ -20,10 +41,12 @@ _gpu_equilibrate: &gpu_equilibrate
   partition: "" # <- set per site
   account: "" # <- set per site
   ntasks: 1
+  cpus_per_task: 4
+  mem: 16G
   gres: gpu:1
-  # Equilibration is a fixed ~7 ns of MD regardless of production length --
-  # tune to your system size, not to params.json's length_ns.
-  time_limit: "04:00:00"
+  # 15 ns of MD at equil_scale=1 (~2 h for the 18k-atom example on an
+  # RTX 4090); scale with system size and equil_scale.
+  time_limit: "05:00:00"
 
 _gpu_produce: &gpu_produce
   kind: slurm
@@ -32,101 +55,640 @@ _gpu_produce: &gpu_produce
   partition: "" # <- set per site
   account: "" # <- set per site
   ntasks: 1
+  cpus_per_task: 4
+  mem: 16G
   gres: gpu:1
-  # Scales with params.json's length_ns; 10 days covers the 200 ns default.
+  # Scales with length_ns; 10 days covers the 200 ns default.
   time_limit: "10-00:00:00"
 
 _shell: &shell
   kind: shell
 
+# Preparation and analysis tools (AmberTools: pdb4amber, tleap, antechamber,
+# parmchk2, parmed, cpptraj; PROPKA; Open Babel) come from one conda-forge
+# environment, built the first time a block needs it and reused afterwards
+# (one env next to the run folders). On a cluster, point `conda` at the
+# site's conda and `environment_dir` at an absolute shared path. The same env
+# carries OpenMM (CUDA 12 build) for md_engine openmm; with md_engine pmemd,
+# pmemd.cuda comes from AMBER itself (amber_env).
+_tools: &tools
+  kind: conda_python_environment
+  conda: micromamba # <- or the site's conda/mamba
+  environment_dir: "../../.horus_ambertools_env" # <- absolute path to share across runs
+  channels: [conda-forge]
+  python_version: "3.11"
+  conda_requirements: [ambertools=26, propka=3.5, openbabel=3.2, openmm=8.6, cuda-version=12]
+
 _local: &local
   kind: local
 
 artifacts:
-  - id: params
-    name: Replica parameters
-    description: last_residue, temperature (K), length_ns and replica count.
-      Script flags -r/-t/-l plus the replica fan-out count. last_residue has
-      no sensible default -- set it before running.
-    kind: file
-    path: examples/params.json
+  # --- 1. structure and ligand ----------------------------------------------
+  - id: pdb_id
+    name: PDB ID
+    description: Four-character RCSB ID to fetch (must have a PDB-format
+      file; very large entries are mmCIF-only). Empty = use the uploaded
+      structure.
+    kind: string
+    path: values/pdb_id
+    value: 3HTB
+    pattern: '([0-9][A-Za-z0-9]{3})?'
 
-  - id: parameters
-    name: Parameter file (.prmtop)
-    description: The system's AMBER topology. Script flag -p.
+  - id: structure_upload
+    name: Structure (PDB upload)
+    description: PDB used when the PDB ID is empty. Default 1AKI (lysozyme,
+      no ligand; use with the protein-only build).
     kind: file
-    path: examples/system.prmtop
+    path: examples/1aki.pdb
 
-  - id: coordinates
-    name: Coordinate file (.inpcrd)
-    description: The system's AMBER coordinates. Script flag -c.
+  - id: ligand_resname
+    name: Ligand residue name
+    description: Residue name of the ligand to extract from the structure
+      and the name it keeps in the system (1-3 characters).
+    kind: string
+    path: values/ligand_resname
+    value: JZ4
+
+  - id: ligand_chain
+    name: Ligand chain
+    description: Chain of the ligand copy to extract. Empty = first copy.
+    kind: string
+    path: values/ligand_chain
+    value: ""
+
+  - id: ligand_charge
+    name: Ligand net charge
+    kind: number
+    path: values/ligand_charge
+    value: 0
+    min: -5
+    max: 5
+    step: 1
+
+  - id: protonate_ligand
+    name: Protonate ligand at pH
+    description: Add hydrogens with Open Babel at the pH. Off keeps the
+      hydrogens already in the ligand file.
+    kind: boolean
+    path: values/protonate_ligand
+    value: true
+
+  # --- 2. system build ----------------------------------------------------------
+  - id: chains
+    name: Chains
+    description: Comma-separated chain IDs to keep (e.g. A,B). Empty = all.
+    kind: string
+    path: values/chains
+    value: ""
+
+  - id: keep_waters
+    name: Keep crystal waters
+    kind: boolean
+    path: values/keep_waters
+    value: false
+
+  - &protonation
+    id: protonation
+    name: Protonation
+    description: PROPKA assigns HIS/ASP/GLU/LYS states at the pH (needs
+      `pip install --user propka` on the cluster); reduce picks HIS
+      tautomers only; none leaves standard states.
+    kind: choice
+    path: values/protonation
+    value: propka
+    options:
+      - value: propka
+        label: PROPKA at pH
+      - value: reduce
+        label: reduce (HIS only)
+      - value: none
+        label: None
+
+  - id: ph
+    name: pH
+    description: Used by PROPKA and for ligand protonation (Open Babel).
+    kind: number
+    path: values/ph
+    value: 7.0
+    min: 0
+    max: 14
+    step: 0.1
+
+  - &forcefield
+    id: forcefield
+    name: Protein force field
+    kind: choice
+    path: values/forcefield
+    value: ff14SB
+    options:
+      - value: ff14SB
+        label: ff14SB
+      - value: ff19SB
+        label: ff19SB (use OPC water)
+
+  - &water
+    id: water
+    name: Water model
+    kind: choice
+    path: values/water
+    value: tip3p
+    options:
+      - value: tip3p
+        label: TIP3P
+      - value: opc
+        label: OPC
+
+  - &box
+    id: box
+    name: Box shape
+    kind: choice
+    path: values/box
+    value: octahedral
+    options:
+      - value: octahedral
+        label: Truncated octahedron
+      - value: cubic
+        label: Rectangular box
+
+  - id: padding
+    name: Box padding (Å)
+    description: Minimum solute-to-box-edge distance.
+    kind: number
+    path: values/padding
+    value: 12.0
+    min: 8
+    max: 20
+    step: 0.5
+
+  - id: salt_mM
+    name: Salt (mM NaCl)
+    description: Added by SLTCAP on top of neutralization. 0 = neutralize only.
+    kind: number
+    path: values/salt_mM
+    value: 150
+    min: 0
+    max: 1000
+    step: 10
+
+  - id: hmr
+    name: Hydrogen mass repartitioning
+    description: Repartitions H masses (ParmEd) so production can run at
+      4 fs (timestep 0 = auto picks 4 fs).
+    kind: boolean
+    path: values/hmr
+    value: false
+
+  - &md_engine
+    id: md_engine
+    name: MD engine
+    description: >-
+      Runs the same rendered .mdin protocol. OpenMM comes from the conda
+      environment and runs on any NVIDIA GPU node (CUDA 12 driver); pmemd
+      needs licensed AMBER (pmemd.cuda) on the node, loaded by AMBER
+      environment.
+    kind: choice
+    path: values/md_engine
+    value: openmm
+    options:
+      - value: openmm
+        label: OpenMM (conda, any GPU node)
+      - value: pmemd
+        label: pmemd.cuda (licensed AMBER)
+
+  - &amber_env
+    id: amber_env
+    name: AMBER environment
+    description: Shell line that puts pmemd.cuda (licensed AMBER) on PATH
+      for equilibrate/produce when MD engine is pmemd; "Already on PATH"
+      when the GPU node has it, or with OpenMM. Preparation and analysis
+      tools come from the conda environment instead.
+    kind: choice
+    path: values/amber_env
+    value: ":"
+    options:
+      - value: ":"
+        label: Already on PATH
+      - value: ml Amber/24-foss-2023a-AmberTools-24-CUDA-11.8.0
+        label: Picard
+      - value: module load amber/24
+        label: CSUC
+      - value: module load Amber
+        label: Local
+
+  # --- 2. MD protocol ---------------------------------------------------------
+  - id: n_replicas
+    name: Replicas
+    description: Independent replicas (different random velocities/seeds).
+    kind: number
+    path: values/n_replicas
+    value: 3
+    min: 1
+    max: 20
+    step: 1
+
+  - id: temperature
+    name: Temperature (K)
+    kind: number
+    path: values/temperature
+    value: 300
+    min: 250
+    max: 400
+    step: 1
+
+  - id: length_ns
+    name: Production length (ns)
+    description: Per replica, rounded up to whole chunks.
+    kind: number
+    path: values/length_ns
+    value: 200
+    min: 1
+    max: 2000
+    step: 1
+
+  - id: timestep_fs
+    name: Timestep (fs)
+    description: 0 = auto (4 fs with HMR, else 2 fs). Above 2 fs requires HMR.
+    kind: number
+    path: values/timestep_fs
+    value: 0
+    min: 0
+    max: 4
+    step: 1
+
+  - &prod_ensemble
+    id: prod_ensemble
+    name: Production ensemble
+    kind: choice
+    path: values/prod_ensemble
+    value: NVT
+    options:
+      - value: NVT
+        label: NVT
+      - value: NPT
+        label: NPT (Monte Carlo barostat)
+
+  - id: chunk_ns
+    name: Chunk length (ns)
+    description: Production runs as consecutive pmemd calls of this length.
+    kind: number
+    path: values/chunk_ns
+    value: 10
+    min: 1
+    max: 100
+    step: 1
+
+  - id: save_every_ps
+    name: Save frame every (ps)
+    kind: number
+    path: values/save_every_ps
+    value: 10
+    min: 1
+    max: 1000
+    step: 1
+
+  - id: write_solvent
+    name: Save solvent in trajectories
+    description: Off writes solute-only production trajectories (ntwprt),
+      roughly 10x smaller; analysis does not need the solvent.
+    kind: boolean
+    path: values/write_solvent
+    value: true
+
+  - id: equil_scale
+    name: Equilibration length scale
+    description: Multiplies every equilibration step length (1 = 15 ns
+      total). 0.1 for quick tests.
+    kind: number
+    path: values/equil_scale
+    value: 1.0
+    min: 0.01
+    max: 10
+    step: 0.01
+
+  - id: restraint_scale
+    name: Restraint strength scale
+    description: Multiplies the equilibration restraint schedule
+      (250/100/100/10 kcal/mol/Å² on solute, then 10/10/1/0.1 on backbone).
+    kind: number
+    path: values/restraint_scale
+    value: 1.0
+    min: 0
+    max: 10
+    step: 0.1
+
+  - id: restraint_mask
+    name: Solute restraint mask
+    description: Amber mask for the solute-restrained steps; auto = every
+      heavy atom of the protein and ligands.
+    kind: string
+    path: values/restraint_mask
+    value: auto
+
+  - id: heat_start_k
+    name: Heating start (K)
+    kind: number
+    path: values/heat_start_k
+    value: 100
+    min: 0
+    max: 300
+    step: 1
+
+  - id: cutoff
+    name: Nonbonded cutoff (Å)
+    kind: number
+    path: values/cutoff
+    value: 9.0
+    min: 8
+    max: 12
+    step: 0.5
+
+  - id: gamma_ln
+    name: Langevin collision frequency (ps⁻¹)
+    kind: number
+    path: values/gamma_ln
+    value: 3.0
+    min: 0.5
+    max: 10
+    step: 0.5
+
+  - id: pressure_bar
+    name: Pressure (bar)
+    kind: number
+    path: values/pressure_bar
+    value: 1.0
+    min: 0.5
+    max: 10
+    step: 0.5
+
+  - id: seed
+    name: Random seed
+    description: -1 = random each run. A number makes runs reproducible
+      (each replica and step gets its own derived seed).
+    kind: number
+    path: values/seed
+    value: -1
+    min: -1
+    max: 2147483647
+    step: 1
+
+  # --- 3. analysis ----------------------------------------------------------------
+  - id: analysis_stride
+    name: Analysis stride
+    description: Analyze every Nth saved frame.
+    kind: number
+    path: values/analysis_stride
+    value: 1
+    min: 1
+    max: 100
+    step: 1
+
+  - id: n_clusters
+    name: Clusters
+    description: k-means clusters over all replicas (backbone). 0 = skip.
+    kind: number
+    path: values/n_clusters
+    value: 5
+    min: 0
+    max: 20
+    step: 1
+
+  # --- helper scripts (copied to the cluster) ---------------------------------
+  - id: parameterize_ligand_script
+    name: Ligand parameterization script
     kind: file
-    path: examples/system.inpcrd
-
-  - id: amber_env
-    name: AMBER environment script
-    description: Sourced before every pmemd/pmemd.cuda call. Replaces the
-      -m machine flag's module-load branch -- swap this file (or point it
-      elsewhere) to retarget a different cluster's AMBER module.
+    path: scripts/parameterize_ligand.py
+  - id: build_system_script
+    name: System build script
     kind: file
-    path: env/amber.sh
-
+    path: scripts/build_system.py
   - id: equilibrate_script
-    name: Equilibration driver (workflow helper script)
-    description: Runs the 10 preproduction steps (minimize/heat/equilibrate)
-      for one replica, in place on its slot. Copied into every replica slot.
+    name: Equilibration driver
     kind: file
     path: scripts/equilibrate.sh
-
   - id: production_script
-    name: Production chunk loop (workflow helper script)
-    description: Runs the production .in file cntmax times, chaining each
-      chunk's restart file into the next. Copied into every replica slot.
+    name: Production chunk loop
     kind: file
     path: scripts/production.sh
-
+  - id: openmm_runner_script
+    name: OpenMM .mdin runner
+    description: Runs one .mdin step on OpenMM with pmemd's flags and outputs (md_engine openmm).
+    kind: file
+    path: scripts/mdin_openmm.py
+  - id: live_monitor_script
+    name: Live monitor
+    description: Runs beside pmemd and keeps a small digest (mdout/mdinfo,
+      energies, stripped trajectory) in the task's side products, uploaded
+      every ~30 s.
+    kind: file
+    path: scripts/live_monitor.sh
+  - id: analyze_script
+    name: Per-replica analysis
+    kind: file
+    path: scripts/analyze.py
+  - id: report_script
+    name: Report builder
+    kind: file
+    path: scripts/report.py
   - id: templates
     name: AMBER .mdin templates
-    description: The 10 preproduction steps plus prod_1/prod, with
-      ${temperature}/${last_residue} placeholders, rendered once per replica.
-      Archived (not a folder artifact) because tc-os's workflow import does
-      not support folder artifacts yet; the individual .in files live under
-      templates/ for reading/diffing, this is `tar -czf templates.tar.gz
-      -C templates .` -- regenerate it if you edit a template.
+    description: templates/min.in + md.in, archived because tc-os's import
+      does not take folder artifacts yet (`tar -czf templates.tar.gz -C
+      templates .`).
     kind: file
     path: templates.tar.gz
 
 tasks:
   - kind: horus_task
-    id: prepare_replicas
-    name: 1. Generate replica slots
-    description: >-
-      Generation only, one call for all replicas: renders the AMBER .mdin
-      templates and writes one self-contained slot per replica (system
-      files, env/driver scripts, rendered inputs, chunk count). Does not
-      run AMBER -- see equilibrate/produce.
+    id: fetch_pdb
+    name: 1a. Fetch or upload structure
+    description: Downloads the structure from RCSB, or copies the uploaded
+      PDB when the PDB ID is empty.
     inputs:
-      - id: params_in
-        kind: file
-        path: examples/params.json
-      - id: templates_in
-        kind: file
-        path: templates.tar.gz
-      - id: parameters_in
-        kind: file
-        path: examples/system.prmtop
-      - id: coordinates_in
-        kind: file
-        path: examples/system.inpcrd
-      - id: amber_env_in
-        kind: file
-        path: env/amber.sh
-      - id: equilibrate_script_in
-        kind: file
-        path: scripts/equilibrate.sh
-      - id: production_script_in
-        kind: file
-        path: scripts/production.sh
+      - {id: pdb_id_in, kind: string, path: values/pdb_id}
+      - {id: structure_upload_in, kind: file, path: examples/1aki.pdb}
+    outputs:
+      - {id: structure, name: Structure, kind: file, path: structure/structure.pdb}
+    executor: *shell
+    runtime:
+      kind: python_script
+      script: scripts/fetch_pdb.py
+      python: python3
+      args: --pdb-id=${pdb_id_in} --upload ${structure_upload_in} --out ${structure}
+    target: *local
+    skip_if_complete: true
+
+  - kind: horus_task
+    id: extract_ligand
+    name: 1b. Extract ligand pose
+    description: Pulls one ligand (heavy atoms) out of the structure by
+      residue name. To use a docked or prepared pose, delete this block
+      and connect your .pdb/.sdf/.mol2 to parameterize_ligand.
+    inputs:
+      - {id: structure_in, kind: file, path: structure/structure.pdb}
+      - {id: ligand_resname_in, kind: string, path: values/ligand_resname}
+      - {id: ligand_chain_in, kind: string, path: values/ligand_chain}
+    outputs:
+      - {id: ligand_pose, name: Ligand pose, kind: file, path: ligand/ligand_pose.pdb}
+    executor: *shell
+    runtime:
+      kind: python_script
+      script: scripts/extract_ligand.py
+      python: python3
+      args: >-
+        --structure ${structure_in} --resname=${ligand_resname_in}
+        --chain=${ligand_chain_in} --out ${ligand_pose}
+    target: *local
+    skip_if_complete: true
+
+  - kind: horus_task
+    id: parameterize_ligand
+    name: 1c. Parameterize ligand (GAFF2)
+    description: Hydrogens at the pH, AM1-BCC charges and GAFF2 types
+      (antechamber), missing parameters (parmchk2). To use your own
+      parameters, delete this block and connect ligand.mol2 + .frcmod to
+      build_complex.
+    inputs:
+      - {id: ligand_in, kind: file, path: ligand/ligand_pose.pdb}
+      - {id: ligand_resname_in, kind: string, path: values/ligand_resname}
+      - {id: ligand_charge_in, kind: number, path: values/ligand_charge}
+      - {id: protonate_ligand_in, kind: boolean, path: values/protonate_ligand}
+      - {id: ph_in, kind: number, path: values/ph}
+      - {id: parameterize_ligand_script_in, kind: file, path: scripts/parameterize_ligand.py}
+    outputs:
+      - {id: ligand_mol2, name: Ligand (GAFF2 mol2), kind: file, path: ligand/ligand.mol2}
+      - {id: ligand_frcmod, name: Ligand parameters (frcmod), kind: file, path: ligand/ligand.frcmod}
+    executor: *tools
+    runtime:
+      kind: command
+      command: >-
+        python3 ${parameterize_ligand_script_in} --ligand ${ligand_in}
+        --resname=${ligand_resname_in} --charge=${ligand_charge_in}
+        --ph ${ph_in} --protonate ${protonate_ligand_in}
+        --out-mol2 ${ligand_mol2} --out-frcmod ${ligand_frcmod}
+    resources: {cpus: 2, memory_gb: 8, walltime: "01:00:00"}
+    target: *local
+    skip_if_complete: true
+
+  - kind: horus_task
+    id: build_complex
+    name: 2. Build complex (protein + ligand)
+    description: >-
+      Cleans the protein (chains, MSE -> MET, hetero groups removed),
+      protonates it at the pH (PROPKA), adds the parameterized ligand,
+      solvates, adds NaCl (SLTCAP) and optionally repartitions H masses.
+      Writes prep_report.json with every choice and warning.
+    inputs:
+      - {id: structure_in, kind: file, path: structure/structure.pdb}
+      - {id: chains_in, kind: string, path: values/chains}
+      - {id: keep_waters_in, kind: boolean, path: values/keep_waters}
+      - {<<: *protonation, id: protonation_in}
+      - {id: ph_in, kind: number, path: values/ph}
+      - {<<: *forcefield, id: forcefield_in}
+      - {<<: *water, id: water_in}
+      - {<<: *box, id: box_in}
+      - {id: padding_in, kind: number, path: values/padding}
+      - {id: salt_mM_in, kind: number, path: values/salt_mM}
+      - {id: hmr_in, kind: boolean, path: values/hmr}
+      - {id: build_system_script_in, kind: file, path: scripts/build_system.py}
+      - {id: ligand_mol2_in, kind: file, path: ligand/ligand.mol2}
+      - {id: ligand_frcmod_in, kind: file, path: ligand/ligand.frcmod}
+    outputs:
+      - {id: system_prmtop, name: System topology, kind: file, path: system/system.prmtop}
+      - {id: system_inpcrd, name: System coordinates, kind: file, path: system/system.inpcrd}
+      - {id: system_pdb, name: System structure, kind: file, path: system/system.pdb}
+      - {id: system_report, name: Build report, kind: file, path: system/prep_report.json}
+    executor: *tools
+    runtime:
+      kind: command
+      command: >-
+        python3 ${build_system_script_in} --structure ${structure_in}
+        --ligand-mol2 ${ligand_mol2_in} --ligand-frcmod ${ligand_frcmod_in}
+        --chains=${chains_in} --keep-waters ${keep_waters_in}
+        --protonation ${protonation_in} --ph ${ph_in}
+        --forcefield ${forcefield_in} --water ${water_in} --box ${box_in}
+        --padding ${padding_in} --salt-mM ${salt_mM_in} --hmr ${hmr_in}
+        --out-prmtop ${system_prmtop} --out-inpcrd ${system_inpcrd}
+        --out-pdb ${system_pdb} --out-report ${system_report}
+    resources: {cpus: 2, memory_gb: 8, walltime: "01:00:00"}
+    target: *local
+    skip_if_complete: true
+
+  # Protein-only alternative to build_complex. In this default (ligand)
+  # graph its outputs are not consumed; for a protein-only run delete the
+  # ligand blocks and build_complex, and connect protein_prmtop/inpcrd to
+  # prepare_replicas.
+  - kind: horus_task
+    id: build_system
+    name: 2'. Build system (protein only)
+    description: Same as build_complex without a ligand.
+    inputs:
+      - {id: structure_in, kind: file, path: structure/structure.pdb}
+      - {id: chains_in, kind: string, path: values/chains}
+      - {id: keep_waters_in, kind: boolean, path: values/keep_waters}
+      - {<<: *protonation, id: protonation_in}
+      - {id: ph_in, kind: number, path: values/ph}
+      - {<<: *forcefield, id: forcefield_in}
+      - {<<: *water, id: water_in}
+      - {<<: *box, id: box_in}
+      - {id: padding_in, kind: number, path: values/padding}
+      - {id: salt_mM_in, kind: number, path: values/salt_mM}
+      - {id: hmr_in, kind: boolean, path: values/hmr}
+      - {id: build_system_script_in, kind: file, path: scripts/build_system.py}
+    outputs:
+      - {id: protein_prmtop, name: System topology, kind: file, path: system_protein/system.prmtop}
+      - {id: protein_inpcrd, name: System coordinates, kind: file, path: system_protein/system.inpcrd}
+      - {id: protein_pdb, name: System structure, kind: file, path: system_protein/system.pdb}
+      - {id: protein_report, name: Build report, kind: file, path: system_protein/prep_report.json}
+    executor: *tools
+    runtime:
+      kind: command
+      command: >-
+        python3 ${build_system_script_in} --structure ${structure_in}
+        --chains=${chains_in} --keep-waters ${keep_waters_in}
+        --protonation ${protonation_in} --ph ${ph_in}
+        --forcefield ${forcefield_in} --water ${water_in} --box ${box_in}
+        --padding ${padding_in} --salt-mM ${salt_mM_in} --hmr ${hmr_in}
+        --out-prmtop ${protein_prmtop} --out-inpcrd ${protein_inpcrd}
+        --out-pdb ${protein_pdb} --out-report ${protein_report}
+    resources: {cpus: 2, memory_gb: 8, walltime: "01:00:00"}
+    target: *local
+    skip_if_complete: true
+
+  - kind: horus_task
+    id: prepare_replicas
+    name: 2. Generate replica slots
+    description: >-
+      Renders the equilibration and production .mdin files from the MD
+      settings and writes one self-contained slot per replica (system,
+      scripts, inputs, protocol.json). Does not run AMBER.
+    inputs:
+      - {id: n_replicas_in, kind: number, path: values/n_replicas}
+      - {id: temperature_in, kind: number, path: values/temperature}
+      - {id: length_ns_in, kind: number, path: values/length_ns}
+      - {id: timestep_fs_in, kind: number, path: values/timestep_fs}
+      - {<<: *prod_ensemble, id: prod_ensemble_in}
+      - {id: chunk_ns_in, kind: number, path: values/chunk_ns}
+      - {id: save_every_ps_in, kind: number, path: values/save_every_ps}
+      - {id: write_solvent_in, kind: boolean, path: values/write_solvent}
+      - {id: equil_scale_in, kind: number, path: values/equil_scale}
+      - {id: restraint_scale_in, kind: number, path: values/restraint_scale}
+      - {id: restraint_mask_in, kind: string, path: values/restraint_mask}
+      - {id: heat_start_k_in, kind: number, path: values/heat_start_k}
+      - {id: cutoff_in, kind: number, path: values/cutoff}
+      - {id: gamma_ln_in, kind: number, path: values/gamma_ln}
+      - {id: pressure_bar_in, kind: number, path: values/pressure_bar}
+      - {id: seed_in, kind: number, path: values/seed}
+      - {id: analysis_stride_in, kind: number, path: values/analysis_stride}
+      - {<<: *amber_env, id: amber_env_in}
+      - {<<: *md_engine, id: md_engine_in}
+      - {id: openmm_runner_script_in, kind: file, path: scripts/mdin_openmm.py}
+      - {id: system_prmtop_in, kind: file, path: system/system.prmtop}
+      - {id: system_inpcrd_in, kind: file, path: system/system.inpcrd}
+      - {id: templates_in, kind: file, path: templates.tar.gz}
+      - {id: equilibrate_script_in, kind: file, path: scripts/equilibrate.sh}
+      - {id: production_script_in, kind: file, path: scripts/production.sh}
+      - {id: live_monitor_script_in, kind: file, path: scripts/live_monitor.sh}
+      - {id: analyze_script_in, kind: file, path: scripts/analyze.py}
     outputs:
       - id: replicas
         name: Replica slots
@@ -138,183 +700,230 @@ tasks:
       script: scripts/prepare_replicas.py
       python: python3 # stdlib-only; use the target's python3
       args: >-
-        --params ${params_in} --templates ${templates_in}
-        --prmtop ${parameters_in} --inpcrd ${coordinates_in}
-        --amber-env ${amber_env_in} --equilibrate-script ${equilibrate_script_in}
-        --production-script ${production_script_in} --out ${replicas}
+        --replicas ${n_replicas_in} --temperature ${temperature_in}
+        --length-ns ${length_ns_in} --timestep-fs ${timestep_fs_in}
+        --prod-ensemble ${prod_ensemble_in} --chunk-ns ${chunk_ns_in}
+        --save-every-ps ${save_every_ps_in} --write-solvent ${write_solvent_in}
+        --equil-scale ${equil_scale_in} --restraint-scale ${restraint_scale_in}
+        --restraint-mask=${restraint_mask_in} --heat-start-k ${heat_start_k_in}
+        --cutoff ${cutoff_in} --gamma-ln ${gamma_ln_in}
+        --pressure-bar ${pressure_bar_in} --seed=${seed_in}
+        --analysis-stride ${analysis_stride_in} --amber-env ${amber_env_in}
+        --md-engine ${md_engine_in} --openmm-runner ${openmm_runner_script_in}
+        --prmtop ${system_prmtop_in} --inpcrd ${system_inpcrd_in}
+        --templates ${templates_in}
+        --equilibrate-script ${equilibrate_script_in}
+        --production-script ${production_script_in}
+        --live-monitor-script ${live_monitor_script_in}
+        --analyze-script ${analyze_script_in} --out ${replicas}
     target: *local
     skip_if_complete: true
 
-  # Fans out one clone per replica, each equilibrating (10 preproduction
-  # steps, scripts/equilibrate.sh) inside its own SLURM job. Two map stages
-  # (this one, then `produce` below) instead of one so equilibration and
-  # production are independent jobs with their own walltime, and so a
-  # workflow re-run can skip a replica's finished equilibration without
-  # having to re-check/rerun its production too.
-  #
-  # `kind: horus_map` is an ordinary, self-dispatching DAG node (>= 0.4): it
-  # iterates `over.input_id` (an IterableArtifact -- a folder iterates its
-  # children, sorted by name) and clones itself once per item as a plain
-  # horus_task, binding each item under `over.as` and rebinding the single
-  # declared output to that clone's own slot directory. Its per-item body is
-  # always flat (one runtime), so it cannot itself chain equilibrate+produce
-  # as separate steps -- hence two chained map tasks instead of one.
-  #
-  # Each clone's command copies its whole `slot` into its own output first
-  # (`cp -r ${slot}/. ${equilibrated}/`), so `produce` below -- which maps
-  # over *this* task's output -- receives an equally self-contained item
-  # (system files, production.sh, plus this stage's preprod/10_nvt.rst),
-  # exactly like `equilibrate` does mapping over `prepare_replicas`.
-  #
-  # NOTE on granularity: an earlier version of this workflow gave each AMBER
-  # step its own Horus task (a `subworkflow` chaining 11 tasks used as a
-  # map's per-item body). That composition doesn't exist any more:
-  # horus_map only ever runs a flat, single-runtime body per item. It
-  # replaced the old map:/gather: sugar (source_task/source_output/
-  # item_input + subworkflow-body templates) specifically because that
-  # composition let the gather task race ahead of the subworkflow's real
-  # inner tasks. Two-phase (this file) is as fine-grained as the current
-  # primitive allows without that problem; per-AMBER-step granularity would
-  # need horus-runtime to add multi-step map bodies.
+  # Fans out one clone per replica over prepare_replicas' output. A
+  # horus_map clone gets exactly one item (its slot) and runs one flat
+  # command, so equilibration and production are two chained map stages,
+  # each copying the slot forward so the next stage's items are
+  # self-contained too. max_concurrency is unset: horus_map caps at 8 by
+  # default; set it if n_replicas exceeds 8.
   - kind: horus_map
     id: equilibrate
-    name: 2. Equilibrate each replica (parallel)
-    description: Fans out one clone per replica over prepare_replicas'
-      output; each clone runs the 10 preproduction steps (minimize, heat,
-      equilibrate) inside one SLURM allocation.
+    name: 3. Equilibrate each replica (parallel)
+    description: Fans out one clone per replica; each runs the 10-step
+      equilibration (minimize, heat, restrained NPT, free NPT/NVT) in one
+      SLURM GPU job.
     over:
       input_id: replicas_in
       as: slot
-    # max_concurrency left unset: horus_map applies a built-in cap (8 by
-    # default -- horus_builtin.workflow.scheduler.DEFAULT_MAX_CONCURRENCY)
-    # rather than dispatching every replica at once. Set this explicitly
-    # if params.json's `replicas` exceeds 8.
     inputs:
       - id: replicas_in
         name: Replica slots
-        description: Produced by prepare_replicas; each child directory
-          becomes one replica clone's slot (bound to `slot` per over.as).
         kind: folder
         path: replicas/
     outputs:
       - id: equilibrated
         name: Equilibrated replicas
-        description: Each replica's slot, copied forward, plus its
-          preprod/*.{out,rst,nc,info} equilibration results.
+        description: Each slot copied forward plus its preprod/ results.
         kind: folder
         path: equilibrated_out/
-    executor: *shell
-    target: *gpu_equilibrate
+    executor: *tools # OpenMM; with md_engine pmemd, amber.sh adds pmemd.cuda
+    target: *local
     runtime:
       kind: command
       command: >-
         cp -r ${slot}/. ${equilibrated}/ &&
         . ${equilibrated}/amber.sh &&
         bash ${equilibrated}/equilibrate.sh ${equilibrated}
+    # 15 ns at equil_scale=1, ~2 h for the 18k-atom example on one GPU.
     resources:
+      cpus: 4
       gpus: 1
+      memory_gb: 16
+      walltime: "05:00:00"
 
-  # Fans out one clone per replica over `equilibrate`'s output: each item is
-  # already a self-contained slot (see the note on `equilibrate` above), so
-  # this only needs to run the production chunk loop.
   - kind: horus_map
     id: produce
-    name: 3. Run production MD per replica (parallel)
-    description: Fans out one clone per replica over equilibrate's output;
-      each clone runs the chunked production loop (scripts/production.sh)
-      inside one SLURM allocation.
+    name: 4. Run production MD per replica (parallel)
+    description: Fans out one clone per replica; each runs the chunked
+      production loop in one SLURM GPU job and carries the slot's small
+      files (topology, settings, scripts) forward for analysis.
     over:
       input_id: equilibrated_in
       as: slot
     inputs:
       - id: equilibrated_in
         name: Equilibrated replicas
-        description: Produced by equilibrate; each child directory becomes
-          one replica clone's slot (bound to `slot` per over.as).
         kind: folder
         path: equilibrated_out/
     outputs:
       - id: produced
         name: Production outputs
-        description: Production chunk files (prod_N.rst/.nc/.mdout/.mdinf),
-          one subfolder per replica.
+        description: prod_N.{nc,rst,mdout,mdinf} per replica plus topology,
+          protocol.json and equilibration mdouts.
         kind: folder
         path: produced_out/
-    executor: *shell
-    target: *gpu_produce
+    executor: *tools # OpenMM; with md_engine pmemd, amber.sh adds pmemd.cuda
+    target: *local
     runtime:
       kind: command
       command: >-
         . ${slot}/amber.sh &&
         bash ${slot}/production.sh ${slot} ${slot}/preprod ${produced}
+    # Scales with length_ns; 10 days covers the 200 ns default.
     resources:
+      cpus: 4
       gpus: 1
+      memory_gb: 16
+      walltime: "10-00:00:00"
 
-  - kind: horus_task
-    id: collect
-    name: 4. Summarize replicas
-    description: Walks every replica's production output and writes a
-      one-row-per-replica CSV (chunks completed, last restart file,
-      trajectory file count/size).
+  - kind: horus_map
+    id: analyze
+    name: 5. Analyze each replica (parallel)
+    description: cpptraj per replica on the cluster (next to the
+      trajectories) - backbone RMSD, CA RMSF, Rg, H-bonds, ligand RMSD and
+      contacts, plus a dry strided trajectory for clustering.
+    over:
+      input_id: produced_in
+      as: slot
     inputs:
       - id: produced_in
         name: Production outputs
         kind: folder
         path: produced_out/
     outputs:
-      - id: summary
-        name: Replica summary
-        kind: file
-        path: results/summary.csv
-    executor: *shell
+      - id: analyzed
+        name: Replica analyses
+        kind: folder
+        path: analyzed_out/
+    executor: *tools
+    resources: {cpus: 4, memory_gb: 16, walltime: "04:00:00"}
+    target: *local
     runtime:
-      kind: python_script
-      script: scripts/collect.py
-      python: python3 # stdlib-only; use the target's python3
-      args: --results ${produced_in} --out ${summary}
+      kind: command
+      command: >-
+        python3 ${slot}/analyze.py --item ${slot} --out ${analyzed}
+
+  - kind: horus_task
+    id: report
+    name: 6. Cluster and report
+    description: k-means clustering over all replicas, then report.html
+      (plots, clusters with Mol* representatives, H-bonds, ligand contacts,
+      every setting) and summary.csv.
+    inputs:
+      - {id: analyzed_in, kind: folder, path: analyzed_out/}
+      - {id: n_clusters_in, kind: number, path: values/n_clusters}
+      - {id: report_script_in, kind: file, path: scripts/report.py}
+    outputs:
+      - {id: report_html, name: Report, kind: file, path: results/report.html}
+      - {id: summary_csv, name: Replica summary, kind: file, path: results/summary.csv}
+      - {id: clusters, name: Cluster representatives, kind: folder, path: results/clusters/}
+    executor: *tools
+    runtime:
+      kind: command
+      command: >-
+        python3 ${report_script_in} --analyses ${analyzed_in}
+        --n-clusters ${n_clusters_in}
+        --out "$(dirname ${report_html})"
+    resources: {cpus: 2, memory_gb: 8, walltime: "01:00:00"}
     target: *local
 
 edges:
-  - source: artifact-params
-    source_output: params
-    target: prepare_replicas
-    target_input: params_in
-  - source: artifact-templates
-    source_output: templates
-    target: prepare_replicas
-    target_input: templates_in
-  - source: artifact-parameters
-    source_output: parameters
-    target: prepare_replicas
-    target_input: parameters_in
-  - source: artifact-coordinates
-    source_output: coordinates
-    target: prepare_replicas
-    target_input: coordinates_in
-  - source: artifact-amber_env
-    source_output: amber_env
-    target: prepare_replicas
-    target_input: amber_env_in
-  - source: artifact-equilibrate_script
-    source_output: equilibrate_script
-    target: prepare_replicas
-    target_input: equilibrate_script_in
-  - source: artifact-production_script
-    source_output: production_script
-    target: prepare_replicas
-    target_input: production_script_in
-  - source: prepare_replicas
-    source_output: replicas
-    target: equilibrate
-    target_input: replicas_in
-  - source: equilibrate
-    source_output: equilibrated
-    target: produce
-    target_input: equilibrated_in
-  - source: produce
-    source_output: produced
-    target: collect
-    target_input: produced_in
+  # structure and ligand
+  - {source: artifact-pdb_id, source_output: pdb_id, target: fetch_pdb, target_input: pdb_id_in}
+  - {source: artifact-structure_upload, source_output: structure_upload, target: fetch_pdb, target_input: structure_upload_in}
+  - {source: fetch_pdb, source_output: structure, target: extract_ligand, target_input: structure_in}
+  - {source: artifact-ligand_resname, source_output: ligand_resname, target: extract_ligand, target_input: ligand_resname_in}
+  - {source: artifact-ligand_chain, source_output: ligand_chain, target: extract_ligand, target_input: ligand_chain_in}
+  - {source: extract_ligand, source_output: ligand_pose, target: parameterize_ligand, target_input: ligand_in}
+  - {source: artifact-ligand_resname, source_output: ligand_resname, target: parameterize_ligand, target_input: ligand_resname_in}
+  - {source: artifact-ligand_charge, source_output: ligand_charge, target: parameterize_ligand, target_input: ligand_charge_in}
+  - {source: artifact-protonate_ligand, source_output: protonate_ligand, target: parameterize_ligand, target_input: protonate_ligand_in}
+  - {source: artifact-ph, source_output: ph, target: parameterize_ligand, target_input: ph_in}
+  - {source: artifact-parameterize_ligand_script, source_output: parameterize_ligand_script, target: parameterize_ligand, target_input: parameterize_ligand_script_in}
+  # system builds. The ordering-only edge stops build_system from creating
+  # the shared tools env concurrently with parameterize_ligand on a first run
+  # (drop it with the ligand blocks in a protein-only graph).
+  - {source: parameterize_ligand, target: build_system, transfer: false}
+  - {source: fetch_pdb, source_output: structure, target: build_complex, target_input: structure_in}
+  - {source: artifact-chains, source_output: chains, target: build_complex, target_input: chains_in}
+  - {source: artifact-keep_waters, source_output: keep_waters, target: build_complex, target_input: keep_waters_in}
+  - {source: artifact-protonation, source_output: protonation, target: build_complex, target_input: protonation_in}
+  - {source: artifact-ph, source_output: ph, target: build_complex, target_input: ph_in}
+  - {source: artifact-forcefield, source_output: forcefield, target: build_complex, target_input: forcefield_in}
+  - {source: artifact-water, source_output: water, target: build_complex, target_input: water_in}
+  - {source: artifact-box, source_output: box, target: build_complex, target_input: box_in}
+  - {source: artifact-padding, source_output: padding, target: build_complex, target_input: padding_in}
+  - {source: artifact-salt_mM, source_output: salt_mM, target: build_complex, target_input: salt_mM_in}
+  - {source: artifact-hmr, source_output: hmr, target: build_complex, target_input: hmr_in}
+  - {source: artifact-build_system_script, source_output: build_system_script, target: build_complex, target_input: build_system_script_in}
+  - {source: parameterize_ligand, source_output: ligand_mol2, target: build_complex, target_input: ligand_mol2_in}
+  - {source: parameterize_ligand, source_output: ligand_frcmod, target: build_complex, target_input: ligand_frcmod_in}
+  - {source: fetch_pdb, source_output: structure, target: build_system, target_input: structure_in}
+  - {source: artifact-chains, source_output: chains, target: build_system, target_input: chains_in}
+  - {source: artifact-keep_waters, source_output: keep_waters, target: build_system, target_input: keep_waters_in}
+  - {source: artifact-protonation, source_output: protonation, target: build_system, target_input: protonation_in}
+  - {source: artifact-ph, source_output: ph, target: build_system, target_input: ph_in}
+  - {source: artifact-forcefield, source_output: forcefield, target: build_system, target_input: forcefield_in}
+  - {source: artifact-water, source_output: water, target: build_system, target_input: water_in}
+  - {source: artifact-box, source_output: box, target: build_system, target_input: box_in}
+  - {source: artifact-padding, source_output: padding, target: build_system, target_input: padding_in}
+  - {source: artifact-salt_mM, source_output: salt_mM, target: build_system, target_input: salt_mM_in}
+  - {source: artifact-hmr, source_output: hmr, target: build_system, target_input: hmr_in}
+  - {source: artifact-build_system_script, source_output: build_system_script, target: build_system, target_input: build_system_script_in}
+  # replica generation inputs
+  - {source: build_complex, source_output: system_prmtop, target: prepare_replicas, target_input: system_prmtop_in}
+  - {source: build_complex, source_output: system_inpcrd, target: prepare_replicas, target_input: system_inpcrd_in}
+  - {source: artifact-n_replicas, source_output: n_replicas, target: prepare_replicas, target_input: n_replicas_in}
+  - {source: artifact-temperature, source_output: temperature, target: prepare_replicas, target_input: temperature_in}
+  - {source: artifact-length_ns, source_output: length_ns, target: prepare_replicas, target_input: length_ns_in}
+  - {source: artifact-timestep_fs, source_output: timestep_fs, target: prepare_replicas, target_input: timestep_fs_in}
+  - {source: artifact-prod_ensemble, source_output: prod_ensemble, target: prepare_replicas, target_input: prod_ensemble_in}
+  - {source: artifact-chunk_ns, source_output: chunk_ns, target: prepare_replicas, target_input: chunk_ns_in}
+  - {source: artifact-save_every_ps, source_output: save_every_ps, target: prepare_replicas, target_input: save_every_ps_in}
+  - {source: artifact-write_solvent, source_output: write_solvent, target: prepare_replicas, target_input: write_solvent_in}
+  - {source: artifact-equil_scale, source_output: equil_scale, target: prepare_replicas, target_input: equil_scale_in}
+  - {source: artifact-restraint_scale, source_output: restraint_scale, target: prepare_replicas, target_input: restraint_scale_in}
+  - {source: artifact-restraint_mask, source_output: restraint_mask, target: prepare_replicas, target_input: restraint_mask_in}
+  - {source: artifact-heat_start_k, source_output: heat_start_k, target: prepare_replicas, target_input: heat_start_k_in}
+  - {source: artifact-cutoff, source_output: cutoff, target: prepare_replicas, target_input: cutoff_in}
+  - {source: artifact-gamma_ln, source_output: gamma_ln, target: prepare_replicas, target_input: gamma_ln_in}
+  - {source: artifact-pressure_bar, source_output: pressure_bar, target: prepare_replicas, target_input: pressure_bar_in}
+  - {source: artifact-seed, source_output: seed, target: prepare_replicas, target_input: seed_in}
+  - {source: artifact-analysis_stride, source_output: analysis_stride, target: prepare_replicas, target_input: analysis_stride_in}
+  - {source: artifact-amber_env, source_output: amber_env, target: prepare_replicas, target_input: amber_env_in}
+  - {source: artifact-md_engine, source_output: md_engine, target: prepare_replicas, target_input: md_engine_in}
+  - {source: artifact-openmm_runner_script, source_output: openmm_runner_script, target: prepare_replicas, target_input: openmm_runner_script_in}
+  - {source: artifact-templates, source_output: templates, target: prepare_replicas, target_input: templates_in}
+  - {source: artifact-equilibrate_script, source_output: equilibrate_script, target: prepare_replicas, target_input: equilibrate_script_in}
+  - {source: artifact-production_script, source_output: production_script, target: prepare_replicas, target_input: production_script_in}
+  - {source: artifact-live_monitor_script, source_output: live_monitor_script, target: prepare_replicas, target_input: live_monitor_script_in}
+  - {source: artifact-analyze_script, source_output: analyze_script, target: prepare_replicas, target_input: analyze_script_in}
+  # MD and analysis chain
+  - {source: prepare_replicas, source_output: replicas, target: equilibrate, target_input: replicas_in}
+  - {source: equilibrate, source_output: equilibrated, target: produce, target_input: equilibrated_in}
+  - {source: produce, source_output: produced, target: analyze, target_input: produced_in}
+  - {source: analyze, source_output: analyzed, target: report, target_input: analyzed_in}
+  - {source: artifact-n_clusters, source_output: n_clusters, target: report, target_input: n_clusters_in}
+  - {source: artifact-report_script, source_output: report_script, target: report, target_input: report_script_in}
 
 orchestrator_target:
   kind: local
