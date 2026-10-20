@@ -1,0 +1,89 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06122a"/><stop offset="1" stop-color="#0b2a5c"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#60a5fa" stop-opacity="0.22"/><stop offset="1" stop-color="#60a5fa" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#bfdbfe"/>
+    </marker>
+
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="198" height="36" fill="#1e3a8a"/>
+  <text x="163" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#bfdbfe">W-05 · BioExcel</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#eff6ff">AMBER Protein</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#eff6ff">MD Setup</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#60a5fa">biobb · AmberTools · ff14SB · sander</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">Fetch a PDB entry or upload a structure;</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">solvate in TIP3P, add NaCl, heat to 300 K,</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">equilibrate, run MD and analyze with cpptraj.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#5b7299">PANTHEON · TEMPLE COMPUTE</text>
+  <polygon points="1056,373 953,476 807,476 704,373 704,227 807,124 953,124 1056,227" fill="#1e40af" opacity="0.28"/>
+  <g fill="none" stroke="#93c5fd" stroke-width="3" stroke-linejoin="round">
+    <polygon points="1056,373 953,476 807,476 704,373 704,227 807,124 953,124 1056,227"/>
+    <polygon points="975,300 928,382 832,382 785,300 832,218 928,218" opacity="0.6"/>
+  </g>
+  <circle cx="796" cy="314" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="838" cy="333" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="920" cy="161" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="724" cy="408" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="803" cy="215" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1039" cy="290" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="988" cy="292" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="925" cy="188" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="923" cy="418" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="887" cy="377" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="935" cy="160" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="963" cy="329" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="816" cy="150" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="997" cy="291" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="950" cy="421" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="949" cy="435" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="846" cy="396" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="862" cy="439" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1001" cy="171" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="764" cy="209" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1029" cy="280" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="921" cy="236" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="882" cy="263" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="832" cy="327" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="907" cy="429" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="938" cy="437" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="994" cy="457" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="935" cy="192" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="995" cy="449" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1010" cy="322" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="948" cy="208" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="986" cy="324" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="811" cy="160" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="993" cy="457" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="748" cy="396" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="851" cy="188" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="814" cy="386" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="999" cy="154" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="917" cy="154" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="950" cy="246" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1002" cy="454" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="882" cy="460" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="819" cy="165" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="912" cy="150" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="783" cy="271" r="5" fill="#60a5fa" opacity="0.45"/>
+  <g transform="translate(880,300) scale(0.85)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-110,40 C-90,-40 -60,-40 -50,0 C-40,40 -10,40 0,0 C10,-40 40,-40 50,0 C60,40 90,40 100,-10" stroke="#fbbf24" stroke-width="14"/>
+    <path d="M-120,-60 C-60,-110 40,-110 110,-70" stroke="#93c5fd" stroke-width="11.200000000000001"/>
+    <path d="M110,-70 l-26,-6 m26,6 l-14,22" stroke="#93c5fd" stroke-width="11.200000000000001"/>
+    <path d="M-100,90 C-40,120 50,115 105,70" stroke="#60a5fa" stroke-width="11.200000000000001"/>
+  </g>
+  <!-- heating ramp -->
+  <g transform="translate(700,500)">
+    <line x1="0" y1="60" x2="380" y2="60" stroke="#5b7299" stroke-width="2"/>
+    <polyline points="0,60 120,10 380,10" fill="none" stroke="#fbbf24" stroke-width="5" stroke-linejoin="round"/>
+    <text x="0" y="86" font-family="DejaVu Sans" font-size="17" fill="#bfdbfe">0 K</text>
+    <text x="300" y="0" font-family="DejaVu Sans" font-size="17" fill="#fbbf24">300 K</text>
+    <text x="150" y="86" font-family="DejaVu Sans" font-size="17" fill="#bfdbfe">heat → NVT → NPT → MD</text>
+  </g>
+</svg>

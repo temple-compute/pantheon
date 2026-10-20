@@ -1,9 +1,9 @@
 kind: horus_workflow
-name: PMX Mutation Free Energy Calculations - Staphylococcal nuclease I10A
+name: Mutation Free Energy (pmx, non-equilibrium TI)
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
@@ -12,6 +12,58 @@ _docker_executor_pmx: &docker_executor_pmx
   image: quay.io/biocontainers/biobb_pmx:5.2.2--pyhdfd78af_0
 
 artifacts:
+  - id: mutation_resnum
+    name: Mutated residue number
+    description: Residue number to mutate, as numbered in the input structures (default 10).
+    kind: number
+    path: params/mutation_resnum.txt
+    value: 10
+    min: 1
+    max: 10000
+    step: 1
+  - id: wt_residue
+    name: Wild-type residue
+    description: Residue in state A (wild type); the reverse transition in state B mutates back to it.
+    kind: choice
+    path: params/wt_residue.txt
+    value: Ile
+    options: &id001
+      - value: Ala
+      - value: Arg
+      - value: Asn
+      - value: Asp
+      - value: Cys
+      - value: Gln
+      - value: Glu
+      - value: Gly
+      - value: His
+      - value: Ile
+      - value: Leu
+      - value: Lys
+      - value: Met
+      - value: Phe
+      - value: Pro
+      - value: Ser
+      - value: Thr
+      - value: Trp
+      - value: Tyr
+      - value: Val
+  - id: mut_residue
+    name: Mutant residue
+    description: Residue in state B (mutant); the forward transition in state A mutates to it.
+    kind: choice
+    path: params/mut_residue.txt
+    value: Ala
+    options: *id001
+  - id: frame_interval_ps
+    name: Frame spacing (ps)
+    description: Spacing of the snapshots taken from each 1 ns equilibrium trajectory; each snapshot seeds one non-equilibrium transition (200 ps = 5 per state).
+    kind: number
+    path: params/frame_interval_ps.txt
+    value: 200
+    min: 20
+    max: 1000
+    step: 20
   - id: gmx_energy_eq_stateA_config
     name: stateA energy extraction config
     description: Settings for extracting pressure and density from the stateA NPT equilibration energy file.
@@ -29,18 +81,6 @@ artifacts:
     description: Settings for extracting potential energy from the stateB dummy-atom minimization run.
     kind: file
     path: configs/gmx_energy_min_stateB.yaml
-
-  - id: gmx_trjconv_str_ens_stateA_config
-    name: stateA snapshot extraction config
-    description: Settings for extracting structural snapshots from the stateA equilibrium trajectory.
-    kind: file
-    path: configs/gmx_trjconv_str_ens_stateA.yaml
-
-  - id: gmx_trjconv_str_ens_stateB_config
-    name: stateB snapshot extraction config
-    description: Settings for extracting structural snapshots from the stateB equilibrium trajectory.
-    kind: file
-    path: configs/gmx_trjconv_str_ens_stateB.yaml
 
   - id: grompp_eq_stateA_config
     name: stateA equilibration mdp config
@@ -108,18 +148,6 @@ artifacts:
     kind: file
     path: configs/pmxgentop_stateB.yaml
 
-  - id: pmxmutate_stateA_config
-    name: stateA mutation config
-    description: Mutation list (Ile10 to Ala) and force field settings for modeling the stateA mutant structure.
-    kind: file
-    path: configs/pmxmutate_stateA.yaml
-
-  - id: pmxmutate_stateB_config
-    name: stateB mutation config
-    description: Mutation list (Ala10 to Ile) and force field settings for modeling the stateB mutant structure.
-    kind: file
-    path: configs/pmxmutate_stateB.yaml
-
   - id: dhdlA_zip
     name: stateA replicate dHdl bundle
     description: Bundle of pre-computed replicate dHdl work curves for the WT to Mut transition, used by the CGI, BAR, and Jarzynski estimators.
@@ -164,10 +192,6 @@ tasks:
     name: Extract snapshots from stateA (WT) equilibrium trajectory
     description: Runs GROMACS gmx_trjconv to extract structural snapshots from the stateA (WT) equilibrium trajectory.
     inputs:
-      - id: gmx_trjconv_str_ens_stateA_config
-        name: stateA snapshot extraction config
-        kind: file
-        path: configs/gmx_trjconv_str_ens_stateA.yaml
       - id: stateA_traj
         name: stateA equilibrium trajectory
         kind: file
@@ -176,6 +200,10 @@ tasks:
         name: stateA run input file
         kind: file
         path: pmx_tutorial/stateA.tpr
+      - id: frame_interval_ps
+        name: Frame spacing (ps)
+        kind: number
+        path: params/frame_interval_ps.txt
     outputs:
       - id: stateA_frames
         name: stateA snapshots
@@ -186,11 +214,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        gmx_trjconv_str_ens
-        --config ${gmx_trjconv_str_ens_stateA_config}
-        --input_traj_path ${stateA_traj}
-        --input_top_path ${stateA_tpr}
-        --output_str_ens_path ${stateA_frames}
+        gmx_trjconv_str_ens --config '{"properties":{"selection":"System","start":1,"end":1000,"dt":${frame_interval_ps},"output_name":"frameA","output_type":"pdb"}}' --input_traj_path ${stateA_traj} --input_top_path ${stateA_tpr} --output_str_ens_path ${stateA_frames}
     target:
       kind: local
 
@@ -199,10 +223,6 @@ tasks:
     name: Extract snapshots from stateB (Mutant) equilibrium trajectory
     description: Runs GROMACS gmx_trjconv to extract structural snapshots from the stateB (Mutant) equilibrium trajectory.
     inputs:
-      - id: gmx_trjconv_str_ens_stateB_config
-        name: stateB snapshot extraction config
-        kind: file
-        path: configs/gmx_trjconv_str_ens_stateB.yaml
       - id: stateB_traj
         name: stateB equilibrium trajectory
         kind: file
@@ -211,6 +231,10 @@ tasks:
         name: stateB run input file
         kind: file
         path: pmx_tutorial/stateB.tpr
+      - id: frame_interval_ps
+        name: Frame spacing (ps)
+        kind: number
+        path: params/frame_interval_ps.txt
     outputs:
       - id: stateB_frames
         name: stateB snapshots
@@ -221,11 +245,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        gmx_trjconv_str_ens
-        --config ${gmx_trjconv_str_ens_stateB_config}
-        --input_traj_path ${stateB_traj}
-        --input_top_path ${stateB_tpr}
-        --output_str_ens_path ${stateB_frames}
+        gmx_trjconv_str_ens --config '{"properties":{"selection":"System","start":1,"end":1000,"dt":${frame_interval_ps},"output_name":"frameB","output_type":"pdb"}}' --input_traj_path ${stateB_traj} --input_top_path ${stateB_tpr} --output_str_ens_path ${stateB_frames}
     target:
       kind: local
 
@@ -236,14 +256,19 @@ tasks:
     name: Model stateA mutated structure (Ile10 -> Ala, WT->Mut)
     description: Runs pmx mutate to build the in-silico Ile10->Ala mutant structure for stateA (WT->Mut).
     inputs:
-      - id: pmxmutate_stateA_config
-        name: stateA mutation config
-        kind: file
-        path: configs/pmxmutate_stateA.yaml
       - id: stateA_frames
         name: stateA snapshots
         kind: file
         path: results/stateA_frames.zip
+      - id: mutation_resnum
+        name: Mutated residue number
+        kind: number
+        path: params/mutation_resnum.txt
+      - id: mut_residue
+        name: Mutant residue
+        kind: choice
+        path: params/mut_residue.txt
+        options: *id001
     outputs:
       - id: mutA_pdb
         name: stateA mutant structure
@@ -253,10 +278,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        pmxmutate
-        --config ${pmxmutate_stateA_config}
-        --input_structure_path ${stateA_frames}
-        --output_structure_path ${mutA_pdb}
+        pmxmutate --config '{"properties":{"force_field":"amber99sb-star-ildn-mut","mutation_list":"${mutation_resnum}${mut_residue}","binary_path":"pmx"}}' --input_structure_path ${stateA_frames} --output_structure_path ${mutA_pdb}
     target:
       kind: local
 
@@ -265,14 +287,19 @@ tasks:
     name: Model stateB mutated structure (Ala10 -> Ile, Mut->WT)
     description: Runs pmx mutate to build the in-silico Ala10->Ile mutant structure for stateB (Mut->WT).
     inputs:
-      - id: pmxmutate_stateB_config
-        name: stateB mutation config
-        kind: file
-        path: configs/pmxmutate_stateB.yaml
       - id: stateB_frames
         name: stateB snapshots
         kind: file
         path: results/stateB_frames.zip
+      - id: mutation_resnum
+        name: Mutated residue number
+        kind: number
+        path: params/mutation_resnum.txt
+      - id: wt_residue
+        name: Wild-type residue
+        kind: choice
+        path: params/wt_residue.txt
+        options: *id001
     outputs:
       - id: mutB_pdb
         name: stateB mutant structure
@@ -282,10 +309,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        pmxmutate
-        --config ${pmxmutate_stateB_config}
-        --input_structure_path ${stateB_frames}
-        --output_structure_path ${mutB_pdb}
+        pmxmutate --config '{"properties":{"force_field":"amber99sb-star-ildn-mut","mutation_list":"${mutation_resnum}${wt_residue}","binary_path":"pmx"}}' --input_structure_path ${stateB_frames} --output_structure_path ${mutB_pdb}
     target:
       kind: local
 
@@ -522,6 +546,10 @@ tasks:
         name: stateB minimization energy file
         kind: file
         path: results/emout_stateB.edr
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "01:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -652,6 +680,10 @@ tasks:
         name: stateA equilibration energy file
         kind: file
         path: results/eqoutA.edr
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "06:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -683,6 +715,10 @@ tasks:
         name: stateB equilibration energy file
         kind: file
         path: results/eqoutB.edr
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "06:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -843,6 +879,10 @@ tasks:
         description: dH/dlambda work values recorded during the stateA (WT to Mut) TI transition; illustrative of the method, not the statistical sample used for the final estimate.
         kind: file
         path: results/tiA_dhdl.xvg
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "06:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -876,6 +916,10 @@ tasks:
         description: dH/dlambda work values recorded during the stateB (Mut to WT) TI transition; illustrative of the method, not the statistical sample used for the final estimate.
         kind: file
         path: results/tiB_dhdl.xvg
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "06:00:00"
     executor: *executor
     runtime:
       kind: command
@@ -1097,16 +1141,6 @@ edges:
     target: gmx_energy_min_stateB
     target_input: gmx_energy_min_stateB_config
 
-  - source: artifact-gmx_trjconv_str_ens_stateA_config
-    source_output: gmx_trjconv_str_ens_stateA_config
-    target: gmx_trjconv_str_ens_stateA
-    target_input: gmx_trjconv_str_ens_stateA_config
-
-  - source: artifact-gmx_trjconv_str_ens_stateB_config
-    source_output: gmx_trjconv_str_ens_stateB_config
-    target: gmx_trjconv_str_ens_stateB
-    target_input: gmx_trjconv_str_ens_stateB_config
-
   - source: artifact-grompp_eq_stateA_config
     source_output: grompp_eq_stateA_config
     target: grompp_eq_stateA
@@ -1162,16 +1196,6 @@ edges:
     target: pmxgentop_stateB
     target_input: pmxgentop_stateB_config
 
-  - source: artifact-pmxmutate_stateA_config
-    source_output: pmxmutate_stateA_config
-    target: pmxmutate_stateA
-    target_input: pmxmutate_stateA_config
-
-  - source: artifact-pmxmutate_stateB_config
-    source_output: pmxmutate_stateB_config
-    target: pmxmutate_stateB
-    target_input: pmxmutate_stateB_config
-
   - source: artifact-dhdlA_zip
     source_output: dhdlA_zip
     target: pmxanalyse
@@ -1203,6 +1227,30 @@ edges:
     target_input: stateB_traj
 
 
+  - source: artifact-mutation_resnum
+    source_output: mutation_resnum
+    target: pmxmutate_stateA
+    target_input: mutation_resnum
+  - source: artifact-mutation_resnum
+    source_output: mutation_resnum
+    target: pmxmutate_stateB
+    target_input: mutation_resnum
+  - source: artifact-mut_residue
+    source_output: mut_residue
+    target: pmxmutate_stateA
+    target_input: mut_residue
+  - source: artifact-wt_residue
+    source_output: wt_residue
+    target: pmxmutate_stateB
+    target_input: wt_residue
+  - source: artifact-frame_interval_ps
+    source_output: frame_interval_ps
+    target: gmx_trjconv_str_ens_stateA
+    target_input: frame_interval_ps
+  - source: artifact-frame_interval_ps
+    source_output: frame_interval_ps
+    target: gmx_trjconv_str_ens_stateB
+    target_input: frame_interval_ps
 orchestrator_target:
   kind: local
   working_directory: "./workflow_results"

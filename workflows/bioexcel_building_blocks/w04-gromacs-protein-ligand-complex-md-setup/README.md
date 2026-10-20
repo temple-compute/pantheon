@@ -1,17 +1,23 @@
 # W-09 · GROMACS Protein-Ligand Complex MD Setup
 
+<img src="assets/logo.png" width="96" align="right" alt="W-09 logo">
+
+Set up and run GROMACS MD of a protein-ligand complex: fetch a complex by PDB ID (or upload one), name the ligand, and get a GAFF-parameterized, solvated, equilibrated system and a production trajectory.
+
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel-green)
+
+![W-09 cover](assets/cover.png)
 
 ## Overview
 
-This workflow runs a complete molecular dynamics setup for a protein-ligand complex using GROMACS: the **T4 lysozyme L99A/M102Q** protein (PDB: 3HTB) in complex with the small molecule **2-propylphenol** (ligand code JZ4). Starting from the raw PDB file, it splits the structure into protein and ligand, builds an AMBER99SB-ILDN topology for the protein and a GAFF/ACPype topology for the ligand, merges them into a single restrained complex, solvates and ionizes the system, energy-minimizes it, runs NVT/NPT equilibration, and finishes with a free production MD simulation. Horus provisions the full GROMACS/biobb conda environment (biobb_io, biobb_model, biobb_chemistry, biobb_gromacs, biobb_analysis, biobb_structure_utils) automatically for each stage and routes every task to the local machine — swapping any stage to a remote cluster is a one-line `target:` change.
+This workflow runs a complete molecular dynamics setup for a protein-ligand complex using GROMACS. The default is the **T4 lysozyme L99A/M102Q** protein (PDB: 3HTB) in complex with the small molecule **2-propylphenol** (ligand code JZ4). Starting from the raw PDB file, it splits the structure into protein and ligand, builds an AMBER99SB-ILDN topology for the protein and a GAFF/ACPype topology for the ligand, merges them into a single restrained complex, solvates and ionizes the system, energy-minimizes it, runs NVT/NPT equilibration, and finishes with a free production MD simulation. Horus provisions the full GROMACS/biobb conda environment (biobb_io, biobb_model, biobb_chemistry, biobb_gromacs, biobb_analysis, biobb_structure_utils) automatically for each stage and routes every task to the local machine — swapping any stage to a remote cluster is a one-line `target:` change.
 
 ## Pipeline
 
 ```
-fetch_pdb                    Download 3HTB (T4 lysozyme + JZ4) from PDB
+fetch_pdb                    Download pdb_id (default 3HTB) or use the uploaded complex
    │
-   ├─ extract_heteroatoms     Extract JZ4 ligand (biobb_structure_utils)
+   ├─ extract_heteroatoms     Extract the ligand_code ligand (biobb_structure_utils)
    │     │
    │  reduce_add_hydrogens    Add hydrogens to ligand (Reduce)
    │     │
@@ -76,11 +82,26 @@ uv sync
 uv run horus run workflow.yaml
 ```
 
-The first run builds the conda environment (this takes a few minutes). Subsequent runs reuse the cached environment at `../.horus_conda_env`.
+The first run builds the conda environment (this takes a few minutes). Every task and later runs reuse that one environment at `workflow_results/.horus_conda_env`.
+
+## Inputs
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `pdb_id` | string | `3HTB` | PDB code or empty | RCSB PDB code to download (default 3HTB). Clear it to use the uploaded structure instead. |
+| `structure` | file | `examples/3htb.pdb` | PDB | Protein-ligand complex used when PDB ID is empty; must contain the ligand as HETATM records with the residue name given in Ligand code. Default: examples/3htb.pdb (3HTB). |
+| `ligand_code` | string | `JZ4` | `[A-Za-z0-9]{1,3}` | Residue name of the ligand in the structure (default JZ4); it is extracted, parameterized with GAFF and restrained during equilibration. |
+| `ligand_charge` | number | `0` | -5–5, step 1 | Formal net charge of the ligand, passed to ACPype (JZ4: 0). |
+| `equilibration_steps` | number | `5000` | 500–5000000, step 500 | Steps of each restrained equilibration stage (2 fs per step; 5000 = 10 ps). |
+| `production_steps` | number | `25000` | 1000–50000000, step 1000 | Steps of the free production run (2 fs per step; 25000 = 50 ps). |
+
+`pdb_id` wins when set; clear it to run on the uploaded `structure`. `ligand_code` must match the ligand's residue name in that structure: it selects the heteroatoms to extract, names the ligand position restraints (`POSRES_<code>`) and switches them on in NVT/NPT. Set `ligand_charge` to its formal charge.
+
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes `params/<id>.txt` only when it is missing and fingerprints that file for the skip check, so a stale file keeps the old value. In Temple Compute, set it in the campaign form.
 
 ## Inputs / Outputs
 
-This workflow has no file inputs — it fetches 3HTB from the RCSB PDB automatically and extracts both the protein chain and the JZ4 ligand from it.
+The complex comes from `pdb_id` (fetched from the RCSB) or, when that is empty, from the `structure` upload; the protein and the `ligand_code` ligand are both extracted from it. See Inputs.
 
 **Outputs** (all under `workflow_results/results/`):
 - `downloaded.pdb`, `ligand.pdb`, `protein.pdb`, `fixed.pdb` — fetched and split structures
@@ -96,11 +117,15 @@ This workflow has no file inputs — it fetches 3HTB from the RCSB PDB automatic
 
 ## Configuration
 
-- `configs/fetch_pdb.yaml`, `configs/extract_heteroatoms.yaml` — target PDB code (3HTB) and ligand code (JZ4)
+- PDB ID, ligand code and charge, and the NVT/NPT/production step counts are workflow inputs (see Inputs), passed to biobb as inline JSON configs
 - `configs/pdb2gmx.yaml` — protein force field and water model
-- `configs/acpype_params_gmx.yaml`, `configs/babel_minimize.yaml`, `configs/reduce_add_hydrogens.yaml` — ligand parameterization settings (GAFF charges, pH, minimization)
+- `configs/babel_minimize.yaml`, `configs/reduce_add_hydrogens.yaml` — ligand hydrogens and minimization
 - `configs/editconf.yaml`, `configs/genion.yaml`, `configs/genrestr.yaml` — box geometry, ion concentration, restraint force constants
-- `configs/grompp_minimize.yaml`, `configs/grompp_nvt.yaml`, `configs/grompp_npt.yaml`, `configs/grompp_free.yaml` — GROMACS `mdp` parameters (time step, temperature, pressure, simulation length) for each MD stage
+- `configs/grompp_minimize.yaml`, `configs/grompp_ions.yaml` — minimization and ion-step `mdp` parameters
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: the form shows the PDB ID, the complex upload (with a Mol* preview), the ligand code and charge, and the step counts as sliders. ACPype and the four `mdrun` tasks carry `resources` hints (2 CPU / 8 GB for ACPype; 8 CPU / 16 GB and 30 min to 12 h for MD), so an auto-provisioned target sizes a CPU node from them. Expert settings (force field, box, ions, restraints, analysis groups) stay in `configs/*.yaml`, which also show up as editable file inputs.
 
 ## References
 

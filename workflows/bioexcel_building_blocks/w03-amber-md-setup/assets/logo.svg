@@ -1,0 +1,17 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
+  <defs>
+    <linearGradient id="lbg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1d4ed8"/><stop offset="1" stop-color="#06122a"/>
+    </linearGradient>
+
+  </defs>
+  <rect width="512" height="512" rx="112" fill="url(#lbg)"/>
+  <polygon points="338,256 297,327 215,327 174,256 215,185 297,185" fill="none" stroke="#60a5fa" stroke-width="6" opacity="0.55"/>
+  <polygon points="395,313 313,395 199,395 117,313 117,199 199,117 313,117 395,199" fill="none" stroke="#bfdbfe" stroke-width="12" stroke-linejoin="round"/>
+  <g transform="translate(262,262) scale(0.7)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-110,40 C-90,-40 -60,-40 -50,0 C-40,40 -10,40 0,0 C10,-40 40,-40 50,0 C60,40 90,40 100,-10" stroke="#fbbf24" stroke-width="18"/>
+    <path d="M-120,-60 C-60,-110 40,-110 110,-70" stroke="#93c5fd" stroke-width="14.4"/>
+    <path d="M110,-70 l-26,-6 m26,6 l-14,22" stroke="#93c5fd" stroke-width="14.4"/>
+    <path d="M-100,90 C-40,120 50,115 105,70" stroke="#60a5fa" stroke-width="14.4"/>
+  </g>
+</svg>

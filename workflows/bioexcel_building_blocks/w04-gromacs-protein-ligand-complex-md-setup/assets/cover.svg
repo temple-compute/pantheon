@@ -1,0 +1,85 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06122a"/><stop offset="1" stop-color="#0b2a5c"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#60a5fa" stop-opacity="0.22"/><stop offset="1" stop-color="#60a5fa" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#bfdbfe"/>
+    </marker>
+
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="198" height="36" fill="#1e3a8a"/>
+  <text x="163" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#bfdbfe">W-09 · BioExcel</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#eff6ff">Protein-Ligand</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#eff6ff">Complex MD Setup</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#60a5fa">biobb · GROMACS · ACPype</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">Fetch a complex by PDB ID or upload one;</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">parameterize the ligand, solvate, add ions,</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">equilibrate with restraints and run MD.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#5b7299">PANTHEON · TEMPLE COMPUTE</text>
+  <circle cx="900" cy="310" r="215" fill="#1e40af" opacity="0.18"/>
+  <circle cx="900" cy="310" r="215" fill="none" stroke="#93c5fd" stroke-width="3" stroke-dasharray="14 10"/>
+  <circle cx="883" cy="330" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1053" cy="298" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="903" cy="340" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="786" cy="314" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="947" cy="410" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="754" cy="243" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="753" cy="415" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="970" cy="154" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1074" cy="468" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="955" cy="349" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="777" cy="145" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="910" cy="160" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="788" cy="222" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="731" cy="298" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="879" cy="426" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="907" cy="358" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="900" cy="365" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="885" cy="235" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1079" cy="479" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1022" cy="381" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="833" cy="218" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="824" cy="164" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="996" cy="276" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1025" cy="271" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1065" cy="428" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="720" cy="211" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1048" cy="300" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1073" cy="275" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="746" cy="354" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1000" cy="232" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="751" cy="253" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1067" cy="398" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="762" cy="224" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="756" cy="160" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="1007" cy="200" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="921" cy="292" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="789" cy="389" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="767" cy="359" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="762" cy="283" r="5" fill="#60a5fa" opacity="0.45"/>
+    <circle cx="797" cy="232" r="5" fill="#60a5fa" opacity="0.45"/>
+  <!-- protein as a pocket-shaped surface -->
+  <path d="M760,420 C700,300 760,160 880,150 C990,140 1060,230 1040,320 C1030,370 990,360 960,330 C930,300 880,300 860,340 C840,380 820,450 760,420 Z" fill="#3b82f6" opacity="0.55" stroke="#bfdbfe" stroke-width="4"/>
+  <g transform="translate(870,230) scale(0.55)" fill="none" stroke-linecap="round" stroke-linejoin="round">
+    <path d="M-110,40 C-90,-40 -60,-40 -50,0 C-40,40 -10,40 0,0 C10,-40 40,-40 50,0 C60,40 90,40 100,-10" stroke="#fbbf24" stroke-width="12"/>
+    <path d="M-120,-60 C-60,-110 40,-110 110,-70" stroke="#93c5fd" stroke-width="9.600000000000001"/>
+    <path d="M110,-70 l-26,-6 m26,6 l-14,22" stroke="#93c5fd" stroke-width="9.600000000000001"/>
+    <path d="M-100,90 C-40,120 50,115 105,70" stroke="#60a5fa" stroke-width="9.600000000000001"/>
+  </g>
+  <!-- ligand in the pocket -->
+  <g transform="translate(915,350)">
+    <polygon points="26,15 0,30 -26,15 -26,-15 -0,-30 26,-15" fill="#06122a" stroke="#fbbf24" stroke-width="6"/>
+    <line x1="26" y1="-15" x2="52" y2="-32" stroke="#fbbf24" stroke-width="6" stroke-linecap="round"/>
+    <circle cx="58" cy="-36" r="9" fill="#f87171"/>
+  </g>
+  <g font-family="DejaVu Sans" font-size="19" fill="#bfdbfe">
+    <text x="975" y="410">ligand · GAFF</text>
+    <text x="700" y="560">protein · AMBER99SB-ILDN · SPC/E</text>
+  </g>
+</svg>

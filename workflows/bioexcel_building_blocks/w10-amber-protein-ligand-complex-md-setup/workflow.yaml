@@ -1,9 +1,9 @@
 kind: horus_workflow
-name: BioExcel AMBER MD Setup - Protein-Ligand Complex (T4 Lysozyme 3HTB + JZ4)
+name: AMBER Protein-Ligand Complex MD Setup
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
@@ -16,12 +16,28 @@ _target: &target
   kind: local
 
 artifacts:
-  - id: acpype_params_ac_config
-    name: ACPype parameters config
-    description: Configures ACPype GAFF parameter generation for the ligand.
+  - id: pdb_id
+    name: PDB ID
+    description: RCSB PDB code to download (default 3HTB). Clear it to use the uploaded structure instead.
+    kind: string
+    path: params/pdb_id.txt
+    value: 3HTB
+    pattern: ([0-9][A-Za-z0-9]{3})?
+    max_length: 4
+  - id: structure
+    name: Complex upload (PDB)
+    description: 'Protein-ligand complex used when PDB ID is empty; must contain the ligand as HETATM records with the residue name given in Ligand code. Default: examples/3htb.pdb (3HTB).'
     kind: file
-    path: configs/acpype_params_ac.yaml
-
+    path: examples/3htb.pdb
+  - id: ligand_code
+    name: Ligand code (residue name)
+    description: Residue name of the ligand in the structure (default JZ4); it is extracted, parameterized with GAFF and restrained during the in-vacuo minimization.
+    kind: string
+    path: params/ligand_code.txt
+    value: JZ4
+    pattern: '[A-Za-z0-9]{1,3}'
+    min_length: 1
+    max_length: 3
   - id: babel_minimize_config
     name: OpenBabel minimize config
     description: Configures the OpenBabel energy minimization of ligand hydrogens.
@@ -51,18 +67,6 @@ artifacts:
     description: Configures the cpptraj RMSD calculation against the first trajectory frame.
     kind: file
     path: configs/cpptraj_rms_first.yaml
-
-  - id: extract_heteroatoms_config
-    name: Ligand extraction config
-    description: Sets the ligand code (JZ4) to extract as a heteroatom from the structure.
-    kind: file
-    path: configs/extract_heteroatoms.yaml
-
-  - id: fetch_pdb_config
-    name: Structure fetch config
-    description: Sets the PDB code (3HTB) to download from the RCSB.
-    kind: file
-    path: configs/fetch_pdb.yaml
 
   - id: leap_add_ions_config
     name: Leap ion addition config
@@ -118,12 +122,6 @@ artifacts:
     kind: file
     path: configs/remove_ligand_po4.yaml
 
-  - id: sander_free_config
-    name: Free MD config
-    description: Configures the sander production (free) MD run.
-    kind: file
-    path: configs/sander_free.yaml
-
   - id: sander_h_min_config
     name: Hydrogen minimization config
     description: Configures the sander in-vacuo hydrogen minimization.
@@ -142,46 +140,57 @@ artifacts:
     kind: file
     path: configs/sander_min.yaml
 
-  - id: sander_n_min_config
-    name: System minimization config
-    description: Configures the sander in-vacuo system minimization with ligand restraints.
-    kind: file
-    path: configs/sander_n_min.yaml
-
-  - id: sander_npt_config
-    name: NPT equilibration config
-    description: Configures the sander NPT equilibration stage.
-    kind: file
-    path: configs/sander_npt.yaml
-
-  - id: sander_nvt_config
-    name: NVT equilibration config
-    description: Configures the sander NVT equilibration stage.
-    kind: file
-    path: configs/sander_nvt.yaml
-
+  - id: ligand_charge
+    name: Ligand net charge
+    description: 'Formal net charge of the ligand, passed to ACPype (JZ4: 0).'
+    kind: number
+    path: params/ligand_charge.txt
+    value: 0
+    min: -5
+    max: 5
+    step: 1
+  - id: equilibration_steps
+    name: Equilibration steps (NVT and NPT)
+    description: sander steps of each restrained equilibration stage (2 fs per step; 500 = 1 ps).
+    kind: number
+    path: params/equilibration_steps.txt
+    value: 500
+    min: 100
+    max: 5000000
+    step: 100
+  - id: production_steps
+    name: Production steps
+    description: sander steps of the free production run (2 fs per step; 2500 = 5 ps).
+    kind: number
+    path: params/production_steps.txt
+    value: 2500
+    min: 500
+    max: 50000000
+    step: 500
 tasks:
   - kind: horus_task
     id: fetch_pdb
-    name: Download 3HTB structure from PDB
-    description: Downloads the 3HTB protein-ligand complex structure from the RCSB PDB using biobb_io.
+    name: Fetch (PDB ID) or load the uploaded complex
+    description: Downloads the PDB entry given in pdb_id (default 3HTB, T4 lysozyme L99A/M102Q with JZ4), or copies the uploaded complex when pdb_id is empty.
     inputs:
-      - id: fetch_pdb_config
-        name: Structure fetch config
+      - id: pdb_id
+        name: PDB ID
+        kind: string
+        path: params/pdb_id.txt
+      - id: structure
+        name: Complex upload (PDB)
         kind: file
-        path: configs/fetch_pdb.yaml
+        path: examples/3htb.pdb
     outputs:
       - id: downloaded_pdb
-        name: Downloaded 3HTB structure
+        name: Downloaded structure
         kind: file
-        path: results/3htb.pdb
+        path: results/complex.pdb
     executor: *executor
     runtime:
       kind: command
       command: >-
-        pdb
-        --config ${fetch_pdb_config}
-        --output_pdb_path ${downloaded_pdb}
+        if [ -n ${pdb_id} ]; then pdb --config '{"properties":{"pdb_code":"${pdb_id}","filter":false}}' --output_pdb_path ${downloaded_pdb}; else cp ${structure} ${downloaded_pdb}; fi
     target: *target
 
   - kind: horus_task
@@ -190,14 +199,14 @@ tasks:
     description: Strips crystallographic water molecules from the downloaded structure.
     inputs:
       - id: downloaded_pdb
-        name: Downloaded 3HTB structure
+        name: Downloaded structure
         kind: file
-        path: results/3htb.pdb
+        path: results/complex.pdb
     outputs:
       - id: nowat_pdb
         name: Water-stripped structure
         kind: file
-        path: results/3htb.nowat.pdb
+        path: results/complex.nowat.pdb
     executor: *executor
     runtime:
       kind: command
@@ -219,12 +228,12 @@ tasks:
       - id: nowat_pdb
         name: Water-stripped structure
         kind: file
-        path: results/3htb.nowat.pdb
+        path: results/complex.nowat.pdb
     outputs:
       - id: nopo4_pdb
         name: PO4-stripped structure
         kind: file
-        path: results/3htb.noPO4.pdb
+        path: results/complex.noPO4.pdb
     executor: *executor
     runtime:
       kind: command
@@ -244,11 +253,11 @@ tasks:
         path: configs/remove_ligand_bme.yaml
       - id: nopo4_pdb
         kind: file
-        path: results/3htb.noPO4.pdb
+        path: results/complex.noPO4.pdb
     outputs:
       - id: nobme_pdb
         kind: file
-        path: results/3htb.noBME.pdb
+        path: results/complex.noBME.pdb
     executor: *executor
     runtime:
       kind: command
@@ -265,7 +274,7 @@ tasks:
     inputs:
       - id: nobme_pdb
         kind: file
-        path: results/3htb.noBME.pdb
+        path: results/complex.noBME.pdb
     outputs:
       - id: pdb4amber_pdb
         kind: file
@@ -281,26 +290,24 @@ tasks:
 
   - kind: horus_task
     id: extract_heteroatoms
-    name: Extract JZ4 ligand structure
+    name: Extract the ligand from the complex
     inputs:
-      - id: extract_heteroatoms_config
-        kind: file
-        path: configs/extract_heteroatoms.yaml
       - id: pdb4amber_pdb
         kind: file
         path: results/structure.pdb4amber.pdb
+      - id: ligand_code
+        name: Ligand code (residue name)
+        kind: string
+        path: params/ligand_code.txt
     outputs:
       - id: ligand_pdb
         kind: file
-        path: results/JZ4.pdb
+        path: results/ligand.pdb
     executor: *executor
     runtime:
       kind: command
       command: >-
-        extract_heteroatoms
-        --config ${extract_heteroatoms_config}
-        --input_structure_path ${pdb4amber_pdb}
-        --output_heteroatom_path ${ligand_pdb}
+        extract_heteroatoms --config '{"properties":{"heteroatoms":[{"name":"${ligand_code}"}]}}' --input_structure_path ${pdb4amber_pdb} --output_heteroatom_path ${ligand_pdb}
     target: *target
 
   - kind: horus_task
@@ -312,11 +319,11 @@ tasks:
         path: configs/reduce_add_hydrogens.yaml
       - id: ligand_pdb
         kind: file
-        path: results/JZ4.pdb
+        path: results/ligand.pdb
     outputs:
       - id: ligand_h_pdb
         kind: file
-        path: results/JZ4.reduce.H.pdb
+        path: results/ligand.reduce.H.pdb
     executor: *executor
     runtime:
       kind: command
@@ -336,11 +343,11 @@ tasks:
         path: configs/babel_minimize.yaml
       - id: ligand_h_pdb
         kind: file
-        path: results/JZ4.reduce.H.pdb
+        path: results/ligand.reduce.H.pdb
     outputs:
       - id: ligand_min_mol2
         kind: file
-        path: results/JZ4.H.min.mol2
+        path: results/ligand.H.min.mol2
     executor: *executor
     runtime:
       kind: command
@@ -355,36 +362,35 @@ tasks:
     id: acpype_params_ac
     name: Generate AMBER ligand topology parameters (ACPype)
     inputs:
-      - id: acpype_params_ac_config
-        kind: file
-        path: configs/acpype_params_ac.yaml
       - id: ligand_min_mol2
         kind: file
-        path: results/JZ4.H.min.mol2
+        path: results/ligand.H.min.mol2
+      - id: ligand_charge
+        name: Ligand net charge
+        kind: number
+        path: params/ligand_charge.txt
     outputs:
       - id: acpype_inpcrd
         kind: file
-        path: results/JZ4params.inpcrd
+        path: results/ligand_params.inpcrd
       - id: acpype_frcmod
         kind: file
-        path: results/JZ4params.frcmod
+        path: results/ligand_params.frcmod
       - id: acpype_lib
         kind: file
-        path: results/JZ4params.lib
+        path: results/ligand_params.lib
       - id: acpype_prmtop
         kind: file
-        path: results/JZ4params.prmtop
+        path: results/ligand_params.prmtop
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "00:30:00"
     executor: *executor
     runtime:
       kind: command
       command: >-
-        acpype_params_ac
-        --config ${acpype_params_ac_config}
-        --input_path ${ligand_min_mol2}
-        --output_path_inpcrd ${acpype_inpcrd}
-        --output_path_frcmod ${acpype_frcmod}
-        --output_path_lib ${acpype_lib}
-        --output_path_prmtop ${acpype_prmtop}
+        acpype_params_ac --config '{"properties":{"basename":"LIGparams","charge":${ligand_charge}}}' --input_path ${ligand_min_mol2} --output_path_inpcrd ${acpype_inpcrd} --output_path_frcmod ${acpype_frcmod} --output_path_lib ${acpype_lib} --output_path_prmtop ${acpype_prmtop}
     target: *target
 
   - kind: horus_task
@@ -399,10 +405,10 @@ tasks:
         path: results/structure.pdb4amber.pdb
       - id: acpype_lib
         kind: file
-        path: results/JZ4params.lib
+        path: results/ligand_params.lib
       - id: acpype_frcmod
         kind: file
-        path: results/JZ4params.frcmod
+        path: results/ligand_params.frcmod
     outputs:
       - id: top_pdb
         kind: file
@@ -450,6 +456,10 @@ tasks:
       - id: h_min_log
         kind: file
         path: results/sander.h_min.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -492,15 +502,16 @@ tasks:
     id: sander_n_min
     name: Minimize system in vacuo with ligand restraints (sander)
     inputs:
-      - id: sander_n_min_config
-        kind: file
-        path: configs/sander_n_min.yaml
       - id: top_top
         kind: file
         path: results/structure.leap.top
       - id: h_min_rst
         kind: file
         path: results/sander.h_min.rst
+      - id: ligand_code
+        name: Ligand code (residue name)
+        kind: string
+        path: params/ligand_code.txt
     outputs:
       - id: n_min_traj
         kind: file
@@ -511,17 +522,15 @@ tasks:
       - id: n_min_log
         kind: file
         path: results/sander.n_min.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
-        sander_mdrun
-        --config ${sander_n_min_config}
-        --input_top_path ${top_top}
-        --input_crd_path ${h_min_rst}
-        --output_traj_path ${n_min_traj}
-        --output_rst_path ${n_min_rst}
-        --output_log_path ${n_min_log}
+        sander_mdrun --config '{"properties":{"simulation_type":"min_vacuo","mdin":{"maxcyc":500,"ntpr":5,"restraintmask":"\":${ligand_code}\"","restraint_wt":500.0}}}' --input_top_path ${top_top} --input_crd_path ${h_min_rst} --output_traj_path ${n_min_traj} --output_rst_path ${n_min_rst} --output_log_path ${n_min_log}
     target: *target
 
   - kind: horus_task
@@ -584,10 +593,10 @@ tasks:
         path: results/structure.ambpdb.pdb
       - id: acpype_lib
         kind: file
-        path: results/JZ4params.lib
+        path: results/ligand_params.lib
       - id: acpype_frcmod
         kind: file
-        path: results/JZ4params.frcmod
+        path: results/ligand_params.frcmod
     outputs:
       - id: solv_pdb
         kind: file
@@ -624,10 +633,10 @@ tasks:
         path: results/structure.solv.pdb
       - id: acpype_lib
         kind: file
-        path: results/JZ4params.lib
+        path: results/ligand_params.lib
       - id: acpype_frcmod
         kind: file
-        path: results/JZ4params.frcmod
+        path: results/ligand_params.frcmod
     outputs:
       - id: ions_pdb
         kind: file
@@ -675,6 +684,10 @@ tasks:
       - id: min_log
         kind: file
         path: results/sander.min.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -736,6 +749,10 @@ tasks:
       - id: heat_log
         kind: file
         path: results/sander.heat.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -778,15 +795,16 @@ tasks:
     id: sander_nvt
     name: Equilibrate the system NVT (sander)
     inputs:
-      - id: sander_nvt_config
-        kind: file
-        path: configs/sander_nvt.yaml
       - id: ions_top
         kind: file
         path: results/structure.ions.parmtop
       - id: heat_rst
         kind: file
         path: results/sander.heat.rst
+      - id: equilibration_steps
+        name: Equilibration steps (NVT and NPT)
+        kind: number
+        path: params/equilibration_steps.txt
     outputs:
       - id: nvt_traj
         kind: file
@@ -797,18 +815,15 @@ tasks:
       - id: nvt_log
         kind: file
         path: results/sander.nvt.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
-        sander_mdrun
-        --config ${sander_nvt_config}
-        --input_top_path ${ions_top}
-        --input_crd_path ${heat_rst}
-        --input_ref_path ${heat_rst}
-        --output_traj_path ${nvt_traj}
-        --output_rst_path ${nvt_rst}
-        --output_log_path ${nvt_log}
+        sander_mdrun --config '{"properties":{"simulation_type":"nvt","mdin":{"nstlim":${equilibration_steps},"ntr":1,"restraintmask":"\"!:WAT,Cl-,Na+ & !@H=\"","restraint_wt":5.0}}}' --input_top_path ${ions_top} --input_crd_path ${heat_rst} --input_ref_path ${heat_rst} --output_traj_path ${nvt_traj} --output_rst_path ${nvt_rst} --output_log_path ${nvt_log}
     target: *target
 
   - kind: horus_task
@@ -839,15 +854,16 @@ tasks:
     id: sander_npt
     name: Equilibrate the system NPT (sander)
     inputs:
-      - id: sander_npt_config
-        kind: file
-        path: configs/sander_npt.yaml
       - id: ions_top
         kind: file
         path: results/structure.ions.parmtop
       - id: nvt_rst
         kind: file
         path: results/sander.nvt.rst
+      - id: equilibration_steps
+        name: Equilibration steps (NVT and NPT)
+        kind: number
+        path: params/equilibration_steps.txt
     outputs:
       - id: npt_traj
         kind: file
@@ -858,18 +874,15 @@ tasks:
       - id: npt_log
         kind: file
         path: results/sander.npt.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
-        sander_mdrun
-        --config ${sander_npt_config}
-        --input_top_path ${ions_top}
-        --input_crd_path ${nvt_rst}
-        --input_ref_path ${nvt_rst}
-        --output_traj_path ${npt_traj}
-        --output_rst_path ${npt_rst}
-        --output_log_path ${npt_log}
+        sander_mdrun --config '{"properties":{"simulation_type":"npt","mdin":{"nstlim":${equilibration_steps},"ntr":1,"restraintmask":"\"!:WAT,Cl-,Na+ & !@H=\"","restraint_wt":2.5}}}' --input_top_path ${ions_top} --input_crd_path ${nvt_rst} --input_ref_path ${nvt_rst} --output_traj_path ${npt_traj} --output_rst_path ${npt_rst} --output_log_path ${npt_log}
     target: *target
 
   - kind: horus_task
@@ -900,15 +913,16 @@ tasks:
     id: sander_free
     name: Free MD simulation (sander)
     inputs:
-      - id: sander_free_config
-        kind: file
-        path: configs/sander_free.yaml
       - id: ions_top
         kind: file
         path: results/structure.ions.parmtop
       - id: npt_rst
         kind: file
         path: results/sander.npt.rst
+      - id: production_steps
+        name: Production steps
+        kind: number
+        path: params/production_steps.txt
     outputs:
       - id: free_traj
         kind: file
@@ -919,17 +933,15 @@ tasks:
       - id: free_log
         kind: file
         path: results/sander.free.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "24:00:00"
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
-        sander_mdrun
-        --config ${sander_free_config}
-        --input_top_path ${ions_top}
-        --input_crd_path ${npt_rst}
-        --output_traj_path ${free_traj}
-        --output_rst_path ${free_rst}
-        --output_log_path ${free_log}
+        sander_mdrun --config '{"properties":{"simulation_type":"free","mdin":{"nstlim":${production_steps},"ntwx":500}}}' --input_top_path ${ions_top} --input_crd_path ${npt_rst} --output_traj_path ${free_traj} --output_rst_path ${free_rst} --output_log_path ${free_log}
     target: *target
 
   - kind: horus_task
@@ -948,7 +960,7 @@ tasks:
     outputs:
       - id: rms_first_dat
         kind: file
-        path: results/3htb_rms_first.dat
+        path: results/complex_rms_first.dat
     executor: *executor
     runtime:
       kind: command
@@ -979,7 +991,7 @@ tasks:
     outputs:
       - id: rms_exp_dat
         kind: file
-        path: results/3htb_rms_exp.dat
+        path: results/complex_rms_exp.dat
     executor: *executor
     runtime:
       kind: command
@@ -1008,7 +1020,7 @@ tasks:
     outputs:
       - id: rgyr_dat
         kind: file
-        path: results/3htb_rgyr.dat
+        path: results/complex_rgyr.dat
     executor: *executor
     runtime:
       kind: command
@@ -1036,7 +1048,7 @@ tasks:
     outputs:
       - id: imaged_traj
         kind: file
-        path: results/3htb_imaged_traj.trr
+        path: results/complex_imaged_traj.trr
     executor: *executor
     runtime:
       kind: command
@@ -1289,11 +1301,6 @@ edges:
     target: cpptraj_image
     target_input: free_traj
 
-  - source: artifact-acpype_params_ac_config
-    source_output: acpype_params_ac_config
-    target: acpype_params_ac
-    target_input: acpype_params_ac_config
-
   - source: artifact-babel_minimize_config
     source_output: babel_minimize_config
     target: babel_minimize
@@ -1318,16 +1325,6 @@ edges:
     source_output: cpptraj_rms_first_config
     target: cpptraj_rms_first
     target_input: cpptraj_rms_first_config
-
-  - source: artifact-extract_heteroatoms_config
-    source_output: extract_heteroatoms_config
-    target: extract_heteroatoms
-    target_input: extract_heteroatoms_config
-
-  - source: artifact-fetch_pdb_config
-    source_output: fetch_pdb_config
-    target: fetch_pdb
-    target_input: fetch_pdb_config
 
   - source: artifact-leap_add_ions_config
     source_output: leap_add_ions_config
@@ -1389,11 +1386,6 @@ edges:
     target: remove_ligand_po4
     target_input: remove_ligand_po4_config
 
-  - source: artifact-sander_free_config
-    source_output: sander_free_config
-    target: sander_free
-    target_input: sander_free_config
-
   - source: artifact-sander_h_min_config
     source_output: sander_h_min_config
     target: sander_h_min
@@ -1409,22 +1401,38 @@ edges:
     target: sander_min
     target_input: sander_min_config
 
-  - source: artifact-sander_n_min_config
-    source_output: sander_n_min_config
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: fetch_pdb
+    target_input: pdb_id
+  - source: artifact-structure
+    source_output: structure
+    target: fetch_pdb
+    target_input: structure
+  - source: artifact-ligand_code
+    source_output: ligand_code
+    target: extract_heteroatoms
+    target_input: ligand_code
+  - source: artifact-ligand_charge
+    source_output: ligand_charge
+    target: acpype_params_ac
+    target_input: ligand_charge
+  - source: artifact-ligand_code
+    source_output: ligand_code
     target: sander_n_min
-    target_input: sander_n_min_config
-
-  - source: artifact-sander_npt_config
-    source_output: sander_npt_config
-    target: sander_npt
-    target_input: sander_npt_config
-
-  - source: artifact-sander_nvt_config
-    source_output: sander_nvt_config
+    target_input: ligand_code
+  - source: artifact-equilibration_steps
+    source_output: equilibration_steps
     target: sander_nvt
-    target_input: sander_nvt_config
-
-
+    target_input: equilibration_steps
+  - source: artifact-equilibration_steps
+    source_output: equilibration_steps
+    target: sander_npt
+    target_input: equilibration_steps
+  - source: artifact-production_steps
+    source_output: production_steps
+    target: sander_free
+    target_input: production_steps
 orchestrator_target:
   kind: local
   working_directory: "./workflow_results"

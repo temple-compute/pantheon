@@ -1,9 +1,9 @@
 kind: horus_workflow
-name: BioExcel Virtual Screening - Protein-Ligand Docking with fpocket (p38α / Imatinib)
+name: Protein-Ligand Docking into an fpocket Cavity
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
@@ -12,6 +12,32 @@ _docker_executor: &docker_executor
   image: quay.io/biocontainers/biobb_vs:5.2.1--pyhdfd78af_0
 
 artifacts:
+  - id: pdb_id
+    name: PDB ID
+    description: RCSB PDB code to download (default 3HEC). Clear it to use the uploaded structure instead.
+    kind: string
+    path: params/pdb_id.txt
+    value: 3HEC
+    pattern: ([0-9][A-Za-z0-9]{3})?
+    max_length: 4
+  - id: structure
+    name: Receptor upload (PDB)
+    description: 'Structure used when PDB ID is empty. Default: examples/3hec.pdb (3HEC).'
+    kind: file
+    path: examples/3hec.pdb
+  - id: ligand_code
+    name: Ligand code (PDB CCD)
+    description: PDB Chemical Component code of the ligand to dock, downloaded as an idealized SDF (default STI, imatinib). Clear it to dock the uploaded ligand instead.
+    kind: string
+    path: params/ligand_code.txt
+    value: STI
+    pattern: ([A-Za-z0-9]{1,3})?
+    max_length: 3
+  - id: ligand_sdf
+    name: Ligand upload (SDF)
+    description: '3D ligand structure used when the ligand code is empty. Default: examples/sti_ideal.sdf (imatinib).'
+    kind: file
+    path: examples/sti_ideal.sdf
   - id: babel_convert_pdb_to_pdbqt_config
     name: Ligand PDB→PDBQT config
     description: OpenBabel settings for converting the ligand from PDB to PDBQT and adding partial charges.
@@ -30,23 +56,11 @@ artifacts:
     kind: file
     path: configs/babel_convert_sdf_to_pdb.yaml
 
-  - id: box_config
-    name: Docking box config
-    description: Parameters controlling the size and offset of the docking box generated around the selected pocket.
-    kind: file
-    path: configs/box.yaml
-
   - id: extract_model_pdbqt_config
     name: Pose extraction config
     description: Specifies which Vina docking pose (model 1) to extract from the docking output.
     kind: file
     path: configs/extract_model_pdbqt.yaml
-
-  - id: fetch_pdb_config
-    name: Receptor fetch config
-    description: Specifies the target PDB code (3HEC) to download.
-    kind: file
-    path: configs/fetch_pdb.yaml
 
   - id: fpocket_filter_config
     name: Pocket filter config
@@ -60,34 +74,44 @@ artifacts:
     kind: file
     path: configs/fpocket_run.yaml
 
-  - id: fpocket_select_config
-    name: Pocket selection config
-    description: Specifies which detected pocket (pocket 6) to select for docking.
-    kind: file
-    path: configs/fpocket_select.yaml
-
-  - id: ideal_sdf_config
-    name: Ligand fetch config
-    description: Specifies the ligand code (STI, Imatinib) to download in SDF format.
-    kind: file
-    path: configs/ideal_sdf.yaml
-
   - id: str_check_add_hydrogens_config
     name: Receptor protonation config
     description: Settings for adding hydrogens and preparing the receptor for docking.
     kind: file
     path: configs/str_check_add_hydrogens.yaml
 
+  - id: pocket
+    name: fpocket pocket
+    description: 'Pocket (by fpocket rank, after the volume filter) that defines the docking box; inspect the fpocket output to choose one for a new receptor (3HEC: 6).'
+    kind: number
+    path: params/pocket.txt
+    value: 6
+    min: 1
+    max: 50
+    step: 1
+  - id: box_offset_a
+    name: Box padding (Å)
+    description: Extra space added around the selected pocket on each side of the docking box.
+    kind: number
+    path: params/box_offset_a.txt
+    value: 12
+    min: 2
+    max: 30
+    step: 1
 tasks:
   - kind: horus_task
     id: fetch_pdb
-    name: Download 3HEC structure from PDB
-    description: Downloads the p38-alpha MAP kinase receptor structure (PDB 3HEC) from the Protein Data Bank.
+    name: Fetch (PDB ID) or load the uploaded receptor
+    description: Downloads the PDB entry given in pdb_id (default 3HEC, p38 MAP kinase), or copies the uploaded receptor when pdb_id is empty.
     inputs:
-      - id: fetch_pdb_config
-        name: Receptor fetch config
+      - id: pdb_id
+        name: PDB ID
+        kind: string
+        path: params/pdb_id.txt
+      - id: structure
+        name: Receptor upload (PDB)
         kind: file
-        path: configs/fetch_pdb.yaml
+        path: examples/3hec.pdb
     outputs:
       - id: download_pdb
         name: Downloaded receptor structure
@@ -97,9 +121,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        pdb
-        --config ${fetch_pdb_config}
-        --output_pdb_path ${download_pdb}
+        if [ -n ${pdb_id} ]; then pdb --config '{"properties":{"pdb_code":"${pdb_id}","filter":["ATOM","HETATM"]}}' --output_pdb_path ${download_pdb}; else cp ${structure} ${download_pdb}; fi
     target:
       kind: local
 
@@ -200,14 +222,14 @@ tasks:
     name: Extract selected pocket cavity (pocket 6)
     description: Extracts the selected cavity (pocket 6) as PDB and PQR files for docking box generation.
     inputs:
-      - id: fpocket_select_config
-        name: Pocket selection config
-        kind: file
-        path: configs/fpocket_select.yaml
       - id: fpocket_filter_pockets
         name: Filtered pockets
         kind: file
         path: results/fpocket_filter_pockets.zip
+      - id: pocket
+        name: fpocket pocket
+        kind: number
+        path: params/pocket.txt
     outputs:
       - id: fpocket_cavity
         name: Selected pocket cavity
@@ -221,11 +243,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        fpocket_select
-        --config ${fpocket_select_config}
-        --input_pockets_zip ${fpocket_filter_pockets}
-        --output_pocket_pdb ${fpocket_cavity}
-        --output_pocket_pqr ${fpocket_pocket}
+        fpocket_select --config '{"properties":{"pocket":${pocket}}}' --input_pockets_zip ${fpocket_filter_pockets} --output_pocket_pdb ${fpocket_cavity} --output_pocket_pqr ${fpocket_pocket}
     target:
       kind: local
 
@@ -234,14 +252,14 @@ tasks:
     name: Generate docking box around selected cavity (offset 12 Å)
     description: Generates a docking box around the selected cavity with a 12 Å offset.
     inputs:
-      - id: box_config
-        name: Docking box config
-        kind: file
-        path: configs/box.yaml
       - id: fpocket_pocket
         name: Selected pocket (PQR)
         kind: file
         path: results/fpocket_pocket.pqr
+      - id: box_offset_a
+        name: Box padding (Å)
+        kind: number
+        path: params/box_offset_a.txt
     outputs:
       - id: output_box
         name: Docking box
@@ -251,22 +269,23 @@ tasks:
     runtime:
       kind: command
       command: >-
-        box
-        --config ${box_config}
-        --input_pdb_path ${fpocket_pocket}
-        --output_pdb_path ${output_box}
+        box --config '{"properties":{"offset":${box_offset_a},"box_coordinates":true}}' --input_pdb_path ${fpocket_pocket} --output_pdb_path ${output_box}
     target:
       kind: local
 
   - kind: horus_task
     id: ideal_sdf
-    name: Download Imatinib (STI) small molecule in SDF format
-    description: Downloads the Imatinib (ligand code STI) small molecule structure in SDF format from the PDB Chemical Component Dictionary.
+    name: Fetch (ligand code) or load the uploaded ligand
+    description: Downloads the idealized SDF of ligand_code from the PDB Chemical Component Dictionary, or copies the uploaded SDF when the code is empty.
     inputs:
-      - id: ideal_sdf_config
-        name: Ligand fetch config
+      - id: ligand_code
+        name: Ligand code (PDB CCD)
+        kind: string
+        path: params/ligand_code.txt
+      - id: ligand_sdf
+        name: Ligand upload (SDF)
         kind: file
-        path: configs/ideal_sdf.yaml
+        path: examples/sti_ideal.sdf
     outputs:
       - id: sdf_ideal
         name: Ligand SDF
@@ -276,9 +295,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        ideal_sdf
-        --config ${ideal_sdf_config}
-        --output_sdf_path ${sdf_ideal}
+        if [ -n ${ligand_code} ]; then ideal_sdf --config '{"properties":{"ligand_code":"${ligand_code}"}}' --output_sdf_path ${sdf_ideal}; else cp ${ligand_sdf} ${sdf_ideal}; fi
     target:
       kind: local
 
@@ -391,6 +408,10 @@ tasks:
         name: Vina docking output
         kind: file
         path: results/output_vina.pdbqt
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -587,20 +608,10 @@ edges:
     target: babel_convert_sdf_to_pdb
     target_input: babel_convert_sdf_to_pdb_config
 
-  - source: artifact-box_config
-    source_output: box_config
-    target: box
-    target_input: box_config
-
   - source: artifact-extract_model_pdbqt_config
     source_output: extract_model_pdbqt_config
     target: extract_model_pdbqt
     target_input: extract_model_pdbqt_config
-
-  - source: artifact-fetch_pdb_config
-    source_output: fetch_pdb_config
-    target: fetch_pdb
-    target_input: fetch_pdb_config
 
   - source: artifact-fpocket_filter_config
     source_output: fpocket_filter_config
@@ -612,22 +623,36 @@ edges:
     target: fpocket_run
     target_input: fpocket_run_config
 
-  - source: artifact-fpocket_select_config
-    source_output: fpocket_select_config
-    target: fpocket_select
-    target_input: fpocket_select_config
-
-  - source: artifact-ideal_sdf_config
-    source_output: ideal_sdf_config
-    target: ideal_sdf
-    target_input: ideal_sdf_config
-
   - source: artifact-str_check_add_hydrogens_config
     source_output: str_check_add_hydrogens_config
     target: str_check_add_hydrogens
     target_input: str_check_add_hydrogens_config
 
 
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: fetch_pdb
+    target_input: pdb_id
+  - source: artifact-structure
+    source_output: structure
+    target: fetch_pdb
+    target_input: structure
+  - source: artifact-ligand_code
+    source_output: ligand_code
+    target: ideal_sdf
+    target_input: ligand_code
+  - source: artifact-ligand_sdf
+    source_output: ligand_sdf
+    target: ideal_sdf
+    target_input: ligand_sdf
+  - source: artifact-pocket
+    source_output: pocket
+    target: fpocket_select
+    target_input: pocket
+  - source: artifact-box_offset_a
+    source_output: box_offset_a
+    target: box
+    target_input: box_offset_a
 orchestrator_target:
   kind: local
   working_directory: "./workflow_results"

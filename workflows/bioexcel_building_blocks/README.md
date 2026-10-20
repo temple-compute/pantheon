@@ -8,17 +8,16 @@ All building blocks share a unique syntax — requiring input files, output file
 
 | # | Directory | Workflow |
 |---|---|---|
-| 01 | [w01-gromacs-md-setup](w01-gromacs-md-setup/) | BioExcel MD Setup — Lysozyme 1AKI (GROMACS) |
-| 02 | [w02-ligand-parameterization](w02-ligand-parameterization/) | BioExcel Ligand Parameterization |
-| 03 | [w03-amber-md-setup](w03-amber-md-setup/) | BioExcel AMBER MD Setup — Lysozyme 1AKI |
-| 04 | [w04-gromacs-protein-ligand-complex-md-setup](w04-gromacs-protein-ligand-complex-md-setup/) | BioExcel MD Setup — Protein-Ligand Complex (3HTB + JZ4) |
-| 05 | [w05-mutation-free-energy-calculations](w05-mutation-free-energy-calculations/) | PMX Mutation Free Energy Calculations |
-| 06 | [w06-protein-ligand-docking-cluster90](w06-protein-ligand-docking-cluster90/) | Virtual Screening — Protein-Ligand Docking (Cluster90 Binding Site) |
-| 07 | [w07-protein-ligand-docking-pdbe-rest-api](w07-protein-ligand-docking-pdbe-rest-api/) | Virtual Screening — Protein-Ligand Docking via EBI PDBe API |
-| 08 | [w08-protein-ligand-docking-fpocket](w08-protein-ligand-docking-fpocket/) | Virtual Screening — Protein-Ligand Docking with fpocket |
-| 09 | [w09-amber-protein-md-setup](w09-amber-protein-md-setup/) | BioExcel AMBER MD Setup — Lysozyme 1AKI |
-| 10 | [w10-amber-protein-ligand-complex-md-setup](w10-amber-protein-ligand-complex-md-setup/) | BioExcel AMBER MD Setup — Protein-Ligand Complex (3HTB + JZ4) |
-| 11 | [w11-amber-constant-ph-md-setup](w11-amber-constant-ph-md-setup/) | BioExcel AMBER Constant pH MD Setup — BPTI 6PTI |
+| 01 | [w01-gromacs-md-setup](w01-gromacs-md-setup/) | GROMACS Protein MD Setup |
+| 02 | [w02-ligand-parameterization](w02-ligand-parameterization/) | Ligand Parameterization (GAFF / ACPype) |
+| 03 | [w03-amber-md-setup](w03-amber-md-setup/) | AMBER Protein MD Setup |
+| 04 | [w04-gromacs-protein-ligand-complex-md-setup](w04-gromacs-protein-ligand-complex-md-setup/) | GROMACS Protein-Ligand Complex MD Setup |
+| 05 | [w05-mutation-free-energy-calculations](w05-mutation-free-energy-calculations/) | Mutation Free Energy (pmx, non-equilibrium TI) |
+| 06 | [w06-protein-ligand-docking-cluster90](w06-protein-ligand-docking-cluster90/) | Protein-Ligand Docking with a Cluster90 Binding Site |
+| 07 | [w07-protein-ligand-docking-pdbe-rest-api](w07-protein-ligand-docking-pdbe-rest-api/) | Protein-Ligand Docking with PDBe Binding Sites |
+| 08 | [w08-protein-ligand-docking-fpocket](w08-protein-ligand-docking-fpocket/) | Protein-Ligand Docking into an fpocket Cavity |
+| 10 | [w10-amber-protein-ligand-complex-md-setup](w10-amber-protein-ligand-complex-md-setup/) | AMBER Protein-Ligand Complex MD Setup |
+| 11 | [w11-amber-constant-ph-md-setup](w11-amber-constant-ph-md-setup/) | AMBER Constant-pH MD Setup |
 | 12 | [w12-dna-helical-parameters](w12-dna-helical-parameters/) | BioExcel DNA Helical Parameters Analysis |
 | 13 | [w13-abc-md-setup](w13-abc-md-setup/) | BioExcel AMBER ABC Setup — Drew-Dickerson Dodecamer DNA |
 | 14 | [w14-protein-conformational-ensembles](w14-protein-conformational-ensembles/) | BioExcel FlexDyn — Protein Flexibility and Dynamics Analysis |

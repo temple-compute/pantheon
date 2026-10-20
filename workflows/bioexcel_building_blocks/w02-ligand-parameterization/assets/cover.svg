@@ -1,0 +1,56 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#06122a"/><stop offset="1" stop-color="#0b2a5c"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#60a5fa" stop-opacity="0.22"/><stop offset="1" stop-color="#60a5fa" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto-start-reverse">
+      <path d="M0,0 L10,5 L0,10 z" fill="#bfdbfe"/>
+    </marker>
+
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="198" height="36" fill="#1e3a8a"/>
+  <text x="163" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#bfdbfe">W-04 · BioExcel</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#eff6ff">Ligand</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#eff6ff">Parameterization</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#60a5fa">biobb · OpenBabel · ACPype · GAFF</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">Fetch a ligand by PDB code or upload one;</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">protonate at a chosen pH and get GROMACS</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#a9bfe0">topology files with GAFF parameters.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#5b7299">PANTHEON · TEMPLE COMPUTE</text>
+  <g transform="translate(0,-60)">
+  <g stroke="#eff6ff" stroke-width="6" stroke-linecap="round" fill="none">
+    <polygon points="900,268 954,299 954,361 900,392 846,361 846,299"/>
+    <circle cx="900" cy="330" r="36" stroke="#60a5fa" stroke-width="4"/>
+    <line x1="900" y1="268" x2="954" y2="237"/>
+    <line x1="954" y1="237" x2="954" y2="175"/>
+    <line x1="954" y1="175" x2="1008" y2="144"/>
+    <line x1="954" y1="175" x2="916" y2="144"/>
+    <line x1="900" y1="392" x2="846" y2="423"/>
+    <line x1="846" y1="423" x2="846" y2="485"/>
+    <line x1="846" y1="423" x2="792" y2="392"/>
+    <line x1="846" y1="485" x2="896" y2="515"/>
+    <line x1="852" y1="477" x2="902" y2="507"/>
+    <line x1="846" y1="485" x2="796" y2="515"/>
+  </g>
+  <g>
+    <circle cx="896" cy="515" r="17" fill="#f87171"/>
+    <circle cx="796" cy="515" r="17" fill="#f87171"/>
+  </g>
+  <g font-family="DejaVu Sans" font-size="19" fill="#fbbf24">
+    <text x="920" y="521">o  −0.80</text>
+    <text x="678" y="521">o  −0.80</text>
+    <text x="972" y="305">ca</text>
+    <text x="1022" y="150">c3</text>
+    <text x="752" y="398">c3</text>
+  </g>
+  </g>
+  <g font-family="DejaVu Sans" font-size="20" fill="#bfdbfe">
+    <rect x="700" y="520" width="400" height="44" rx="10" fill="#0b2a5c" stroke="#60a5fa" stroke-width="2"/>
+    <text x="900" y="549" text-anchor="middle">LIG.itp · LIG.gro · LIG.top</text>
+  </g>
+</svg>

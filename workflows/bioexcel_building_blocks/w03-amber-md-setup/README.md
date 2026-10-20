@@ -1,15 +1,21 @@
-# W-05 · AMBER MD Setup
+# W-05 · AMBER Protein MD Setup
+
+<img src="assets/logo.png" width="96" align="right" alt="W-05 logo">
+
+Set up, run and analyze an AMBER MD simulation of a protein: fetch a PDB entry (or upload a structure), solvate in TIP3P, add NaCl, heat, equilibrate, run production with sander and analyze with cpptraj.
 
 ![Domain: BioExcel Building Blocks](https://img.shields.io/badge/domain-bioexcel-green)
 
+![W-05 cover](assets/cover.png)
+
 ## Overview
 
-This workflow runs a complete molecular dynamics setup and analysis for hen egg-white lysozyme (PDB: 1AKI) using the AMBER toolchain (LEaP, sander, cpptraj) and the ff14SB + TIP3P force field. Starting from the raw PDB, it builds an AMBER topology, minimizes the structure in vacuo, solvates in a TIP3P water box, adds neutralizing ions, energy-minimizes the solvated system, heats from 0 to 300 K, runs NVT and NPT equilibration, and finishes with a free production MD simulation. Post-processing with cpptraj computes RMSd (vs. first snapshot and vs. the experimental structure), radius of gyration, and produces an imaged trajectory with solvent stripped. Horus provisions the full AMBER/biobb conda environment automatically for each stage.
+This workflow runs a complete molecular dynamics setup and analysis for a protein (by default hen egg-white lysozyme, PDB 1AKI) using the AMBER toolchain (LEaP, sander, cpptraj) and the ff14SB + TIP3P force field. Starting from the raw PDB, it builds an AMBER topology, minimizes the structure in vacuo, solvates in a TIP3P water box, adds neutralizing ions, energy-minimizes the solvated system, heats from 0 to 300 K, runs NVT and NPT equilibration, and finishes with a free production MD simulation. Post-processing with cpptraj computes RMSd (vs. first snapshot and vs. the experimental structure), radius of gyration, and produces an imaged trajectory with solvent stripped. Horus provisions the full AMBER/biobb conda environment automatically for each stage.
 
 ## Pipeline
 
 ```
-fetch_pdb              Download 1AKI from the PDB
+fetch_pdb              Download pdb_id (default 1AKI) or use the uploaded structure
    │
 pdb4amber              Prepare PDB for AMBER (rename residues, strip waters)
    │
@@ -23,7 +29,7 @@ amber_to_pdb           Convert minimized structure to PDB (ambpdb)
    │
 leap_solvate           Solvate in TIP3P water box (LEaP)
    │
-leap_add_ions          Neutralize and add 0.15 M NaCl (LEaP)
+leap_add_ions          Neutralize and add NaCl (salt_mm, default 150 mM) (LEaP)
    │
 sander_min ──► process_min               Energy minimize solvated system
    │
@@ -44,7 +50,8 @@ sander_free            Free production MD simulation
 ## Prerequisites
 
 - **uv** (recommended) or pip, to install horus-runtime and horus-environments.
-- **micromamba**, **mamba**, or **conda**. The workflow executor builds a shared conda environment from `conda_env.yaml` to provision AMBER and the biobb stack
+- **micromamba**, **mamba**, or **conda**. The workflow executor builds a shared conda environment from `conda_env.yaml` for the biobb I/O and analysis steps
+- **Docker**. The AMBER steps (pdb4amber, LEaP, sander) run in `quay.io/biocontainers/biobb_amber:5.2.1--py312hc5e4ab4_0`
 
 ## Quick Start
 
@@ -61,11 +68,26 @@ uv sync
 uv run horus run workflow.yaml
 ```
 
-The first run builds the conda environment (this takes a few minutes). Subsequent runs reuse the cached environment at `../.horus_conda_env`.
+The first run builds the conda environment (this takes a few minutes). Every task and later runs reuse that one environment at `workflow_results/.horus_conda_env`.
+
+## Inputs
+
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `pdb_id` | string | `1AKI` | PDB code or empty | RCSB PDB code to download (default 1AKI). Clear it to use the uploaded structure instead. |
+| `structure` | file | `examples/1aki.pdb` | PDB | Structure used when PDB ID is empty. Default: examples/1aki.pdb (1AKI). |
+| `box_padding_a` | number | `9.0` | 6–20, step 0.5 | Minimum distance between the solute and the edge of the truncated-octahedron TIP3P box. |
+| `salt_mm` | number | `150` | 0–1000, step 10 | Ionic concentration added on top of the neutralizing ions. |
+| `equilibration_steps` | number | `500` | 100–5000000, step 100 | sander steps of each restrained equilibration stage (2 fs per step; 500 = 1 ps). |
+| `production_steps` | number | `2500` | 500–50000000, step 500 | sander steps of the free production run (2 fs per step; 2500 = 5 ps). |
+
+`pdb_id` wins when set; clear it to run on the uploaded `structure`. Everything else (force field, restraints, heating protocol, cpptraj masks) stays in the biobb property files under `configs/`.
+
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes `params/<id>.txt` only when it is missing and fingerprints that file for the skip check, so a stale file keeps the old value. In Temple Compute, set it in the campaign form.
 
 ## Inputs / Outputs
 
-This workflow has no file inputs, it fetches 1AKI from the RCSB PDB automatically.
+The structure comes from `pdb_id` (fetched from the RCSB) or, when that is empty, from the `structure` upload; see Inputs.
 
 **Outputs** (all under `workflow_results/`):
 - `results/downloaded.pdb` — raw PDB from RCSB
@@ -79,7 +101,11 @@ This workflow has no file inputs, it fetches 1AKI from the RCSB PDB automaticall
 
 ## Configuration
 
-Config files in `configs/` control sander `mdin` parameters (time step, temperature, pressure, restraints, output frequency) and cpptraj analysis options for each stage. Edit them before running to adjust simulation length, force field, or thermostat/barostat settings.
+Water padding, salt concentration and the step counts are workflow inputs (see Inputs), passed to biobb as inline JSON configs. The remaining config files in `configs/` control the other sander `mdin` parameters (restraints, heating, output frequency) and the cpptraj analysis options; edit them before running for expert changes.
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: the form shows the PDB ID, the structure upload (with a Mol* preview) and the simulation knobs as sliders. The sander tasks carry `resources` hints (2 CPU / 8 GB; 2 h per preparation stage, 24 h for production; serial sander uses one core), so an auto-provisioned target picks a small CPU node; the AMBER steps run in the `biobb_amber` Docker image, so the target needs Docker. Expert settings (restraints, thermostat, analysis masks) stay in `configs/*.yaml`, which also show up as editable file inputs.
 
 ## References
 

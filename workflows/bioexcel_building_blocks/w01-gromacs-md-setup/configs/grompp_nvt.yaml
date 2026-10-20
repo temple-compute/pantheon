@@ -1,6 +1,0 @@
-properties:
-  simulation_type: nvt
-  mdp:
-    nsteps: 5000
-    dt: 0.002
-    Define: "-DPOSRES"

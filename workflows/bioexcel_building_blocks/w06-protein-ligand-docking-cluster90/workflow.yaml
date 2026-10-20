@@ -1,9 +1,9 @@
 kind: horus_workflow
-name: BioExcel Virtual Screening - Protein-Ligand Docking - Cluster90 Binding Site
+name: Protein-Ligand Docking with a Cluster90 Binding Site
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
@@ -12,6 +12,37 @@ _docker_executor: &docker_executor
   image: quay.io/biocontainers/biobb_vs:5.2.1--pyhdfd78af_0
 
 artifacts:
+  - id: pdb_id
+    name: PDB ID
+    description: 'RCSB PDB code of the receptor (default 3HEC, p38 MAP kinase). Required: the binding site is inferred from the PDB Cluster90 homologs of this entry.'
+    kind: string
+    path: params/pdb_id.txt
+    value: 3HEC
+    pattern: '[0-9][A-Za-z0-9]{3}'
+    min_length: 4
+    max_length: 4
+  - id: site_ligand
+    name: Site ligand code
+    description: Ligand whose binding pose in the Cluster90 homologs defines the binding site (default STI, imatinib).
+    kind: string
+    path: params/site_ligand.txt
+    value: STI
+    pattern: '[A-Za-z0-9]{1,3}'
+    min_length: 1
+    max_length: 3
+  - id: ligand_code
+    name: Ligand code (PDB CCD)
+    description: PDB Chemical Component code of the ligand to dock, downloaded as an idealized SDF (default STI, imatinib). Clear it to dock the uploaded ligand instead.
+    kind: string
+    path: params/ligand_code.txt
+    value: STI
+    pattern: ([A-Za-z0-9]{1,3})?
+    max_length: 3
+  - id: ligand_sdf
+    name: Ligand upload (SDF)
+    description: '3D ligand structure used when the ligand code is empty. Default: examples/sti_ideal.sdf (imatinib).'
+    kind: file
+    path: examples/sti_ideal.sdf
   - id: babel_convert_pdb2pdbqt_config
     name: Ligand PDB to PDBQT config
     description: Configuration for the OpenBabel conversion of the docking-ready ligand from PDB to PDBQT format.
@@ -30,41 +61,11 @@ artifacts:
     kind: file
     path: configs/babel_convert_sdf2pdb.yaml
 
-  - id: bindingsite_config
-    name: Binding site detection config
-    description: Parameters controlling how the binding site is inferred from the PDB Cluster90 collection.
-    kind: file
-    path: configs/bindingsite.yaml
-
-  - id: box_config
-    name: Docking box config
-    description: Padding and offset parameters for the cavity box generated around the binding site.
-    kind: file
-    path: configs/box.yaml
-
   - id: extract_model_pdbqt_config
     name: Pose extraction config
     description: Specifies which docking pose to extract from the AutoDock Vina output.
     kind: file
     path: configs/extract_model_pdbqt.yaml
-
-  - id: fetch_pdb_config
-    name: PDB fetch config
-    description: Specifies the PDB code (3HEC) of the receptor structure to download.
-    kind: file
-    path: configs/fetch_pdb.yaml
-
-  - id: ideal_sdf_config
-    name: Ligand SDF fetch config
-    description: Specifies the ligand code (STI, Imatinib) to download as an idealized SDF structure.
-    kind: file
-    path: configs/ideal_sdf.yaml
-
-  - id: pdb_cluster_zip_config
-    name: Cluster90 download config
-    description: Specifies the PDB Cluster90 sequence-identity threshold and target used to fetch homologous structures.
-    kind: file
-    path: configs/pdb_cluster_zip.yaml
 
   - id: str_check_add_hydrogens_config
     name: Receptor protonation config
@@ -72,6 +73,15 @@ artifacts:
     kind: file
     path: configs/str_check_add_hydrogens.yaml
 
+  - id: box_offset_a
+    name: Box padding (Å)
+    description: Extra space added around the binding site on each side of the docking box.
+    kind: number
+    path: params/box_offset_a.txt
+    value: 12
+    min: 2
+    max: 30
+    step: 1
 tasks:
   - kind: horus_task
     id: create_results_folder
@@ -90,17 +100,17 @@ tasks:
       kind: local
   - kind: horus_task
     id: fetch_pdb
-    name: Download 3HEC structure from PDB
-    description: Runs the biobb `pdb` tool to fetch the 3HEC receptor structure from the RCSB PDB.
+    name: Download the receptor from the PDB
+    description: Runs the biobb `pdb` tool to fetch the pdb_id receptor structure from the RCSB PDB.
     inputs:
       - id: results_dir
         name: Results directory
         kind: folder
         path: results
-      - id: fetch_pdb_config
-        name: PDB fetch config
-        kind: file
-        path: configs/fetch_pdb.yaml
+      - id: pdb_id
+        name: PDB ID
+        kind: string
+        path: params/pdb_id.txt
     outputs:
       - id: download_pdb
         name: Downloaded PDB structure
@@ -110,9 +120,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        pdb
-        --config ${fetch_pdb_config}
-        --output_pdb_path ${download_pdb}
+        pdb --config '{"properties":{"pdb_code":"${pdb_id}","filter":["ATOM","HETATM"]}}' --output_pdb_path ${download_pdb}
     target:
       kind: local
 
@@ -142,17 +150,17 @@ tasks:
 
   - kind: horus_task
     id: pdb_cluster_zip
-    name: Download PDB Cluster90 collection for 3HEC
+    name: Download the PDB Cluster90 collection
     description: Runs the biobb `pdb_cluster_zip` tool to download a zip of Cluster90 (90% sequence identity) homologous structures for the target.
     inputs:
       - id: results_dir
         name: Results directory
         kind: folder
         path: results
-      - id: pdb_cluster_zip_config
-        name: Cluster90 download config
-        kind: file
-        path: configs/pdb_cluster_zip.yaml
+      - id: pdb_id
+        name: PDB ID
+        kind: string
+        path: params/pdb_id.txt
     outputs:
       - id: pdb_cluster
         name: Cluster90 structure collection
@@ -162,9 +170,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        pdb_cluster_zip
-        --config ${pdb_cluster_zip_config}
-        --output_pdb_zip_path ${pdb_cluster}
+        pdb_cluster_zip --config '{"properties":{"pdb_code":"${pdb_id}","filter":["ATOM","HETATM"],"cluster":90}}' --output_pdb_zip_path ${pdb_cluster}
     target:
       kind: local
 
@@ -173,10 +179,6 @@ tasks:
     name: Extract binding site from Cluster90 collection
     description: Runs the biobb `bindingsite` tool to infer the ligand binding site by analyzing where ligands cluster across the Cluster90 homologs.
     inputs:
-      - id: bindingsite_config
-        name: Binding site detection config
-        kind: file
-        path: configs/bindingsite.yaml
       - id: pdb_protein
         name: Protein structure
         kind: file
@@ -185,6 +187,10 @@ tasks:
         name: Cluster90 structure collection
         kind: file
         path: results/pdb_cluster.zip
+      - id: site_ligand
+        name: Site ligand code
+        kind: string
+        path: params/site_ligand.txt
     outputs:
       - id: output_bindingsite
         name: Binding site structure
@@ -194,11 +200,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        bindingsite
-        --config ${bindingsite_config}
-        --input_pdb_path ${pdb_protein}
-        --input_clusters_zip ${pdb_cluster}
-        --output_pdb_path ${output_bindingsite}
+        bindingsite --config '{"properties":{"ligand":"${site_ligand}","matrix_name":"BLOSUM62","gap_open":-10.0,"gap_extend":-0.5,"max_num_ligands":15,"radius":5}}' --input_pdb_path ${pdb_protein} --input_clusters_zip ${pdb_cluster} --output_pdb_path ${output_bindingsite}
     target:
       kind: local
 
@@ -207,14 +209,14 @@ tasks:
     name: Generate cavity box around binding site
     description: Runs the biobb `box` tool to generate a cavity box enclosing the binding site, used as the AutoDock Vina search space.
     inputs:
-      - id: box_config
-        name: Docking box config
-        kind: file
-        path: configs/box.yaml
       - id: output_bindingsite
         name: Binding site structure
         kind: file
         path: results/bindingsite.pdb
+      - id: box_offset_a
+        name: Box padding (Å)
+        kind: number
+        path: params/box_offset_a.txt
     outputs:
       - id: output_box
         name: Docking box
@@ -224,26 +226,27 @@ tasks:
     runtime:
       kind: command
       command: >-
-        box
-        --config ${box_config}
-        --input_pdb_path ${output_bindingsite}
-        --output_pdb_path ${output_box}
+        box --config '{"properties":{"offset":${box_offset_a},"box_coordinates":true}}' --input_pdb_path ${output_bindingsite} --output_pdb_path ${output_box}
     target:
       kind: local
 
   - kind: horus_task
     id: ideal_sdf
-    name: Download Imatinib (STI) small molecule as SDF
-    description: Runs the biobb `ideal_sdf` tool to download the idealized STI (Imatinib) ligand structure in SDF format from the PDB Chemical Component Dictionary.
+    name: Fetch (ligand code) or load the uploaded ligand
+    description: Downloads the idealized SDF of ligand_code from the PDB Chemical Component Dictionary, or copies the uploaded SDF when the code is empty.
     inputs:
       - id: results_dir
         name: Results directory
         kind: folder
         path: results
-      - id: ideal_sdf_config
-        name: Ligand SDF fetch config
+      - id: ligand_code
+        name: Ligand code (PDB CCD)
+        kind: string
+        path: params/ligand_code.txt
+      - id: ligand_sdf
+        name: Ligand upload (SDF)
         kind: file
-        path: configs/ideal_sdf.yaml
+        path: examples/sti_ideal.sdf
     outputs:
       - id: sdf_ideal
         name: Ligand SDF structure
@@ -253,9 +256,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        ideal_sdf
-        --config ${ideal_sdf_config}
-        --output_sdf_path ${sdf_ideal}
+        if [ -n ${ligand_code} ]; then ideal_sdf --config '{"properties":{"ligand_code":"${ligand_code}"}}' --output_sdf_path ${sdf_ideal}; else cp ${ligand_sdf} ${sdf_ideal}; fi
     target:
       kind: local
 
@@ -372,6 +373,10 @@ tasks:
         name: Vina docking log
         kind: file
         path: results/output_vina.log
+    resources:
+      cpus: 8
+      memory_gb: 16
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -543,7 +548,7 @@ edges:
     source_output: output_pdb_model
     target: cat_pdb
     target_input: output_pdb_model
-  
+
   - source: create_results_folder
     source_output: results_dir
     target: fetch_pdb
@@ -574,35 +579,10 @@ edges:
     target: babel_convert_sdf2pdb
     target_input: babel_convert_sdf2pdb_config
 
-  - source: artifact-bindingsite_config
-    source_output: bindingsite_config
-    target: bindingsite
-    target_input: bindingsite_config
-
-  - source: artifact-box_config
-    source_output: box_config
-    target: box
-    target_input: box_config
-
   - source: artifact-extract_model_pdbqt_config
     source_output: extract_model_pdbqt_config
     target: extract_model_pdbqt
     target_input: extract_model_pdbqt_config
-
-  - source: artifact-fetch_pdb_config
-    source_output: fetch_pdb_config
-    target: fetch_pdb
-    target_input: fetch_pdb_config
-
-  - source: artifact-ideal_sdf_config
-    source_output: ideal_sdf_config
-    target: ideal_sdf
-    target_input: ideal_sdf_config
-
-  - source: artifact-pdb_cluster_zip_config
-    source_output: pdb_cluster_zip_config
-    target: pdb_cluster_zip
-    target_input: pdb_cluster_zip_config
 
   - source: artifact-str_check_add_hydrogens_config
     source_output: str_check_add_hydrogens_config
@@ -610,6 +590,30 @@ edges:
     target_input: str_check_add_hydrogens_config
 
 
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: fetch_pdb
+    target_input: pdb_id
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: pdb_cluster_zip
+    target_input: pdb_id
+  - source: artifact-site_ligand
+    source_output: site_ligand
+    target: bindingsite
+    target_input: site_ligand
+  - source: artifact-ligand_code
+    source_output: ligand_code
+    target: ideal_sdf
+    target_input: ligand_code
+  - source: artifact-ligand_sdf
+    source_output: ligand_sdf
+    target: ideal_sdf
+    target_input: ligand_sdf
+  - source: artifact-box_offset_a
+    source_output: box_offset_a
+    target: box
+    target_input: box_offset_a
 orchestrator_target:
   kind: local
   working_directory: "./workflow_results"

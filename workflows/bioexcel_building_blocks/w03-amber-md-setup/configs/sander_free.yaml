@@ -1,5 +1,0 @@
-properties:
-  simulation_type: free
-  mdin:
-    nstlim: 2500
-    ntwx: 500

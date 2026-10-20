@@ -1,9 +1,9 @@
 kind: horus_workflow
-name: BioExcel AMBER MD Setup - Lysozyme 1AKI
+name: AMBER Protein MD Setup
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
@@ -16,6 +16,19 @@ _target: &target
   kind: local
 
 artifacts:
+  - id: pdb_id
+    name: PDB ID
+    description: RCSB PDB code to download (default 1AKI). Clear it to use the uploaded structure instead.
+    kind: string
+    path: params/pdb_id.txt
+    value: 1AKI
+    pattern: ([0-9][A-Za-z0-9]{3})?
+    max_length: 4
+  - id: structure
+    name: Structure upload (PDB)
+    description: 'Structure used when PDB ID is empty. Default: examples/1aki.pdb (1AKI).'
+    kind: file
+    path: examples/1aki.pdb
   - id: cpptraj_image_config
     name: Trajectory imaging config
     description: Configuration for imaging the trajectory and stripping solvent with cpptraj.
@@ -40,29 +53,11 @@ artifacts:
     kind: file
     path: configs/cpptraj_rms_first.yaml
 
-  - id: fetch_pdb_config
-    name: PDB download config
-    description: Configuration for downloading the 1AKI structure from the RCSB PDB.
-    kind: file
-    path: configs/fetch_pdb.yaml
-
   - id: gen_top_config
     name: Topology generation config
     description: Configuration for building the AMBER topology and coordinates with LEaP.
     kind: file
     path: configs/gen_top.yaml
-
-  - id: leap_add_ions_config
-    name: Ion addition config
-    description: Configuration for neutralizing the system and adding NaCl with LEaP.
-    kind: file
-    path: configs/leap_add_ions.yaml
-
-  - id: leap_solvate_config
-    name: Solvation config
-    description: Configuration for solvating the system in a TIP3P water box with LEaP.
-    kind: file
-    path: configs/leap_solvate.yaml
 
   - id: process_energy_config
     name: Energy extraction config
@@ -81,12 +76,6 @@ artifacts:
     description: Configuration for extracting temperature from sander logs.
     kind: file
     path: configs/process_temp.yaml
-
-  - id: sander_free_config
-    name: Free MD config
-    description: Configuration for the free production MD run in sander.
-    kind: file
-    path: configs/sander_free.yaml
 
   - id: sander_h_min_config
     name: Hydrogen minimization config
@@ -112,28 +101,56 @@ artifacts:
     kind: file
     path: configs/sander_n_min.yaml
 
-  - id: sander_npt_config
-    name: NPT equilibration config
-    description: Configuration for NPT pressure equilibration in sander.
-    kind: file
-    path: configs/sander_npt.yaml
-
-  - id: sander_nvt_config
-    name: NVT equilibration config
-    description: Configuration for NVT equilibration in sander.
-    kind: file
-    path: configs/sander_nvt.yaml
-
+  - id: box_padding_a
+    name: Water padding (Å)
+    description: Minimum distance between the solute and the edge of the truncated-octahedron TIP3P box.
+    kind: number
+    path: params/box_padding_a.txt
+    value: 9.0
+    min: 6
+    max: 20
+    step: 0.5
+  - id: salt_mm
+    name: NaCl concentration (mM)
+    description: Ionic concentration added on top of the neutralizing ions.
+    kind: number
+    path: params/salt_mm.txt
+    value: 150
+    min: 0
+    max: 1000
+    step: 10
+  - id: equilibration_steps
+    name: Equilibration steps (NVT and NPT)
+    description: sander steps of each restrained equilibration stage (2 fs per step; 500 = 1 ps).
+    kind: number
+    path: params/equilibration_steps.txt
+    value: 500
+    min: 100
+    max: 5000000
+    step: 100
+  - id: production_steps
+    name: Production steps
+    description: sander steps of the free production run (2 fs per step; 2500 = 5 ps).
+    kind: number
+    path: params/production_steps.txt
+    value: 2500
+    min: 500
+    max: 50000000
+    step: 500
 tasks:
   - kind: horus_task
     id: fetch_pdb
-    name: Download 1AKI structure from PDB
-    description: Downloads the 1AKI hen egg-white lysozyme structure from the RCSB PDB.
+    name: Fetch (PDB ID) or load the uploaded structure
+    description: Downloads the PDB entry given in pdb_id from the RCSB, or copies the uploaded structure when pdb_id is empty.
     inputs:
-      - id: fetch_pdb_config
-        name: PDB download config
+      - id: pdb_id
+        name: PDB ID
+        kind: string
+        path: params/pdb_id.txt
+      - id: structure
+        name: Structure upload (PDB)
         kind: file
-        path: configs/fetch_pdb.yaml
+        path: examples/1aki.pdb
     outputs:
       - id: downloaded_pdb
         name: Downloaded PDB structure
@@ -143,9 +160,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        pdb
-        --config ${fetch_pdb_config}
-        --output_pdb_path ${downloaded_pdb}
+        if [ -n ${pdb_id} ]; then pdb --config '{"properties":{"pdb_code":"${pdb_id}"}}' --output_pdb_path ${downloaded_pdb}; else cp ${structure} ${downloaded_pdb}; fi
     target: *target
 
   - kind: horus_task
@@ -241,6 +256,10 @@ tasks:
         name: Hydrogen minimization log
         kind: file
         path: results/sander.h_min.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -313,6 +332,10 @@ tasks:
         name: System minimization log
         kind: file
         path: results/sander.n_min.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -389,14 +412,14 @@ tasks:
     name: Create solvent box and solvate system (leap)
     description: Builds a TIP3P water box around the minimized structure using LEaP.
     inputs:
-      - id: leap_solvate_config
-        name: Solvation config
-        kind: file
-        path: configs/leap_solvate.yaml
       - id: ambpdb_pdb
         name: Minimized structure PDB
         kind: file
         path: results/structure.ambpdb.pdb
+      - id: box_padding_a
+        name: Water padding (Å)
+        kind: number
+        path: params/box_padding_a.txt
     outputs:
       - id: solv_pdb
         name: Solvated structure PDB
@@ -414,12 +437,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        leap_solvate
-        --config ${leap_solvate_config}
-        --input_pdb_path ${ambpdb_pdb}
-        --output_pdb_path ${solv_pdb}
-        --output_top_path ${solv_top}
-        --output_crd_path ${solv_crd}
+        leap_solvate --config '{"properties":{"forcefield":["protein.ff14SB"],"water_type":"TIP3PBOX","distance_to_molecule":"${box_padding_a}","box_type":"truncated_octahedron"}}' --input_pdb_path ${ambpdb_pdb} --output_pdb_path ${solv_pdb} --output_top_path ${solv_top} --output_crd_path ${solv_crd}
     target: *target
 
   - kind: horus_task
@@ -427,14 +445,14 @@ tasks:
     name: Neutralize and add ions (leap)
     description: Neutralizes the solvated system and adds 0.15 M NaCl using LEaP.
     inputs:
-      - id: leap_add_ions_config
-        name: Ion addition config
-        kind: file
-        path: configs/leap_add_ions.yaml
       - id: solv_pdb
         name: Solvated structure PDB
         kind: file
         path: results/structure.solv.pdb
+      - id: salt_mm
+        name: NaCl concentration (mM)
+        kind: number
+        path: params/salt_mm.txt
     outputs:
       - id: ions_pdb
         name: Ionized structure PDB
@@ -453,12 +471,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        leap_add_ions
-        --config ${leap_add_ions_config}
-        --input_pdb_path ${solv_pdb}
-        --output_pdb_path ${ions_pdb}
-        --output_top_path ${ions_top}
-        --output_crd_path ${ions_crd}
+        leap_add_ions --config '{"properties":{"forcefield":["protein.ff14SB"],"neutralise":true,"positive_ions_type":"Na+","negative_ions_type":"Cl-","ionic_concentration":${salt_mm},"box_type":"truncated_octahedron"}}' --input_pdb_path ${solv_pdb} --output_pdb_path ${ions_pdb} --output_top_path ${ions_top} --output_crd_path ${ions_crd}
     target: *target
 
   - kind: horus_task
@@ -491,6 +504,10 @@ tasks:
         name: Solvated minimization log
         kind: file
         path: results/sander.min.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -563,6 +580,10 @@ tasks:
         name: Heating log
         kind: file
         path: results/sander.heat.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -610,10 +631,6 @@ tasks:
     name: Equilibrate the system NVT (sander)
     description: Equilibrates the system at constant volume and 300 K using sander.
     inputs:
-      - id: sander_nvt_config
-        name: NVT equilibration config
-        kind: file
-        path: configs/sander_nvt.yaml
       - id: ions_top
         name: Ionized system topology
         kind: file
@@ -622,6 +639,10 @@ tasks:
         name: Heating restart
         kind: file
         path: results/sander.heat.rst
+      - id: equilibration_steps
+        name: Equilibration steps (NVT and NPT)
+        kind: number
+        path: params/equilibration_steps.txt
     outputs:
       - id: nvt_traj
         name: NVT trajectory
@@ -635,18 +656,15 @@ tasks:
         name: NVT log
         kind: file
         path: results/sander.nvt.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
-        sander_mdrun
-        --config ${sander_nvt_config}
-        --input_top_path ${ions_top}
-        --input_crd_path ${heat_rst}
-        --input_ref_path ${heat_rst}
-        --output_traj_path ${nvt_traj}
-        --output_rst_path ${nvt_rst}
-        --output_log_path ${nvt_log}
+        sander_mdrun --config '{"properties":{"simulation_type":"nvt","mdin":{"nstlim":${equilibration_steps},"ntr":1,"restraintmask":"\"!:WAT,Cl-,Na+ & !@H=\"","restraint_wt":5.0}}}' --input_top_path ${ions_top} --input_crd_path ${heat_rst} --input_ref_path ${heat_rst} --output_traj_path ${nvt_traj} --output_rst_path ${nvt_rst} --output_log_path ${nvt_log}
     target: *target
 
   - kind: horus_task
@@ -682,10 +700,6 @@ tasks:
     name: Equilibrate the system NPT (sander)
     description: Equilibrates the system at constant pressure using sander with pressure coupling.
     inputs:
-      - id: sander_npt_config
-        name: NPT equilibration config
-        kind: file
-        path: configs/sander_npt.yaml
       - id: ions_top
         name: Ionized system topology
         kind: file
@@ -694,6 +708,10 @@ tasks:
         name: NVT restart
         kind: file
         path: results/sander.nvt.rst
+      - id: equilibration_steps
+        name: Equilibration steps (NVT and NPT)
+        kind: number
+        path: params/equilibration_steps.txt
     outputs:
       - id: npt_traj
         name: NPT trajectory
@@ -707,18 +725,15 @@ tasks:
         name: NPT log
         kind: file
         path: results/sander.npt.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
-        sander_mdrun
-        --config ${sander_npt_config}
-        --input_top_path ${ions_top}
-        --input_crd_path ${nvt_rst}
-        --input_ref_path ${nvt_rst}
-        --output_traj_path ${npt_traj}
-        --output_rst_path ${npt_rst}
-        --output_log_path ${npt_log}
+        sander_mdrun --config '{"properties":{"simulation_type":"npt","mdin":{"nstlim":${equilibration_steps},"ntr":1,"restraintmask":"\"!:WAT,Cl-,Na+ & !@H=\"","restraint_wt":2.5}}}' --input_top_path ${ions_top} --input_crd_path ${nvt_rst} --input_ref_path ${nvt_rst} --output_traj_path ${npt_traj} --output_rst_path ${npt_rst} --output_log_path ${npt_log}
     target: *target
 
   - kind: horus_task
@@ -754,10 +769,6 @@ tasks:
     name: Free MD simulation (sander)
     description: Runs the free (unrestrained) production MD simulation with sander.
     inputs:
-      - id: sander_free_config
-        name: Free MD config
-        kind: file
-        path: configs/sander_free.yaml
       - id: ions_top
         name: Ionized system topology
         kind: file
@@ -766,6 +777,10 @@ tasks:
         name: NPT restart
         kind: file
         path: results/sander.npt.rst
+      - id: production_steps
+        name: Production steps
+        kind: number
+        path: params/production_steps.txt
     outputs:
       - id: free_traj
         name: Production trajectory
@@ -780,17 +795,15 @@ tasks:
         name: Production MD log
         kind: file
         path: results/sander.free.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "24:00:00"
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
-        sander_mdrun
-        --config ${sander_free_config}
-        --input_top_path ${ions_top}
-        --input_crd_path ${npt_rst}
-        --output_traj_path ${free_traj}
-        --output_rst_path ${free_rst}
-        --output_log_path ${free_log}
+        sander_mdrun --config '{"properties":{"simulation_type":"free","mdin":{"nstlim":${production_steps},"ntwx":500}}}' --input_top_path ${ions_top} --input_crd_path ${npt_rst} --output_traj_path ${free_traj} --output_rst_path ${free_rst} --output_log_path ${free_log}
     target: *target
 
   - kind: horus_task
@@ -1126,25 +1139,10 @@ edges:
     target: cpptraj_rms_first
     target_input: cpptraj_rms_first_config
 
-  - source: artifact-fetch_pdb_config
-    source_output: fetch_pdb_config
-    target: fetch_pdb
-    target_input: fetch_pdb_config
-
   - source: artifact-gen_top_config
     source_output: gen_top_config
     target: gen_top
     target_input: gen_top_config
-
-  - source: artifact-leap_add_ions_config
-    source_output: leap_add_ions_config
-    target: leap_add_ions
-    target_input: leap_add_ions_config
-
-  - source: artifact-leap_solvate_config
-    source_output: leap_solvate_config
-    target: leap_solvate
-    target_input: leap_solvate_config
 
   - source: artifact-process_energy_config
     source_output: process_energy_config
@@ -1176,11 +1174,6 @@ edges:
     target: process_nvt
     target_input: process_temp_config
 
-  - source: artifact-sander_free_config
-    source_output: sander_free_config
-    target: sander_free
-    target_input: sander_free_config
-
   - source: artifact-sander_h_min_config
     source_output: sander_h_min_config
     target: sander_h_min
@@ -1201,17 +1194,34 @@ edges:
     target: sander_n_min
     target_input: sander_n_min_config
 
-  - source: artifact-sander_npt_config
-    source_output: sander_npt_config
-    target: sander_npt
-    target_input: sander_npt_config
-
-  - source: artifact-sander_nvt_config
-    source_output: sander_nvt_config
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: fetch_pdb
+    target_input: pdb_id
+  - source: artifact-structure
+    source_output: structure
+    target: fetch_pdb
+    target_input: structure
+  - source: artifact-box_padding_a
+    source_output: box_padding_a
+    target: leap_solvate
+    target_input: box_padding_a
+  - source: artifact-salt_mm
+    source_output: salt_mm
+    target: leap_add_ions
+    target_input: salt_mm
+  - source: artifact-equilibration_steps
+    source_output: equilibration_steps
     target: sander_nvt
-    target_input: sander_nvt_config
-
-
+    target_input: equilibration_steps
+  - source: artifact-equilibration_steps
+    source_output: equilibration_steps
+    target: sander_npt
+    target_input: equilibration_steps
+  - source: artifact-production_steps
+    source_output: production_steps
+    target: sander_free
+    target_input: production_steps
 orchestrator_target:
   kind: local
   working_directory: "./workflow_results"
