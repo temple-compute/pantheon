@@ -1,0 +1,21 @@
+{
+  "index_date": "2026-01-01",
+  "population": {
+    "size": 5000,
+    "shards": 4,
+    "seed": 42,
+    "state": "Massachusetts",
+    "age_range": "18-100",
+    "modules": null,
+    "java_heap": "2g",
+    "synthea_csv": null
+  },
+  "variants": {
+    "batch_size": 50,
+    "random_combinations": 0,
+    "random_seed": 7
+  },
+  "llm": {
+    "model": "claude-opus-5-5"
+  }
+}

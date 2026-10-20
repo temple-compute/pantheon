@@ -1,0 +1,377 @@
+kind: horus_workflow
+name: Protocol Stress-Test
+# A public trial's eligibility criteria as computable rules, applied to a
+# Synthea population, with ~2,400 protocol variants fanned out with horus_map.
+# Outputs rank each criterion by the patients and the diversity it costs.
+
+# --- reusable blocks -------------------------------------------------------
+# One uv environment shared by every data task. environment_dir is resolved
+# against <target dir>/<task id>/<execution id>/, so ../../ puts it at the
+# target's root where all tasks (and every map clone) reuse it. plan_shards
+# builds it first, so the parallel map clones never race to create it.
+_env: &env
+  kind: uv_python_environment
+  environment_dir: "../../.horus_uv_env_w40"
+  python: "3.12"
+  requirements:
+    - "polars==2.0.0"
+    - "numpy==2.4.6"
+    - "pyarrow==26.0.0"
+    - "matplotlib==3.11.2"
+    - "jdk4py==25.0.2.1" # bundled Java runtime for Synthea, no system JDK needed
+
+_llm_env: &llm_env
+  kind: uv_python_environment
+  environment_dir: "../../.horus_uv_env_w40_llm"
+  python: "3.12"
+  requirements:
+    - "anthropic==1.15.0"
+
+_local: &local
+  kind: local
+
+# SLURM targets for the two fan-out stages, in the style of drug-discovery/w04-cmd.
+# Not tested on a cluster. To use one: `uv add horus-slurm`, uncomment it, set
+# partition/account for your site, and point the task's `target:` at it.
+# _slurm_population: &slurm_population
+#   kind: slurm
+#   inner:
+#     kind: local
+#   partition: "" # <- set per site
+#   account: "" # <- set per site
+#   ntasks: 1
+#   time_limit: "01:00:00" # one Synthea shard; scale with population.size / shards
+#
+# _slurm_evaluate: &slurm_evaluate
+#   kind: slurm
+#   inner:
+#     kind: local
+#   partition: "" # <- set per site
+#   account: "" # <- set per site
+#   ntasks: 1
+#   time_limit: "00:15:00" # one batch of variants
+
+artifacts:
+  - id: protocol
+    name: ClinicalTrials.gov record (API v2 snapshot)
+    description: NCT03036150 (Dapa-CKD) as returned by the ClinicalTrials.gov API v2; committed, never fetched at runtime.
+    kind: file
+    path: examples/protocol/NCT03036150.json
+
+  - id: rules
+    name: Reviewed computable criteria
+    description: Human-reviewed rule set (features, prescreen, criteria and sweep grids). The review gate every downstream task reads.
+    kind: file
+    path: examples/criteria.reviewed.json
+
+  - id: config
+    name: Advanced run configuration
+    description: >-
+      Base config.json; the inputs below override its index date, population,
+      variant and LLM keys. Edit it for age range, Synthea modules, Java heap
+      or an existing Synthea CSV folder.
+    kind: file
+    path: examples/config.json
+
+  - id: population_size
+    name: Population size
+    description: Synthetic patients to generate with Synthea.
+    kind: number
+    path: params/population_size.txt
+    value: 5000
+    min: 100
+    max: 100000
+    step: 100
+
+  - id: population_shards
+    name: Population shards
+    description: Synthea runs in parallel, one map clone each (~2.6 GB RAM per shard).
+    kind: number
+    path: params/population_shards.txt
+    value: 4
+    min: 1
+    max: 64
+    step: 1
+
+  - id: population_seed
+    name: Population seed
+    description: Seed of the first shard; shard i uses seed + i.
+    kind: number
+    path: params/population_seed.txt
+    value: 42
+    min: 0
+    max: 1000000
+    step: 1
+
+  - id: state
+    name: US state
+    description: State Synthea draws the population's demographics from.
+    kind: string
+    path: params/state.txt
+    value: Massachusetts
+    pattern: "[A-Za-z ]+"
+    max_length: 40
+
+  - id: index_date
+    name: Index date
+    description: Date eligibility is evaluated at (YYYY-MM-DD).
+    kind: string
+    path: params/index_date.txt
+    value: "2026-01-01"
+    pattern: '\d{4}-\d{2}-\d{2}'
+
+  - id: variant_batch_size
+    name: Variants per batch
+    description: Protocol variants per evaluate clone.
+    kind: number
+    path: params/variant_batch_size.txt
+    value: 50
+    min: 10
+    max: 1000
+    step: 10
+
+  - id: random_combinations
+    name: Random criteria combinations
+    description: Extra random multi-criterion variants on top of the leave-one-out and threshold grid.
+    kind: number
+    path: params/random_combinations.txt
+    value: 0
+    min: 0
+    max: 20000
+    step: 100
+
+  - id: llm_model
+    name: LLM for the rule draft
+    description: Claude model that drafts the rules (only used when ANTHROPIC_API_KEY is set).
+    kind: string
+    path: params/llm_model.txt
+    value: claude-opus-5-5
+    pattern: "[a-z0-9.-]+"
+    max_length: 80
+
+tasks:
+  # Lays the typed inputs over the uploaded config.json; every task below reads
+  # the merged results/config.json, so the scripts keep one config contract.
+  - kind: horus_task
+    id: configure
+    name: Write the run configuration
+    description: Merges the campaign inputs into config.json (population, variants, index date, LLM model).
+    inputs:
+      - {id: base_config, name: Advanced run configuration, kind: file, path: examples/config.json}
+      - {id: population_size, name: Population size, kind: number, path: params/population_size.txt}
+      - {id: population_shards, name: Population shards, kind: number, path: params/population_shards.txt}
+      - {id: population_seed, name: Population seed, kind: number, path: params/population_seed.txt}
+      - {id: state, name: US state, kind: string, path: params/state.txt}
+      - {id: index_date, name: Index date, kind: string, path: params/index_date.txt}
+      - {id: variant_batch_size, name: Variants per batch, kind: number, path: params/variant_batch_size.txt}
+      - {id: random_combinations, name: Random criteria combinations, kind: number, path: params/random_combinations.txt}
+      - {id: llm_model, name: LLM for the rule draft, kind: string, path: params/llm_model.txt}
+    outputs:
+      - {id: config, name: Run configuration, kind: file, path: results/config.json}
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/configure.py
+      python: python3 # stdlib-only
+      args: >-
+        --base ${base_config} --out ${config}
+        --size ${population_size} --shards ${population_shards} --seed ${population_seed}
+        --state "$$(cat ${state.path})" --index-date ${index_date}
+        --batch-size ${variant_batch_size} --random-combinations ${random_combinations}
+        --llm-model ${llm_model}
+    target: *local
+
+  # Optional LLM draft of the rules; skipped with a log line when
+  # ANTHROPIC_API_KEY is not set. Nothing downstream depends on the draft.
+  - kind: horus_task
+    id: parse_criteria
+    name: Draft rules with an LLM and diff against the reviewed set
+    description: Asks Claude to turn the eligibility text into rules and diffs the draft against criteria.reviewed.json.
+    skip_if_complete: false # depends on ANTHROPIC_API_KEY, which is not fingerprinted
+    inputs:
+      - {id: protocol, name: ClinicalTrials.gov record, kind: file, path: examples/protocol/NCT03036150.json}
+      - {id: rules, name: Reviewed computable criteria, kind: file, path: examples/criteria.reviewed.json}
+      - {id: config, name: Run configuration, kind: file, path: config.json}
+    outputs:
+      - {id: draft, name: LLM rule draft, kind: file, path: results/criteria_draft.json}
+      - {id: diff, name: Draft vs reviewed diff, kind: file, path: results/criteria_diff.json}
+    executor: *llm_env
+    runtime:
+      kind: python_script
+      script: scripts/parse_criteria.py
+      args: --protocol ${protocol} --reviewed ${rules} --config ${config} --draft ${draft} --diff ${diff}
+    target: *local
+
+  - kind: horus_task
+    id: plan_shards
+    name: Plan population shards
+    description: Splits the requested population into one Synthea shard per seed (or one import shard for an existing CSV folder).
+    inputs:
+      - {id: config, name: Run configuration, kind: file, path: config.json}
+    outputs:
+      - {id: shards, name: Shard parameter folders, kind: folder, path: results/shards/}
+    executor: *env
+    runtime:
+      kind: python_script
+      script: scripts/plan_shards.py
+      args: --config ${config} --out ${shards}
+    target: *local
+
+  # One Synthea JVM per shard. Each uses ~2.6 GB RSS with the default 2g heap,
+  # so concurrency is capped at 2 for laptops; raise it on a cluster.
+  - kind: horus_map
+    id: generate_population
+    name: Generate the synthetic population (one clone per shard)
+    description: Runs the pinned, checksum-verified Synthea v4.0.0 jar for each shard and keeps the five CSV tables the features need.
+    over:
+      input_id: shards
+      as: shard
+    max_concurrency: 2
+    inputs:
+      - {id: shards, name: Shard parameter folders, kind: folder, path: shards/}
+    outputs:
+      - {id: population, name: Synthea CSV tables per shard, kind: folder, path: results/population/}
+    resources:
+      cpus: 4
+      memory_gb: 4
+      walltime: "01:00:00"
+    executor: *env
+    runtime:
+      kind: python_script
+      script: scripts/generate_population.py
+      args: --shard ${shard} --out ${population}
+    target: *local # or *slurm_population
+
+  - kind: horus_task
+    id: build_features
+    name: Build patient features at the index date
+    description: Turns the Synthea tables into one row per patient (demographics, condition flags, latest labs, medication timing) and flags the prescreened CKD population.
+    inputs:
+      - {id: population, name: Synthea CSV tables per shard, kind: folder, path: population/}
+      - {id: rules, name: Reviewed computable criteria, kind: file, path: examples/criteria.reviewed.json}
+      - {id: config, name: Run configuration, kind: file, path: config.json}
+    outputs:
+      - {id: features, name: Patient feature table, kind: file, path: results/features.parquet}
+      - {id: prescreen, name: Prescreen summary, kind: file, path: results/prescreen.json}
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "00:30:00"
+    executor: *env
+    runtime:
+      kind: python_script
+      script: scripts/build_features.py
+      args: --population ${population} --rules ${rules} --config ${config} --features ${features} --prescreen ${prescreen}
+    target: *local
+
+  - kind: horus_task
+    id: generate_variants
+    name: Enumerate protocol variants
+    description: Baseline, leave-one-out and the full threshold grid (plus optional random combinations), hashed and written 50 per batch file.
+    inputs:
+      - {id: rules, name: Reviewed computable criteria, kind: file, path: examples/criteria.reviewed.json}
+      - {id: config, name: Run configuration, kind: file, path: config.json}
+    outputs:
+      - {id: variants, name: Variant batch files, kind: folder, path: results/variants/}
+    # stdlib-only, and it runs alongside plan_shards: keeping it off the shared
+    # uv env means only one task ever creates that env.
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/generate_variants.py
+      python: python3
+      args: --rules ${rules} --config ${config} --out ${variants}
+    target: *local
+
+  # One clone per batch file; every clone also gets the shared features and rules.
+  - kind: horus_map
+    id: evaluate
+    name: Evaluate variant batches (one clone per batch)
+    description: Computes eligible count, screen-failure proxy, composition, diversity and per-criterion failures for every variant in a batch.
+    over:
+      input_id: variants
+      as: batch
+    inputs:
+      - {id: variants, name: Variant batch files, kind: folder, path: variants/}
+      - {id: features, name: Patient feature table, kind: file, path: features.parquet}
+      - {id: rules, name: Reviewed computable criteria, kind: file, path: examples/criteria.reviewed.json}
+    outputs:
+      - {id: evaluated, name: Per-batch variant metrics, kind: folder, path: results/evaluated/}
+    resources:
+      cpus: 1
+      memory_gb: 2
+      walltime: "00:15:00"
+    executor: *env
+    runtime:
+      kind: python_script
+      script: scripts/evaluate.py
+      args: --batch ${batch} --features ${features} --rules ${rules} --out ${evaluated}
+    target: *local # or *slurm_evaluate
+
+  - kind: horus_task
+    id: gather_report
+    name: Rank criteria and build the report
+    description: Ranks criteria by sole-cause exclusions and patients regained, finds the pool-size vs diversity Pareto frontier, and writes the HTML report, hero chart, summary and provenance.
+    inputs:
+      - {id: evaluated, name: Per-batch variant metrics, kind: folder, path: evaluated/}
+      - {id: prescreen, name: Prescreen summary, kind: file, path: prescreen.json}
+      - {id: diff, name: Draft vs reviewed diff, kind: file, path: criteria_diff.json}
+      - {id: rules, name: Reviewed computable criteria, kind: file, path: examples/criteria.reviewed.json}
+      - {id: protocol, name: ClinicalTrials.gov record, kind: file, path: examples/protocol/NCT03036150.json}
+      - {id: config, name: Run configuration, kind: file, path: config.json}
+    outputs:
+      - {id: report, name: Stress-test report (HTML), kind: file, path: results/report.html}
+      - {id: hero, name: Hero chart (1200x630), kind: file, path: results/hero.png}
+      - {id: summary, name: Summary, kind: file, path: results/summary.json}
+      - {id: provenance, name: Provenance manifest, kind: file, path: results/provenance.json}
+      - {id: variants_csv, name: All variant metrics, kind: file, path: results/variants.csv}
+    resources:
+      cpus: 2
+      memory_gb: 4
+      walltime: "00:15:00"
+    executor: *env
+    runtime:
+      kind: python_script
+      script: scripts/gather_report.py
+      args: >-
+        --evaluated ${evaluated} --prescreen ${prescreen} --rules ${rules} --diff ${diff}
+        --protocol ${protocol} --config ${config}
+        --summary ${summary} --provenance ${provenance} --variants ${variants_csv}
+        --report ${report} --hero ${hero}
+    target: *local
+
+edges:
+  - {source: artifact-config, source_output: config, target: configure, target_input: base_config}
+  - {source: artifact-population_size, source_output: population_size, target: configure, target_input: population_size}
+  - {source: artifact-population_shards, source_output: population_shards, target: configure, target_input: population_shards}
+  - {source: artifact-population_seed, source_output: population_seed, target: configure, target_input: population_seed}
+  - {source: artifact-state, source_output: state, target: configure, target_input: state}
+  - {source: artifact-index_date, source_output: index_date, target: configure, target_input: index_date}
+  - {source: artifact-variant_batch_size, source_output: variant_batch_size, target: configure, target_input: variant_batch_size}
+  - {source: artifact-random_combinations, source_output: random_combinations, target: configure, target_input: random_combinations}
+  - {source: artifact-llm_model, source_output: llm_model, target: configure, target_input: llm_model}
+  - {source: artifact-protocol, source_output: protocol, target: parse_criteria, target_input: protocol}
+  - {source: artifact-rules, source_output: rules, target: parse_criteria, target_input: rules}
+  - {source: configure, source_output: config, target: parse_criteria, target_input: config}
+  - {source: configure, source_output: config, target: plan_shards, target_input: config}
+  - {source: plan_shards, source_output: shards, target: generate_population, target_input: shards}
+  - {source: generate_population, source_output: population, target: build_features, target_input: population}
+  - {source: artifact-rules, source_output: rules, target: build_features, target_input: rules}
+  - {source: configure, source_output: config, target: build_features, target_input: config}
+  - {source: artifact-rules, source_output: rules, target: generate_variants, target_input: rules}
+  - {source: configure, source_output: config, target: generate_variants, target_input: config}
+  - {source: generate_variants, source_output: variants, target: evaluate, target_input: variants}
+  - {source: build_features, source_output: features, target: evaluate, target_input: features}
+  - {source: artifact-rules, source_output: rules, target: evaluate, target_input: rules}
+  - {source: evaluate, source_output: evaluated, target: gather_report, target_input: evaluated}
+  - {source: build_features, source_output: prescreen, target: gather_report, target_input: prescreen}
+  - {source: parse_criteria, source_output: diff, target: gather_report, target_input: diff}
+  - {source: artifact-rules, source_output: rules, target: gather_report, target_input: rules}
+  - {source: artifact-protocol, source_output: protocol, target: gather_report, target_input: protocol}
+  - {source: configure, source_output: config, target: gather_report, target_input: config}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
