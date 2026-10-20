@@ -73,7 +73,7 @@ artifacts:
       - {value: rf, label: Random forest}
       - {value: xgboost, label: XGBoost}
       - {value: catboost, label: CatBoost}
-      - {value: chemprop, label: Chemprop (GNN, slow on CPU)}
+      - {value: chemprop, label: "Chemprop (GNN, slow on CPU)"}
   - id: cv_folds
     name: CV folds
     description: k of the repeated k-fold cross-validation (upstream 5).

@@ -258,13 +258,15 @@ tasks:
       kind: uv_python_environment
       python: "3.11"
       requirements:
-        - boltz
+        # [cuda]: cuEquivariance kernels (CUDA 12 builds), which Boltz uses by
+        # default; on CPU they are switched off with --no_kernels.
+        - boltz[cuda]==2.2.1
     runtime:
       kind: command
       command: >-
         boltz predict ${boltz_inputs} --out_dir ${predictions} ${use_msa}
         --accelerator ${use_gpu} --devices 1 --diffusion_samples ${diffusion_samples}
-        --seed ${seed} --override
+        --seed ${seed} --override $$([ ${use_gpu} = cpu ] && echo --no_kernels)
     resources:
       cpus: 4
       gpus: 1

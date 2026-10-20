@@ -13,5 +13,8 @@ dependencies:
       - tqdm
       - zstandard
       - tiktoken
+      # the pinned repo's own deps (pyproject.toml): src/ imports both
+      - jaxtyping>=0.2.28
+      - regex
       - datasets
       - wandb

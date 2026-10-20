@@ -28,7 +28,7 @@ head** — see the ranking note below.
 ```
 prep (CPU, stdlib)    target.fasta + ligands.smi ──► opendde_inputs.tar.gz  (jobs.json)
    │
-predict (1 GPU)       [opendde msa]  →  opendde pred ──► predictions.tar.gz
+predict (1 GPU)       opendde pred (+ MSA search) ──► predictions.tar.gz
    │                  device auto: CUDA → Apple MPS → CPU
 rank (local, CPU)     parse summary confidence    ──► top_hits.csv
 ```
@@ -95,8 +95,10 @@ validate with docking / free-energy methods (e.g. W-02) and, ultimately, the lab
 
 - Ligands are passed as raw SMILES in OpenDDE's `ligand` entity; CCD codes
   (`CCD_XXX`) and `FILE_` paths are also supported by OpenDDE but not by `prep.py`.
-- `opendde msa` is called once on the full `jobs.json`; check on large libraries
-  that it does not re-query the ColabFold server for the identical protein per job.
+- `opendde pred` (pinned 1.2.0) preprocesses `jobs.json` itself, including the MSA
+  search when `use_msa` is on; earlier releases needed a separate `opendde msa` step
+  whose output naming changed. Check on large libraries that it does not re-query
+  the ColabFold server for the identical protein per job.
 - Template and RNA-MSA features are disabled (protein–ligand only).
 
 ## References

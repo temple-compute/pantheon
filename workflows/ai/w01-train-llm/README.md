@@ -95,9 +95,10 @@ typed value inputs, see Parameterization.
 | id | Kind | Default | Range | Meaning |
 |---|---|---|---|---|
 | `config_scale` | choice | `configs/smoke` | `configs/smoke`, `configs` | Config set for the model, pretraining and SFT: smoke (2 blocks, 20 steps, CPU, minutes) or full (24 blocks, 50k steps, days on one GPU) |
-| `pretrain_steps` | number | 0 | 0–200000, step 10 | Pretraining optimizer steps; 0 keeps the config's value |
-| `sft_steps` | number | 0 | 0–100000, step 10 | SFT optimizer steps; 0 keeps the config's value |
+| `pretrain_steps` | number | 0 | 0–200000, step 10 | Pretraining optimizer steps; 0 keeps the config's value. An override also sets warmup to steps/20 + 1 |
+| `sft_steps` | number | 0 | 0–100000, step 10 | SFT optimizer steps (`max_steps`); 0 keeps the config's epochs. An override also sets warmup to steps/20 + 1 |
 | `num_shards` | number | 1 | 1–30, step 1 | Pile training shards to stream and tokenize |
+| `pretrain_max_tokens` | number | 2000000000 | 0–5e10, step 1e6 | Stop tokenizing after this many tokens; 0 keeps all. One shard is ~7B tokens and ~30 GB of disk, so the default fits an auto-provisioned node |
 | `max_per_source` | number | 40000 | 1000–200000, step 1000 | Preference pairs per source (HH-RLHF, UltraFeedback) |
 
 To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`:

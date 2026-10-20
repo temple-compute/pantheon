@@ -3,7 +3,7 @@ name: LLM From Scratch - Pretrain, SFT and Eval
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
@@ -22,8 +22,8 @@ artifacts:
     path: params/config_scale.txt
     value: configs/smoke
     options:
-      - {value: configs/smoke, label: Smoke (tiny model, minutes)}
-      - {value: configs, label: Full (24 blocks, 50k steps)}
+      - {value: configs/smoke, label: "Smoke (tiny model, minutes)"}
+      - {value: configs, label: "Full (24 blocks, 50k steps)"}
   - id: pretrain_steps
     name: Pretraining steps
     description: Optimizer steps for pretraining; 0 keeps the config's value (smoke 20, full 50000).
@@ -51,6 +51,18 @@ artifacts:
     min: 1
     max: 30
     step: 1
+  - id: pretrain_max_tokens
+    name: Pretraining token cap
+    description: >-
+      Stop tokenizing the Pile after this many tokens; 0 keeps every token of
+      the chosen shards. One shard is about 7 billion tokens and fills ~30 GB of
+      disk (raw + HDF5); the default 2 billion fits an auto-provisioned node.
+    kind: number
+    path: params/pretrain_max_tokens.txt
+    value: 2000000000
+    min: 0
+    max: 50000000000
+    step: 1000000
   - id: max_per_source
     name: Preference pairs per source
     description: Cap on preference pairs taken from each of HH-RLHF and UltraFeedback.
@@ -124,6 +136,10 @@ tasks:
         name: Pile training shards
         kind: number
         path: params/num_shards.txt
+      - id: pretrain_max_tokens
+        name: Pretraining token cap
+        kind: number
+        path: params/pretrain_max_tokens.txt
     outputs:
       - id: pile_train_h5
         name: Pretraining train tokens
@@ -142,6 +158,7 @@ tasks:
         --num_shards ${num_shards}
         --raw_dir data/pretrain_raw
         --out $pile_train_h5
+        $$([ ${pretrain_max_tokens} -gt 0 ] && echo --max_tokens ${pretrain_max_tokens})
     target:
       kind: local
 
@@ -176,7 +193,7 @@ tasks:
         PYTHONPATH=${repo_dir} HF_HOME=data/hf_cache
         python ${repo_dir}/scripts/prepare_sft_data.py
         --context_length 1024
-        --out_dir data/sft
+        --out_dir $$(dirname ${sft_train_h5})
     target:
       kind: local
 
@@ -216,7 +233,7 @@ tasks:
         python ${repo_dir}/scripts/prepare_preference_data.py
         --source both
         --max_per_source ${max_per_source}
-        --out_dir data/preference
+        --out_dir $$(dirname ${preferences_train})
     target:
       kind: local
 
@@ -257,7 +274,7 @@ tasks:
       command: >-
         PYTHONPATH=${repo_dir} HF_HOME=data/hf_cache
         python ${repo_dir}/scripts/prepare_rl_prompts.py
-        --out_dir data/rl
+        --out_dir $$(dirname ${rl_prompts_train})
     target:
       kind: local
 
@@ -311,7 +328,10 @@ tasks:
         --out_ckpt $pretrained_ckpt
         --ckpt_dir ckpts
         --log_dir logs
-        $$([ ${pretrain_steps} -gt 0 ] && echo --train_steps ${pretrain_steps})
+        $$([ ${config_scale} = configs ] && echo --batch_size 2 --grad_accum 48)
+        $$([ ${pretrain_steps} -gt 0 ] && echo --train_steps ${pretrain_steps}
+        --warmup_steps $$(( ${pretrain_steps} / 20 + 1 ))) &&
+        cp "$$(ls -t logs/pretrain_*.jsonl | head -1)" ${pretrain_log}
     target:
       kind: local
 
@@ -365,7 +385,10 @@ tasks:
         --out_ckpt $sft_ckpt
         --ckpt_dir ckpts
         --log_dir logs
-        $$([ ${sft_steps} -gt 0 ] && echo --train_steps ${sft_steps})
+        $$([ ${config_scale} = configs ] && echo --batch_size 2 --grad_accum 16)
+        $$([ ${sft_steps} -gt 0 ] && echo --max_steps ${sft_steps}
+        --warmup_steps $$(( ${sft_steps} / 20 + 1 ))) &&
+        cp "$$(ls -t logs/sft_*.jsonl | head -1)" ${sft_log}
     target:
       kind: local
 
@@ -497,6 +520,10 @@ edges:
     source_output: num_shards
     target: prepare_pretrain_train
     target_input: num_shards
+  - source: artifact-pretrain_max_tokens
+    source_output: pretrain_max_tokens
+    target: prepare_pretrain_train
+    target_input: pretrain_max_tokens
 
   - source: artifact-max_per_source
     source_output: max_per_source

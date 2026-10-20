@@ -96,6 +96,7 @@ tasks:
     runtime:
       kind: python_script
       script: scripts/prep.py
+      python: python3 # stdlib only; GPU nodes have no bare `python`
       args: --fasta ${fasta} --ligands ${ligands} --out ${boltz_inputs}
     target:
       kind: local
@@ -128,13 +129,16 @@ tasks:
       kind: uv_python_environment
       python: "3.11"
       requirements:
-        - boltz
+        # [cuda]: cuEquivariance kernels (CUDA 12 builds), which Boltz uses by
+        # default; on CPU they are switched off with --no_kernels.
+        - boltz[cuda]==2.2.1
     runtime:
       kind: command
       command: >-
         tar xzf ${boltz_inputs} -C . && boltz predict inputs --out_dir out ${use_msa}
         --accelerator ${accelerator} --recycling_steps ${recycling_steps}
-        --sampling_steps ${sampling_steps} --diffusion_samples ${diffusion_samples} &&
+        --sampling_steps ${sampling_steps} --diffusion_samples ${diffusion_samples}
+        $$([ ${accelerator} = cpu ] && echo --no_kernels) &&
         tar czf ${predictions} -C out .
     target:
       kind: local
@@ -157,6 +161,7 @@ tasks:
     runtime:
       kind: python_script
       script: scripts/rank.py
+      python: python3 # stdlib only; GPU nodes have no bare `python`
       args: --predictions ${predictions} --out ${top_hits}
     target:
       kind: local
