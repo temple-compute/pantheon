@@ -18,7 +18,7 @@ All building blocks share a unique syntax — requiring input files, output file
 | 08 | [w08-protein-ligand-docking-fpocket](w08-protein-ligand-docking-fpocket/) | Protein-Ligand Docking into an fpocket Cavity |
 | 09 | [w09-amber-protein-md-setup](w09-amber-protein-md-setup/) | BioExcel AMBER MD Setup — Lysozyme 1AKI |
 | 10 | [w10-amber-protein-ligand-complex-md-setup](w10-amber-protein-ligand-complex-md-setup/) | AMBER Protein-Ligand Complex MD Setup |
-| 11 | [w11-amber-constant-ph-md-setup](w11-amber-constant-ph-md-setup/) | BioExcel AMBER Constant pH MD Setup — BPTI 6PTI |
+| 11 | [w11-amber-constant-ph-md-setup](w11-amber-constant-ph-md-setup/) | AMBER Constant-pH MD Setup |
 | 12 | [w12-dna-helical-parameters](w12-dna-helical-parameters/) | BioExcel DNA Helical Parameters Analysis |
 | 13 | [w13-abc-md-setup](w13-abc-md-setup/) | BioExcel AMBER ABC Setup — Drew-Dickerson Dodecamer DNA |
 | 14 | [w14-protein-conformational-ensembles](w14-protein-conformational-ensembles/) | BioExcel FlexDyn — Protein Flexibility and Dynamics Analysis |

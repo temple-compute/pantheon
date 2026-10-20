@@ -1,9 +1,9 @@
 kind: horus_workflow
-name: BioExcel AMBER Constant pH MD Setup - BPTI 6PTI
+name: AMBER Constant-pH MD Setup
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
@@ -16,17 +16,24 @@ _target: &target
   kind: local
 
 artifacts:
+  - id: pdb_id
+    name: PDB ID
+    description: RCSB PDB code to download (default 6PTI). Clear it to use the uploaded structure instead.
+    kind: string
+    path: params/pdb_id.txt
+    value: 6PTI
+    pattern: ([0-9][A-Za-z0-9]{3})?
+    max_length: 4
+  - id: structure
+    name: Structure upload (PDB)
+    description: 'Structure used when PDB ID is empty. Default: examples/6pti.pdb (6PTI).'
+    kind: file
+    path: examples/6pti.pdb
   - id: cphstats_config
     name: pKa analysis config
     description: Sets the running-average window used by cphstats for protonation-state analysis.
     kind: file
     path: configs/cphstats.yaml
-
-  - id: fetch_pdb_config
-    name: Structure fetch config
-    description: Sets the PDB code (6PTI) to download from the RCSB.
-    kind: file
-    path: configs/fetch_pdb.yaml
 
   - id: leap_add_ions_config
     name: Ion neutralization config
@@ -45,12 +52,6 @@ artifacts:
     description: Controls the water model and truncated octahedron box geometry leap uses to solvate the system.
     kind: file
     path: configs/leap_solvate.yaml
-
-  - id: parmed_cpinutil_config
-    name: Constant pH input config
-    description: Sets the Generalized Born model (igb) and the list of titratable residue names for cpinutil.
-    kind: file
-    path: configs/parmed_cpinutil.yaml
 
   - id: pdb4amber_config
     name: AMBER prep config
@@ -82,12 +83,6 @@ artifacts:
     kind: file
     path: configs/process_nvt.yaml
 
-  - id: sander_cph_free_config
-    name: Constant pH MD config
-    description: Controls sander's constant-pH production MD parameters (solvph, icnstph, ntcnstph).
-    kind: file
-    path: configs/sander_cph_free.yaml
-
   - id: sander_heat_config
     name: Heating MD config
     description: Controls sander's heating-stage simulation parameters.
@@ -112,28 +107,82 @@ artifacts:
     kind: file
     path: configs/sander_nvt.yaml
 
+  - id: solvent_ph
+    name: Solvent pH
+    description: pH of the implicit proton bath used by the constant-pH Monte Carlo moves (solvph).
+    kind: number
+    path: params/solvent_ph.txt
+    value: 7.0
+    min: 0
+    max: 14
+    step: 0.1
+  - id: titratable_residues
+    name: Titratable residue types
+    description: Residue types allowed to change protonation state (AMBER constph names).
+    kind: multichoice
+    path: params/titratable_residues.json
+    value:
+      - AS4
+      - GL4
+      - CYS
+      - LYS
+      - TYR
+    min_picks: 1
+    options: &titratable_options
+      - value: AS4
+        label: Asp (AS4)
+      - value: GL4
+        label: Glu (GL4)
+      - value: HIP
+        label: His (HIP)
+      - value: CYS
+        label: Cys
+      - value: LYS
+        label: Lys
+      - value: TYR
+        label: Tyr
+  - id: salt_m
+    name: Salt concentration (M)
+    description: Ionic strength used by the generalized-Born protonation-state energies (saltcon).
+    kind: number
+    path: params/salt_m.txt
+    value: 0.1
+    min: 0
+    max: 1
+    step: 0.01
+  - id: production_steps
+    name: Production steps
+    description: sander steps of the constant-pH production run (2 fs per step; 2500 = 5 ps; protonation moves every 100 steps).
+    kind: number
+    path: params/production_steps.txt
+    value: 2500
+    min: 500
+    max: 50000000
+    step: 500
 tasks:
   - kind: horus_task
     id: fetch_pdb
-    name: Download 6PTI structure from PDB
-    description: Downloads the 6PTI structure from the RCSB PDB using biobb_io.
+    name: Fetch (PDB ID) or load the uploaded structure
+    description: Downloads the PDB entry given in pdb_id (default 6PTI, BPTI), or copies the uploaded structure when pdb_id is empty.
     inputs:
-      - id: fetch_pdb_config
-        name: Structure fetch config
+      - id: pdb_id
+        name: PDB ID
+        kind: string
+        path: params/pdb_id.txt
+      - id: structure
+        name: Structure upload (PDB)
         kind: file
-        path: configs/fetch_pdb.yaml
+        path: examples/6pti.pdb
     outputs:
       - id: downloaded_pdb
         name: Downloaded PDB structure
         kind: file
-        path: results/6PTI.pdb
+        path: results/structure.pdb
     executor: *executor
     runtime:
       kind: command
       command: >-
-        pdb
-        --config ${fetch_pdb_config}
-        --output_pdb_path ${downloaded_pdb}
+        if [ -n ${pdb_id} ]; then pdb --config '{"properties":{"pdb_code":"${pdb_id}"}}' --output_pdb_path ${downloaded_pdb}; else cp ${structure} ${downloaded_pdb}; fi
     target: *target
 
   - kind: horus_task
@@ -148,7 +197,7 @@ tasks:
       - id: downloaded_pdb
         name: Downloaded PDB structure
         kind: file
-        path: results/6PTI.pdb
+        path: results/structure.pdb
     outputs:
       - id: pdb4amber_pdb
         name: AMBER-ready structure
@@ -283,14 +332,15 @@ tasks:
     name: Generate constant pH input file (cpinutil)
     description: Runs cpinutil to generate the constant-pH input file for titratable residues (ASP, GLU, CYS, LYS, TYR).
     inputs:
-      - id: parmed_cpinutil_config
-        name: Constant pH input config
-        kind: file
-        path: configs/parmed_cpinutil.yaml
       - id: ions_top
         name: Ion-neutralized topology
         kind: file
         path: results/structure.ions.parmtop
+      - id: titratable_residues
+        name: Titratable residue types
+        kind: multichoice
+        path: params/titratable_residues.json
+        options: *titratable_options
     outputs:
       - id: cpin_path
         name: Constant pH input file
@@ -306,11 +356,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        parmed_cpinutil
-        --config ${parmed_cpinutil_config}
-        --input_top_path ${ions_top}
-        --output_cpin_path ${cpin_path}
-        --output_top_path ${cph_top}
+        parmed_cpinutil --config '{"properties":{"igb":2,"resnames":"${titratable_residues}","system":"PROTEIN"}}' --input_top_path ${ions_top} --output_cpin_path ${cpin_path} --output_top_path ${cph_top}
     target: *target
 
   - kind: horus_task
@@ -343,6 +389,10 @@ tasks:
         name: Minimization log
         kind: file
         path: results/sander.cpH.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -404,6 +454,10 @@ tasks:
       - id: heat_log
         kind: file
         path: results/sander.heat.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -465,6 +519,10 @@ tasks:
       - id: nvt_log
         kind: file
         path: results/sander.nvt.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -526,6 +584,10 @@ tasks:
       - id: npt_log
         kind: file
         path: results/sander.npt.log
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "02:00:00"
     executor: *docker_executor
     runtime:
       kind: command
@@ -568,9 +630,6 @@ tasks:
     id: sander_cph_free
     name: Constant pH MD simulation (sander)
     inputs:
-      - id: sander_cph_free_config
-        kind: file
-        path: configs/sander_cph_free.yaml
       - id: cph_top
         kind: file
         path: results/structure.cpH.parmtop
@@ -580,6 +639,18 @@ tasks:
       - id: cpin_path
         kind: file
         path: results/structure.cpin
+      - id: production_steps
+        name: Production steps
+        kind: number
+        path: params/production_steps.txt
+      - id: salt_m
+        name: Salt concentration (M)
+        kind: number
+        path: params/salt_m.txt
+      - id: solvent_ph
+        name: Solvent pH
+        kind: number
+        path: params/solvent_ph.txt
     outputs:
       - id: ph_traj
         kind: file
@@ -599,21 +670,15 @@ tasks:
       - id: ph_mdinfo
         kind: file
         path: results/sander.pH.mdinfo
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "24:00:00"
     executor: *docker_executor
     runtime:
       kind: command
       command: >-
-        sander_mdrun
-        --config ${sander_cph_free_config}
-        --input_top_path ${cph_top}
-        --input_crd_path ${npt_rst}
-        --input_cpin_path ${cpin_path}
-        --output_traj_path ${ph_traj}
-        --output_rst_path ${ph_rst}
-        --output_cpout_path ${ph_cpout}
-        --output_cprst_path ${ph_cprst}
-        --output_log_path ${ph_log}
-        --output_mdinfo_path ${ph_mdinfo}
+        sander_mdrun --config '{"properties":{"simulation_type":"free","mdin":{"nstlim":${production_steps},"ntwx":500,"icnstph":2,"saltcon":${salt_m},"ntcnstph":100,"ntrelax":100,"solvph":${solvent_ph}}}}' --input_top_path ${cph_top} --input_crd_path ${npt_rst} --input_cpin_path ${cpin_path} --output_traj_path ${ph_traj} --output_rst_path ${ph_rst} --output_cpout_path ${ph_cpout} --output_cprst_path ${ph_cprst} --output_log_path ${ph_log} --output_mdinfo_path ${ph_mdinfo}
     target: *target
 
   - kind: horus_task
@@ -764,11 +829,6 @@ edges:
     target: cphstats
     target_input: cphstats_config
 
-  - source: artifact-fetch_pdb_config
-    source_output: fetch_pdb_config
-    target: fetch_pdb
-    target_input: fetch_pdb_config
-
   - source: artifact-leap_add_ions_config
     source_output: leap_add_ions_config
     target: leap_add_ions
@@ -783,11 +843,6 @@ edges:
     source_output: leap_solvate_config
     target: leap_solvate
     target_input: leap_solvate_config
-
-  - source: artifact-parmed_cpinutil_config
-    source_output: parmed_cpinutil_config
-    target: parmed_cpinutil
-    target_input: parmed_cpinutil_config
 
   - source: artifact-pdb4amber_config
     source_output: pdb4amber_config
@@ -814,11 +869,6 @@ edges:
     target: process_nvt
     target_input: process_nvt_config
 
-  - source: artifact-sander_cph_free_config
-    source_output: sander_cph_free_config
-    target: sander_cph_free
-    target_input: sander_cph_free_config
-
   - source: artifact-sander_heat_config
     source_output: sander_heat_config
     target: sander_heat
@@ -840,6 +890,30 @@ edges:
     target_input: sander_nvt_config
 
 
+  - source: artifact-pdb_id
+    source_output: pdb_id
+    target: fetch_pdb
+    target_input: pdb_id
+  - source: artifact-structure
+    source_output: structure
+    target: fetch_pdb
+    target_input: structure
+  - source: artifact-titratable_residues
+    source_output: titratable_residues
+    target: parmed_cpinutil
+    target_input: titratable_residues
+  - source: artifact-production_steps
+    source_output: production_steps
+    target: sander_cph_free
+    target_input: production_steps
+  - source: artifact-salt_m
+    source_output: salt_m
+    target: sander_cph_free
+    target_input: salt_m
+  - source: artifact-solvent_ph
+    source_output: solvent_ph
+    target: sander_cph_free
+    target_input: solvent_ph
 orchestrator_target:
   kind: local
   working_directory: "./workflow_results"
