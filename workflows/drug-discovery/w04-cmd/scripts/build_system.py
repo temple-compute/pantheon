@@ -207,10 +207,13 @@ def run(cmd: list[str], cwd: Path, log: Path) -> str:
     return proc.stdout + proc.stderr
 
 
+DEFAULT_HINT = "Is the workflow's tools conda environment (_tools: ambertools, propka, openbabel) in use?"
+
+
 def need(tool: str, hint: str = "") -> str:
     path = shutil.which(tool)
     if not path:
-        raise SystemExit(f"`{tool}` not found on PATH. {hint or "Is the workflow's tools conda environment (_tools: ambertools, propka, openbabel) in use?"}")
+        raise SystemExit(f"`{tool}` not found on PATH. {hint or DEFAULT_HINT}")
     return path
 
 
