@@ -27,3 +27,6 @@ results/
 horus_resource_report.json
 .horus_conda_env/
 .horus_drugflow_env/
+
+# materialized value artifacts (horus writes them on first run)
+**/params/

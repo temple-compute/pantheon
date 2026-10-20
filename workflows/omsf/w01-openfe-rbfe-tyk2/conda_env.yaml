@@ -1,0 +1,9 @@
+# openfe 1.13.0 from conda-forge (same version as the official container).
+# openmm pinned to 8.4.0 (8.3.0 is known-bad for openfe RFE).
+name: openfe-rbfe
+channels:
+  - conda-forge
+dependencies:
+  - python=3.12
+  - openfe=1.13.0
+  - openmm=8.4.0

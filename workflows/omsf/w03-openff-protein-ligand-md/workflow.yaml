@@ -1,0 +1,336 @@
+kind: horus_workflow
+name: OpenFF Protein-Ligand MD
+
+# One pinned conda env (conda_env.yaml) shared by every task. The path is
+# relative to each task's working dir (<results>/<task-id>/<run-id>), so
+# ../../ puts a single env in the results folder instead of one per task.
+_conda: &conda
+  kind: conda_python_environment
+  conda: micromamba
+  environment_file: conda_env.yaml
+  environment_dir: "../../.horus_conda_env"
+
+_shell: &shell
+  kind: shell
+
+_local: &local
+  kind: local
+
+# GPU target for the simulate map. Fill in partition/account
+# for your site and set `target: *gpu` on the simulate task. CPUs and
+# gres=gpu:1 come from simulate.resources. REQUIRE_GPU=1 makes simulate.py fail
+# instead of falling back to CPU when no GPU platform works.
+_gpu: &gpu
+  kind: slurm
+  inner:
+    kind: local
+  partition: "" # <- set per site
+  account: "" # <- set per site
+  ntasks: 1
+  time_limit: "04:00:00"
+  extra_sbatch_args: ["--export=ALL,REQUIRE_GPU=1"]
+
+artifacts:
+  - id: receptor
+    name: Prepared receptor (PDB)
+    description: >-
+      Receptor PDB, protonated and capped, without the ligand. Default:
+      HIF-2a PAS-B (5tbm_prepared.pdb) from the openff-toolkit 0.19.0
+      toolkit_showcase example.
+    kind: file
+    path: examples/5tbm_prepared.pdb
+  - id: ligand
+    name: Ligand pose (SDF)
+    description: >-
+      Ligand with explicit hydrogens, posed in the pocket. Default: PT2385
+      from the openff-toolkit 0.19.0 toolkit_showcase example.
+    kind: file
+    path: examples/PT2385.sdf
+  - id: n_replicas
+    name: Replicas
+    description: Independent MD replicas (seeds 2026, 2027, ...).
+    kind: number
+    path: params/n_replicas.txt
+    value: 3
+    min: 1
+    max: 100
+    step: 1
+  - id: n_steps
+    name: MD steps per replica
+    description: Production steps per replica (500000 x 2 fs = 1 ns).
+    kind: number
+    path: params/n_steps.txt
+    value: 500000
+    min: 1000
+    max: 50000000
+    step: 1000
+  - id: padding_nm
+    name: Solvent padding (nm)
+    description: Minimum distance from the protein to the box edge.
+    kind: number
+    path: params/padding_nm.txt
+    value: 1.0
+    min: 0.5
+    max: 5
+    step: 0.1
+  - id: ionic_strength_molar
+    name: NaCl ionic strength (M)
+    description: Salt added by PDBFixer on top of neutralizing ions.
+    kind: number
+    path: params/ionic_strength_molar.txt
+    value: 0.15
+    min: 0
+    max: 2
+    step: 0.05
+  - id: temperature_k
+    name: Temperature (K)
+    description: Langevin thermostat and initial velocity temperature.
+    kind: number
+    path: params/temperature_k.txt
+    value: 300
+    min: 250
+    max: 400
+    step: 5
+  - id: timestep_fs
+    name: Timestep (fs)
+    description: Integrator timestep; bonds to hydrogen are constrained.
+    kind: number
+    path: params/timestep_fs.txt
+    value: 2
+    min: 0.5
+    max: 4
+    step: 0.5
+  - id: report_interval_steps
+    name: Report interval (steps)
+    description: Steps between saved frames and log.csv rows (5000 x 2 fs = 10 ps).
+    kind: number
+    path: params/report_interval_steps.txt
+    value: 5000
+    min: 100
+    max: 1000000
+    step: 100
+
+tasks:
+  - kind: horus_task
+    id: build_system
+    name: 1. Solvate and insert ligand
+    description: PDBFixer adds a water box (padding_nm) with NaCl
+      (ionic_strength_molar), the ligand is inserted and clashing waters are
+      removed. Writes an OpenFF Topology.
+    inputs:
+      - id: receptor
+        name: Prepared receptor
+        kind: file
+        path: examples/5tbm_prepared.pdb
+      - id: ligand
+        name: Ligand pose
+        kind: file
+        path: examples/PT2385.sdf
+      - id: padding_nm
+        name: Solvent padding (nm)
+        kind: number
+        path: params/padding_nm.txt
+      - id: ionic_strength_molar
+        name: NaCl ionic strength (M)
+        kind: number
+        path: params/ionic_strength_molar.txt
+    outputs:
+      - id: topology
+        name: OpenFF topology
+        kind: file
+        path: system/topology.json
+    resources:
+      cpus: 1
+      memory_gb: 4
+      walltime: "00:30:00"
+    executor: *conda
+    runtime:
+      kind: python_script
+      script: scripts/build_system.py
+      args: >-
+        --receptor ${receptor} --ligand ${ligand} --out ${topology}
+        --padding-nm ${padding_nm} --ionic-strength ${ionic_strength_molar}
+    target: *local
+
+  - kind: horus_task
+    id: parameterize
+    name: 2. Parameterize (Sage 2.3.0 + ff14SB)
+    description: Applies openff-2.3.0 and ff14sb_off_impropers_0.0.4 with
+      Interchange, exports an OpenMM system, and writes n_replicas slots.
+    inputs:
+      - id: topology
+        name: OpenFF topology
+        kind: file
+        path: system/topology.json
+      - id: n_replicas
+        name: Replicas
+        kind: number
+        path: params/n_replicas.txt
+    outputs:
+      - id: replicas
+        name: Replica slots
+        kind: folder
+        path: replicas/
+    resources:
+      cpus: 2
+      memory_gb: 4
+      walltime: "00:30:00"
+    executor: *conda
+    runtime:
+      kind: python_script
+      script: scripts/parameterize.py
+      args: --topology ${topology} --out ${replicas} --replicas ${n_replicas}
+    target: *local
+
+  # One clone per replica slot. CUDA, then OpenCL, then the CPU platform with
+  # --threads, whichever first creates a context. To run on a GPU node switch
+  # the target to *gpu (one field); nothing else changes.
+  - kind: horus_map
+    id: simulate
+    name: 3. Run MD per replica (parallel)
+    description: Minimizes, then runs n_steps of NVT Langevin dynamics at
+      temperature_k with a timestep_fs step and writes a DCD trajectory.
+    over:
+      input_id: replicas_in
+      as: slot
+    inputs:
+      - id: replicas_in
+        name: Replica slots
+        kind: folder
+        path: replicas/
+      - id: n_steps
+        name: MD steps per replica
+        kind: number
+        path: params/n_steps.txt
+      - id: temperature_k
+        name: Temperature (K)
+        kind: number
+        path: params/temperature_k.txt
+      - id: timestep_fs
+        name: Timestep (fs)
+        kind: number
+        path: params/timestep_fs.txt
+      - id: report_interval_steps
+        name: Report interval (steps)
+        kind: number
+        path: params/report_interval_steps.txt
+    outputs:
+      - id: trajectories
+        name: Trajectories
+        description: One folder per replica with trajectory.dcd, log.csv,
+          complex.pdb and seed.
+        kind: folder
+        path: trajectories/
+    resources:
+      cpus: 2
+      gpus: 1
+      memory_gb: 4
+      walltime: "04:00:00"
+    executor: *conda
+    runtime:
+      kind: python_script
+      script: scripts/simulate.py
+      args: >-
+        --slot ${slot} --out ${trajectories} --steps ${n_steps}
+        --temperature ${temperature_k} --timestep-fs ${timestep_fs}
+        --report-interval ${report_interval_steps} --threads 2
+    target: *local
+
+  - kind: horus_task
+    id: analyze
+    name: 4. RMSD and report
+    description: Protein C-alpha and ligand RMSD per replica (mdtraj), the
+      final frame as PDB, and an HTML report with a Mol* view.
+    inputs:
+      - id: trajectories
+        name: Trajectories
+        kind: folder
+        path: trajectories/
+      # only the current slots are analyzed; trajectories/ can keep stale ones
+      - id: replicas
+        name: Replica slots
+        kind: folder
+        path: replicas/
+    outputs:
+      - id: rmsd
+        name: RMSD table
+        kind: file
+        path: results/rmsd.csv
+      - id: final_frame
+        name: Final frame (protein + ligand)
+        kind: file
+        path: results/final_frame.pdb
+      - id: report
+        name: Report
+        kind: file
+        path: results/report.html
+    resources:
+      cpus: 1
+      memory_gb: 4
+      walltime: "00:30:00"
+    executor: *conda
+    runtime:
+      kind: python_script
+      script: scripts/analyze.py
+      args: >-
+        --trajectories ${trajectories} --replicas ${replicas} --table ${rmsd}
+        --final-frame ${final_frame} --report ${report}
+    target: *local
+
+edges:
+  - source: artifact-padding_nm
+    source_output: padding_nm
+    target: build_system
+    target_input: padding_nm
+  - source: artifact-ionic_strength_molar
+    source_output: ionic_strength_molar
+    target: build_system
+    target_input: ionic_strength_molar
+  - source: artifact-receptor
+    source_output: receptor
+    target: build_system
+    target_input: receptor
+  - source: artifact-ligand
+    source_output: ligand
+    target: build_system
+    target_input: ligand
+  - source: build_system
+    source_output: topology
+    target: parameterize
+    target_input: topology
+  - source: artifact-n_replicas
+    source_output: n_replicas
+    target: parameterize
+    target_input: n_replicas
+  - source: parameterize
+    source_output: replicas
+    target: simulate
+    target_input: replicas_in
+  - source: artifact-n_steps
+    source_output: n_steps
+    target: simulate
+    target_input: n_steps
+  - source: artifact-temperature_k
+    source_output: temperature_k
+    target: simulate
+    target_input: temperature_k
+  - source: artifact-timestep_fs
+    source_output: timestep_fs
+    target: simulate
+    target_input: timestep_fs
+  - source: artifact-report_interval_steps
+    source_output: report_interval_steps
+    target: simulate
+    target_input: report_interval_steps
+  - source: simulate
+    source_output: trajectories
+    target: analyze
+    target_input: trajectories
+  - source: parameterize
+    source_output: replicas
+    target: analyze
+    target_input: replicas
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results

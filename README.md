@@ -52,6 +52,14 @@ uv run horus run workflow.yaml
 | W-35 | [cMD Replicas (AMBER)](workflows/drug-discovery/w04-cmd/README.md) | Conventional MD with AMBER (pmemd/pmemd.cuda): minimize, heat, equilibrate, then run production MD across N parallel replicas |
 | W-36 | [OpenDDE Co-folding Screen](workflows/drug-discovery/w08-opendde-cofolding-screen/README.md) | Co-fold a protein–ligand library with OpenDDE (optional MSA toggle) and rank complexes by interface confidence |
 
+### OMSF (Open Molecular Software Foundation)
+
+| ID | Workflow | Description |
+|---|---|---|
+| W-37 | [OpenFE RBFE (TYK2)](workflows/omsf/w01-openfe-rbfe-tyk2/README.md) | Charge ligands, plan an RBFE network, run one OpenFE quickrun per leg as a GPU map, gather ΔΔG |
+| W-38 | [OpenADMET CYP3A4 Models](workflows/omsf/w02-openadmet-cyp3a4/README.md) | Train one OpenADMET anvil model per architecture in parallel, compare them statistically, predict with the best |
+| W-39 | [OpenFF Protein-Ligand MD](workflows/omsf/w03-openff-protein-ligand-md/README.md) | Solvate, parameterize with OpenFF Sage + ff14SB via Interchange, run OpenMM replicas in parallel, analyze |
+
 ### BioExcel Building Blocks
 
 | ID | Workflow | Description |

@@ -1,0 +1,43 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#071a1c"/><stop offset="1" stop-color="#0c2f33"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.45" r="0.5">
+      <stop offset="0" stop-color="#2dd4bf" stop-opacity="0.22"/><stop offset="1" stop-color="#2dd4bf" stop-opacity="0"/>
+    </radialGradient>
+    <pattern id="water" width="34" height="34" patternUnits="userSpaceOnUse">
+      <circle cx="10" cy="12" r="3" fill="#2dd4bf" opacity="0.35"/><circle cx="26" cy="27" r="2.5" fill="#2dd4bf" opacity="0.25"/>
+    </pattern>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="190" height="36" fill="#134e4a"/>
+  <text x="159" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#99f6e4">W-39 · OMSF</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f0fdfa">Protein-Ligand</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f0fdfa">Molecular Dynamics</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#5eead4">OpenFF Sage + ff14SB · OpenMM replicas</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#a7c4c2">Upload a prepared receptor and a posed</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#a7c4c2">ligand; solvate, parameterize and run</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#a7c4c2">replicas on GPUs, then compare RMSD.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#5f8784">PANTHEON · TEMPLE COMPUTE</text>
+  <!-- water box with protein ribbon and ligand -->
+  <g transform="translate(720,90)">
+    <rect width="400" height="270" rx="16" fill="url(#water)" stroke="#2dd4bf" stroke-width="3" stroke-dasharray="12 8"/>
+    <path d="M60,200 C90,120 150,230 180,150 S250,60 280,140 S340,220 350,120" fill="none" stroke="#5eead4" stroke-width="16" stroke-linecap="round" opacity="0.9"/>
+    <path d="M80,90 q20,-30 40,0 t40,0 t40,0" fill="none" stroke="#99f6e4" stroke-width="10" stroke-linecap="round"/>
+    <g transform="translate(230,175) scale(0.6)" fill="none" stroke="#fbbf24" stroke-width="7" stroke-linejoin="round">
+      <polygon points="0,-34 29,-17 29,17 0,34 -29,17 -29,-17"/><line x1="29" y1="17" x2="58" y2="34"/>
+    </g>
+    <circle cx="40" cy="40" r="6" fill="#fb7185"/><circle cx="370" cy="240" r="6" fill="#c4b5fd"/><circle cx="350" cy="40" r="6" fill="#fb7185"/>
+  </g>
+  <!-- RMSD traces -->
+  <g transform="translate(720,400)" font-family="DejaVu Sans" font-size="15" fill="#a7c4c2">
+    <line x1="0" y1="140" x2="400" y2="140" stroke="#3f6f6b" stroke-width="2"/>
+    <line x1="0" y1="10" x2="0" y2="140" stroke="#3f6f6b" stroke-width="2"/>
+    <polyline points="0,135 30,90 60,80 100,85 140,72 180,78 220,70 260,76 300,68 340,74 400,70" fill="none" stroke="#5eead4" stroke-width="3"/>
+    <polyline points="0,135 30,100 60,95 100,90 140,96 180,88 220,94 260,86 300,92 340,85 400,90" fill="none" stroke="#fbbf24" stroke-width="3"/>
+    <polyline points="0,135 30,70 60,60 100,66 140,55 180,62 220,50 260,58 300,52 340,60 400,54" fill="none" stroke="#fb7185" stroke-width="3"/>
+    <text x="10" y="8">RMSD · 3 replicas</text>
+  </g>
+</svg>
