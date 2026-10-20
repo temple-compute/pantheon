@@ -69,9 +69,8 @@ tasks:
     id: predict
     name: OpenDDE co-folding
     description: >-
-      Runs OpenDDE to co-fold each protein-ligand pair. With use_msa on, first
-      fetches the protein MSA with `opendde msa` and predicts from the updated
-      JSON. Device is auto-selected (CUDA, then Apple MPS, then CPU).
+      Runs OpenDDE to co-fold each protein-ligand pair. With use_msa on,
+      `opendde pred` fetches the protein MSA itself before predicting. Device is auto-selected (CUDA, then Apple MPS, then CPU).
     inputs:
       - id: opendde_inputs
         name: OpenDDE input archive
@@ -95,7 +94,8 @@ tasks:
       kind: uv_python_environment
       python: "3.11"
       requirements:
-        - opendde[gpu]
+        # 1.2.0: `pred` runs the MSA search itself (--use_msa true).
+        - opendde[gpu]==1.2.0
     runtime:
       kind: command
       # OpenDDE's checkpoint download prints a \r-only progress bar; Horus' line
@@ -104,11 +104,7 @@ tasks:
       command: >-
         tar xzf ${opendde_inputs} -C . &&
         { {
-        if [ "${use_msa}" = "true" ]; then
-        opendde msa -i inputs/jobs.json -o out &&
-        IN=$(ls out/.opendde_preprocessed/*/*-updated.json | head -1);
-        else IN=inputs/jobs.json; fi &&
-        opendde pred -i "$IN" -o out -n opendde_v1
+        opendde pred -i inputs/jobs.json -o out -n opendde_v1
         --use_msa ${use_msa} --use_template false --use_rna_msa false
         --device auto --sample ${n_samples};
         } > opendde.log 2>&1
