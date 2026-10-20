@@ -96,6 +96,7 @@ tasks:
     runtime:
       kind: python_script
       script: scripts/prep.py
+      python: python3 # stdlib only; GPU nodes have no bare `python`
       args: --fasta ${fasta} --ligands ${ligands} --out ${boltz_inputs}
     target:
       kind: local
@@ -157,6 +158,7 @@ tasks:
     runtime:
       kind: python_script
       script: scripts/rank.py
+      python: python3 # stdlib only; GPU nodes have no bare `python`
       args: --predictions ${predictions} --out ${top_hits}
     target:
       kind: local
