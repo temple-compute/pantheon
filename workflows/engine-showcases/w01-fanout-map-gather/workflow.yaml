@@ -1,19 +1,39 @@
 kind: horus_workflow
 name: Fan-out Map Gather Showcase
+
+artifacts:
+  - id: items
+    name: Input item list
+    description: JSON array of strings to split into batches and score.
+    kind: file
+    path: examples/items.json
+  - id: batch_size
+    name: Items per batch
+    description: How many items go into each batch; one map clone runs per batch.
+    kind: number
+    path: params/batch_size.txt
+    value: 2
+    min: 1
+    max: 20
+    step: 1
+
 tasks:
   - kind: horus_task
     id: split
     name: Split items into batches
-    description: Chunks the input item list into fixed-size batch files for concurrent scoring.
-    skip_if_complete: false
+    description: Chunks the input item list into fixed-size batch folders for concurrent scoring.
     inputs:
       - id: items
         name: Input item list
         kind: file
         path: examples/items.json
+      - id: batch_size
+        name: Items per batch
+        kind: number
+        path: params/batch_size.txt
     outputs:
       - id: batches
-        name: Batch files
+        name: Batch folders
         kind: folder
         path: batches/
     executor:
@@ -22,81 +42,63 @@ tasks:
       kind: python_script
       script: scripts/split.py
       python: python3 # stdlib-only; use the target's python3
-      args: --items ${items} --out ${batches} --batch-size 2
+      args: --items ${items} --out ${batches} --batch-size ${batch_size}
     target:
       kind: local
 
-  # `score` has no static inputs/outputs of its own: everything about it is
-  # driven by the `map:` block below.
-  #
-  #   over     — which upstream collection to fan out over. `source_task` +
-  #              `source_output` name the producer task/output (here,
-  #              `split`'s `batches` folder); `item_input` is the artifact id
-  #              each clone's template receives its slice under.
-  #   template — the task spec that is cloned once per item in the collection
-  #              (`split`'s output folder has one file per batch, so 4 items
-  #              here -> 4 concurrent clones, `score[00]`..`score[03]`).
-  #   gather   — the downstream task + input artifact id that collects every
-  #              clone's output into one folder for fan-in.
-  #
-  # No explicit `edges:` entry is needed for `split -> score -> gather`: the
-  # `map:` block fully describes both the fan-out and fan-in dependencies and
-  # the loader synthesizes the edges (including the clone -> gather edges,
-  # which are ordering-only / non-transferring since fan-in is via one shared
-  # folder, not per-edge file copies).
-  - kind: horus_task
+  # `horus_map` runs its own body once per child of the `over` input:
+  # `split` writes one sub-folder per batch, so 4 batches -> 4 clones
+  # (`score[0]`..`score[3]`). In the body `$batch` is one batch folder and
+  # `$scored` is that clone's own slot under the single folder output, so the
+  # gather task below just reads `scored/<slot>/`.
+  - kind: horus_map
     id: score
     name: Score each batch concurrently
     description: Fans out one clone per batch, each word-counting and uppercasing its batch's text.
-    map:
-      over:
-        source_task: split
-        source_output: batches
-        item_input: batch
-      template:
-        inputs:
-          - id: batch
-            name: Single batch
-            kind: folder
-            path: batch/ # overwritten per-clone with its slice of `batches/`
-        outputs:
-          - id: scored
-            name: Scored batch output
-            kind: folder
-            path: scored/
-        runtime:
-          kind: command
-          command: >-
-            mkdir -p $scored &&
-            wc -w < $batch/data.txt > $scored/count.txt &&
-            tr '[:lower:]' '[:upper:]' < $batch/data.txt > $scored/upper.txt &&
-            sleep $$(basename $batch)
-        executor:
-          kind: shell
-        target:
-          kind: local
-        # Advisory only: read by resource-aware targets, and compared against
-        # measured usage by the tc-os resources dashboard. Every clone of the
-        # map inherits it, so a generous request here is multiplied by the
-        # fan-out width — which is exactly what right-sizing recovers.
-        resources:
-          cpus: 4
-          memory_gb: 8
-      gather:
-        task: gather
-        input: results
+    over:
+      input_id: batches
+      as: batch
+    max_concurrency: 4
+    inputs:
+      - id: batches
+        name: Batch folders
+        kind: folder
+        path: batches/
+    outputs:
+      - id: scored
+        name: Scored batches
+        kind: folder
+        path: scored/
+    runtime:
+      kind: command
+      # The sleep (batch number in seconds) makes the overlap visible in the UI.
+      command: >-
+        mkdir -p $scored &&
+        wc -w < $batch/data.txt > $scored/count.txt &&
+        tr '[:lower:]' '[:upper:]' < $batch/data.txt > $scored/upper.txt &&
+        sleep $$(basename $batch | tr -dc 0-9)
+    executor:
+      kind: shell
+    target:
+      kind: local
+    # Advisory only: read by resource-aware targets, and compared against
+    # measured usage by the tc-os resources dashboard. Every clone of the
+    # map inherits it, so a generous request here is multiplied by the
+    # fan-out width — which is exactly what right-sizing recovers.
+    resources:
+      cpus: 4
+      memory_gb: 8
+      walltime: "00:05:00"
 
   - kind: horus_task
     id: gather
     name: Aggregate batch scores into one folder
     description: Sums the per-batch word counts and concatenates the uppercased text into one summary folder.
     inputs:
-      # Fed by the map's fan-in: one FolderArtifact containing every clone's
-      # `scored/` output under `score.gathered/<i>/`.
       - id: results
-        name: Gathered batch scores
+        name: Scored batches
         kind: folder
-        path: score.gathered/
+        path: scored/
     outputs:
       - id: summary
         name: Batch score summary
@@ -111,6 +113,12 @@ tasks:
       args: --results ${results} --out ${summary}
     target:
       kind: local
+
+edges:
+  - {source: artifact-items, source_output: items, target: split, target_input: items}
+  - {source: artifact-batch_size, source_output: batch_size, target: split, target_input: batch_size}
+  - {source: split, source_output: batches, target: score, target_input: batches}
+  - {source: score, source_output: scored, target: gather, target_input: results}
 
 orchestrator_target:
   kind: local

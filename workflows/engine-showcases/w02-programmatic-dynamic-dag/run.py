@@ -37,7 +37,7 @@ def _make_process_fn(group: str, records: list[dict[str, Any]]) -> Callable[...,
     """Build the per-group task function as a closure over its matching records.
 
     A pure-Python workflow (never round-tripped through YAML) is free to use a
-    closure here; the declarative `map:` template (see W-06) instead requires
+    closure here; a task loaded from YAML (see W-06) instead requires
     a *registered*, YAML-serializable function since it must survive
     `to_yaml`/`from_yaml`.
     """

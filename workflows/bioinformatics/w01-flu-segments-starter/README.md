@@ -1,6 +1,12 @@
-# W-35 · Influenza Segments Starter
+# W-43 · Influenza Segments Starter
+
+<img src="assets/logo.png" width="96" align="right" alt="W-43 logo">
+
+Influenza segment FASTA in, per-segment QC, longest-ORF protein translation and an HTML sample × segment report out, in about a second.
 
 ![Domain: Bioinformatics](https://img.shields.io/badge/domain-bioinformatics-teal)
+
+![W-43 cover](assets/cover.png)
 
 ## Overview
 
@@ -17,7 +23,7 @@ of scope (see *What to try next*).
 
 1. **Artifacts and edges** – typed inputs/outputs (`file`, `folder`) wired into a DAG with `edges:`; workflow inputs are `artifact-<id>`.
 2. **Shell executor vs uv environment executor** – tasks 1, 2, 4 run stdlib-only scripts with the host `python3`; task 3 gets a Biopython venv built by Horus.
-3. **Parameters via `args`** – QC thresholds (`--max-n-frac`) are plain flags in the task's `runtime.args`.
+3. **Typed inputs** – the QC thresholds are root `number` artifacts (`max_n_frac`, `len_tolerance`) wired to `qc_segments` by edges and expanded into its `args`.
 4. **Re-runs** – every task sets `skip_if_complete: false`, so a re-run recomputes and overwrites `results/`. Set it to `true` on a task to skip it when its outputs already exist (note: a changed `args` value will then *not* trigger a re-run).
 5. **Fan-out / gather** – not used here; see *Scaling out per sample*.
 
@@ -79,9 +85,25 @@ Outputs are deterministic (sorted rows). The bundled example has two QC failures
 
 ## Parameterization
 
-- `qc_segments --max-n-frac` (default `0.01`), `--len-tolerance` (widens each range; default `0`). The per-segment length table is the `RANGES` dict in `scripts/qc_segments.py`: approximate influenza A values; edit for your data.
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `fasta` | file | `examples/segments.fasta` | FASTA | Segment sequences; headers `>Sample01_HA_...` or `>Sample01\|NA\|x` |
+| `metadata` | file | `examples/metadata.csv` | CSV | Per-sample table merged into the report by `ID` |
+| `max_n_frac` | number | 0.01 | 0–0.5, step 0.005 | A segment fails QC above this N/ambiguous fraction |
+| `len_tolerance` | number | 0 | 0–0.5, step 0.01 | Widens each expected length range by this fraction |
+
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`: Horus writes `params/<id>.txt` only when it is missing.
+
+- The per-segment length table is the `RANGES` dict in `scripts/qc_segments.py`: approximate influenza A values; edit for your data.
 - The multiple-of-3 check applies to single-ORF segments (PB2, PB1, PA, HA, NP, NA); MP and NS are spliced/UTR-bearing and skipped.
 - Drop `--metadata ${metadata}` from `summary_report` to skip the metadata merge.
+
+## Running in Temple Compute
+
+Import the workflow (or open it from the library) and start a campaign: the form shows
+the FASTA and metadata uploads and the two QC thresholds as sliders. Every task runs in
+under a second on one CPU, so no `resources` hints are set; the smallest machine is
+enough.
 
 ## Mapping to a real pipeline
 
@@ -95,7 +117,7 @@ Outputs are deterministic (sorted rows). The bundled example has two QC failures
 
 ## Scaling out per sample
 
-Not included in v1. `map:` fans out over a folder of items with a single template task (see `engine-showcases/w01-fanout-map-gather`), so a per-sample variant needs `qc_segments` + `translate_cds` merged into one template task, with `summary_report` as the gather target. Suggested follow-up.
+Not included in v1. A `horus_map` task fans out over a folder of items with a single template task (see `engine-showcases/w01-fanout-map-gather`), so a per-sample variant needs `qc_segments` + `translate_cds` merged into one template task, with `summary_report` as the gather target. Suggested follow-up.
 
 ## Implementation Notes
 
@@ -105,7 +127,7 @@ Not included in v1. `map:` fans out over a folder of items with a single templat
 
 ## What to try next
 
-- Change `--max-n-frac` to `0.1` and re-run: Sample03 HA now passes.
+- Change `max_n_frac` to `0.1` (then `rm -rf params/`) and re-run: Sample03 HA now passes.
 - Append a record with a bad header to `examples/segments.fasta`: it lands in `errors.log`.
 - Add a sample and a row in `metadata.csv`.
 - Set `skip_if_complete: true` on a task and re-run.

@@ -1,11 +1,17 @@
 # W-28 · LLM From Scratch - Pretrain, SFT & Eval
 
+<img src="assets/logo.png" width="96" align="right" alt="W-28 logo">
+
+Pretrain a decoder-only Transformer from scratch on the Pile, instruction-tune it on Alpaca/Dolly/GSM8K and score GSM8K accuracy, one resumable task per stage.
+
 ![Domain: AI](https://img.shields.io/badge/WIP-red) ![Domain: AI](https://img.shields.io/badge/domain-ai-blue)
 
 > [!WARNING]
 > **This workflow is not yet complete.**
 >
 > The workflow is currently under development and should be considered a work in progress. Some stages may be incomplete, experimental, or subject to change. Use it for reference or testing only until it is finalized.
+
+![W-28 cover](assets/cover.png)
 
 
 ## Overview
@@ -57,7 +63,7 @@ datasets), `ckpts/base_pretrained.pt` + `ckpts/sft.pt` (checkpoints), and `logs/
 ## Tools & Dependencies
 
 - [train-llm-from-scratch](https://github.com/FareedKhan-dev/train-llm-from-scratch) (cloned at
-  runtime by `clone_repo`) — pure PyTorch, no `transformers`/`trl`/`peft`.
+  runtime by `clone_repo`, pinned to commit `bdd480a`) — pure PyTorch, no `transformers`/`trl`/`peft`.
 - `torch`, `numpy`, `h5py`, `datasets`, `tiktoken`, `wandb` — provisioned via `conda_env.yaml`
   (micromamba) by the `conda_python_environment` executor.
 - `git` — used by the `shell` executor to clone the repo.
@@ -73,8 +79,9 @@ its upstream artifacts exist.
 
 ## Input / Output
 
-**Input**: none — the workflow is self-contained; it clones its own source repo and downloads
-its own datasets (Pile shard, Alpaca, Dolly, GSM8K) from Hugging Face.
+**Input**: no files — the workflow clones its own source repo and downloads its own datasets
+(Pile shards, Alpaca, Dolly, GSM8K, HH-RLHF, UltraFeedback) from Hugging Face. The knobs are
+typed value inputs, see Parameterization.
 
 **Output**:
 - `ckpts/base_pretrained.pt`, `ckpts/sft.pt` — self-describing checkpoints (embed the resolved
@@ -85,19 +92,33 @@ its own datasets (Pile shard, Alpaca, Dolly, GSM8K) from Hugging Face.
 
 ## Parameterization
 
-- **Model/step-count scale**: `train_pretrain`/`train_sft` load
-  `configs/smoke/{pretrain,sft}.json` from the cloned repo — a tiny model
-  (`n_embed=64, n_head=4, n_blocks=2`, `vocab_size=256`) trained for ~10-20 steps, sized to run
-  on a single local CPU/GPU in minutes. To train the repo's default ~400M-param model, change
-  `--config` in the `train_pretrain`/`train_sft` commands to `configs/pretrain.json` /
-  `configs/sft.json` — expect this to need a real GPU (24GB+) and hours-to-days of runtime; the
-  repo's own defaults target 2×H100 with `torchrun`, which this workflow does not wire up.
-- Any dataclass field on `PretrainConfig`/`SFTConfig`
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `config_scale` | choice | `configs/smoke` | `configs/smoke`, `configs` | Config set for the model, pretraining and SFT: smoke (2 blocks, 20 steps, CPU, minutes) or full (24 blocks, 50k steps, days on one GPU) |
+| `pretrain_steps` | number | 0 | 0–200000, step 10 | Pretraining optimizer steps; 0 keeps the config's value |
+| `sft_steps` | number | 0 | 0–100000, step 10 | SFT optimizer steps; 0 keeps the config's value |
+| `num_shards` | number | 1 | 1–30, step 1 | Pile training shards to stream and tokenize |
+| `max_per_source` | number | 40000 | 1000–200000, step 1000 | Preference pairs per source (HH-RLHF, UltraFeedback) |
+
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`:
+Horus writes `params/<id>.txt` only when it is missing.
+
+- The full config targets the repo's ~400M-param model. It fits a 24 GB GPU (one L4) only
+  with small batches, and the repo's own defaults target 2×H100 with `torchrun`, which this
+  workflow does not wire up.
+- Any other dataclass field on `PretrainConfig`/`SFTConfig`
   (`config/post_training_config.py` in the cloned repo) can be overridden by adding
   `--field value` to the relevant task's `command:` — e.g. `--lr`, `--batch_size`,
-  `--train_steps`, `--use_wandb true --wandb_project ...`.
-- `prepare_pretrain_train`'s `--num_shards` (currently `1`) controls how much Pile text is
-  pulled for pretraining.
+  `--use_wandb true --wandb_project ...`.
+
+## Running in Temple Compute
+
+Start a campaign from the library: the form shows the scale choice, the two step
+overrides and the data-size sliders. The data-prep tasks carry CPU `resources` hints
+(4 CPU / 16 GB; tokenizing the Pile shard gets 12 h) and the training and eval tasks ask
+for one GPU (4 CPU, 16 GB, up to 72 h for pretraining), so an auto-provisioned target
+puts them on a single-GPU node. The smoke config pins `device: cpu`, so at the default
+scale the GPU sits idle; it matters for `config_scale: configs`.
 
 ## References
 

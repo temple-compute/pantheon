@@ -1,0 +1,37 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#0b0f17"/><stop offset="1" stop-color="#1e293b"/></linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.5" r="0.5"><stop offset="0" stop-color="#94a3b8" stop-opacity="0.18"/><stop offset="1" stop-color="#94a3b8" stop-opacity="0"/></radialGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#e2e8f0"/></marker>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <rect x="64" y="64" rx="18" width="200" height="36" fill="#334155"/>
+  <text x="164.0" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#e2e8f0">W-08 · ENGINE</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f8fafc">Bounded Loop</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#f8fafc">(Range Map)</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#94a3b8">horus_map over a generated index list</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#94a3b8">Pick N; one clone squares each index</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#94a3b8">0..N-1 and a gather task sums them.</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#94a3b8">A loop with a known bound, in three tasks.</text>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#94a3b8" opacity="0.7">PANTHEON · TEMPLE COMPUTE</text>
+<rect x="665.0" y="172.0" width="70" height="56" rx="12" fill="#334155" stroke="#e2e8f0" stroke-width="4"/><text x="700" y="206" text-anchor="middle" font-family="DejaVu Sans" font-size="24" fill="#f8fafc">0</text>
+<line x1="700" y1="232" x2="700" y2="282" stroke="#94a3b8" stroke-width="4" fill="none" marker-end="url(#ar)"/>
+<rect x="665.0" y="288.0" width="70" height="56" rx="12" fill="#1e293b" stroke="#e2e8f0" stroke-width="4"/><text x="700" y="322" text-anchor="middle" font-family="DejaVu Sans" font-size="24" fill="#f8fafc">0</text>
+<rect x="765.0" y="172.0" width="70" height="56" rx="12" fill="#334155" stroke="#e2e8f0" stroke-width="4"/><text x="800" y="206" text-anchor="middle" font-family="DejaVu Sans" font-size="24" fill="#f8fafc">1</text>
+<line x1="800" y1="232" x2="800" y2="282" stroke="#94a3b8" stroke-width="4" fill="none" marker-end="url(#ar)"/>
+<rect x="765.0" y="288.0" width="70" height="56" rx="12" fill="#1e293b" stroke="#e2e8f0" stroke-width="4"/><text x="800" y="322" text-anchor="middle" font-family="DejaVu Sans" font-size="24" fill="#f8fafc">1</text>
+<rect x="865.0" y="172.0" width="70" height="56" rx="12" fill="#334155" stroke="#e2e8f0" stroke-width="4"/><text x="900" y="206" text-anchor="middle" font-family="DejaVu Sans" font-size="24" fill="#f8fafc">2</text>
+<line x1="900" y1="232" x2="900" y2="282" stroke="#94a3b8" stroke-width="4" fill="none" marker-end="url(#ar)"/>
+<rect x="865.0" y="288.0" width="70" height="56" rx="12" fill="#1e293b" stroke="#e2e8f0" stroke-width="4"/><text x="900" y="322" text-anchor="middle" font-family="DejaVu Sans" font-size="24" fill="#f8fafc">4</text>
+<rect x="965.0" y="172.0" width="70" height="56" rx="12" fill="#334155" stroke="#e2e8f0" stroke-width="4"/><text x="1000" y="206" text-anchor="middle" font-family="DejaVu Sans" font-size="24" fill="#f8fafc">3</text>
+<line x1="1000" y1="232" x2="1000" y2="282" stroke="#94a3b8" stroke-width="4" fill="none" marker-end="url(#ar)"/>
+<rect x="965.0" y="288.0" width="70" height="56" rx="12" fill="#1e293b" stroke="#e2e8f0" stroke-width="4"/><text x="1000" y="322" text-anchor="middle" font-family="DejaVu Sans" font-size="24" fill="#f8fafc">9</text>
+<rect x="1065.0" y="172.0" width="70" height="56" rx="12" fill="#334155" stroke="#e2e8f0" stroke-width="4"/><text x="1100" y="206" text-anchor="middle" font-family="DejaVu Sans" font-size="24" fill="#f8fafc">4</text>
+<line x1="1100" y1="232" x2="1100" y2="282" stroke="#94a3b8" stroke-width="4" fill="none" marker-end="url(#ar)"/>
+<rect x="1065.0" y="288.0" width="70" height="56" rx="12" fill="#1e293b" stroke="#e2e8f0" stroke-width="4"/><text x="1100" y="322" text-anchor="middle" font-family="DejaVu Sans" font-size="24" fill="#f8fafc">16</text>
+<path d="M665,370 Q665,400 700,400 L1065,400 Q1100,400 1100,370" fill="none" stroke="#94a3b8" stroke-width="4"/>
+<line x1="882" y1="400" x2="882" y2="450" stroke="#94a3b8" stroke-width="4" fill="none" marker-end="url(#ar)"/>
+<rect x="797.0" y="454.0" width="170" height="60" rx="12" fill="#1e293b" stroke="#e2e8f0" stroke-width="4"/><text x="882" y="490" text-anchor="middle" font-family="DejaVu Sans" font-size="26" fill="#f8fafc">Σ = 30</text>
+<text x="882" y="150" text-anchor="middle" font-family="DejaVu Sans" font-size="18" fill="#94a3b8">indices.json  [0 … N-1]</text>
+</svg>

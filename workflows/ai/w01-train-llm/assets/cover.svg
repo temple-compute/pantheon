@@ -1,0 +1,50 @@
+<svg xmlns="http://www.w3.org/2000/svg" width="1200" height="630" viewBox="0 0 1200 630">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#1f0716"/><stop offset="1" stop-color="#45102f"/>
+    </linearGradient>
+    <radialGradient id="glow" cx="0.78" cy="0.5" r="0.5">
+      <stop offset="0" stop-color="#f472b6" stop-opacity="0.2"/><stop offset="1" stop-color="#f472b6" stop-opacity="0"/>
+    </radialGradient>
+    <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="7" markerHeight="7" orient="auto">
+      <path d="M0,0 L10,5 L0,10 z" fill="#fbcfe8"/>
+    </marker>
+  </defs>
+  <rect width="1200" height="630" fill="url(#bg)"/>
+  <rect width="1200" height="630" fill="url(#glow)"/>
+  <text x="64" y="566" font-family="DejaVu Sans" font-size="18" fill="#8a5a75">PANTHEON · TEMPLE COMPUTE</text>
+  <rect x="64" y="64" rx="18" width="150" height="36" fill="#831843"/>
+  <text x="139" y="89" text-anchor="middle" font-family="DejaVu Sans" font-weight="bold" font-size="18" fill="#fbcfe8">W-28 · AI</text>
+  <text x="64" y="190" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#fdf2f8">LLM From Scratch</text>
+  <text x="64" y="256" font-family="DejaVu Sans" font-weight="bold" font-size="56" fill="#fdf2f8">Pretrain · SFT · Eval</text>
+  <text x="64" y="316" font-family="DejaVu Sans" font-size="26" fill="#f472b6">pure PyTorch decoder-only Transformer</text>
+  <text x="64" y="380" font-family="DejaVu Sans" font-size="21" fill="#c9a3b8">Tokenize the Pile and instruction data,</text>
+  <text x="64" y="410" font-family="DejaVu Sans" font-size="21" fill="#c9a3b8">pretrain, fine-tune and score GSM8K,</text>
+  <text x="64" y="440" font-family="DejaVu Sans" font-size="21" fill="#c9a3b8">one resumable task per stage.</text>
+  <!-- stacked transformer blocks -->
+  <g font-family="DejaVu Sans" font-size="17" text-anchor="middle">
+    <rect x="740" y="380" width="200" height="56" rx="12" fill="#45102f" stroke="#f472b6" stroke-width="4"/>
+    <text x="840" y="414" fill="#fbcfe8">embedding</text>
+    <rect x="740" y="300" width="200" height="56" rx="12" fill="#831843" stroke="#f472b6" stroke-width="4"/>
+    <text x="840" y="334" fill="#fdf2f8">attention + MLP</text>
+    <rect x="740" y="220" width="200" height="56" rx="12" fill="#831843" stroke="#f472b6" stroke-width="4"/>
+    <text x="840" y="254" fill="#fdf2f8">attention + MLP</text>
+    <rect x="740" y="140" width="200" height="56" rx="12" fill="#45102f" stroke="#f472b6" stroke-width="4"/>
+    <text x="840" y="174" fill="#fbcfe8">next token</text>
+    <text x="840" y="470" fill="#fbcfe8" font-size="15">the  cat  sat  on  …</text>
+  </g>
+  <!-- loss curve -->
+  <g transform="translate(980,150)">
+    <line x1="0" y1="0" x2="0" y2="200" stroke="#8a5a75" stroke-width="3"/>
+    <line x1="0" y1="200" x2="170" y2="200" stroke="#8a5a75" stroke-width="3"/>
+    <path d="M6,20 C30,120 50,150 80,165 S140,182 166,186" fill="none" stroke="#f472b6" stroke-width="5"/>
+    <text x="85" y="232" text-anchor="middle" font-family="DejaVu Sans" font-size="16" fill="#c9a3b8">loss</text>
+  </g>
+  <g font-family="DejaVu Sans" font-size="16" fill="#1f0716" font-weight="bold" text-anchor="middle">
+    <rect x="740" y="500" width="110" height="34" rx="17" fill="#f472b6"/><text x="795" y="523">pretrain</text>
+    <rect x="880" y="500" width="80" height="34" rx="17" fill="#f9a8d4"/><text x="920" y="523">SFT</text>
+    <rect x="990" y="500" width="80" height="34" rx="17" fill="#fbcfe8"/><text x="1030" y="523">eval</text>
+    <line x1="852" y1="517" x2="876" y2="517" stroke="#fbcfe8" stroke-width="3" marker-end="url(#ar)"/>
+    <line x1="962" y1="517" x2="986" y2="517" stroke="#fbcfe8" stroke-width="3" marker-end="url(#ar)"/>
+  </g>
+</svg>

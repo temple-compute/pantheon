@@ -1,6 +1,12 @@
 # W-29 · Tiny LLM From Scratch - TinyStories Pretrain & Sample
 
+<img src="assets/logo.png" width="96" align="right" alt="W-29 logo">
+
+Pretrain a tiny decoder-only Transformer from scratch on TinyStories and sample a story from it, in minutes on a laptop.
+
 ![Domain: AI](https://img.shields.io/badge/domain-ai-blue) ![horus-runtime](https://img.shields.io/badge/horus--runtime-workflow-green)
+
+![W-29 cover](assets/cover.png)
 
 <img width="1080" height="929" alt="train-llm-cropped" src="https://github.com/user-attachments/assets/6b4a80ef-bf49-473d-9e85-c76f69373673" />
 
@@ -67,8 +73,8 @@ itself doesn't read from the checkout.
 
 ## Input / Output
 
-**Input**: none. Self-contained; clones its own source repo and downloads TinyStories from
-Hugging Face.
+**Input**: no files. Clones its own source repo (pinned to commit `bdd480a`) and downloads
+TinyStories from Hugging Face; the knobs are typed value inputs, see Parameterization.
 
 **Output**:
 - `ckpts/tinystories_pretrained.pt`. Self-describing checkpoint (embeds the resolved model
@@ -79,17 +85,27 @@ Hugging Face.
 
 ## Parameterization
 
-- **Dataset size**: `prepare_tinystories_train`/`prepare_tinystories_val`'s `--max_docs` (default
-  20,000 / 2,000) caps how many stories get tokenized, raise it (or drop the flag entirely) for
-  more data at the cost of longer prep time. Full TinyStories is ~2.1M train stories.
-- **Model/step-count scale**: `train_pretrain_tiny` loads `configs/smoke/pretrain.json` from the
-  cloned repo (`n_embed=128, n_head=4, n_blocks=2, context_length=256`, `train_steps=20`) — a
-  small model trained briefly, sized to run on a laptop CPU/GPU in minutes. Any
-  `PretrainConfig` field (`config/post_training_config.py` in the cloned repo) can be overridden
-  by adding `--field value` to the task's `command:`, e.g. `--train_steps 500 --lr 3e-4`, for a
-  more thoroughly trained tiny model.
-- `sample_story`'s `--prompt`/`--max_new_tokens`/`--temperature`/`--top_p` control the sample
-  generation.
+| id | Kind | Default | Range | Meaning |
+|---|---|---|---|---|
+| `config_scale` | choice | `configs/smoke` | `configs/smoke`, `configs` | Smoke (`n_embed=128`, 2 blocks, 20 steps, CPU, minutes) or the repo's full 24-block, 50k-step config |
+| `pretrain_steps` | number | 0 | 0–200000, step 10 | Pretraining optimizer steps; 0 keeps the config's value. Try 500 for a more legible tiny model |
+| `train_docs` | number | 20000 | 1000–2200000, step 1000 | TinyStories training stories to tokenize (full split ~2.1M) |
+| `val_docs` | number | 2000 | 100–22000, step 100 | Validation stories to tokenize |
+| `prompt` | string | `Once upon a time,` | ≤ 500 chars | Opening the model continues in the sample |
+| `max_new_tokens` | number | 200 | 8–1024, step 8 | Length of the sample story |
+
+To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`:
+Horus writes `params/<id>.txt` only when it is missing. Any other `PretrainConfig` field
+(`config/post_training_config.py` in the cloned repo) can be overridden by adding
+`--field value` to the `train_pretrain_tiny` command, e.g. `--lr 3e-4`.
+
+## Running in Temple Compute
+
+Start a campaign from the library: the form shows the scale choice, the step override, the
+two dataset sliders and the prompt. Tokenizing carries CPU `resources` hints (4 CPU / 16 GB
+for the train split), and training asks for one GPU (4 CPU, 16 GB, 24 h), so an
+auto-provisioned target puts it on a single-GPU node. The smoke config pins `device: cpu`, so
+at the default scale the GPU sits idle; it matters for `config_scale: configs`.
 
 ## Implementation Notes
 

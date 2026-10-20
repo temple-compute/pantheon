@@ -86,6 +86,7 @@ tasks:
     resources:
       cpus: 1
       memory_gb: 2
+      walltime: "00:10:00"
     executor:
       kind: uv_python_environment
       python: "3.11"
@@ -121,6 +122,7 @@ tasks:
     resources:
       cpus: 1
       memory_gb: 2
+      walltime: "00:10:00"
     executor:
       kind: uv_python_environment
       python: "3.11"
@@ -156,6 +158,7 @@ tasks:
     resources:
       cpus: 1
       memory_gb: 2
+      walltime: "00:10:00"
     executor:
       kind: uv_python_environment
       python: "3.11"

@@ -1,5 +1,5 @@
 kind: horus_workflow
-name: Tiny LLM From Scratch - TinyStories Pretrain & Sample
+name: Tiny LLM From Scratch - TinyStories Pretrain and Sample
 
 _executor: &executor
   kind: conda_python_environment
@@ -11,10 +11,62 @@ _shell: &shell
   kind: shell
 
 artifacts:
-  - id: prepare_tinystories_script
-    name: TinyStories prep script
-    path: scripts/prepare_tinystories.py
-    kind: file
+  - &config_scale
+    id: config_scale
+    name: Model and training scale
+    description: >-
+      Config set of the training repo for the model and pretraining. Smoke is a
+      2-block model trained for 20 steps on CPU (minutes); full is the repo's
+      24-block, 50k-step setup (days on one GPU).
+    kind: choice
+    path: params/config_scale.txt
+    value: configs/smoke
+    options:
+      - {value: configs/smoke, label: Smoke (tiny model, minutes)}
+      - {value: configs, label: Full (24 blocks, 50k steps)}
+  - id: pretrain_steps
+    name: Pretraining steps
+    description: Optimizer steps for pretraining; 0 keeps the config's value (smoke 20).
+    kind: number
+    path: params/pretrain_steps.txt
+    value: 0
+    min: 0
+    max: 200000
+    step: 10
+  - id: train_docs
+    name: Training stories
+    description: TinyStories training documents to tokenize (the full split has ~2.1M).
+    kind: number
+    path: params/train_docs.txt
+    value: 20000
+    min: 1000
+    max: 2200000
+    step: 1000
+  - id: val_docs
+    name: Validation stories
+    description: TinyStories validation documents to tokenize (the full split has ~22k).
+    kind: number
+    path: params/val_docs.txt
+    value: 2000
+    min: 100
+    max: 22000
+    step: 100
+  - id: prompt
+    name: Story prompt
+    description: Opening the trained model continues in the sample.
+    kind: string
+    path: params/prompt.txt
+    value: "Once upon a time,"
+    max_length: 500
+  - id: max_new_tokens
+    name: Sample length (tokens)
+    description: Tokens to generate for the sample story.
+    kind: number
+    path: params/max_new_tokens.txt
+    value: 200
+    min: 8
+    max: 1024
+    step: 8
 
 tasks:
   - kind: horus_task
@@ -29,10 +81,11 @@ tasks:
     executor: *shell
     runtime:
       kind: command
+      # Pinned commit so a rerun trains the same code.
       command: >-
-        git clone --depth 1
-        https://github.com/FareedKhan-dev/train-llm-from-scratch.git
-        $repo_dir
+        git clone -q --filter=blob:none
+        https://github.com/FareedKhan-dev/train-llm-from-scratch.git $repo_dir &&
+        git -C $repo_dir checkout -q bdd480a518094ca834e05ab32131dc126b522d3d
     target:
       kind: local
 
@@ -47,23 +100,25 @@ tasks:
         name: Repository checkout
         kind: folder
         path: repo
-      - id: prepare_tinystories_script
-        name: TinyStories prep script
-        kind: file
-        path: scripts/prepare_tinystories.py
+      - id: train_docs
+        name: Training stories
+        kind: number
+        path: params/train_docs.txt
     outputs:
       - id: tinystories_train_h5
         name: TinyStories train tokens
         kind: file
         path: data/tinystories_train.h5
     executor: *executor
+    resources:
+      cpus: 4
+      memory_gb: 16
+      walltime: "04:00:00"
     runtime:
-      kind: command
-      command: >-
-        HF_HOME=data/hf_cache python $prepare_tinystories_script
-        --split train
-        --max_docs 20000
-        --out $tinystories_train_h5
+      kind: python_script
+      script: scripts/prepare_tinystories.py
+      args: >-
+        --split train --max_docs ${train_docs} --out $tinystories_train_h5
     target:
       kind: local
 
@@ -78,23 +133,25 @@ tasks:
         name: Repository checkout
         kind: folder
         path: repo
-      - id: prepare_tinystories_script
-        name: TinyStories prep script
-        kind: file
-        path: scripts/prepare_tinystories.py
+      - id: val_docs
+        name: Validation stories
+        kind: number
+        path: params/val_docs.txt
     outputs:
       - id: tinystories_val_h5
         name: TinyStories validation tokens
         kind: file
         path: data/tinystories_val.h5
     executor: *executor
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "01:00:00"
     runtime:
-      kind: command
-      command: >-
-        HF_HOME=data/hf_cache python $prepare_tinystories_script
-        --split validation
-        --max_docs 2000
-        --out $tinystories_val_h5
+      kind: python_script
+      script: scripts/prepare_tinystories.py
+      args: >-
+        --split validation --max_docs ${val_docs} --out $tinystories_val_h5
     target:
       kind: local
 
@@ -103,7 +160,7 @@ tasks:
     name: Pretrain tiny model on TinyStories
     description: >-
       Trains the from-scratch decoder-only Transformer on tokenized TinyStories,
-      using the repo's smoke-scale model/step-count config for a fast local run.
+      at the scale chosen by config_scale.
     inputs:
       - id: repo_dir
         name: Repository checkout
@@ -117,6 +174,11 @@ tasks:
         name: TinyStories validation tokens
         kind: file
         path: data/tinystories_val.h5
+      - *config_scale
+      - id: pretrain_steps
+        name: Pretraining steps
+        kind: number
+        path: params/pretrain_steps.txt
     outputs:
       - id: pretrained_ckpt
         name: Pretrained tiny checkpoint
@@ -126,17 +188,23 @@ tasks:
         name: Pretraining metrics log
         kind: file
         path: logs/pretrain.jsonl
+    resources:
+      cpus: 4
+      gpus: 1
+      memory_gb: 16
+      walltime: "24:00:00"
     executor: *executor
     runtime:
       kind: command
       command: >-
         PYTHONPATH=${repo_dir} python ${repo_dir}/scripts/pretrain_base.py
-        --config ${repo_dir}/configs/smoke/pretrain.json
+        --config ${repo_dir}/${config_scale}/pretrain.json
         --train_path $tinystories_train_h5
         --dev_path $tinystories_val_h5
         --out_ckpt $pretrained_ckpt
         --ckpt_dir ckpts
         --log_dir logs
+        $$([ ${pretrain_steps} -gt 0 ] && echo --train_steps ${pretrain_steps})
     target:
       kind: local
 
@@ -155,11 +223,23 @@ tasks:
         name: Pretrained tiny checkpoint
         kind: file
         path: ckpts/tinystories_pretrained.pt
+      - id: prompt
+        name: Story prompt
+        kind: string
+        path: params/prompt.txt
+      - id: max_new_tokens
+        name: Sample length (tokens)
+        kind: number
+        path: params/max_new_tokens.txt
     outputs:
       - id: sample_story_txt
         name: Sample generated story
         kind: file
         path: samples/tinystories_sample.txt
+    resources:
+      cpus: 2
+      memory_gb: 8
+      walltime: "00:30:00"
     executor: *executor
     runtime:
       kind: command
@@ -168,8 +248,8 @@ tasks:
         --ckpt $pretrained_ckpt
         --raw
         --greedy
-        --prompt "Once upon a time,"
-        --max_new_tokens 200
+        --prompt "$$(cat ${prompt.path})"
+        --max_new_tokens ${max_new_tokens}
         > $sample_story_txt
     target:
       kind: local
@@ -210,15 +290,35 @@ edges:
     target: sample_story
     target_input: pretrained_ckpt
 
-  - source: artifact-prepare_tinystories_script
-    source_output: prepare_tinystories_script
+  - source: artifact-train_docs
+    source_output: train_docs
     target: prepare_tinystories_train
-    target_input: prepare_tinystories_script
+    target_input: train_docs
 
-  - source: artifact-prepare_tinystories_script
-    source_output: prepare_tinystories_script
+  - source: artifact-val_docs
+    source_output: val_docs
     target: prepare_tinystories_val
-    target_input: prepare_tinystories_script
+    target_input: val_docs
+
+  - source: artifact-config_scale
+    source_output: config_scale
+    target: train_pretrain_tiny
+    target_input: config_scale
+
+  - source: artifact-pretrain_steps
+    source_output: pretrain_steps
+    target: train_pretrain_tiny
+    target_input: pretrain_steps
+
+  - source: artifact-prompt
+    source_output: prompt
+    target: sample_story
+    target_input: prompt
+
+  - source: artifact-max_new_tokens
+    source_output: max_new_tokens
+    target: sample_story
+    target_input: max_new_tokens
 
 orchestrator_target:
   kind: local
