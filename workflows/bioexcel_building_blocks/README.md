@@ -16,7 +16,6 @@ All building blocks share a unique syntax — requiring input files, output file
 | 06 | [w06-protein-ligand-docking-cluster90](w06-protein-ligand-docking-cluster90/) | Protein-Ligand Docking with a Cluster90 Binding Site |
 | 07 | [w07-protein-ligand-docking-pdbe-rest-api](w07-protein-ligand-docking-pdbe-rest-api/) | Protein-Ligand Docking with PDBe Binding Sites |
 | 08 | [w08-protein-ligand-docking-fpocket](w08-protein-ligand-docking-fpocket/) | Protein-Ligand Docking into an fpocket Cavity |
-| 09 | [w09-amber-protein-md-setup](w09-amber-protein-md-setup/) | BioExcel AMBER MD Setup — Lysozyme 1AKI |
 | 10 | [w10-amber-protein-ligand-complex-md-setup](w10-amber-protein-ligand-complex-md-setup/) | AMBER Protein-Ligand Complex MD Setup |
 | 11 | [w11-amber-constant-ph-md-setup](w11-amber-constant-ph-md-setup/) | AMBER Constant-pH MD Setup |
 | 12 | [w12-dna-helical-parameters](w12-dna-helical-parameters/) | BioExcel DNA Helical Parameters Analysis |
