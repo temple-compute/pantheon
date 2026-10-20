@@ -68,15 +68,16 @@ _shell: &shell
 # parmchk2, parmed, cpptraj; PROPKA; Open Babel) come from one conda-forge
 # environment, built the first time a block needs it and reused afterwards
 # (one env next to the run folders). On a cluster, point `conda` at the
-# site's conda and `environment_dir` at an absolute shared path. Only
-# pmemd.cuda (equilibrate/produce) comes from AMBER itself (amber_env).
+# site's conda and `environment_dir` at an absolute shared path. The same env
+# carries OpenMM (CUDA 12 build) for md_engine openmm; with md_engine pmemd,
+# pmemd.cuda comes from AMBER itself (amber_env).
 _tools: &tools
   kind: conda_python_environment
   conda: micromamba # <- or the site's conda/mamba
   environment_dir: "../../.horus_ambertools_env" # <- absolute path to share across runs
   channels: [conda-forge]
   python_version: "3.11"
-  conda_requirements: [ambertools=26, propka=3.5, openbabel=3.2]
+  conda_requirements: [ambertools=26, propka=3.5, openbabel=3.2, openmm=8.6, cuda-version=12]
 
 _local: &local
   kind: local
@@ -237,12 +238,30 @@ artifacts:
     path: values/hmr
     value: false
 
+  - &md_engine
+    id: md_engine
+    name: MD engine
+    description: >-
+      Runs the same rendered .mdin protocol. OpenMM comes from the conda
+      environment and runs on any NVIDIA GPU node (CUDA 12 driver); pmemd
+      needs licensed AMBER (pmemd.cuda) on the node, loaded by AMBER
+      environment.
+    kind: choice
+    path: values/md_engine
+    value: openmm
+    options:
+      - value: openmm
+        label: OpenMM (conda, any GPU node)
+      - value: pmemd
+        label: pmemd.cuda (licensed AMBER)
+
   - &amber_env
     id: amber_env
     name: AMBER environment
     description: Shell line that puts pmemd.cuda (licensed AMBER) on PATH
-      for equilibrate/produce; "Already on PATH" when the GPU node has it. Preparation and analysis tools come from the
-      conda environment instead.
+      for equilibrate/produce when MD engine is pmemd; "Already on PATH"
+      when the GPU node has it, or with OpenMM. Preparation and analysis
+      tools come from the conda environment instead.
     kind: choice
     path: values/amber_env
     value: ":"
@@ -450,6 +469,11 @@ artifacts:
     name: Production chunk loop
     kind: file
     path: scripts/production.sh
+  - id: openmm_runner_script
+    name: OpenMM .mdin runner
+    description: Runs one .mdin step on OpenMM with pmemd's flags and outputs (md_engine openmm).
+    kind: file
+    path: scripts/mdin_openmm.py
   - id: live_monitor_script
     name: Live monitor
     description: Runs beside pmemd and keeps a small digest (mdout/mdinfo,
@@ -656,6 +680,8 @@ tasks:
       - {id: seed_in, kind: number, path: values/seed}
       - {id: analysis_stride_in, kind: number, path: values/analysis_stride}
       - {<<: *amber_env, id: amber_env_in}
+      - {<<: *md_engine, id: md_engine_in}
+      - {id: openmm_runner_script_in, kind: file, path: scripts/mdin_openmm.py}
       - {id: system_prmtop_in, kind: file, path: system/system.prmtop}
       - {id: system_inpcrd_in, kind: file, path: system/system.inpcrd}
       - {id: templates_in, kind: file, path: templates.tar.gz}
@@ -683,6 +709,7 @@ tasks:
         --cutoff ${cutoff_in} --gamma-ln ${gamma_ln_in}
         --pressure-bar ${pressure_bar_in} --seed=${seed_in}
         --analysis-stride ${analysis_stride_in} --amber-env ${amber_env_in}
+        --md-engine ${md_engine_in} --openmm-runner ${openmm_runner_script_in}
         --prmtop ${system_prmtop_in} --inpcrd ${system_inpcrd_in}
         --templates ${templates_in}
         --equilibrate-script ${equilibrate_script_in}
@@ -718,7 +745,7 @@ tasks:
         description: Each slot copied forward plus its preprod/ results.
         kind: folder
         path: equilibrated_out/
-    executor: *shell
+    executor: *tools # OpenMM; with md_engine pmemd, amber.sh adds pmemd.cuda
     target: *local
     runtime:
       kind: command
@@ -754,7 +781,7 @@ tasks:
           protocol.json and equilibration mdouts.
         kind: folder
         path: produced_out/
-    executor: *shell
+    executor: *tools # OpenMM; with md_engine pmemd, amber.sh adds pmemd.cuda
     target: *local
     runtime:
       kind: command
@@ -883,6 +910,8 @@ edges:
   - {source: artifact-seed, source_output: seed, target: prepare_replicas, target_input: seed_in}
   - {source: artifact-analysis_stride, source_output: analysis_stride, target: prepare_replicas, target_input: analysis_stride_in}
   - {source: artifact-amber_env, source_output: amber_env, target: prepare_replicas, target_input: amber_env_in}
+  - {source: artifact-md_engine, source_output: md_engine, target: prepare_replicas, target_input: md_engine_in}
+  - {source: artifact-openmm_runner_script, source_output: openmm_runner_script, target: prepare_replicas, target_input: openmm_runner_script_in}
   - {source: artifact-templates, source_output: templates, target: prepare_replicas, target_input: templates_in}
   - {source: artifact-equilibrate_script, source_output: equilibrate_script, target: prepare_replicas, target_input: equilibrate_script_in}
   - {source: artifact-production_script, source_output: production_script, target: prepare_replicas, target_input: production_script_in}

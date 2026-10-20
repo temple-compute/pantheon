@@ -19,6 +19,10 @@ dir="$1"
 preprod="$dir/preprod"
 prmtop="$dir/system.prmtop"
 inpcrd="$dir/system.inpcrd"
+# md_engine from prepare_replicas: pmemd/pmemd.cuda, or the OpenMM runner,
+# which takes the same flags and writes the same files.
+engine=$(cat "$dir/engine.txt" 2>/dev/null || echo pmemd)
+md() { exe=$1; shift; if [ "$engine" = openmm ]; then python "$dir/mdin_openmm.py" "$@"; else "$exe" "$@"; fi; }
 
 # Live digest for the UI while pmemd runs (no-op outside Horus); the EXIT
 # trap publishes one last pass, so a failed step's mdout is visible too.
@@ -42,7 +46,7 @@ for name in $(cd "$preprod" && ls *.in | sed 's/\.in$//' | sort -t_ -k1,1n); do
         exe=pmemd.cuda
         case "$name" in *_min) exe=pmemd ;; esac
         echo "starting $name"
-        "$exe" -O -i "$preprod/$name.in" -o "$preprod/$name.out" \
+        md "$exe" -O -i "$preprod/$name.in" -o "$preprod/$name.out" \
             -p "$prmtop" -c "$prev" -r "$preprod/$name.rst" \
             -inf "$preprod/$name.info" -ref "$prev" -x "$preprod/$name.nc"
     fi

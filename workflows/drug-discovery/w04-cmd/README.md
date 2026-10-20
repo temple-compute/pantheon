@@ -19,9 +19,12 @@ clustering. The MD protocol is ported from
 it are added here.
 
 Preparation and analysis run in one conda-forge environment (AmberTools 26:
-pdb4amber, tleap, antechamber, parmchk2, parmed, cpptraj; PROPKA; Open Babel),
-built on first use and reused. Only `pmemd.cuda` comes from a licensed AMBER
-install (`amber_env`). Replicas fan out with Horus's `horus_map`, one GPU job per
+pdb4amber, tleap, antechamber, parmchk2, parmed, cpptraj; PROPKA; Open Babel;
+OpenMM), built on first use and reused. The MD itself runs on one of two
+engines (`md_engine`), both fed the same rendered `.mdin` files: **OpenMM**
+(default; from that conda env, runs on any NVIDIA GPU node) through
+`scripts/mdin_openmm.py`, or **pmemd.cuda** from a licensed AMBER install
+(`amber_env`). Replicas fan out with Horus's `horus_map`, one GPU job per
 replica per phase.
 
 ## Pipeline
@@ -62,9 +65,11 @@ topology.
 - `micromamba` (or conda/mamba: set `_tools.conda`) where the CPU blocks run. The
   tools environment is built once at `horus_workflow_results/.horus_ambertools_env`;
   on a cluster, set `_tools.environment_dir` to an absolute shared path.
-- `pmemd.cuda` on the GPU nodes (licensed AMBER; conda-forge AmberTools has no
-  CUDA pmemd). Pick or add the line that loads it in `amber_env`; the default
-  "Already on PATH" assumes it is there.
+- For `md_engine: openmm` (default), an NVIDIA driver for CUDA 12 on the GPU
+  nodes; OpenMM itself comes from the tools env.
+- For `md_engine: pmemd`, `pmemd.cuda` on the GPU nodes (licensed AMBER;
+  conda-forge AmberTools has no pmemd at all). Pick or add the line that loads it
+  in `amber_env`; the default "Already on PATH" assumes it is there.
 - `prepare_replicas` runs on the orchestrator and needs only `python3`.
 
 ## Quick start
@@ -85,8 +90,9 @@ Import the folder or start a campaign from the library entry: the form shows the
 PDB ID, the structure upload and every build, MD and analysis setting below, with
 sliders for the ranged numbers. Resource hints: parameterization, builds and the
 report 2 CPU / 8 GB; `analyze` 4 CPU / 16 GB per replica; `equilibrate` and
-`produce` one GPU (4 CPU, 16 GB) per replica, 5 h and 10 days. The GPU node must
-provide `pmemd.cuda` (see Prerequisites).
+`produce` one GPU (4 CPU, 16 GB) per replica, 5 h and 10 days. With the default
+`md_engine: openmm` an auto-provisioned GPU node needs nothing else; `pmemd`
+needs licensed AMBER on the node (see Prerequisites).
 
 ## Inputs
 
@@ -106,7 +112,8 @@ provide `pmemd.cuda` (see Prerequisites).
 | `box` / `padding` | truncated octahedron / 12 Å | build | |
 | `salt_mM` | 150 | build | NaCl by SLTCAP on top of neutralization |
 | `hmr` | off | build | hydrogen mass repartitioning (allows 4 fs) |
-| `amber_env` | Already on PATH | equilibrate, produce | shell line that provides `pmemd.cuda` (Picard, CSUC and a generic `module load Amber` are listed) |
+| `md_engine` | OpenMM | equilibrate, produce | `openmm` (conda, any NVIDIA GPU node) or `pmemd` (licensed `pmemd.cuda`); same `.mdin` protocol |
+| `amber_env` | Already on PATH | equilibrate, produce | with `pmemd`: shell line that provides `pmemd.cuda` (Picard, CSUC and a generic `module load Amber` are listed) |
 
 **MD protocol**
 
@@ -168,6 +175,15 @@ One ligand per `build_complex`; for a protein-only system see
 - **Resume:** `equilibrate.sh` and `production.sh` skip steps and chunks
   whose restart exists and whose mdout has pmemd's closing TIMINGS section, so a
   requeued job in the same directory continues instead of starting over.
+- **Two engines, one protocol:** `scripts/mdin_openmm.py` takes pmemd's flags
+  and the `&cntrl` keys `prepare_replicas.py` renders (minimization, Langevin
+  `ntt=3`, Monte Carlo barostat, positional restraints by AMBER mask via
+  ParmEd, `ntwx`/`ntwr`/`ntpr`/`ntwprt`, `iwrap`) and writes the same files:
+  ASCII restart, NetCDF trajectory, an mdout with pmemd-style `NSTEP`/`Etot`/
+  `Density` records and the closing TIMINGS section, and an mdinfo. Resume,
+  live monitor, analysis and report work unchanged. Not mirrored: pmemd's
+  pressure printout (`PRESS` reads 0.0) and its exact random streams, so the
+  two engines give statistically, not bitwise, equivalent runs.
 - **Analysis next to the data:** `analyze` runs on the cluster so the
   production trajectories never need to move; only the small results and
   a dry strided trajectory go to `report`.
@@ -214,6 +230,14 @@ in each replica's **side products** in the UI:
   parameterize -> build_complex and build_system; then (`sander` standing
   in for pmemd) 2 replicas with `equil_scale` and `chunk_ns` cut to
   picoseconds through `analyze.py` and `report.py`.
+- OpenMM engine (`scripts/mdin_openmm.py --selftest`: namelist parser, restart
+  round trip): the 1AKI example system (18,019 atoms) through all 10
+  equilibration steps and 2 production chunks at picosecond lengths on the CPU
+  platform (2.5 min). Restraints selected by AMBER mask (1001 solute heavy
+  atoms, 387 backbone atoms), density rising 0.885 -> 0.952 g/cc through the
+  NPT steps, cpptraj reads the NetCDF trajectories and restarts (velocities,
+  truncated octahedron box), `report.py` parses the mdout records, and a re-run
+  skips every finished step. The CUDA platform was not exercised (no GPU here).
 
 ## References
 

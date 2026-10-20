@@ -230,6 +230,7 @@ def resolve_params(args: argparse.Namespace, prmtop_text: str) -> dict:
         "write_solvent": write_solvent,
         "ntwprt": 0 if write_solvent else last_atom_of_residue(prmtop_text, last),
         "analysis_stride": max(1, args.analysis_stride),
+        "md_engine": args.md_engine,
     }
 
 
@@ -237,6 +238,7 @@ def build_slot(slot_dir: Path, replica: int, params: dict, files: dict) -> None:
     for sub in ("preprod", "prod"):
         (slot_dir / sub).mkdir(parents=True)
     (slot_dir / "amber.sh").write_text(files["amber_env"] + "\n")
+    (slot_dir / "engine.txt").write_text(params["md_engine"])
     for dest, src in files["copy"].items():
         if src is not None:
             shutil.copy(src, slot_dir / dest)
@@ -291,6 +293,9 @@ def main() -> None:
     ap.add_argument("--prmtop", type=Path, required=True)
     ap.add_argument("--inpcrd", type=Path, required=True)
     ap.add_argument("--amber-env", required=True, help="Shell line that puts pmemd on PATH.")
+    ap.add_argument("--md-engine", choices=["pmemd", "openmm"], default="pmemd",
+                    help="pmemd/pmemd.cuda, or OpenMM via mdin_openmm.py (same .mdin files)")
+    ap.add_argument("--openmm-runner", type=Path, default=None, help="mdin_openmm.py, copied into each slot")
     ap.add_argument("--equilibrate-script", type=Path, required=True)
     ap.add_argument("--production-script", type=Path, required=True)
     ap.add_argument("--live-monitor-script", type=Path, default=None)
@@ -308,6 +313,7 @@ def main() -> None:
             "production.sh": args.production_script,
             "live_monitor.sh": args.live_monitor_script,
             "analyze.py": args.analyze_script,
+            "mdin_openmm.py": args.openmm_runner,
             "system.prmtop": args.prmtop,
             "system.inpcrd": args.inpcrd,
         },

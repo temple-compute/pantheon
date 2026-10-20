@@ -23,9 +23,12 @@ out_dir="$3"
 mkdir -p "$out_dir/preprod"
 cntmax=$(cat "$slot_dir/steps.txt")
 prmtop="$slot_dir/system.prmtop"
+# md_engine from prepare_replicas: pmemd.cuda, or the OpenMM runner (same flags).
+engine=$(cat "$slot_dir/engine.txt" 2>/dev/null || echo pmemd)
+md() { exe=$1; shift; if [ "$engine" = openmm ]; then python "$slot_dir/mdin_openmm.py" "$@"; else "$exe" "$@"; fi; }
 
 for f in amber.sh analyze.py system.prmtop system.inpcrd steps.txt \
-         solute_residues.txt protocol.json; do
+         solute_residues.txt protocol.json engine.txt; do
     if [ -f "$slot_dir/$f" ]; then cp "$slot_dir/$f" "$out_dir/"; fi
 done
 cp "$preequil_dir"/*.out "$out_dir/preprod/" 2>/dev/null || true
@@ -46,7 +49,7 @@ while [ "$cnt" -le "$cntmax" ]; do
     if [ -s "$out_dir/${istep}.rst" ] && grep -q "5.  TIMINGS" "$out_dir/${istep}.mdout" 2>/dev/null; then
         echo "Production chunk $cnt of $cntmax already finished"
     else
-        pmemd.cuda -O -ref "$prev_rst" -p "$prmtop" -c "$prev_rst" \
+        md pmemd.cuda -O -ref "$prev_rst" -p "$prmtop" -c "$prev_rst" \
             -i "$slot_dir/prod/${istep}.in" -o "$out_dir/${istep}.mdout" \
             -inf "$out_dir/${istep}.mdinf" -r "$out_dir/${istep}.rst" \
             -x "$out_dir/${istep}.nc"
