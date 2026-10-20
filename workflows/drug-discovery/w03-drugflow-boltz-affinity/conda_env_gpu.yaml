@@ -24,6 +24,8 @@ dependencies:
   - ProDy=2.4.0
   - wandb=0.16.3
   - pandas=2.2.2
+  # DrugFlow reads its pocket data as parquet; pandas needs an engine.
+  - pyarrow=15.0.2
   # torchmetrics imports matplotlib; the pip wheel needs a newer system
   # libstdc++ than the container has, so take the conda-forge build.
   - matplotlib-base=3.8.4
