@@ -7,3 +7,6 @@ dependencies:
   - python=3.12
   - openfe=1.13.0
   - openmm=8.4.0
+  # CUDA 12 build: OpenMM JIT-compiles kernels, so the toolkit must not be newer
+  # than the node driver (13.4 failed on the 13.2 driver of the tc-os GPU image).
+  - cuda-version=12

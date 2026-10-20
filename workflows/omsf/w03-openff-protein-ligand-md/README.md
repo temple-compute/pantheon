@@ -97,13 +97,12 @@ The anchor sets no `cpus_per_task` or `gres`: horus-slurm derives
 GPU build: conda-forge ships OpenMM's CUDA plugin whether or not the solving
 host has a GPU, so one env built on a CPU node still runs CUDA on the GPU
 node (PyTorch is CPU-only, but only NAGL charging in `parameterize` uses it).
-The pinned solve picks CUDA 13 builds (`cuda-version 13.4`, `cuda-nvrtc
-13.4`). OpenMM compiles its kernels at run time with nvrtc, and an older
-driver can reject that code even inside the 13.x compat range, so pin
-`cuda-version` in `conda_env.yaml` to at most the CUDA version `nvidia-smi`
-reports on the GPU node (e.g. `cuda-version=12.9`, which resolves with the
-same pins) and delete `.horus_conda_env/` so it is rebuilt. Not tested on a
-GPU.
+`conda_env.yaml` pins `cuda-version=12` (CUDA 12.9 builds). OpenMM compiles
+its kernels at run time with nvrtc, and a driver rejects code from a newer
+toolkit even inside the 13.x compat range: unpinned, the solve took 13.4 and
+the tc-os GPU image's driver (595, CUDA 13.2) failed with
+`CUDA_ERROR_UNSUPPORTED_PTX_VERSION` (simulate then fell back to OpenCL).
+After changing the pin, delete `.horus_conda_env/` so it is rebuilt.
 
 ## Quick start
 

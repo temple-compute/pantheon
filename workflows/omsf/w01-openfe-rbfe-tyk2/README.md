@@ -101,8 +101,10 @@ A second `horus run` skips every task whose outputs are already there.
 
 The conda-forge openmm build ships the CUDA platform plugin even when the env is solved
 on a host without a GPU, so the shared env built by `charge_ligands` on the login/local
-node also runs on the GPU node. It pulls `cuda-version` 13.x; if your GPU nodes have an
-older driver, add `cuda-version=12` to `conda_env.yaml`.
+node also runs on the GPU node. `conda_env.yaml` pins `cuda-version=12` (CUDA 12.9
+builds): OpenMM compiles its kernels at run time, so the CUDA toolkit must not be newer
+than the node's driver. Unpinned, the solve took 13.4, which the tc-os GPU image's
+driver (595, CUDA 13.2) rejected with `CUDA_ERROR_UNSUPPORTED_PTX_VERSION`.
 
 To use the official container instead of the conda env, swap the `executor` of the
 openfe tasks (all of them run `command` runtimes except `plan_network`, which stays on
