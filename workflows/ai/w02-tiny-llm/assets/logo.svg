@@ -1,13 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#db2777"/><stop offset="1" stop-color="#3b0a26"/>
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <path d="M256,170 C210,150 140,150 100,170 L100,380 C140,360 210,360 256,380 Z" fill="#fdf2f8"/>
-  <path d="M256,170 C302,150 372,150 412,170 L412,380 C372,360 302,360 256,380 Z" fill="#fce7f3"/>
-  <line x1="256" y1="170" x2="256" y2="380" stroke="#831843" stroke-width="8"/>
-  <g stroke="#f472b6" stroke-width="10" stroke-linecap="round"><line x1="130" y1="220" x2="226" y2="214"/><line x1="130" y1="260" x2="226" y2="254"/><line x1="130" y1="300" x2="196" y2="296"/><line x1="286" y1="214" x2="382" y2="220"/><line x1="286" y1="254" x2="352" y2="258"/></g>
-  <path d="M380,96 L392,128 L424,140 L392,152 L380,184 L368,152 L336,140 L368,128 Z" fill="#fdf2f8"/>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#0f1419"/><path transform="translate(97.28 97.28) scale(13.2267)" fill="#EE4C2C" d="M12.005 0L4.952 7.053a9.865 9.865 0 000 14.022 9.866 9.866 0 0014.022 0c3.984-3.9 3.986-10.205.085-14.023l-1.744 1.743c2.904 2.905 2.904 7.634 0 10.538s-7.634 2.904-10.538 0-2.904-7.634 0-10.538l4.647-4.646.582-.665zm3.568 3.899a1.327 1.327 0 00-1.327 1.327 1.327 1.327 0 001.327 1.328A1.327 1.327 0 0016.9 5.226 1.327 1.327 0 0015.573 3.9z"/></svg>

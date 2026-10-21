@@ -1,12 +1,4 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <defs>
-    <linearGradient id="bg" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#5b21b6"/><stop offset="1" stop-color="#1e0b3d"/>
-    </linearGradient>
-  </defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <polygon points="150,110 362,110 412,256 362,402 150,402 100,256" fill="#1b1036" stroke="#c4b5fd" stroke-width="14" stroke-linejoin="round"/>
-  <g fill="#7dd3fc" opacity="0.6"><circle cx="170" cy="160" r="9"/><circle cx="340" cy="150" r="9"/><circle cx="370" cy="300" r="9"/><circle cx="150" cy="330" r="9"/><circle cx="300" cy="370" r="9"/><circle cx="210" cy="380" r="9"/></g>
-  <path d="M170,270 q22,-40 44,0 q22,40 44,0 q22,-40 44,0 q22,40 44,0" fill="none" stroke="#a78bfa" stroke-width="20" stroke-linecap="round"/>
-  <polygon points="256,180 284,196 284,228 256,244 228,228 228,196" fill="none" stroke="#fbbf24" stroke-width="12" stroke-linejoin="round"/>
+<svg xmlns="http://www.w3.org/2000/svg" xmlns:xlink="http://www.w3.org/1999/xlink" width="512" height="512" viewBox="0 0 512 512">
+<rect width="512" height="512" fill="#0f1419"/>
+<g fill="none" stroke-width="14" stroke-linecap="round" stroke-linejoin="round"><circle cx="130" cy="256" r="20" fill="#d4a574" stroke="none"/><path d="M150,256 C230,256 250,130 382,130 M150,256 H382 M150,256 C230,256 250,382 382,382" stroke="#5b7c99"/><path d="M350,100 L392,130 L350,160 M350,226 L392,256 L350,286 M350,352 L392,382 L350,412" stroke="#d4a574"/></g>
 </svg>

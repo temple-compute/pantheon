@@ -12,7 +12,7 @@
 **Star the repo** ⭐ if you build scientific pipelines, it helps more people find these workflows.
 
 Each workflow directory contains:
-- `README.md`: purpose, pipeline, install steps, and configuration guide
+- `README.md`: purpose, pipeline, inputs/outputs, and parameters
 - `workflow.yaml` or `run.py`: a plain Horus workflow definition or Python workflow builder
 - `scripts/`: small stage scripts and helper code when needed
 
@@ -44,19 +44,19 @@ uv run horus run workflow.yaml
 
 | ID | Workflow | Description |
 |---|---|---|
-| W-01 | [Boltz-2 Virtual Screening](workflows/drug-discovery/w01-boltz2-virtual-screening/README.md) | Screen a SMILES library against a protein sequence with Boltz-2 co-folding and affinity on one GPU, ranked shortlist |
+| W-01 | [Boltz-2 Virtual Screening](workflows/drug-discovery/w01-boltz2-virtual-screening/README.md) | Screen a SMILES library against a protein sequence with Boltz-2 co-folding and affinity, ranked shortlist |
 | W-02 | [AutoDock Vina Docking](workflows/drug-discovery/w02-autodock-vina-docking/README.md) | Dock a ligand library into an uploaded or RCSB-fetched receptor with AutoDock Vina: prep → dock → rank |
 | W-32 | [DrugFlow + Boltz-2 Affinity](workflows/drug-discovery/w03-drugflow-boltz-affinity/README.md) | Generate pocket-conditioned molecules with DrugFlow, then score each one for binding affinity (ΔG) with Boltz-2 |
 | W-33 | [Lacuna Cryptic Pocket Discovery](workflows/drug-discovery/w06-lacuna-cryptic-pocket-discovery/README.md) | Find cryptic binding pockets in an uploaded or RCSB-fetched structure across a conformational ensemble with Lacuna |
-| W-34 | [Lacuna + AutoDock Vina Docking](workflows/drug-discovery/w07-lacuna-vina-docking/README.md) | Lacuna cryptic pocket discovery, then box the top pocket and dock a ligand library with AutoDock Vina |
-| W-35 | [cMD Replicas (AMBER)](workflows/drug-discovery/w04-cmd/README.md) | PDB ID to report with AMBER: protonate (PROPKA), parameterize ligands (GAFF2), solvate, equilibrate and run production MD across N parallel GPU replicas, then analyze and cluster |
+| W-34 | [Lacuna + AutoDock Vina Docking](workflows/drug-discovery/w07-lacuna-vina-docking/README.md) | Lacuna cryptic pocket discovery, then box a selected pocket and dock a ligand library with AutoDock Vina |
+| W-35 | [cMD Replicas (AMBER)](workflows/drug-discovery/w04-cmd/README.md) | PDB ID to report with AMBER: protonate (PROPKA), parameterize ligands (GAFF2), solvate, equilibrate and run production MD across N parallel replicas, then analyze and cluster |
 | W-36 | [OpenDDE Co-folding Screen](workflows/drug-discovery/w08-opendde-cofolding-screen/README.md) | Co-fold a protein–ligand library with OpenDDE (optional MSA toggle) and rank complexes by interface confidence |
 
 ### OMSF (Open Molecular Software Foundation)
 
 | ID | Workflow | Description |
 |---|---|---|
-| W-37 | [OpenFE RBFE (TYK2)](workflows/omsf/w01-openfe-rbfe-tyk2/README.md) | Charge ligands, plan an RBFE network, run one OpenFE quickrun per leg as a GPU map, gather ΔΔG |
+| W-37 | [OpenFE RBFE (TYK2)](workflows/omsf/w01-openfe-rbfe-tyk2/README.md) | Charge ligands, plan an RBFE network, run one OpenFE quickrun per leg as a map, gather ΔΔG |
 | W-38 | [OpenADMET CYP3A4 Models](workflows/omsf/w02-openadmet-cyp3a4/README.md) | Train one OpenADMET anvil model per architecture in parallel, compare them statistically, predict with the best |
 | W-39 | [OpenFF Protein-Ligand MD](workflows/omsf/w03-openff-protein-ligand-md/README.md) | Solvate, parameterize with OpenFF Sage + ff14SB via Interchange, run OpenMM replicas in parallel, analyze |
 
@@ -92,7 +92,7 @@ uv run horus run workflow.yaml
 
 | ID | Workflow | Description |
 |---|---|---|
-| W-43 | [Influenza Segments Starter](workflows/bioinformatics/w01-flu-segments-starter/README.md) | Influenza segment FASTA → header parsing, QC, longest-ORF translation and an HTML report; fully local, runs in seconds. |
+| W-43 | [Influenza Segments Starter](workflows/bioinformatics/w01-flu-segments-starter/README.md) | Influenza segment FASTA → header parsing, QC, longest-ORF translation and an HTML report. |
 
 ### AI
 
@@ -124,7 +124,7 @@ features rather than a science domain.
 | W-07 | [Programmatic Dynamic DAG](workflows/engine-showcases/w02-programmatic-dynamic-dag/README.md) | A task generates downstream tasks at runtime from the data it reads, via `add_task`/`expand` |
 | W-08 | [Bounded Loop (Range Map)](workflows/engine-showcases/w03-loop-map/README.md) | Run N deterministic iterations as a `horus_map` over a generated index list and gather the results |
 | W-27 | [Subworkflow Reuse](workflows/engine-showcases/w04-subworkflow-reuse/README.md) | Inline a child workflow into the parent with `sub:`, reusing one YAML-anchored body across two instances |
-| W-41 | [Execution Path Coverage](workflows/engine-showcases/w05-execution-path-coverage/README.md) | One measurable task per execution mechanism (subprocess, venv, container, in-process) as an acceptance harness for per-task resource measurement |
+| W-41 | [Execution Path Coverage](workflows/engine-showcases/w05-execution-path-coverage/README.md) | One measurable task per execution mechanism as an acceptance harness for per-task resource measurement |
 
 ## Contributing
 

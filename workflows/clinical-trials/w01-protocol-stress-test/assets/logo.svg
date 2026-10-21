@@ -1,12 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#b91c1c"/><stop offset="1" stop-color="#3f1212"/></linearGradient>
-  <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#e2e8f0"/></marker></defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <rect x="136" y="96" width="240" height="320" rx="28" fill="#fef2f2"/>
-  <rect x="206" y="76" width="100" height="44" rx="14" fill="#7f1d1d"/>
-  <g stroke-width="16" stroke-linecap="round" fill="none">
-    <path d="M176,176 l22,22 l36,-40" stroke="#16a34a"/><line x1="258" y1="180" x2="336" y2="180" stroke="#f87171"/>
-    <path d="M176,256 l22,22 l36,-40" stroke="#16a34a"/><line x1="258" y1="260" x2="336" y2="260" stroke="#f87171"/>
-    <path d="M182,322 l40,40 M222,322 l-40,40" stroke="#b91c1c"/><line x1="258" y1="342" x2="320" y2="342" stroke="#f87171"/>
-  </g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#0f1419"/><rect x="130" y="96" width="252" height="320" rx="24" fill="none" stroke="#5b7c99" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/><path d="M172 256H212L236 182L276 330L300 256H340" fill="none" stroke="#d4a574" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"/><path d="M172 360H340" fill="none" stroke="#faf9f6" stroke-width="10" stroke-linecap="round" stroke-linejoin="round" stroke-dasharray="4 22"/></svg>

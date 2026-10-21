@@ -1,96 +1,27 @@
 # W-07 · Programmatic Dynamic DAG Showcase
 
-<img src="assets/logo.png" width="96" align="right" alt="W-07 logo">
-
 A task that reads its data and grows the rest of the DAG while it runs: one processing task per group it finds, plus a fan-in.
 
 ![Domain: Engine Showcases](https://img.shields.io/badge/domain-engine--showcases-orange)
 
-![W-07 cover](assets/cover.png)
-
 ## Overview
 
-A minimal demonstration of horus-runtime's runtime DAG-mutation API: a task
-doesn't just consume/produce artifacts, it can **generate the rest of the DAG
-while it's running**, based on data it only sees at execution time. Here,
-`plan` reads a small JSON dataset, discovers how many distinct groups are in
-it, and — from inside its own task function — adds one processing task per
-group plus a fan-in task, none of which existed when the workflow started.
-There is no science and no YAML here (this is the pure-Python builder path);
-the point is the `HorusContext.get_context().workflow` / `add_task` /
-`expand` pattern, which is the mechanism a real pipeline would use for e.g.
-"one task per file format actually present in this upload" or "one task per
-cluster returned by a discovery step" — cases a `horus_map`
-(see W-06) can't express because the fan-out isn't over a static collection,
-it's a decision the task itself makes.
+Shows runtime DAG mutation in horus-runtime. The `plan` task reads a JSON dataset, finds its distinct groups and, from inside its own function, adds one `process_<group>` task per group (`workflow.add_task`) plus a `combine` fan-in task with its edges (`workflow.expand`). Unlike a `horus_map` ([W-06](../w01-fanout-map-gather/README.md)), the fan-out is decided by the task. The DAG is built in Python (`run.py`), with no `workflow.yaml`. It starts with 1 task (`plan`) and grows to 5 for the bundled dataset (3 groups).
 
 ## Pipeline
 
 ```
-plan                       examples/dataset.json (6 records, 3 groups) ──► (no static output)
-   │  reads the dataset, discovers groups {alpha, beta, gamma}, then AT RUNTIME:
-   │    - adds one process_<group> task per group  (workflow.add_task, one at a time)
-   │    - adds a combine task + all its fan-in edges in one call (workflow.expand)
-   ▼
-process_alpha  process_beta  process_gamma     (generated tasks, run after plan)
-   │  each summarizes its group's records       ──► results/<group>.json
-   └──────────────┬──────────────┘
-                   ▼
-combine                     results/alpha.json + beta.json + gamma.json ──► results/combined.json
-   │  sums count/sum across every generated group task
+plan                reads dataset, adds tasks at runtime
+process_<group>     one per group ──► results/<group>.json
+combine             results/*.json ──► results/combined.json
 ```
-
-## Quick start
-
-```bash
-# Install uv if you don't have it
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-cd workflows/engine-showcases/w02-programmatic-dynamic-dag
-uv sync
-# or: pip install horus-runtime
-
-uv run python run.py
-```
-
-`run.py` is the entrypoint (there's no `workflow.yaml` — the DAG is built and
-mutated entirely in Python). Outputs land in `results/`: one
-`<group>.json` per discovered group plus `combined.json`.
 
 ## Inputs / Outputs
 
-**Input** — `examples/dataset.json`: 6 records, each `{"group": ..., "n": ...}`,
-spanning 3 groups (`alpha`: 2 records, `beta`: 3, `gamma`: 1).
+- Input: `examples/dataset.json`, 6 records `{"group", "n"}` in 3 groups (`alpha` 2, `beta` 3, `gamma` 1).
+- `results/<group>.json`: `{"group", "count", "sum", "values"}`.
+- `results/combined.json`: `{"total_count": 6, "total_sum": 30, "per_group": {...}}` for the bundled dataset.
 
-**Outputs**
-- `results/<group>.json` — `{"group", "count", "sum", "values"}` for that group.
-- `results/combined.json` — `{"total_count": 6, "total_sum": 30, "per_group": {...}}`
-  for the bundled dataset (`alpha` sum 8, `beta` sum 12, `gamma` sum 10).
+## Parameters
 
-## Parameterization
-
-- `examples/dataset.json` — add/remove records or groups; `plan` adapts the
-  number of generated tasks to whatever groups are actually present, with no
-  code changes.
-
-## Running in Temple Compute
-
-This showcase is Python-only (`run.py`, closures over runtime data), so it has no
-`workflow.yaml` and is not published to the tc-os library: the library seeds from YAML
-workflows. Run it locally with `uv run python run.py`.
-
-## Implementation notes
-
-- `plan` (`run.py`) is a normal `@FunctionTask.task`; the dynamic part is
-  entirely inside its function body, via `HorusContext.get_context().workflow`
-  — the *running* `BaseWorkflow` instance, reachable from any task's own code.
-- Two mutation entry points are shown side by side: `workflow.add_task(task)`
-  is called once per group (the granular "as tasks are generated" pattern —
-  no edge is needed since each task is created *during* `plan`'s own
-  execution, so it can only run after `plan` completes); `workflow.expand
-  (tasks=[...], edges=[...])` adds the `combine` task together with all of its
-  fan-in edges from the generated `process_<group>` tasks in one call.
-- `combine`'s inputs (`in_<group>`, one per discovered group) aren't known
-  until runtime, so its function signature uses `**kwargs` — the
-  `python_function` runtime's parameter-name injection passes every declared
-  input/output through when a function declares `**kwargs`.
+- `examples/dataset.json`: add or remove records or groups; the number of generated tasks follows.
