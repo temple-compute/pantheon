@@ -7,7 +7,7 @@ name: Lacuna Cryptic Pocket Discovery
 # it into a venv with `uv pip install` and runs the `lacuna` CLI entrypoint directly.
 _executor: &executor
   kind: uv_python_environment
-  environment_dir: "../.horus_uv_env_lacuna"
+  environment_dir: "../../.horus_uv_env_lacuna" # one env per run, shared by all tasks
   python: "3.11"
   requirements:
     - "lacuna-pockets>=1.1.0"

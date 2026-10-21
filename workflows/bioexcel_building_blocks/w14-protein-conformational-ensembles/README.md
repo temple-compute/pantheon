@@ -29,7 +29,7 @@ pcz_stiffness, pcz_collectivity                    Apparent stiffness, collectiv
 
 ## Inputs / Outputs
 
-Outputs (`results/`, prefixed `1ake_` except `input.pdb`):
+Outputs (`results/`):
 - `input.pdb` and the extracted model, monomer and masks
 - Per-method ensemble trajectories (`.trr`) and RMSD `.dat` files
 - `concat_traj.*`, `concat_cluster.pdb`, `meta_traj_*`: meta-trajectory and GROMACS cluster output
@@ -53,7 +53,7 @@ Outputs (`results/`, prefixed `1ake_` except `input.pdb`):
 - [biobb_flexserv](https://github.com/bioexcel/biobb_flexserv)
 - [biobb_wf_flexdyn tutorial notebook](https://github.com/bioexcel/biobb_wf_flexdyn)
 - [CONCOORD](https://www3.mpibpc.mpg.de/groups/de_groot/concoord/concoord.html)
-- [ProDy](https://prody.csb.pitt.edu/)
+- [ProDy](https://github.com/prody/ProDy)
 - [FlexServ](https://mmb.irbbarcelona.org/FlexServ/)
 - [NOLB](https://team.inria.fr/nano-d/software/nolb-normal-modes)
 - [iMODS](https://imods.chaconlab.org/)

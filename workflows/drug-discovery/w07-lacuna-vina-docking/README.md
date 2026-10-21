@@ -45,8 +45,9 @@ report    pocket_report.json          ──► results/report.html + results/po
 
 ## References
 
-- Lacuna: [mooreneural/lacuna](https://github.com/mooreneural/lacuna),
-  [PyPI](https://pypi.org/project/lacuna-pockets/)
+- [Lacuna](https://github.com/mooreneural/lacuna) · [PyPI](https://pypi.org/project/lacuna-pockets/)
+- [AutoDock Vina](https://github.com/ccsb-scripps/AutoDock-Vina) · [docs](https://autodock-vina.readthedocs.io)
+- [Meeko](https://github.com/forlilab/Meeko) · [Open Babel](https://github.com/openbabel/openbabel)
 - Moore CW. *Lacuna: Cryptic Binding Pocket Discovery via Conformational Ensemble
   Analysis.* bioRxiv 2026. doi:10.64898/2026.08.14.744956
 - Moore CW. *Cryptic binding sites are detected but not ranked: coverage,

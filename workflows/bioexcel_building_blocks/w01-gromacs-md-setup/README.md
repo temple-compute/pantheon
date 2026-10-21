@@ -47,5 +47,9 @@ Force field, thermostat and restraints are set in `configs/*.yaml`.
 
 - [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [GROMACS](https://www.gromacs.org)
+- [biobb_gromacs](https://github.com/bioexcel/biobb_gromacs)
+- [biobb_model](https://github.com/bioexcel/biobb_model)
+- [biobb_io](https://github.com/bioexcel/biobb_io)
+- [biobb_analysis](https://github.com/bioexcel/biobb_analysis)
 - [CHARMM36 force field](http://mackerell.umaryland.edu/charmm_ff.shtml)
 - [BioExcel MD setup tutorial](https://biobb-wf-md-setup.readthedocs.io)

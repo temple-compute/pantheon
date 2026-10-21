@@ -1,4 +1,4 @@
-"""Clean the CYP3A4 data and write one anvil cross-validation recipe per model.
+"""Clean the target's ChEMBL data and write one anvil cross-validation recipe per model.
 
 Cleaning is cells 9-13 of upstream showcase/OpenADMET_Models_Showcase.ipynb:
 add the OPENADMET_* standard headers to the ChEMBL35 aggregated parquet.
@@ -57,11 +57,11 @@ def _cv_eval(kind, labels, n_splits, n_repeats):
     ]
 
 
-def recipe(model, n_splits, n_repeats):
+def recipe(model, n_splits, n_repeats, target_name):
     data = {"resource": "{{ ANVIL_DIR }}/data.csv", "type": "intake",
             "input_col": "OPENADMET_CANONICAL_SMILES", "target_cols": [TARGET], "dropna": True}
     meta = {"authors": "OpenADMET showcase (ported to Horus)", "email": "noreply@example.org",
-            "biotargets": ["CYP3A4"], "build_number": 0, "name": model,
+            "biotargets": [target_name], "build_number": 0, "name": model,
             "tag": "openadmet-chembl", "tags": ["openadmet", "pchembl"], "version": "v1"}
     if model == "chemprop":
         meta.update(description="single-task Chemprop regression", driver="pytorch")
@@ -98,10 +98,10 @@ def recipe(model, n_splits, n_repeats):
     return {"data": data, "metadata": meta, "procedure": procedure, "report": {"eval": evals}}
 
 
-def clean(parquet, out_csv):
+def clean(parquet, out_csv, target_name):
     df = pd.read_parquet(parquet)
     df["OPENADMET_ACTIVITY_TYPE"] = "IC50"
-    df["Target"] = "CYP3A4"
+    df["Target"] = target_name
     df[TARGET] = df["pchembl_value_mean"]
     df.to_csv(out_csv, index=False)
     print(f"{len(df)} compounds -> {out_csv}")
@@ -125,7 +125,7 @@ def parse_count(name, text, minimum):
     return int(value)
 
 
-def write_all(data_csv, out, models, n_splits, n_repeats):
+def write_all(data_csv, out, models, n_splits, n_repeats, target_name):
     # Horus keeps this folder between runs; drop slots of an earlier model list.
     shutil.rmtree(out, ignore_errors=True)
     out.mkdir(parents=True)
@@ -133,7 +133,7 @@ def write_all(data_csv, out, models, n_splits, n_repeats):
         slot = out / model
         slot.mkdir(exist_ok=True)
         shutil.copyfile(data_csv, slot / "data.csv")
-        text = HEADER + yaml.safe_dump(recipe(model, n_splits, n_repeats), sort_keys=False)
+        text = HEADER + yaml.safe_dump(recipe(model, n_splits, n_repeats, target_name), sort_keys=False)
         (slot / "recipe.yaml").write_text(text)
         print(f"wrote {slot / 'recipe.yaml'}")
 
@@ -145,10 +145,10 @@ def selftest():
         pd.DataFrame({"OPENADMET_CANONICAL_SMILES": ["CCO", "CCN"],
                       "pchembl_value_mean": [5.0, 6.5]}).to_parquet(tmp / "in.parquet")
         csv = tmp / "in.csv"
-        clean(tmp / "in.parquet", csv)
+        clean(tmp / "in.parquet", csv, "T1")
         df = pd.read_csv(csv)
         assert df[TARGET].tolist() == [5.0, 6.5]
-        assert set(df["Target"]) == {"CYP3A4"} and set(df["OPENADMET_ACTIVITY_TYPE"]) == {"IC50"}
+        assert set(df["Target"]) == {"T1"} and set(df["OPENADMET_ACTIVITY_TYPE"]) == {"IC50"}
         assert parse_models(" lgbm, rf ") == ["lgbm", "rf"]
         for bad in ["", "lgbm,svm", "rf,rf"]:
             try:
@@ -165,17 +165,18 @@ def selftest():
                 pass
             else:
                 raise AssertionError(bad)
-        write_all(csv, tmp / "two", ["lgbm", "rf"], 2, 3)
+        write_all(csv, tmp / "two", ["lgbm", "rf"], 2, 3, "T1")
         assert sorted(p.name for p in (tmp / "two").iterdir()) == ["lgbm", "rf"]
         r = yaml.safe_load((tmp / "two/lgbm/recipe.yaml").read_text())
         assert (tmp / "two/lgbm/recipe.yaml").read_text().startswith("# Derived from OpenADMET")
+        assert r["metadata"]["biotargets"] == ["T1"]
         assert r["data"]["resource"] == "{{ ANVIL_DIR }}/data.csv"
         assert r["procedure"]["model"]["params"]["n_estimators"] == 500
         assert r["procedure"]["model"]["params"]["n_jobs"] == N_JOBS
         assert r["report"]["eval"][1]["params"]["n_splits"] == 2
         assert r["report"]["eval"][1]["params"]["n_repeats"] == 3
         assert (tmp / "two/rf/data.csv").read_text() == csv.read_text()
-        write_all(csv, tmp / "all", SUPPORTED, 5, 5)
+        write_all(csv, tmp / "all", SUPPORTED, 5, 5, "T1")
         assert len(list((tmp / "all").iterdir())) == 5
         cb = yaml.safe_load((tmp / "all/catboost/recipe.yaml").read_text())
         assert cb["procedure"]["model"]["params"]["thread_count"] == N_JOBS
@@ -183,7 +184,7 @@ def selftest():
         assert cp["procedure"]["train"]["type"] == "LightningTrainer"
         assert cp["procedure"]["train"]["params"]["accelerator"] == "cpu"
         assert cp["report"]["eval"][1]["params"]["n_repeats"] == 5
-        write_all(csv, tmp / "all", ["lgbm", "rf"], 5, 5)  # shorter list: no stale slots
+        write_all(csv, tmp / "all", ["lgbm", "rf"], 5, 5, "T1")  # shorter list: no stale slots
         assert sorted(p.name for p in (tmp / "all").iterdir()) == ["lgbm", "rf"]
     print("selftest ok")
 
@@ -191,7 +192,8 @@ def selftest():
 def main():
     ap = argparse.ArgumentParser(description=__doc__)
     ap.add_argument("--selftest", action="store_true", help="run the unit test and exit")
-    ap.add_argument("--parquet", type=Path, help="ChEMBL CYP3A4 aggregated parquet")
+    ap.add_argument("--parquet", type=Path, help="ChEMBL aggregated parquet")
+    ap.add_argument("--target-name", help="biological target label (Target column, recipe biotargets)")
     ap.add_argument("--cleaned", type=Path, help="where to write the cleaned CSV")
     # nargs: horus renders a multichoice as separate words; a comma list also works.
     ap.add_argument("--models", nargs="+", help=f"models from {','.join(SUPPORTED)}")
@@ -201,8 +203,8 @@ def main():
     a = ap.parse_args()
     if a.selftest:
         return selftest()
-    if not (a.parquet and a.cleaned and a.models and a.cv_folds and a.cv_repeats and a.out):
-        ap.error("--parquet, --cleaned, --models, --cv-folds, --cv-repeats and --out are required")
+    if not (a.parquet and a.cleaned and a.target_name and a.models and a.cv_folds and a.cv_repeats and a.out):
+        ap.error("--parquet, --cleaned, --target-name, --models, --cv-folds, --cv-repeats and --out are required")
     try:
         models = parse_models(",".join(a.models))
         n_splits = parse_count("cv_folds", a.cv_folds, 2)
@@ -210,8 +212,8 @@ def main():
     except ValueError as e:
         ap.error(str(e))
     a.cleaned.parent.mkdir(parents=True, exist_ok=True)
-    clean(a.parquet, a.cleaned)
-    write_all(a.cleaned, a.out, models, n_splits, n_repeats)
+    clean(a.parquet, a.cleaned, a.target_name)
+    write_all(a.cleaned, a.out, models, n_splits, n_repeats, a.target_name)
 
 
 if __name__ == "__main__":

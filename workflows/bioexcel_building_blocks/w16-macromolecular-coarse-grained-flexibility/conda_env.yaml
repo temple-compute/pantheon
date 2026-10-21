@@ -7,6 +7,7 @@ dependencies:
   - biobb_io==5.2.3
   - biobb_structure_utils==5.2.1
   - biobb_analysis==5.2.1
+  - ambertools # provides cpptraj, which biobb_analysis calls but does not install
   - jupyter
   - plotly
   - nglview<=4.0

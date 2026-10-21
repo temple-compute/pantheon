@@ -110,17 +110,14 @@ artifacts:
     kind: file
     path: configs/reduce_add_hydrogens.yaml
 
-  - id: remove_ligand_bme_config
-    name: BME ligand removal config
-    description: Sets the BME ligand code to strip from the structure.
-    kind: file
-    path: configs/remove_ligand_bme.yaml
-
-  - id: remove_ligand_po4_config
-    name: PO4 ligand removal config
-    description: Sets the PO4 ligand code to strip from the structure.
-    kind: file
-    path: configs/remove_ligand_po4.yaml
+  - id: remove_ligands
+    name: Residues to remove
+    description: Comma-separated residue names (e.g. crystallization additives) stripped from the complex before pdb4amber; leave empty to remove none.
+    kind: string
+    path: params/remove_ligands.txt
+    value: PO4,BME
+    pattern: '([A-Za-z0-9]{1,3}(,[A-Za-z0-9]{1,3})*)?'
+    max_length: 128
 
   - id: sander_h_min_config
     name: Hydrogen minimization config
@@ -217,64 +214,42 @@ tasks:
     target: *target
 
   - kind: horus_task
-    id: remove_ligand_po4
-    name: Remove PO4 ligand from structure
-    description: Removes the co-crystallized PO4 ligand from the structure.
+    id: remove_residues
+    name: Remove unwanted residues from structure
+    description: Removes every residue named in remove_ligands (biobb remove_ligand, one pass per name); an empty list copies the structure unchanged.
     inputs:
-      - id: remove_ligand_po4_config
-        name: PO4 ligand removal config
-        kind: file
-        path: configs/remove_ligand_po4.yaml
+      - id: remove_ligands
+        name: Residues to remove
+        kind: string
+        path: params/remove_ligands.txt
       - id: nowat_pdb
         name: Water-stripped structure
         kind: file
         path: results/complex.nowat.pdb
     outputs:
-      - id: nopo4_pdb
-        name: PO4-stripped structure
+      - id: stripped_pdb
+        name: Residue-stripped structure
         kind: file
-        path: results/complex.noPO4.pdb
+        path: results/complex.stripped.pdb
     executor: *executor
     runtime:
       kind: command
       command: >-
-        remove_ligand
-        --config ${remove_ligand_po4_config}
-        --input_structure_path ${nowat_pdb}
-        --output_structure_path ${nopo4_pdb}
-    target: *target
-
-  - kind: horus_task
-    id: remove_ligand_bme
-    name: Remove BME ligand from structure
-    inputs:
-      - id: remove_ligand_bme_config
-        kind: file
-        path: configs/remove_ligand_bme.yaml
-      - id: nopo4_pdb
-        kind: file
-        path: results/complex.noPO4.pdb
-    outputs:
-      - id: nobme_pdb
-        kind: file
-        path: results/complex.noBME.pdb
-    executor: *executor
-    runtime:
-      kind: command
-      command: >-
-        remove_ligand
-        --config ${remove_ligand_bme_config}
-        --input_structure_path ${nopo4_pdb}
-        --output_structure_path ${nobme_pdb}
+        set -e; cp ${nowat_pdb} ${stripped_pdb};
+        for res in $$(echo ${remove_ligands} | tr , ' '); do
+        remove_ligand --config "$$(printf '{"properties":{"ligand":"%s"}}' "$$res")"
+        --input_structure_path ${stripped_pdb}
+        --output_structure_path ${stripped_pdb}.tmp.pdb;
+        mv ${stripped_pdb}.tmp.pdb ${stripped_pdb}; done
     target: *target
 
   - kind: horus_task
     id: pdb4amber
     name: Prepare PDB for AMBER (pdb4amber)
     inputs:
-      - id: nobme_pdb
+      - id: stripped_pdb
         kind: file
-        path: results/complex.noBME.pdb
+        path: results/complex.stripped.pdb
     outputs:
       - id: pdb4amber_pdb
         kind: file
@@ -284,7 +259,7 @@ tasks:
       kind: command
       command: >-
         pdb4amber_run
-        --input_pdb_path ${nobme_pdb}
+        --input_pdb_path ${stripped_pdb}
         --output_pdb_path ${pdb4amber_pdb}
     target: *target
 
@@ -1068,18 +1043,13 @@ edges:
 
   - source: remove_pdb_water
     source_output: nowat_pdb
-    target: remove_ligand_po4
+    target: remove_residues
     target_input: nowat_pdb
 
-  - source: remove_ligand_po4
-    source_output: nopo4_pdb
-    target: remove_ligand_bme
-    target_input: nopo4_pdb
-
-  - source: remove_ligand_bme
-    source_output: nobme_pdb
+  - source: remove_residues
+    source_output: stripped_pdb
     target: pdb4amber
-    target_input: nobme_pdb
+    target_input: stripped_pdb
 
   - source: pdb4amber
     source_output: pdb4amber_pdb
@@ -1376,15 +1346,10 @@ edges:
     target: reduce_add_hydrogens
     target_input: reduce_add_hydrogens_config
 
-  - source: artifact-remove_ligand_bme_config
-    source_output: remove_ligand_bme_config
-    target: remove_ligand_bme
-    target_input: remove_ligand_bme_config
-
-  - source: artifact-remove_ligand_po4_config
-    source_output: remove_ligand_po4_config
-    target: remove_ligand_po4
-    target_input: remove_ligand_po4_config
+  - source: artifact-remove_ligands
+    source_output: remove_ligands
+    target: remove_residues
+    target_input: remove_ligands
 
   - source: artifact-sander_h_min_config
     source_output: sander_h_min_config

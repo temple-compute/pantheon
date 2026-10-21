@@ -45,3 +45,4 @@ rank                 affinity -> ΔG, sort         ──► results/deltaG_tabl
 
 - [DrugFlow GitHub](https://github.com/LPDI-EPFL/DrugFlow) · checkpoint on [Zenodo](https://zenodo.org/records/14919171)
 - [Boltz-2 GitHub](https://github.com/jwohlwend/boltz)
+- [RDKit](https://github.com/rdkit/rdkit)

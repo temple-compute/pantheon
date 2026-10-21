@@ -11,7 +11,7 @@ Predicts CYP3A4 inhibition (pIC50) with [OpenADMET](https://github.com/OpenADMET
 ## Pipeline
 
 ```
-make_recipes  cleaned training data       --> data/cleaned_cyp3a4.csv, recipes/<model>/{recipe.yaml,data.csv}
+make_recipes  cleaned training data       --> data/cleaned.csv, recipes/<model>/{recipe.yaml,data.csv}
 train         openadmet anvil, 1 per model --> trained/<slot>/model/
 compare       openadmet compare           --> results/comparisons/
 predict       best mean CV R2 model       --> results/predictions.csv
@@ -35,12 +35,18 @@ report        CV metrics + top compounds  --> results/metrics.csv, results/top_p
 |---|---|---|
 | `dataset` | ChEMBL35 CYP3A4 parquet | Training set |
 | `compounds` | `examples/compounds_for_inference.csv` | Compounds to predict |
+| `target_name` | `CYP3A4` | Biological target label, written to the cleaned data's `Target` column and the recipes' `biotargets` |
 | `models` | `lgbm`, `rf`, `xgboost`, `catboost` | Models to train; `chemprop` can be added |
 | `cv_folds` | 5 | k of the repeated k-fold CV (2-10) |
 | `cv_repeats` | 5 | Repeats of the k-fold CV (1-10) |
 
 ## References
 
+- [OpenADMET models](https://github.com/OpenADMET/openadmet-models)
+- [OpenADMET demos](https://github.com/OpenADMET/openadmet-demos)
+- [molfeat (OpenADMET fork)](https://github.com/OpenADMET/molfeat)
+- [Chemprop](https://github.com/chemprop/chemprop)
+- [RDKit](https://github.com/rdkit/rdkit)
 - OMSF workflow directory: https://directory.omsf.io/workflows/
 - OpenADMET demos: https://demos.openadmet.org · https://github.com/OpenADMET/openadmet-demos
 - openadmet-models: https://github.com/OpenADMET/openadmet-models

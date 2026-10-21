@@ -60,4 +60,9 @@ report               k-means over all replicas    --> results/report.html, resul
 
 ## References
 
+- [AmberTools](https://ambermd.org) · [cpptraj](https://github.com/Amber-MD/cpptraj) · [ParmEd](https://github.com/ParmEd/ParmEd)
+- [OpenMM](https://github.com/openmm/openmm)
+- [PROPKA](https://github.com/jensengroup/propka)
+- [Reduce](https://github.com/rlabduke/reduce)
+- [Open Babel](https://github.com/openbabel/openbabel)
 - [MolBioMedUAB/protocols](https://github.com/MolBioMedUAB/protocols) -- `MD/cMD/create_md_custom.sh`, the source protocol this workflow ports.

@@ -49,6 +49,7 @@ The example data are NCBI records (`examples/SOURCES.md`) with two QC failures (
 
 ## References
 
+- [Biopython](https://github.com/biopython/biopython)
 - Inspired by the stage layout of [FluTyper](https://github.com/ValldHebron-Bioinformatics/FluTyper) (Vall d'Hebron Bioinformatics).
 - Example sequences: NCBI GenBank, see `examples/SOURCES.md`.
 - License: MIT (repo license).

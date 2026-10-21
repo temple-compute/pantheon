@@ -3,7 +3,7 @@ name: Coarse-Grained Protein Flexibility (FlexServ)
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
@@ -164,7 +164,7 @@ tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Fetch or upload the structure
-    description: Downloads the Ribosomal Protein S15 structure (PDB 1A32) from the RCSB.
+    description: Downloads the structure from the RCSB PDB, or copies the uploaded file when the PDB code is empty.
     inputs:
       - id: structure
         name: Structure (PDB upload)
@@ -176,10 +176,10 @@ tasks:
         path: params/pdb_id.txt
     outputs:
       - id: downloaded_pdb
-        name: Downloaded structure (1A32)
+        name: Downloaded structure
         kind: file
-        path: results/1a32.pdb
-    executor: *docker_executor_flexserv
+        path: results/structure.pdb
+    executor: *executor
     runtime:
       kind: command
       command: >-
@@ -199,15 +199,15 @@ tasks:
         kind: file
         path: configs/extract_atoms_ca.yaml
       - id: downloaded_pdb
-        name: Downloaded structure (1A32)
+        name: Downloaded structure
         kind: file
-        path: results/1a32.pdb
+        path: results/structure.pdb
     outputs:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
-    executor: *docker_executor_flexserv
+        path: results/structure_ca.pdb
+    executor: *executor
     runtime:
       kind: command
       command: >-
@@ -230,7 +230,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
     outputs:
       - id: bd_crd
         name: BD ensemble trajectory
@@ -268,7 +268,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
       - id: bd_crd
         name: BD ensemble trajectory
         kind: file
@@ -282,7 +282,7 @@ tasks:
         name: BD ensemble trajectory (XTC)
         kind: file
         path: results/bd_ensemble.xtc
-    executor: *docker_executor_flexserv
+    executor: *executor
     runtime:
       kind: command
       command: >-
@@ -304,7 +304,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
     outputs:
       - id: dmd_crd
         name: DMD ensemble trajectory
@@ -341,7 +341,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
       - id: dmd_crd
         name: DMD ensemble trajectory
         kind: file
@@ -355,7 +355,7 @@ tasks:
         name: DMD ensemble trajectory (XTC)
         kind: file
         path: results/dmd_ensemble.xtc
-    executor: *docker_executor_flexserv
+    executor: *executor
     runtime:
       kind: command
       command: >-
@@ -381,7 +381,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
     outputs:
       - id: nma_crd
         name: NMA ensemble trajectory
@@ -419,7 +419,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
       - id: nma_crd
         name: NMA ensemble trajectory
         kind: file
@@ -433,7 +433,7 @@ tasks:
         name: NMA ensemble trajectory (XTC)
         kind: file
         path: results/nma_ensemble.xtc
-    executor: *docker_executor_flexserv
+    executor: *executor
     runtime:
       kind: command
       command: >-
@@ -459,7 +459,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
       - id: bd_crd
         name: BD ensemble trajectory
         kind: file
@@ -493,7 +493,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
       - id: dmd_crd
         name: DMD ensemble trajectory
         kind: file
@@ -527,7 +527,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
       - id: nma_crd
         name: NMA ensemble trajectory
         kind: file
@@ -633,7 +633,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
       - id: bd_crd_uncompressed
         name: Decompressed BD trajectory
         kind: file
@@ -647,7 +647,7 @@ tasks:
         name: Decompressed BD trajectory (XTC)
         kind: file
         path: results/bd_ensemble_uncompressed.xtc
-    executor: *docker_executor_flexserv
+    executor: *executor
     runtime:
       kind: command
       command: >-
@@ -673,7 +673,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
       - id: dmd_crd_uncompressed
         name: Decompressed DMD trajectory
         kind: file
@@ -687,7 +687,7 @@ tasks:
         name: Decompressed DMD trajectory (XTC)
         kind: file
         path: results/dmd_ensemble_uncompressed.xtc
-    executor: *docker_executor_flexserv
+    executor: *executor
     runtime:
       kind: command
       command: >-
@@ -713,7 +713,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
       - id: nma_crd_uncompressed
         name: Decompressed NMA trajectory
         kind: file
@@ -727,7 +727,7 @@ tasks:
         name: Decompressed NMA trajectory (XTC)
         kind: file
         path: results/nma_ensemble_uncompressed.xtc
-    executor: *docker_executor_flexserv
+    executor: *executor
     runtime:
       kind: command
       command: >-
@@ -835,7 +835,7 @@ tasks:
       - id: ca_pdb
         name: Cα-reduced structure
         kind: file
-        path: results/1a32_ca.pdb
+        path: results/structure_ca.pdb
       - id: proj1_crd
         name: PC1 animation trajectory
         kind: file
@@ -845,7 +845,7 @@ tasks:
         name: PC1 animation trajectory (XTC)
         kind: file
         path: results/pcz_proj1.xtc
-    executor: *docker_executor_flexserv
+    executor: *executor
     runtime:
       kind: command
       command: >-
@@ -2115,6 +2115,11 @@ edges:
     source_output: md_pcz
     target: pcz_similarity_md_md
     target_input: md_pcz_2
+
+  # Ordering-only: md_md reads only the committed MoDEL PCZ, so without this it
+  # is outside the downstream scope of the trigger task and never scheduled.
+  - source: fetch_pdb
+    target: pcz_similarity_md_md
 
   - source: artifact-cpptraj_convert_proj1_config
     source_output: cpptraj_convert_proj1_config

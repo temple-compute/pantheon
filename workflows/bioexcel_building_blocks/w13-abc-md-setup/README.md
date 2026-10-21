@@ -48,5 +48,5 @@ Outputs (`results/`):
 - [biobb_amber](https://github.com/bioexcel/biobb_amber)
 - [biobb_wf_amber tutorial notebooks](https://github.com/bioexcel/biobb_wf_amber)
 - [AmberTools](https://ambermd.org/AmberTools.php)
-- [Ascona B-DNA Consortium / NAFlex ABC](http://mmb.irbbarcelona.org/NAFlex/ABC)
+- [Ascona B-DNA Consortium / NAFlex ABC](https://mmb.irbbarcelona.org/NAFlex/)
 - [The static and dynamic structural heterogeneities of B-DNA](https://doi.org/10.1093/nar/gkz905)

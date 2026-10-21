@@ -57,6 +57,16 @@ artifacts:
       commit 8b2c5f3).
     kind: file
     path: examples/compounds_for_inference.csv
+  - id: target_name
+    name: Target name
+    description: >-
+      Biological target of the training data, written to the cleaned data's
+      Target column and the anvil recipes' biotargets.
+    kind: string
+    path: params/target_name.txt
+    value: CYP3A4
+    min_length: 1
+    max_length: 64
   - &models
     id: models
     name: Models
@@ -106,6 +116,10 @@ tasks:
         name: Training dataset (parquet)
         kind: file
         path: examples/ChEMBL_IC50_CYP3A4_CHEMBL340_aggregated.parquet
+      - id: target_name
+        name: Target name
+        kind: string
+        path: params/target_name.txt
       - *models
       - id: cv_folds
         name: CV folds
@@ -117,9 +131,9 @@ tasks:
         path: params/cv_repeats.txt
     outputs:
       - id: cleaned
-        name: Cleaned CYP3A4 dataset
+        name: Cleaned dataset
         kind: file
-        path: data/cleaned_cyp3a4.csv
+        path: data/cleaned.csv
       - id: recipes
         name: Anvil recipes (one slot per model)
         kind: folder
@@ -133,7 +147,7 @@ tasks:
       kind: python_script
       script: scripts/make_recipes.py
       args: >-
-        --parquet ${dataset} --models ${models}
+        --parquet ${dataset} --target-name ${target_name} --models ${models}
         --cv-folds ${cv_folds} --cv-repeats ${cv_repeats}
         --cleaned ${cleaned} --out ${recipes}
     target: *local
@@ -242,7 +256,7 @@ tasks:
   - kind: horus_task
     id: report
     name: 5. Report
-    description: One row of CV metrics per model, plus the top predicted CYP3A4 inhibitors.
+    description: One row of CV metrics per model, plus the top predicted inhibitors.
     inputs:
       - id: trained_in
         name: Trained models
@@ -275,6 +289,10 @@ edges:
     source_output: dataset
     target: make_recipes
     target_input: dataset
+  - source: artifact-target_name
+    source_output: target_name
+    target: make_recipes
+    target_input: target_name
   - source: artifact-models
     source_output: models
     target: make_recipes

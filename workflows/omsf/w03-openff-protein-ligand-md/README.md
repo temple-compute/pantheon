@@ -22,7 +22,7 @@ analyze       mdtraj RMSD                       --> results/{rmsd.csv,report.htm
 - `receptor`: prepared PDB (protonated, capped, no missing atoms, no ligand). Default `examples/5tbm_prepared.pdb`.
 - `ligand`: SDF with explicit hydrogens, posed in the pocket; the residue is named `UNK`. Default `examples/PT2385.sdf`.
 - `results/rmsd.csv`: `replica, frame, time_ps, protein_ca_rmsd_A, ligand_rmsd_A`. Ligand RMSD is measured after aligning on protein Cα atoms.
-- `results/report.html`: per-replica summary and a Mol* view of the final frame. `results/final_frame.pdb`: last frame of replica 0.
+- `results/report.html`: per-replica summary and a Mol* view of the final frame, titled with `system_label`. `results/final_frame.pdb`: last frame of replica 0.
 - `trajectories/<i>/`: `trajectory.dcd`, `log.csv`, `complex.pdb`, `seed`.
 
 ## Parameters
@@ -30,6 +30,7 @@ analyze       mdtraj RMSD                       --> results/{rmsd.csv,report.htm
 | id | Default | Meaning |
 |---|---|---|
 | `receptor` / `ligand` | 5TBM / PT2385 examples | Inputs above |
+| `system_label` | `PT2385 / HIF-2α (5TBM)` | System name in the report title |
 | `n_replicas` | 3 | Independent replicas (1-100) |
 | `n_steps` | 500000 | MD steps per replica (1 ns at 2 fs; 1000-50,000,000) |
 | `padding_nm` | 1.0 | Solvent padding around the protein (0.5-5) |
@@ -42,6 +43,11 @@ Seeds are `2026 + replica index`.
 
 ## References
 
+- [OpenFF Toolkit](https://github.com/openforcefield/openff-toolkit)
+- [OpenFF Interchange](https://github.com/openforcefield/openff-interchange)
+- [OpenMM](https://github.com/openmm/openmm)
+- [PDBFixer](https://github.com/openmm/pdbfixer)
+- [MDTraj](https://github.com/mdtraj/mdtraj)
 - Upstream notebook: [openff-toolkit 0.19.0 toolkit_showcase](https://github.com/openforcefield/openff-toolkit/tree/0.19.0/examples/toolkit_showcase) (MIT, © Open Force Field Initiative)
 - [OMSF workflow directory](https://directory.omsf.io/workflows/)
 - [OpenFF Toolkit docs](https://docs.openforcefield.org/projects/toolkit/) · [Interchange](https://docs.openforcefield.org/projects/interchange/) · [OpenMM](https://openmm.org)

@@ -3,11 +3,30 @@ name: Autoencoder Collective Variables from MD
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
 artifacts:
+  - id: train_mddb_project
+    name: Training MDDB project
+    description: MDDB project id of the apo trajectory the autoencoder is trained on (default MCV1900210).
+    kind: string
+    path: params/train_mddb_project.txt
+    value: MCV1900210
+    pattern: '[A-Za-z0-9._-]+'
+    max_length: 32
+
+  - id: test_mddb_project
+    name: Test MDDB project
+    description: MDDB project id of the holo trajectory projected onto the latent space (default MCV1900212).
+      Must be the same protein as the training project.
+    kind: string
+    path: params/test_mddb_project.txt
+    value: MCV1900212
+    pattern: '[A-Za-z0-9._-]+'
+    max_length: 32
+
   - id: n_frames
     name: Frames per trajectory
     description: Frames downloaded from MDDB for the apo (training) and holo (test) trajectories,
@@ -118,28 +137,32 @@ artifacts:
 tasks:
   - kind: horus_task
     id: fetch_train_trajectory
-    name: Download apo training trajectory (6W9C_apo) from MDDB
-    description: Downloads the apo (ligand-free) 6W9C trajectory and structure from the MDDB database.
+    name: Download apo training trajectory from MDDB
+    description: Downloads the apo (ligand-free) training trajectory and structure from the MDDB database.
     inputs:
       - id: n_frames
         name: Frames per trajectory
         kind: number
         path: params/n_frames.txt
+      - id: train_mddb_project
+        name: Training MDDB project
+        kind: string
+        path: params/train_mddb_project.txt
     outputs:
       - id: train_structure
-        name: Apo structure (6W9C)
+        name: Apo structure
         kind: file
-        path: results/6W9C_apo.pdb
+        path: results/apo.pdb
       - id: train_trajectory
         name: Apo trajectory (raw)
         kind: file
-        path: results/6W9C_apo.xtc
+        path: results/apo.xtc
     executor: *executor
     runtime:
       kind: command
       command: >-
         mddb
-        --config '{"properties":{"node_id":"irb-dev","project_id":"MCV1900210","trj_format":"xtc","frames":"1-${n_frames}","selection":"backbone and .CA"}}'
+        --config '{"properties":{"node_id":"irb-dev","project_id":"${train_mddb_project}","trj_format":"xtc","frames":"1-${n_frames}","selection":"backbone and .CA"}}'
         --output_top_path ${train_structure}
         --output_trj_path ${train_trajectory}
     target:
@@ -157,16 +180,16 @@ tasks:
       - id: train_trajectory
         name: Apo trajectory (raw)
         kind: file
-        path: results/6W9C_apo.xtc
+        path: results/apo.xtc
       - id: train_structure
-        name: Apo structure (6W9C)
+        name: Apo structure
         kind: file
-        path: results/6W9C_apo.pdb
+        path: results/apo.pdb
     outputs:
       - id: train_trajectory_fit
         name: Apo trajectory (fitted)
         kind: file
-        path: results/6W9C_apo_fit.xtc
+        path: results/apo_fit.xtc
     executor: *executor
     runtime:
       kind: command
@@ -191,20 +214,20 @@ tasks:
       - id: train_trajectory_fit
         name: Apo trajectory (fitted)
         kind: file
-        path: results/6W9C_apo_fit.xtc
+        path: results/apo_fit.xtc
       - id: train_structure
-        name: Apo structure (6W9C)
+        name: Apo structure
         kind: file
-        path: results/6W9C_apo.pdb
+        path: results/apo.pdb
     outputs:
       - id: train_dataset
         name: Apo featurized dataset
         kind: file
-        path: results/6W9C_apo.pt
+        path: results/apo.pt
       - id: train_stats
         name: Apo featurization statistics
         kind: file
-        path: results/6W9C_apo_stats.pt
+        path: results/apo_stats.pt
     resources:
       cpus: 2
       memory_gb: 8
@@ -234,7 +257,7 @@ tasks:
       - id: train_stats
         name: Apo featurization statistics
         kind: file
-        path: results/6W9C_apo_stats.pt
+        path: results/apo_stats.pt
     outputs:
       - id: initial_model
         name: Untrained AE model
@@ -243,6 +266,7 @@ tasks:
     executor: *executor
     runtime:
       kind: command
+      # encoder/decoder_layers are hidden layers only: biobb adds the input layer from the stats feature count
       command: >-
         build_model
         --config '{"properties":{"model_type":"AutoEncoder","n_cvs":${n_cvs},"encoder_layers":[933,747,561,375,189],"decoder_layers":[189,375,561,747,933],"options":{"norm_in":{"mode":"min_max"},"encoder":{"activation":"relu","batchnorm":true,"dropout":0.0,"last_layer_activation":false},"decoder":{"activation":"relu","batchnorm":true,"dropout":0.0,"last_layer_activation":"sigmoid"},"optimizer":{"lr":1e-05}}}}'
@@ -271,7 +295,7 @@ tasks:
       - id: train_dataset
         name: Apo featurized dataset
         kind: file
-        path: results/6W9C_apo.pt
+        path: results/apo.pt
     outputs:
       - id: trained_model
         name: Trained AE model
@@ -300,28 +324,32 @@ tasks:
 
   - kind: horus_task
     id: fetch_test_trajectory
-    name: Download holo test trajectory (6W9C_holo) from MDDB
-    description: Downloads the holo (ligand-bound) 6W9C trajectory and structure from the MDDB database.
+    name: Download holo test trajectory from MDDB
+    description: Downloads the holo (ligand-bound) test trajectory and structure from the MDDB database.
     inputs:
       - id: n_frames
         name: Frames per trajectory
         kind: number
         path: params/n_frames.txt
+      - id: test_mddb_project
+        name: Test MDDB project
+        kind: string
+        path: params/test_mddb_project.txt
     outputs:
       - id: test_structure
-        name: Holo structure (6W9C)
+        name: Holo structure
         kind: file
-        path: results/6W9C_holo.pdb
+        path: results/holo.pdb
       - id: test_trajectory
         name: Holo trajectory (raw)
         kind: file
-        path: results/6W9C_holo.xtc
+        path: results/holo.xtc
     executor: *executor
     runtime:
       kind: command
       command: >-
         mddb
-        --config '{"properties":{"node_id":"irb-dev","project_id":"MCV1900212","trj_format":"xtc","frames":"1-${n_frames}","selection":"backbone and .CA"}}'
+        --config '{"properties":{"node_id":"irb-dev","project_id":"${test_mddb_project}","trj_format":"xtc","frames":"1-${n_frames}","selection":"backbone and .CA"}}'
         --output_top_path ${test_structure}
         --output_trj_path ${test_trajectory}
     target:
@@ -339,16 +367,16 @@ tasks:
       - id: test_trajectory
         name: Holo trajectory (raw)
         kind: file
-        path: results/6W9C_holo.xtc
+        path: results/holo.xtc
       - id: train_structure
-        name: Apo structure (6W9C)
+        name: Apo structure
         kind: file
-        path: results/6W9C_apo.pdb
+        path: results/apo.pdb
     outputs:
       - id: test_trajectory_fit
         name: Holo trajectory (fitted)
         kind: file
-        path: results/6W9C_holo_fit.xtc
+        path: results/holo_fit.xtc
     executor: *executor
     runtime:
       kind: command
@@ -373,20 +401,20 @@ tasks:
       - id: test_trajectory_fit
         name: Holo trajectory (fitted)
         kind: file
-        path: results/6W9C_holo_fit.xtc
+        path: results/holo_fit.xtc
       - id: test_structure
-        name: Holo structure (6W9C)
+        name: Holo structure
         kind: file
-        path: results/6W9C_holo.pdb
+        path: results/holo.pdb
     outputs:
       - id: test_dataset
         name: Holo featurized dataset
         kind: file
-        path: results/6W9C_holo.pt
+        path: results/holo.pt
       - id: test_stats
         name: Holo featurization statistics
         kind: file
-        path: results/6W9C_holo_stats.pt
+        path: results/holo_stats.pt
     resources:
       cpus: 2
       memory_gb: 8
@@ -420,7 +448,7 @@ tasks:
       - id: train_dataset
         name: Apo featurized dataset
         kind: file
-        path: results/6W9C_apo.pt
+        path: results/apo.pt
     outputs:
       - id: eval_results
         name: Model evaluation results
@@ -452,14 +480,14 @@ tasks:
         kind: file
         path: configs/make_ndx_apo.yaml
       - id: train_structure
-        name: Apo structure (6W9C)
+        name: Apo structure
         kind: file
-        path: results/6W9C_apo.pdb
+        path: results/apo.pdb
     outputs:
       - id: train_index
         name: Apo Cα index
         kind: file
-        path: results/6W9C_apo.ndx
+        path: results/apo.ndx
     executor: *executor
     runtime:
       kind: command
@@ -481,14 +509,14 @@ tasks:
         kind: file
         path: configs/make_ndx_holo.yaml
       - id: test_structure
-        name: Holo structure (6W9C)
+        name: Holo structure
         kind: file
-        path: results/6W9C_holo.pdb
+        path: results/holo.pdb
     outputs:
       - id: test_index
         name: Holo Cα index
         kind: file
-        path: results/6W9C_holo.ndx
+        path: results/holo.ndx
     executor: *executor
     runtime:
       kind: command
@@ -510,22 +538,22 @@ tasks:
         kind: file
         path: configs/gmx_rmsf_apo.yaml
       - id: train_structure
-        name: Apo structure (6W9C)
+        name: Apo structure
         kind: file
-        path: results/6W9C_apo.pdb
+        path: results/apo.pdb
       - id: train_trajectory
         name: Apo trajectory (raw)
         kind: file
-        path: results/6W9C_apo.xtc
+        path: results/apo.xtc
       - id: train_index
         name: Apo Cα index
         kind: file
-        path: results/6W9C_apo.ndx
+        path: results/apo.ndx
     outputs:
       - id: rmsf_apo
         name: Apo RMSF profile
         kind: file
-        path: results/6W9C_apo_rmsf.xvg
+        path: results/apo_rmsf.xvg
     executor: *executor
     runtime:
       kind: command
@@ -549,22 +577,22 @@ tasks:
         kind: file
         path: configs/gmx_rmsf_holo.yaml
       - id: test_structure
-        name: Holo structure (6W9C)
+        name: Holo structure
         kind: file
-        path: results/6W9C_holo.pdb
+        path: results/holo.pdb
       - id: test_trajectory
         name: Holo trajectory (raw)
         kind: file
-        path: results/6W9C_holo.xtc
+        path: results/holo.xtc
       - id: test_index
         name: Holo Cα index
         kind: file
-        path: results/6W9C_holo.ndx
+        path: results/holo.ndx
     outputs:
       - id: rmsf_holo
         name: Holo RMSF profile
         kind: file
-        path: results/6W9C_holo_rmsf.xvg
+        path: results/holo_rmsf.xvg
     executor: *executor
     runtime:
       kind: command
@@ -590,16 +618,16 @@ tasks:
       - id: test_stats
         name: Holo featurization statistics
         kind: file
-        path: results/6W9C_holo_stats.pt
+        path: results/holo_stats.pt
     outputs:
       - id: recon_trajectory
         name: Reconstructed holo trajectory
         kind: file
-        path: results/6W9C_holo_recon.xtc
+        path: results/holo_recon.xtc
       - id: recon_structure
         name: Reconstructed holo structure
         kind: file
-        path: results/6W9C_holo_recon.pdb
+        path: results/holo_recon.pdb
     resources:
       cpus: 2
       memory_gb: 8
@@ -628,20 +656,20 @@ tasks:
       - id: recon_structure
         name: Reconstructed holo structure
         kind: file
-        path: results/6W9C_holo_recon.pdb
+        path: results/holo_recon.pdb
       - id: recon_trajectory
         name: Reconstructed holo trajectory
         kind: file
-        path: results/6W9C_holo_recon.xtc
+        path: results/holo_recon.xtc
       - id: test_index
         name: Holo Cα index
         kind: file
-        path: results/6W9C_holo.ndx
+        path: results/holo.ndx
     outputs:
       - id: rmsf_holo_recon
         name: Reconstructed holo RMSF profile
         kind: file
-        path: results/6W9C_holo_recon_rmsf.xvg
+        path: results/holo_recon_rmsf.xvg
     executor: *executor
     runtime:
       kind: command
@@ -671,15 +699,15 @@ tasks:
       - id: train_index
         name: Apo Cα index
         kind: file
-        path: results/6W9C_apo.ndx
+        path: results/apo.ndx
       - id: train_structure
-        name: Apo structure (6W9C)
+        name: Apo structure
         kind: file
-        path: results/6W9C_apo.pdb
+        path: results/apo.pdb
       - id: train_stats
         name: Apo featurization statistics
         kind: file
-        path: results/6W9C_apo_stats.pt
+        path: results/apo_stats.pt
     outputs:
       - id: plumed_model
         name: PLUMED CV model
@@ -710,6 +738,16 @@ tasks:
       kind: local
 
 edges:
+  - source: artifact-train_mddb_project
+    source_output: train_mddb_project
+    target: fetch_train_trajectory
+    target_input: train_mddb_project
+
+  - source: artifact-test_mddb_project
+    source_output: test_mddb_project
+    target: fetch_test_trajectory
+    target_input: test_mddb_project
+
   - source: artifact-n_frames
     source_output: n_frames
     target: fetch_train_trajectory
@@ -839,6 +877,11 @@ edges:
     target_input: train_index
 
   # gmx_rmsf_holo
+  # Ordering-only: gmx_rmsf_holo reads only holo data, so without this it is
+  # outside the downstream scope of the trigger task and never scheduled.
+  - source: fetch_train_trajectory
+    target: gmx_rmsf_holo
+
   - source: fetch_test_trajectory
     source_output: test_structure
     target: gmx_rmsf_holo

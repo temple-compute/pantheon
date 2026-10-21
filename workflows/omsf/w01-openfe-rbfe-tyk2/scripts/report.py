@@ -38,7 +38,7 @@ if (typeof molstar === 'undefined') {
     layoutShowRemoteState: false, layoutShowSequence: false, layoutShowLog: false,
     viewportShowExpand: false})
     .then(async v => {
-      await v.loadStructureFromData(D.protein, 'pdb', {dataLabel: 'TYK2'});
+      await v.loadStructureFromData(D.protein, 'pdb', {dataLabel: D.target});
       for (const l of D.ligands) await v.loadStructureFromData(l.sdf, 'sdf', {dataLabel: l.name});
     })
     .catch(e => { status.textContent = 'Mol* failed to start: ' + e; });
@@ -101,15 +101,15 @@ def table(rows: list[list[str]]) -> str:
     return f"<table><tr>{head}</tr>{body}</table>"
 
 
-def render(ddg, dg, raw, net, protein: str, ligands: list[dict]) -> str:
+def render(ddg, dg, raw, net, protein: str, ligands: list[dict], target: str) -> str:
     edge_rows = [["ligand A", "ligand B", "mapped atoms"]] + [[a, b, str(n)] for a, b, n in net]
     # '</' would end the <script> early; JSON allows the escaped form.
-    data = json.dumps({"protein": protein, "ligands": ligands}).replace("</", "<\\/")
+    data = json.dumps({"protein": protein, "ligands": ligands, "target": target}).replace("</", "<\\/")
     return (
         "<!doctype html><html><head><meta charset=utf-8>"
         f"<title>OpenFE RBFE report</title><style>{CSS}</style>"
         f"<link rel=stylesheet href={MOLSTAR}/molstar.css></head><body>"
-        "<h1>OpenFE relative binding free energies: TYK2</h1>"
+        f"<h1>OpenFE relative binding free energies: {html.escape(target)}</h1>"
         "<p class=note>dG values are MLE estimates centred on 0.</p>"
         f"<h2>ddG per edge (kcal/mol)</h2>{table(ddg)}"
         f"<h2>dG per ligand (kcal/mol)</h2>{table(dg)}"
@@ -139,8 +139,8 @@ def selftest() -> None:
     recs = sdf_records("a\nM  END\n$$$$\n\n  RDKit  3D\nM  END\n$$$$\n")
     assert recs[1] == {"name": "", "sdf": "\n  RDKit  3D\nM  END\n$$$$\n"}
     page = render([["ligand_i", "ligand_j"], ["a", "b<"]], [["ligand"], ["a"]],
-                  [["leg"], ["complex"]], edges(g), "ATOM</script>", recs)
-    assert "b&lt;" in page and "ATOM<\\/script>" in page and "<td>complex</td>" in page
+                  [["leg"], ["complex"]], edges(g), "ATOM</script>", recs, "T<1")
+    assert "T&lt;1</h1>" in page and "b&lt;" in page and "ATOM<\\/script>" in page and "<td>complex</td>" in page
     print("selftest ok")
 
 
@@ -155,11 +155,12 @@ def main() -> None:
     ap.add_argument("--protein", type=Path, required=True)
     ap.add_argument("--ligands", type=Path, required=True)
     ap.add_argument("--out", type=Path, required=True)
+    ap.add_argument("--target-name", required=True, help="protein label for the title and viewer")
     a = ap.parse_args()
     a.out.parent.mkdir(parents=True, exist_ok=True)
     a.out.write_text(render(
         read_tsv(a.ddg), read_tsv(a.dg), read_tsv(a.raw), edges(a.network.read_text()),
-        a.protein.read_text(), sdf_records(a.ligands.read_text()),
+        a.protein.read_text(), sdf_records(a.ligands.read_text()), a.target_name,
     ))
 
 

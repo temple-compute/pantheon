@@ -44,7 +44,11 @@ assemble_complex          Receptor + pose complex
 ## References
 
 - [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
+- [AutoDock Vina](https://github.com/ccsb-scripps/AutoDock-Vina)
+- [Open Babel](https://github.com/openbabel/openbabel)
 - [biobb_vs](https://github.com/bioexcel/biobb_vs)
-- [AutoDock Vina](https://vina.scripps.edu)
+- [biobb_chemistry](https://github.com/bioexcel/biobb_chemistry)
+- [biobb_structure_utils](https://github.com/bioexcel/biobb_structure_utils)
+- [biobb_io](https://github.com/bioexcel/biobb_io)
 - [PDBe REST API](https://www.ebi.ac.uk/pdbe/pdbe-rest-api)
 - [BioExcel protein-ligand docking tutorial (PDBe REST-API variant)](https://biobb-wf-virtual-screening.readthedocs.io)

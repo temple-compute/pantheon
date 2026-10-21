@@ -6,7 +6,7 @@ name: Cavity Analysis across a Conformational Ensemble
 # run. That also means fpocket comes from the env, not a container.
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env_cavity"
+  environment_dir: "../../.horus_conda_env_cavity" # one env per run, shared by all tasks
   conda: micromamba # set to mamba/conda if that's what's on PATH
   environment_file: conda_env.yaml
 
@@ -47,6 +47,14 @@ artifacts:
     step: 100
     path: params/max_volume.txt
 
+  - id: residue_selection
+    name: Site residue selection
+    description: MDAnalysis selection (e.g. resid 31 or resid 21); only cavities whose centre lies within 10 Å of its centre of mass are kept. Leave empty to keep every cavity that passes the metric filters.
+    kind: string
+    max_length: 500
+    value: ""
+    path: params/residue_selection.txt
+
 tasks:
   # Wraps each input PDB in its own folder, because the `analyze` map fans out
   # over *sub-directories* -- the engine copytree's the i-th child into each
@@ -79,10 +87,6 @@ tasks:
   # The fan-out: one concurrent clone per model folder, each running the full
   # extract -> fpocket_run -> fpocket_filter -> filter_residue_com pipeline
   # into its own slot of results/analyzed/.
-  #
-  # Add --residue-selection "resid 31 or resid 21" (MDAnalysis syntax) to keep
-  # only the cavities near a site of interest; without it every cavity that
-  # passes the score/druggability/volume windows is kept.
   - kind: horus_map
     id: analyze
     name: Detect and filter cavities on each model concurrently
@@ -108,6 +112,10 @@ tasks:
         name: Maximum cavity volume
         kind: number
         path: params/max_volume.txt
+      - id: residue_selection
+        name: Site residue selection
+        kind: string
+        path: params/residue_selection.txt
     outputs:
       - id: analyzed
         name: Model cavity results
@@ -127,6 +135,7 @@ tasks:
         --score 0,1
         --druggability ${min_druggability},1
         --volume ${min_volume},${max_volume}
+        --residue-selection ${residue_selection}
         --distance-threshold 10
     target:
       kind: local
@@ -177,6 +186,10 @@ edges:
     source_output: max_volume
     target: analyze
     target_input: max_volume
+  - source: artifact-residue_selection
+    source_output: residue_selection
+    target: analyze
+    target_input: residue_selection
   - source: artifact-structures
     source_output: structures
     target: prepare_models

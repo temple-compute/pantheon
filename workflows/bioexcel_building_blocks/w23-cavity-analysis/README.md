@@ -12,7 +12,7 @@ Detects and ranks druggable cavities across a conformational ensemble (MD cluste
 
 ```
 prepare_models                                  Wrap each structure in its own model folder
-analyze[00..NN]                                 One clone per model: extract_molecule, fpocket_run, fpocket_filter, residue-distance filter
+analyze[00..NN]                                 One clone per model: extract_molecule, fpocket_run, fpocket_filter, optional residue-distance filter
 summarize                                       Rank models by volume, druggability and score
 ```
 
@@ -33,10 +33,13 @@ A model with no cavity inside the filter windows is absent from the summaries an
 | `min_druggability` | 0.2 | Cavities below this fpocket druggability score are dropped (0-1). |
 | `min_volume` | 100 | Cavities smaller than this are dropped (0-5000). |
 | `max_volume` | 5000 | Cavities larger than this are dropped (100-20000); keep above `min_volume`. |
+| `residue_selection` | empty | MDAnalysis selection of a site of interest (e.g. `resid 31 or resid 21`); only cavities within 10 Å of its centre of mass are kept. Empty keeps every cavity. |
 
 ## References
 
-- Source workflow: [bioexcel/biobb_vs_workflows](https://github.com/bioexcel/biobb_vs_workflows)
+- [BioExcel Building Blocks (biobb_vs)](https://github.com/bioexcel/biobb_vs)
+- [fpocket](https://github.com/Discngine/fpocket)
+- [MDAnalysis](https://github.com/MDAnalysis/mdanalysis)
 - fpocket: Le Guilloux, Schmidtke & Tuffery, *BMC Bioinformatics* (2009)
 - [BioExcel Building Blocks](https://mmb.irbbarcelona.org/biobb/) documentation
 - Downstream: [W-30 Cavity-Guided Virtual Screening](../w22-cavity-guided-virtual-screening/README.md)

@@ -46,6 +46,8 @@ generate_variants ────────────────────�
 
 ## References
 
+- [Synthea](https://github.com/synthetichealth/synthea)
+- [Anthropic Python SDK](https://github.com/anthropics/anthropic-sdk-python)
 - Liu R, Rizzo S, Whipple S, et al. Evaluating eligibility criteria of oncology trials using real-world data and AI (Trial Pathfinder). *Nature* 592, 629–633 (2021). doi:[10.1038/s41586-021-03430-5](https://doi.org/10.1038/s41586-021-03430-5)
 - Walonoski J, Kramer M, Nichols J, et al. Synthea: An approach, method, and software mechanism for generating synthetic patients and the synthetic electronic health care record. *JAMIA* 25(3), 230–238 (2018). <https://github.com/synthetichealth/synthea>
 - ClinicalTrials.gov API v2, U.S. National Library of Medicine. <https://clinicaltrials.gov/data-api/api>. Record NCT03036150.

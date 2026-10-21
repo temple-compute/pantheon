@@ -14,7 +14,7 @@ Checks and repairs a raw PDB entry before MD (default: human adenylate kinase 1A
 fetch_pdb -> structure_check                  Download, initial quality report
 extract_model -> extract_chain                Model 1, selected chain
 fix_altlocs -> fix_ssbonds                    Alternate locations, disulfides (CYX)
-remove_molecules_metals / _ligands            Remove ZN, SO4, AP5
+remove_molecules_metals / _ligands            Remove listed metal ions and ligands
 reduce_remove_hydrogens -> remove_pdb_water   Strip hydrogens and waters
 fix_amides -> fix_chirality -> fix_side_chain
 canonical_fasta -> fix_backbone               Missing backbone via Modeller
@@ -38,9 +38,9 @@ Outputs (`results/`):
 | `pdb_id` | `1z83` | PDB code to check and repair. |
 | `chain` | `A` | Chain to keep. |
 | `altlocs` | `["A45:A","A67:A","A85:A"]` | JSON list of alternate-location picks, one per residue (chain, residue, altloc kept); `[]` skips the step. Default is for 1Z83. |
+| `remove_metals` | `ZN` | Comma-separated metal ion residue names to strip; empty keeps all. Fails if none is present. |
+| `remove_ligands` | `SO4,AP5` | Comma-separated ligand residue names to strip; empty keeps all. Fails if none is present. |
 | `minimization_steps` | 500 | sander minimization cycles (0-20000). |
-
-The metal and ligand removal lists (ZN, SO4, AP5) are in `configs/`; for another entry they must be edited.
 
 ## References
 

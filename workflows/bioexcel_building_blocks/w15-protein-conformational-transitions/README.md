@@ -20,11 +20,11 @@ cpptraj_convert             Trajectory mdcrd -> XTC
 
 ## Inputs / Outputs
 
-Outputs (`results/`, file names keep the `1ake`/`4ake` prefixes whatever the inputs):
-- `1ake.pdb`, `4ake.pdb`: origin and target structures
-- `1ake.chains.pdb`, `4ake.chains.pdb`: selected chains; `1ake.chains.nolig.pdb`: origin without ligand
-- `1ake.aln`, `4ake.aln`: residue-mapping alignments
-- `1ake-4ake.godmd.mdcrd`, `.pdb`, `.xtc`: transition trajectory, reference structure and XTC conversion
+Outputs (`results/`):
+- `origin.pdb`, `target.pdb`: origin and target structures
+- `origin.chains.pdb`, `target.chains.pdb`: selected chains; `origin.chains.nolig.pdb`: origin without ligand
+- `origin.aln`, `target.aln`: residue-mapping alignments
+- `transition.godmd.mdcrd`, `.pdb`, `.xtc`: transition trajectory, reference structure and XTC conversion
 
 ## Parameters
 
@@ -44,6 +44,6 @@ Outputs (`results/`, file names keep the `1ake`/`4ake` prefixes whatever the inp
 - [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [biobb_godmd](https://github.com/bioexcel/biobb_godmd)
 - [biobb_wf_godmd tutorial notebook](https://github.com/bioexcel/biobb_wf_godmd)
-- [GOdMD web server](https://mmb.irbbarcelona.org/GOdMD/index.php)
+- [GOdMD web server](https://mmb.irbbarcelona.org/GOdMD/)
 - [Exploration of conformational transition pathways from coarse-grained simulations (Sfriso et al., Bioinformatics)](https://doi.org/10.1093/bioinformatics/btt324)
 - [EMBOSS](https://www.ebi.ac.uk/Tools/emboss/)

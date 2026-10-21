@@ -46,6 +46,14 @@ artifacts:
       from the openff-toolkit 0.19.0 toolkit_showcase example.
     kind: file
     path: examples/PT2385.sdf
+  - id: system_label
+    name: System label
+    description: Name of the protein-ligand system shown in the report title.
+    kind: string
+    path: params/system_label.txt
+    value: PT2385 / HIF-2α (5TBM)
+    min_length: 1
+    max_length: 80
   - id: n_replicas
     name: Replicas
     description: Independent MD replicas (seeds 2026, 2027, ...).
@@ -251,6 +259,10 @@ tasks:
         name: Replica slots
         kind: folder
         path: replicas/
+      - id: system_label
+        name: System label
+        kind: string
+        path: params/system_label.txt
     outputs:
       - id: rmsd
         name: RMSD table
@@ -275,6 +287,7 @@ tasks:
       args: >-
         --trajectories ${trajectories} --replicas ${replicas} --table ${rmsd}
         --final-frame ${final_frame} --report ${report}
+        --system-label ${system_label}
     target: *local
 
 edges:
@@ -330,6 +343,10 @@ edges:
     source_output: replicas
     target: analyze
     target_input: replicas
+  - source: artifact-system_label
+    source_output: system_label
+    target: analyze
+    target_input: system_label
 
 orchestrator_target:
   kind: local

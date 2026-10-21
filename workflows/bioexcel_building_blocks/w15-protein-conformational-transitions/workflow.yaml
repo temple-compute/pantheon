@@ -3,7 +3,7 @@ name: Protein Conformational Transitions (GOdMD)
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
@@ -60,7 +60,7 @@ artifacts:
 
   - id: ligand_to_remove
     name: Ligand to remove
-    description: Residue name of the ligand removed from the origin structure (AP5 in 1AKE).
+    description: Residue name of the ligand removed from the origin structure (default AP5).
     kind: string
     pattern: '[A-Za-z0-9]{1,3}'
     max_length: 3
@@ -93,7 +93,7 @@ tasks:
   - kind: horus_task
     id: fetch_pdb_origin
     name: Fetch or upload the origin structure
-    description: Downloads the closed-state adenylate kinase structure (PDB 1AKE) from the RCSB.
+    description: Downloads the origin structure from the RCSB PDB, or copies the uploaded file when the PDB code is empty.
     inputs:
       - id: origin_structure
         name: Origin structure (PDB upload)
@@ -105,9 +105,9 @@ tasks:
         path: params/origin_pdb_id.txt
     outputs:
       - id: origin_pdb
-        name: Origin structure (1AKE)
+        name: Origin structure
         kind: file
-        path: results/1ake.pdb
+        path: results/origin.pdb
     executor: *executor
     runtime:
       kind: command
@@ -121,7 +121,7 @@ tasks:
   - kind: horus_task
     id: fetch_pdb_target
     name: Fetch or upload the target structure
-    description: Downloads the open-state adenylate kinase structure (PDB 4AKE) from the RCSB.
+    description: Downloads the target structure from the RCSB PDB, or copies the uploaded file when the PDB code is empty.
     inputs:
       - id: target_structure
         name: Target structure (PDB upload)
@@ -133,9 +133,9 @@ tasks:
         path: params/target_pdb_id.txt
     outputs:
       - id: target_pdb
-        name: Target structure (4AKE)
+        name: Target structure
         kind: file
-        path: results/4ake.pdb
+        path: results/target.pdb
     executor: *executor
     runtime:
       kind: command
@@ -149,21 +149,21 @@ tasks:
   - kind: horus_task
     id: extract_chain_origin
     name: Extract the origin chain
-    description: Extracts chain A from the origin structure using the biobb extract_chain tool.
+    description: Extracts the selected chain from the origin structure using the biobb extract_chain tool.
     inputs:
       - id: origin_chain
         name: Origin chain
         kind: string
         path: params/origin_chain.txt
       - id: origin_pdb
-        name: Origin structure (1AKE)
+        name: Origin structure
         kind: file
-        path: results/1ake.pdb
+        path: results/origin.pdb
     outputs:
       - id: origin_chain_pdb
-        name: Origin chain A structure
+        name: Origin chain structure
         kind: file
-        path: results/1ake.chains.pdb
+        path: results/origin.chains.pdb
     executor: *executor
     runtime:
       kind: command
@@ -178,21 +178,21 @@ tasks:
   - kind: horus_task
     id: extract_chain_target
     name: Extract the target chain
-    description: Extracts chain A from the target structure using the biobb extract_chain tool.
+    description: Extracts the selected chain from the target structure using the biobb extract_chain tool.
     inputs:
       - id: target_chain
         name: Target chain
         kind: string
         path: params/target_chain.txt
       - id: target_pdb
-        name: Target structure (4AKE)
+        name: Target structure
         kind: file
-        path: results/4ake.pdb
+        path: results/target.pdb
     outputs:
       - id: target_chain_pdb
-        name: Target chain A structure
+        name: Target chain structure
         kind: file
-        path: results/4ake.chains.pdb
+        path: results/target.chains.pdb
     executor: *executor
     runtime:
       kind: command
@@ -207,21 +207,21 @@ tasks:
   - kind: horus_task
     id: remove_molecules_origin
     name: Remove the bound ligand from the origin structure
-    description: Strips the AP5 inhibitor ligand/heteroatom from the origin structure using the biobb remove_molecules tool.
+    description: Strips the selected ligand/heteroatom from the origin structure using the biobb remove_molecules tool.
     inputs:
       - id: ligand_to_remove
         name: Ligand to remove
         kind: string
         path: params/ligand_to_remove.txt
       - id: origin_chain_pdb
-        name: Origin chain A structure
+        name: Origin chain structure
         kind: file
-        path: results/1ake.chains.pdb
+        path: results/origin.chains.pdb
     outputs:
       - id: origin_nolig_pdb
         name: Origin structure without ligand
         kind: file
-        path: results/1ake.chains.nolig.pdb
+        path: results/origin.chains.nolig.pdb
     executor: *executor
     runtime:
       kind: command
@@ -245,20 +245,20 @@ tasks:
       - id: origin_nolig_pdb
         name: Origin structure without ligand
         kind: file
-        path: results/1ake.chains.nolig.pdb
+        path: results/origin.chains.nolig.pdb
       - id: target_chain_pdb
-        name: Target chain A structure
+        name: Target chain structure
         kind: file
-        path: results/4ake.chains.pdb
+        path: results/target.chains.pdb
     outputs:
       - id: origin_aln
         name: Origin sequence alignment
         kind: file
-        path: results/1ake.aln
+        path: results/origin.aln
       - id: target_aln
         name: Target sequence alignment
         kind: file
-        path: results/4ake.aln
+        path: results/target.aln
     executor: *executor
     runtime:
       kind: command
@@ -275,7 +275,7 @@ tasks:
   - kind: horus_task
     id: godmd_run
     name: Run the GOdMD transition simulation (origin → target)
-    description: Runs the GoDMD discrete-molecular-dynamics/Maxwell-Demon simulation to generate the transition trajectory from the closed to the open state.
+    description: Runs the GoDMD discrete-molecular-dynamics/Maxwell-Demon simulation to generate the transition trajectory from the origin to the target state.
     inputs:
       - id: temperature_k
         name: GOdMD temperature (K)
@@ -284,28 +284,28 @@ tasks:
       - id: origin_nolig_pdb
         name: Origin structure without ligand
         kind: file
-        path: results/1ake.chains.nolig.pdb
+        path: results/origin.chains.nolig.pdb
       - id: target_chain_pdb
-        name: Target chain A structure
+        name: Target chain structure
         kind: file
-        path: results/4ake.chains.pdb
+        path: results/target.chains.pdb
       - id: origin_aln
         name: Origin sequence alignment
         kind: file
-        path: results/1ake.aln
+        path: results/origin.aln
       - id: target_aln
         name: Target sequence alignment
         kind: file
-        path: results/4ake.aln
+        path: results/target.aln
     outputs:
       - id: godmd_trj
         name: GoDMD trajectory (mdcrd)
         kind: file
-        path: results/1ake-4ake.godmd.mdcrd
+        path: results/transition.godmd.mdcrd
       - id: godmd_pdb
         name: GoDMD reference structure
         kind: file
-        path: results/1ake-4ake.godmd.pdb
+        path: results/transition.godmd.pdb
     resources:
       cpus: 2
       memory_gb: 8
@@ -320,8 +320,8 @@ tasks:
         --input_pdb_target_path ${target_chain_pdb}
         --input_aln_orig_path ${origin_aln}
         --input_aln_target_path ${target_aln}
-        --output_log_path 1ake-4ake.godmd.log
-        --output_ene_path 1ake-4ake.godmd.ene.out
+        --output_log_path transition.godmd.log
+        --output_ene_path transition.godmd.ene.out
         --output_trj_path ${godmd_trj}
         --output_pdb_path ${godmd_pdb}
     target:
@@ -339,16 +339,16 @@ tasks:
       - id: godmd_pdb
         name: GoDMD reference structure
         kind: file
-        path: results/1ake-4ake.godmd.pdb
+        path: results/transition.godmd.pdb
       - id: godmd_trj
         name: GoDMD trajectory (mdcrd)
         kind: file
-        path: results/1ake-4ake.godmd.mdcrd
+        path: results/transition.godmd.mdcrd
     outputs:
       - id: godmd_trj_xtc
         name: GoDMD trajectory (XTC)
         kind: file
-        path: results/1ake-4ake.godmd.xtc
+        path: results/transition.godmd.xtc
     executor: *executor
     runtime:
       kind: command

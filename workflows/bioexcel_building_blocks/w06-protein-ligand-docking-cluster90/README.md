@@ -45,7 +45,10 @@ cat_pdb                   Protein + ligand complex
 ## References
 
 - [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
+- [AutoDock Vina](https://github.com/ccsb-scripps/AutoDock-Vina)
+- [Open Babel](https://github.com/openbabel/openbabel)
 - [biobb_vs](https://github.com/bioexcel/biobb_vs)
-- [AutoDock Vina](https://vina.scripps.edu)
-- [OpenBabel](https://openbabel.org)
+- [biobb_chemistry](https://github.com/bioexcel/biobb_chemistry)
+- [biobb_structure_utils](https://github.com/bioexcel/biobb_structure_utils)
+- [biobb_io](https://github.com/bioexcel/biobb_io)
 - [BioExcel protein-ligand docking tutorial (Cluster90 variant)](https://biobb-wf-virtual-screening.readthedocs.io)

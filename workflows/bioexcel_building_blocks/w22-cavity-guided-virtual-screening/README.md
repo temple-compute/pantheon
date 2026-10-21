@@ -38,13 +38,20 @@ A ligand that fails to dock is recorded in `status.json` and the summary; it doe
 | `structure` | `examples/3hec.pdb` | Receptor PDB file used when `pdb_id` is empty. |
 | `ligand_library` | `examples/ligands.sdf` | Ligands to screen, SDF or SMILES (`.smi`). |
 | `rank_by` | `druggability_score` | fpocket metric used to pick the cavity (`druggability_score`, `score`, `volume`). |
+| `residue_selection` | empty | MDAnalysis selection of a known site (e.g. `resid 71 or resid 104`); only cavities within 10 Å of its centre of mass can be picked. Empty considers every filtered cavity. |
+| `ph` | 7 | pH used to protonate the receptor before docking (0-14). |
 | `batch_size` | 2 | Ligands docked per parallel clone (1-500). |
 | `exhaustiveness` | 8 | Vina search exhaustiveness per ligand (1-64). |
 | `top_n` | 10 | Best-ranked ligands whose poses are written (1-1000). |
 
 ## References
 
-- Source workflows: [bioexcel/biobb_vs_workflows](https://github.com/bioexcel/biobb_vs_workflows)
+- [BioExcel Building Blocks (biobb_vs)](https://github.com/bioexcel/biobb_vs)
+- [fpocket](https://github.com/Discngine/fpocket)
+- [AutoDock Vina](https://github.com/ccsb-scripps/AutoDock-Vina)
+- [Open Babel](https://github.com/openbabel/openbabel)
+- [MDAnalysis](https://github.com/MDAnalysis/mdanalysis)
+- [Source workflow: biobb_wf_virtual-screening](https://github.com/bioexcel/biobb_wf_virtual-screening)
 - [BioExcel Building Blocks](https://mmb.irbbarcelona.org/biobb/) documentation
 - fpocket: Le Guilloux, Schmidtke & Tuffery, *BMC Bioinformatics* (2009)
 - AutoDock Vina: Eberhardt, Santos-Martins, Tillack & Forli, *J. Chem. Inf. Model.* (2021)

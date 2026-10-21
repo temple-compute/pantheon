@@ -47,6 +47,14 @@ artifacts:
       OpenFreeEnergy/ExampleNotebooks (pinned commit d083c28).
     kind: file
     path: examples/tyk2_protein.pdb
+  - id: target_name
+    name: Target name
+    description: Protein label used in the report title and the Mol* view.
+    kind: string
+    path: params/target_name.txt
+    value: TYK2
+    min_length: 1
+    max_length: 64
   - id: n_repeats
     name: Repeats per leg
     description: >-
@@ -364,6 +372,10 @@ tasks:
         name: Charged ligands
         kind: file
         path: results/charged_ligands.sdf
+      - id: target_name
+        name: Target name
+        kind: string
+        path: params/target_name.txt
     outputs:
       - id: report_html
         name: RBFE report
@@ -377,6 +389,7 @@ tasks:
       args: >-
         --ddg ${ddg_in} --dg ${dg_in} --raw ${raw_in} --network ${network_in}
         --protein ${protein_in} --ligands ${ligands_in} --out ${report_html}
+        --target-name ${target_name}
     target: *local
 
 edges:
@@ -464,6 +477,10 @@ edges:
     source_output: charged
     target: report
     target_input: ligands_in
+  - source: artifact-target_name
+    source_output: target_name
+    target: report
+    target_input: target_name
 
 orchestrator_target:
   kind: local

@@ -3,7 +3,7 @@ name: Molecular Structure Checking
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
@@ -35,8 +35,8 @@ artifacts:
   - id: altlocs
     name: Alternate locations
     description: >-
-      JSON list of alternate-location picks, one "A45:A" per residue (chain A,
-      residue 45, keep altloc A); [] skips the step. The default is for 1Z83.
+      JSON list of alternate-location picks, one "<chain><residue>:<altloc>"
+      string per residue; [] skips the step. The default matches the default PDB ID.
     kind: string
     pattern: \[.*\]
     value: '["A45:A","A67:A","A85:A"]'
@@ -64,23 +64,29 @@ artifacts:
     kind: file
     path: configs/leap_gen_top.yaml
 
-  - id: remove_molecules_ligands_config
-    name: Ligand removal config
-    description: Configuration specifying which ligands (SO4, AP5) to strip from the structure.
-    kind: file
-    path: configs/remove_molecules_ligands.yaml
+  - id: remove_metals
+    name: Metal ions to remove
+    description: Comma-separated residue names of metal ions to strip; leave empty to keep all. The step fails if none of them is in the structure.
+    kind: string
+    pattern: '([A-Za-z0-9]{1,3}(,[A-Za-z0-9]{1,3})*)?'
+    max_length: 128
+    value: ZN
+    path: params/remove_metals.txt
 
-  - id: remove_molecules_metals_config
-    name: Metal removal config
-    description: Configuration specifying which metal ions (zinc) to strip from the structure.
-    kind: file
-    path: configs/remove_molecules_metals.yaml
+  - id: remove_ligands
+    name: Ligands to remove
+    description: Comma-separated residue names of ligands to strip; leave empty to keep all. The step fails if none of them is in the structure.
+    kind: string
+    pattern: '([A-Za-z0-9]{1,3}(,[A-Za-z0-9]{1,3})*)?'
+    max_length: 128
+    value: SO4,AP5
+    path: params/remove_ligands.txt
 
 tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Download the structure from the PDB
-    description: Downloads the human Adenylate Kinase 1A / AP5A inhibitor complex structure (PDB 1Z83) from the RCSB.
+    description: Downloads the structure given in pdb_id from the RCSB.
     inputs:
       - id: pdb_id
         name: PDB ID
@@ -157,7 +163,7 @@ tasks:
   - kind: horus_task
     id: extract_chain
     name: Extract the selected chain
-    description: Extracts chain A from the structure using the biobb extract_chain tool.
+    description: Keeps only the chain given in chain, using the biobb extract_chain tool.
     inputs:
       - id: chain
         name: Chain
@@ -169,7 +175,7 @@ tasks:
         path: results/models.pdb
     outputs:
       - id: chains_pdb
-        name: Chain A structure
+        name: Selected chain structure
         kind: file
         path: results/chains.pdb
     executor: *executor
@@ -186,14 +192,14 @@ tasks:
   - kind: horus_task
     id: fix_altlocs
     name: Resolve alternative locations
-    description: Resolves alternate atom locations, keeping altloc A, using the biobb fix_altlocs tool.
+    description: Resolves alternate atom locations, keeping the altloc picked per residue in altlocs, using the biobb fix_altlocs tool.
     inputs:
       - id: altlocs
         name: Alternate locations
         kind: string
         path: params/altlocs.txt
       - id: chains_pdb
-        name: Chain A structure
+        name: Selected chain structure
         kind: file
         path: results/chains.pdb
     outputs:
@@ -238,13 +244,13 @@ tasks:
 
   - kind: horus_task
     id: remove_molecules_metals
-    name: Remove zinc metal ions from structure
-    description: Strips zinc metal ions from the structure using the biobb remove_molecules tool.
+    name: Remove metal ions from structure
+    description: Strips the metal ions named in remove_metals using the biobb remove_molecules tool; an empty list copies the structure unchanged.
     inputs:
-      - id: remove_molecules_metals_config
-        name: Metal removal config
-        kind: file
-        path: configs/remove_molecules_metals.yaml
+      - id: remove_metals
+        name: Metal ions to remove
+        kind: string
+        path: params/remove_metals.txt
       - id: ssbonds_pdb
         name: Disulfide-marked structure
         kind: file
@@ -258,22 +264,23 @@ tasks:
     runtime:
       kind: command
       command: >-
+        if [ -z ${remove_metals} ]; then cp ${ssbonds_pdb} ${metals_pdb}; else
         remove_molecules
-        --config ${remove_molecules_metals_config}
+        --config "$$(printf '{"properties":{"molecules":[%s]}}' "$$(echo ${remove_metals} | sed 's/[^,][^,]*/{"name":"&"}/g')")"
         --input_structure_path ${ssbonds_pdb}
-        --output_molecules_path ${metals_pdb}
+        --output_molecules_path ${metals_pdb}; fi
     target:
       kind: local
 
   - kind: horus_task
     id: remove_molecules_ligands
-    name: Remove SO4 and AP5 ligands from structure
-    description: Strips the SO4 and AP5 ligands from the structure using the biobb remove_molecules tool.
+    name: Remove ligands from structure
+    description: Strips the ligands named in remove_ligands using the biobb remove_molecules tool; an empty list copies the structure unchanged.
     inputs:
-      - id: remove_molecules_ligands_config
-        name: Ligand removal config
-        kind: file
-        path: configs/remove_molecules_ligands.yaml
+      - id: remove_ligands
+        name: Ligands to remove
+        kind: string
+        path: params/remove_ligands.txt
       - id: metals_pdb
         name: Metal-stripped structure
         kind: file
@@ -287,10 +294,11 @@ tasks:
     runtime:
       kind: command
       command: >-
+        if [ -z ${remove_ligands} ]; then cp ${metals_pdb} ${ligands_pdb}; else
         remove_molecules
-        --config ${remove_molecules_ligands_config}
+        --config "$$(printf '{"properties":{"molecules":[%s]}}' "$$(echo ${remove_ligands} | sed 's/[^,][^,]*/{"name":"&"}/g')")"
         --input_structure_path ${metals_pdb}
-        --output_molecules_path ${ligands_pdb}
+        --output_molecules_path ${ligands_pdb}; fi
     target:
       kind: local
 
@@ -776,15 +784,15 @@ edges:
     target: leap_gen_top
     target_input: leap_gen_top_config
 
-  - source: artifact-remove_molecules_ligands_config
-    source_output: remove_molecules_ligands_config
+  - source: artifact-remove_ligands
+    source_output: remove_ligands
     target: remove_molecules_ligands
-    target_input: remove_molecules_ligands_config
+    target_input: remove_ligands
 
-  - source: artifact-remove_molecules_metals_config
-    source_output: remove_molecules_metals_config
+  - source: artifact-remove_metals
+    source_output: remove_metals
     target: remove_molecules_metals
-    target_input: remove_molecules_metals_config
+    target_input: remove_metals
 
 
 orchestrator_target:

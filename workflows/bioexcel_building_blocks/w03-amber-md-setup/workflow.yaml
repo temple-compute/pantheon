@@ -443,7 +443,7 @@ tasks:
   - kind: horus_task
     id: leap_add_ions
     name: Neutralize and add ions (leap)
-    description: Neutralizes the solvated system and adds 0.15 M NaCl using LEaP.
+    description: Neutralizes the solvated system and adds NaCl at the configured concentration using LEaP.
     inputs:
       - id: solv_pdb
         name: Solvated structure PDB

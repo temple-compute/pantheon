@@ -6,37 +6,38 @@ Classical molecular interaction potentials with CMIP: MIP grids and water/ion ti
 
 ## Overview
 
-Classical Molecular Interaction Potentials (CMIP) with three independent case studies: MIP grids and water/ion titration on lysozyme (1AKI), EGFR-Erlotinib protein-ligand interaction energies (4HJO, ligand parameterized with ACPype/GAFF and minimized with AMBER), and SARS-CoV-2 RBD-hACE2 protein-protein interaction energies from a pre-run AMBER structure. The workflow has 29 tasks.
+Classical Molecular Interaction Potentials (CMIP) with three independent case studies: MIP grids and water/ion titration on a protein (default lysozyme, 1AKI), protein-ligand interaction energies for a PDB complex (default EGFR-Erlotinib, 4HJO with ligand AQ4; ligand parameterized with ACPype/GAFF and minimized with AMBER), and protein-protein interaction energies between two chains of a pre-run AMBER structure (default SARS-CoV-2 RBD-hACE2). The workflow has 29 tasks.
 
 ## Pipeline
 
 ```
-Case 1, lysozyme MIP and titration
-fetch_pdb_lysozyme -> cmip_prepare_pdb_lysozyme
+Case 1, protein MIP and titration
+fetch_pdb_lysozyme -> cmip_prepare_pdb_lysozyme  Fetch or upload the MIP protein, add CMIP charges
 cmip_titration_lysozyme -> cat_pdb_titration     Structural waters and ions
 cmip_run_mip_pos / _neg / _neutral               MIP grids
 
-Case 2, EGFR-Erlotinib (fixed to 4HJO, ligand AQ4)
+Case 2, protein-ligand complex
 fetch_pdb_complex -> remove_pdb_water -> extract_heteroatoms -> reduce_add_hydrogens -> acpype_params_ac
 leap_gen_top -> sander_mdrun -> amber_to_pdb     Topology, minimization
-cmip_prepare_structure_complex -> remove_ligand
-cmip_ignore_residues_protein -> cmip_run_egfr_interaction
+cmip_prepare_structure_complex -> remove_ligand  CMIP charges, isolated protein
+cmip_ignore_residues_protein -> cmip_run_egfr_interaction   Mask all non-ligand residues, ligand-protein energies
 
-Case 3, RBD-hACE2
-cmip_prepare_structure_md -> extract_chain_hace2 / extract_chain_rbd
+Case 3, protein-protein complex (partners A and B)
+cmip_prepare_structure_md -> extract_chain_hace2 (A) / extract_chain_rbd (B)
 cmip_run_rbd_box / cmip_run_hace2_box / cmip_run_complex_box
-cmip_ignore_residues_rbd -> cmip_run_rbd_interaction
-cmip_ignore_residues_hace2 -> cmip_run_hace2_interaction
+cmip_ignore_residues_rbd -> cmip_run_rbd_interaction       Partner B vs partner A
+cmip_ignore_residues_hace2 -> cmip_run_hace2_interaction   Partner A vs partner B
 ```
 
 ## Inputs / Outputs
 
-Outputs (`results/`, file names keep the tutorial prefixes):
-- `1aki.*.pdb`, `1aki.mip_{pos,neg,neutral}.cube`: lysozyme preparation, titration and MIP grids
-- `4hjo.pdb`, `AQ4*.pdb`, `AQ4params.*`, `structure.*`: EGFR complex, ligand parameters, AMBER topology and minimized complex
-- `4hjo.EGFR.energies.log`, `4hjo.EGFR.ener.byat.out`: EGFR-Erlotinib interaction energies
-- `RBD-hACE2-ZN.*.cmip.pdb`, `{RBD,hACE2,COMPLEX}.box.json`: split chains and grid boxes
-- `{RBD,hACE2}.energies.log`, `.byat.out`: RBD-hACE2 interaction energies
+Outputs (`results/`):
+- `protein.*.pdb`, `protein.mip_{pos,neg,neutral}.cube`: MIP protein preparation, titration and MIP grids
+- `complex.pdb`, `complex.noHOH.pdb`, `ligand*.pdb`, `ligand_params.*`, `structure.*`: complex, ligand parameters, AMBER topology and minimized complex
+- `complex.cmip.pdb`, `complex.noLIG.pdb`, `complex.Prot_ignored.cmip.pdb`: CMIP-ready complex, isolated protein, masked complex
+- `complex.energies.log`, `complex.ener.byat.out`: protein-ligand interaction energies
+- `pp_complex.*.cmip.pdb`, `partner_{a,b}.cmip.pdb`, `{partner_a,partner_b,pp_complex}.box.json`: CMIP-ready complex, split chains and grid boxes
+- `partner_{a,b}.energies.log`, `partner_{a,b}.energies.byat.out`: protein-protein interaction energies
 
 ## Parameters
 
@@ -46,8 +47,13 @@ Outputs (`results/`, file names keep the tutorial prefixes):
 | `structure` | `examples/1aki.pdb` | Case 1 PDB file used when `pdb_id` is empty. |
 | `titration_waters` | 20 | Water molecules placed by the titration (0-500). |
 | `titration_ions` | 5 | Positive and negative ions placed by the titration, same count each (0-100). |
-| `md_pdb` | `Files/RBD-hACE2-ZN.pdb` | Case 3 AMBER structure of a two-chain complex (chains A and B); must match `md_top`. |
+| `complex_pdb_id` | `4hjo` | Case 2 PDB code of the protein-ligand complex (EGFR-Erlotinib). |
+| `complex_ligand` | `AQ4` | Case 2 ligand residue name (Erlotinib); every other residue is masked as protein for the interaction energy. |
+| `complex_ligand_charge` | 0 | Case 2 ligand net charge passed to ACPype (-20 to 20). |
+| `md_pdb` | `Files/RBD-hACE2-ZN.pdb` | Case 3 AMBER structure of a two-chain complex; must match `md_top`. |
 | `md_top` | `Files/RBD-hACE2-ZN.top` | Case 3 AMBER topology matching `md_pdb`. |
+| `partner_a_chain` | `A` | Case 3 chain of the first partner (hACE2). |
+| `partner_b_chain` | `B` | Case 3 chain of the second partner (RBD). |
 
 ## References
 

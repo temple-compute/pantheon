@@ -24,8 +24,8 @@ pcz_similarity_*                              16 pairwise similarities across BD
 
 ## Inputs / Outputs
 
-Outputs (`results/`, file names keep the `1a32` prefix):
-- `1a32.pdb`, `1a32_ca.pdb`: downloaded and Calpha structures
+Outputs (`results/`):
+- `structure.pdb`, `structure_ca.pdb`: downloaded and Calpha structures
 - `{bd,dmd,nma}_ensemble.mdcrd` and `.pcz`, plus `.xtc` and RMSD `.dat`; `*_uncompressed.*` from the round-trip check
 - `pcz_report.json`, `pcz_evecs.json`, `pcz_proj1.crd`/`.xtc`
 - `bfactor_all.*`, `bfactor_mode1-5.*`
@@ -48,5 +48,5 @@ Outputs (`results/`, file names keep the `1a32` prefix):
 - [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [biobb_flexserv](https://github.com/bioexcel/biobb_flexserv)
 - [FlexServ web server](https://mmb.irbbarcelona.org/FlexServ/)
-- [PCA suite](https://mmb.irbbarcelona.org/software/pcasuite/)
+- [PCA suite](https://mmb.irbbarcelona.org/software/)
 - [BioExcel FlexServ tutorial](https://biobb-wf-flexserv.readthedocs.io)

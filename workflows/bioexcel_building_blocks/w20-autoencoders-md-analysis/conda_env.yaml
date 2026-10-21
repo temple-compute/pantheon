@@ -13,3 +13,6 @@ dependencies:
   - ipywidgets
   - requests
   - matplotlib
+  - pip
+  - pip:
+      - mlcolvar==1.3.0 # imported by biobb_pytorch, not on conda-forge

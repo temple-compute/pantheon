@@ -3,7 +3,7 @@ name: HADDOCK3 Antibody-Antigen Docking
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
@@ -39,6 +39,96 @@ artifacts:
     value: 4
     path: params/models_per_cluster.txt
 
+  - id: antibody_pdb_id
+    name: Antibody PDB ID
+    description: RCSB PDB code of the antibody structure.
+    kind: string
+    path: params/antibody_pdb_id.txt
+    value: '4G6K'
+    pattern: '[0-9][A-Za-z0-9]{3}'
+    max_length: 4
+
+  - id: antigen_pdb_id
+    name: Antigen PDB ID
+    description: RCSB PDB code of the antigen structure.
+    kind: string
+    path: params/antigen_pdb_id.txt
+    value: '4I1B'
+    pattern: '[0-9][A-Za-z0-9]{3}'
+    max_length: 4
+
+  - id: reference_pdb_id
+    name: Reference complex PDB ID
+    description: RCSB PDB code of the known antibody-antigen complex used as the CAPRI reference.
+    kind: string
+    path: params/reference_pdb_id.txt
+    value: '4G6M'
+    pattern: '[0-9][A-Za-z0-9]{3}'
+    max_length: 4
+
+  - id: heavy_chain
+    name: Heavy chain
+    description: Chain ID of the antibody heavy chain, in both the antibody and the reference complex.
+    kind: string
+    path: params/heavy_chain.txt
+    value: 'H'
+    pattern: '[A-Za-z0-9]'
+    max_length: 1
+
+  - id: light_chain
+    name: Light chain
+    description: Chain ID of the antibody light chain, in both the antibody and the reference complex.
+    kind: string
+    path: params/light_chain.txt
+    value: 'L'
+    pattern: '[A-Za-z0-9]'
+    max_length: 1
+
+  - id: reference_antigen_chain
+    name: Reference antigen chain
+    description: Chain ID of the antigen in the reference complex.
+    kind: string
+    path: params/reference_antigen_chain.txt
+    value: 'A'
+    pattern: '[A-Za-z0-9]'
+    max_length: 1
+
+  - id: vh_range
+    name: VH residue range
+    description: Heavy-chain variable-domain residues kept, pdb_selres syntax (start:end, comma-separated ranges allowed).
+    kind: string
+    path: params/vh_range.txt
+    value: '1:120'
+    pattern: '[0-9]+:[0-9]+(,[0-9]+:[0-9]+)*'
+    max_length: 64
+
+  - id: vl_range
+    name: VL residue range
+    description: Light-chain variable-domain residues kept, pdb_selres syntax (start:end, comma-separated ranges allowed).
+    kind: string
+    path: params/vl_range.txt
+    value: '1:107'
+    pattern: '[0-9]+:[0-9]+(,[0-9]+:[0-9]+)*'
+    max_length: 64
+
+  - id: paratope_residues
+    name: Paratope residues
+    description: Antibody active (paratope) residues, space-separated, numbered after the heavy and light chains are merged and renumbered from 1.
+    kind: string
+    path: params/paratope_residues.txt
+    value: '31 32 33 34 35 52 54 55 56 100 101 102 103 104 105 106 151 152 169 170 173 211 212 213 214 216'
+    pattern: '[0-9]+( [0-9]+)*'
+    max_length: 2000
+
+  - id: epitope_residues
+    name: Epitope residues
+    description: Antigen active (epitope) residues, comma-separated; passive residues are derived around them.
+    kind: string
+    path: params/epitope_residues.txt
+    value: '72,73,74,75,81,83,84,89,90,92,94,96,97,98,115,116,117'
+    pattern: '[0-9]+(,[0-9]+)*'
+    max_length: 2000
+
   - id: actpass_to_ambig_config
     name: Active/passive to AIR config
     description: Configuration for converting active/passive residue lists into an ambiguous interaction restraints (AIR) table.
@@ -69,35 +159,11 @@ artifacts:
     kind: file
     path: configs/em_ref.yaml
 
-  - id: fetch_antibody_config
-    name: Antibody fetch config
-    description: Configuration setting the antibody PDB code (4G6K) to download from the PDBe.
-    kind: file
-    path: configs/fetch_antibody.yaml
-
-  - id: fetch_antigen_config
-    name: Antigen fetch config
-    description: Configuration setting the antigen PDB code (4I1B) to download from the PDBe.
-    kind: file
-    path: configs/fetch_antigen.yaml
-
-  - id: fetch_complex_config
-    name: Reference complex fetch config
-    description: Configuration setting the reference complex PDB code (4G6M) to download from the PDBe.
-    kind: file
-    path: configs/fetch_complex.yaml
-
   - id: flex_ref_config
     name: Flexible refinement config
     description: Configuration controlling the HADDOCK3 flexible-refinement docking stage.
     kind: file
     path: configs/flex_ref.yaml
-
-  - id: passive_from_active_config
-    name: Passive residues config
-    description: Configuration controlling how epitope passive residues are derived from the antigen active residues.
-    kind: file
-    path: configs/passive_from_active.yaml
 
   - id: ab_H_tidy_config
     name: Strict PDB tidy config
@@ -111,111 +177,78 @@ artifacts:
     kind: file
     path: configs/reres_1.yaml
 
-  - id: cx_ag_selchain_config
-    name: Chain-A selection config
-    description: Configuration specifying chain A (antigen) to extract from the reference complex.
-    kind: file
-    path: configs/selchain_A.yaml
-
-  - id: ab_H_selchain_config
-    name: Chain-H selection config
-    description: Configuration specifying the heavy (H) chain to extract.
-    kind: file
-    path: configs/selchain_H.yaml
-
-  - id: ab_L_selchain_config
-    name: Chain-L selection config
-    description: Configuration specifying the light (L) chain to extract.
-    kind: file
-    path: configs/selchain_L.yaml
-
-  - id: ab_L_selres_config
-    name: VL domain residue range config
-    description: Configuration defining the antibody light-chain variable-domain residue range (1-107).
-    kind: file
-    path: configs/selres_1_107.yaml
-
-  - id: ab_H_selres_config
-    name: VH domain residue range config
-    description: Configuration defining the antibody heavy-chain variable-domain residue range (1-120).
-    kind: file
-    path: configs/selres_1_120.yaml
-
 tasks:
 
   # ── Structure download ────────────────────────────────────────────────────
 
   - kind: horus_task
     id: fetch_antibody
-    name: Download antibody structure 4G6K from PDB
-    description: Downloads the antibody structure (PDB 4G6K) from the PDBe.
+    name: Download antibody structure from PDB
+    description: Downloads the antibody structure (antibody_pdb_id) from the PDBe.
     inputs:
-      - id: fetch_antibody_config
-        name: Antibody fetch config
-        description: Configuration setting the antibody PDB code (4G6K) to download from the PDBe.
-        kind: file
-        path: configs/fetch_antibody.yaml
+      - id: antibody_pdb_id
+        name: Antibody PDB ID
+        kind: string
+        path: params/antibody_pdb_id.txt
     outputs:
       - id: ab_0_pdb
-        name: Raw antibody structure (4G6K)
+        name: Raw antibody structure
         kind: file
-        path: results/4G6K_0.pdb
+        path: results/antibody_0.pdb
     executor: *executor
     runtime:
       kind: command
       command: >-
         pdb
-        --config ${fetch_antibody_config}
+        --config '{"properties":{"pdb_code":"${antibody_pdb_id}","filter":["ATOM","TER","END"]}}'
         --output_pdb_path ${ab_0_pdb}
     target:
       kind: local
 
   - kind: horus_task
     id: fetch_antigen
-    name: Download antigen structure 4I1B from PDB
-    description: Downloads the antigen structure (PDB 4I1B) from the PDBe.
+    name: Download antigen structure from PDB
+    description: Downloads the antigen structure (antigen_pdb_id) from the PDBe.
     inputs:
-      - id: fetch_antigen_config
-        name: Antigen fetch config
-        description: Configuration setting the antigen PDB code (4I1B) to download from the PDBe.
-        kind: file
-        path: configs/fetch_antigen.yaml
+      - id: antigen_pdb_id
+        name: Antigen PDB ID
+        kind: string
+        path: params/antigen_pdb_id.txt
     outputs:
       - id: ag_0_pdb
-        name: Raw antigen structure (4I1B)
+        name: Raw antigen structure
         kind: file
-        path: results/4I1B_0.pdb
+        path: results/antigen_0.pdb
     executor: *executor
     runtime:
       kind: command
       command: >-
         pdb
-        --config ${fetch_antigen_config}
+        --config '{"properties":{"pdb_code":"${antigen_pdb_id}","filter":["ATOM","TER","END"]}}'
         --output_pdb_path ${ag_0_pdb}
     target:
       kind: local
 
   - kind: horus_task
     id: fetch_complex
-    name: Download reference complex structure 4G6M from PDB
-    description: Downloads the known antibody-antigen complex (PDB 4G6M) used as the CAPRI reference from the PDBe.
+    name: Download reference complex structure from PDB
+    description: Downloads the known antibody-antigen complex (reference_pdb_id) used as the CAPRI reference from the PDBe.
     inputs:
-      - id: fetch_complex_config
-        name: Reference complex fetch config
-        description: Configuration setting the reference complex PDB code (4G6M) to download from the PDBe.
-        kind: file
-        path: configs/fetch_complex.yaml
+      - id: reference_pdb_id
+        name: Reference complex PDB ID
+        kind: string
+        path: params/reference_pdb_id.txt
     outputs:
       - id: cx_0_pdb
-        name: Raw reference complex structure (4G6M)
+        name: Raw reference complex structure
         kind: file
-        path: results/4G6M_0.pdb
+        path: results/reference_0.pdb
     executor: *executor
     runtime:
       kind: command
       command: >-
         pdb
-        --config ${fetch_complex_config}
+        --config '{"properties":{"pdb_code":"${reference_pdb_id}","filter":["ATOM","TER","END"]}}'
         --output_pdb_path ${cx_0_pdb}
     target:
       kind: local
@@ -233,9 +266,9 @@ tasks:
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: ab_H_tidy_in
-        name: Raw antibody structure (4G6K)
+        name: Raw antibody structure
         kind: file
-        path: results/4G6K_0.pdb
+        path: results/antibody_0.pdb
     outputs:
       - id: ab_H_tidy_out
         name: Antibody H chain (tidied)
@@ -254,14 +287,13 @@ tasks:
 
   - kind: horus_task
     id: ab_H_selchain
-    name: Extract heavy chain H from antibody
+    name: Extract heavy chain from antibody
     description: Runs biobb_pdb_selchain to extract the target chain from the antibody.
     inputs:
-      - id: ab_H_selchain_config
-        name: Chain-H selection config
-        description: Configuration specifying the heavy (H) chain to extract.
-        kind: file
-        path: configs/selchain_H.yaml
+      - id: heavy_chain
+        name: Heavy chain
+        kind: string
+        path: params/heavy_chain.txt
       - id: ab_H_selchain_in
         name: Antibody H chain (tidied)
         kind: file
@@ -276,7 +308,7 @@ tasks:
       kind: command
       command: >-
         biobb_pdb_selchain
-        --config ${ab_H_selchain_config}
+        --config '{"properties":{"chains":"${heavy_chain}"}}'
         --input_file_path ${ab_H_selchain_in}
         --output_file_path ${ab_H_selchain_out}
     target:
@@ -372,7 +404,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        biobb_pdb_keepcoord
+        python -m biobb_pdb_tools.pdb_tools.biobb_pdb_keepcoord
         --input_file_path ${ab_H_keepcoord_in}
         --output_file_path ${ab_H_keepcoord_out}
     target:
@@ -380,14 +412,13 @@ tasks:
 
   - kind: horus_task
     id: ab_H_selres
-    name: Select VH domain residues 1-120 from antibody H chain
+    name: Select VH domain residues from antibody H chain
     description: Runs biobb_pdb_selres to select the configured residue range from the antibody H chain.
     inputs:
-      - id: ab_H_selres_config
-        name: VH domain residue range config
-        description: Configuration defining the antibody heavy-chain variable-domain residue range (1-120).
-        kind: file
-        path: configs/selres_1_120.yaml
+      - id: vh_range
+        name: VH residue range
+        kind: string
+        path: params/vh_range.txt
       - id: ab_H_selres_in
         name: Antibody H chain (coordinates only)
         kind: file
@@ -402,7 +433,7 @@ tasks:
       kind: command
       command: >-
         biobb_pdb_selres
-        --config ${ab_H_selres_config}
+        --config '{"properties":{"selection":"${vh_range}"}}'
         --input_file_path ${ab_H_selres_in}
         --output_file_path ${ab_H_selres_out}
     target:
@@ -421,7 +452,7 @@ tasks:
       - id: ab_H_reduced
         name: Antibody H chain (reduced)
         kind: file
-        path: results/4G6K_H_reduced.pdb
+        path: results/antibody_H_reduced.pdb
     executor: *executor
     runtime:
       kind: command
@@ -444,9 +475,9 @@ tasks:
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: ab_L_tidy_in
-        name: Raw antibody structure (4G6K)
+        name: Raw antibody structure
         kind: file
-        path: results/4G6K_0.pdb
+        path: results/antibody_0.pdb
     outputs:
       - id: ab_L_tidy_out
         name: Antibody L chain (tidied)
@@ -465,14 +496,13 @@ tasks:
 
   - kind: horus_task
     id: ab_L_selchain
-    name: Extract light chain L from antibody
+    name: Extract light chain from antibody
     description: Runs biobb_pdb_selchain to extract the target chain from the antibody.
     inputs:
-      - id: ab_L_selchain_config
-        name: Chain-L selection config
-        description: Configuration specifying the light (L) chain to extract.
-        kind: file
-        path: configs/selchain_L.yaml
+      - id: light_chain
+        name: Light chain
+        kind: string
+        path: params/light_chain.txt
       - id: ab_L_selchain_in
         name: Antibody L chain (tidied)
         kind: file
@@ -487,7 +517,7 @@ tasks:
       kind: command
       command: >-
         biobb_pdb_selchain
-        --config ${ab_L_selchain_config}
+        --config '{"properties":{"chains":"${light_chain}"}}'
         --input_file_path ${ab_L_selchain_in}
         --output_file_path ${ab_L_selchain_out}
     target:
@@ -583,7 +613,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        biobb_pdb_keepcoord
+        python -m biobb_pdb_tools.pdb_tools.biobb_pdb_keepcoord
         --input_file_path ${ab_L_keepcoord_in}
         --output_file_path ${ab_L_keepcoord_out}
     target:
@@ -591,14 +621,13 @@ tasks:
 
   - kind: horus_task
     id: ab_L_selres
-    name: Select VL domain residues 1-107 from antibody L chain
+    name: Select VL domain residues from antibody L chain
     description: Runs biobb_pdb_selres to select the configured residue range from the antibody L chain.
     inputs:
-      - id: ab_L_selres_config
-        name: VL domain residue range config
-        description: Configuration defining the antibody light-chain variable-domain residue range (1-107).
-        kind: file
-        path: configs/selres_1_107.yaml
+      - id: vl_range
+        name: VL residue range
+        kind: string
+        path: params/vl_range.txt
       - id: ab_L_selres_in
         name: Antibody L chain (coordinates only)
         kind: file
@@ -613,7 +642,7 @@ tasks:
       kind: command
       command: >-
         biobb_pdb_selres
-        --config ${ab_L_selres_config}
+        --config '{"properties":{"selection":"${vl_range}"}}'
         --input_file_path ${ab_L_selres_in}
         --output_file_path ${ab_L_selres_out}
     target:
@@ -632,7 +661,7 @@ tasks:
       - id: ab_L_reduced
         name: Antibody L chain (reduced)
         kind: file
-        path: results/4G6K_L_reduced.pdb
+        path: results/antibody_L_reduced.pdb
     executor: *executor
     runtime:
       kind: command
@@ -653,16 +682,16 @@ tasks:
       - id: ab_H_reduced
         name: Antibody H chain (reduced)
         kind: file
-        path: results/4G6K_H_reduced.pdb
+        path: results/antibody_H_reduced.pdb
       - id: ab_L_reduced
         name: Antibody L chain (reduced)
         kind: file
-        path: results/4G6K_L_reduced.pdb
+        path: results/antibody_L_reduced.pdb
     outputs:
       - id: ab_HL_zip
         name: Antibody H+L chains (zipped)
         kind: file
-        path: results/4G6K_HL.zip
+        path: results/antibody_HL.zip
     executor: *executor
     runtime:
       kind: command
@@ -679,12 +708,12 @@ tasks:
       - id: ab_HL_zip
         name: Antibody H+L chains (zipped)
         kind: file
-        path: results/4G6K_HL.zip
+        path: results/antibody_HL.zip
     outputs:
       - id: ab_clean_merge
         name: Antibody merged structure
         kind: file
-        path: results/4G6K_clean_merge.pdb
+        path: results/antibody_clean_merge.pdb
     executor: *executor
     runtime:
       kind: command
@@ -708,7 +737,7 @@ tasks:
       - id: ab_reres_in
         name: Antibody merged structure
         kind: file
-        path: results/4G6K_clean_merge.pdb
+        path: results/antibody_clean_merge.pdb
     outputs:
       - id: ab_reres_out
         name: Antibody structure (renumbered)
@@ -794,9 +823,9 @@ tasks:
         path: results/ab_chainxseg.pdb
     outputs:
       - id: antibody_prep
-        name: Prepared antibody structure (4G6K)
+        name: Prepared antibody structure
         kind: file
-        path: results/4G6K_clean.pdb
+        path: results/antibody_clean.pdb
     executor: *executor
     runtime:
       kind: command
@@ -820,9 +849,9 @@ tasks:
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: ag_tidy_in
-        name: Raw antigen structure (4I1B)
+        name: Raw antigen structure
         kind: file
-        path: results/4I1B_0.pdb
+        path: results/antigen_0.pdb
     outputs:
       - id: ag_tidy_out
         name: Antigen structure (tidied)
@@ -905,7 +934,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        biobb_pdb_keepcoord
+        python -m biobb_pdb_tools.pdb_tools.biobb_pdb_keepcoord
         --input_file_path ${ag_keepcoord_in}
         --output_file_path ${ag_keepcoord_out}
     target:
@@ -980,9 +1009,9 @@ tasks:
         path: results/ag_chainxseg.pdb
     outputs:
       - id: antigen_prep
-        name: Prepared antigen structure (4I1B)
+        name: Prepared antigen structure
         kind: file
-        path: results/4I1B_clean.pdb
+        path: results/antigen_clean.pdb
     executor: *executor
     runtime:
       kind: command
@@ -998,17 +1027,17 @@ tasks:
 
   - kind: horus_task
     id: cx_H_selchain
-    name: Extract heavy chain H from reference complex
+    name: Extract heavy chain from reference complex
     description: Runs biobb_pdb_selchain to extract the target chain from the reference complex.
     inputs:
-      - id: cx_H_selchain_config
-        name: Chain-H selection config
-        kind: file
-        path: configs/selchain_H.yaml
+      - id: heavy_chain
+        name: Heavy chain
+        kind: string
+        path: params/heavy_chain.txt
       - id: cx_H_selchain_in
-        name: Raw reference complex structure (4G6M)
+        name: Raw reference complex structure
         kind: file
-        path: results/4G6M_0.pdb
+        path: results/reference_0.pdb
     outputs:
       - id: cx_H_selchain_out
         name: Reference complex H chain
@@ -1019,7 +1048,7 @@ tasks:
       kind: command
       command: >-
         biobb_pdb_selchain
-        --config ${cx_H_selchain_config}
+        --config '{"properties":{"chains":"${heavy_chain}"}}'
         --input_file_path ${cx_H_selchain_in}
         --output_file_path ${cx_H_selchain_out}
     target:
@@ -1115,7 +1144,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        biobb_pdb_keepcoord
+        python -m biobb_pdb_tools.pdb_tools.biobb_pdb_keepcoord
         --input_file_path ${cx_H_keepcoord_in}
         --output_file_path ${cx_H_keepcoord_out}
     target:
@@ -1123,13 +1152,13 @@ tasks:
 
   - kind: horus_task
     id: cx_H_selres
-    name: Select VH domain residues 1-120 from reference complex H chain
+    name: Select VH domain residues from reference complex H chain
     description: Runs biobb_pdb_selres to select the configured residue range from the reference complex H chain.
     inputs:
-      - id: cx_H_selres_config
-        name: VH domain residue range config
-        kind: file
-        path: configs/selres_1_120.yaml
+      - id: vh_range
+        name: VH residue range
+        kind: string
+        path: params/vh_range.txt
       - id: cx_H_selres_in
         name: Reference complex H chain (coordinates only)
         kind: file
@@ -1144,7 +1173,7 @@ tasks:
       kind: command
       command: >-
         biobb_pdb_selres
-        --config ${cx_H_selres_config}
+        --config '{"properties":{"selection":"${vh_range}"}}'
         --input_file_path ${cx_H_selres_in}
         --output_file_path ${cx_H_selres_out}
     target:
@@ -1163,7 +1192,7 @@ tasks:
       - id: cx_H_reduced
         name: Reference complex H chain (reduced)
         kind: file
-        path: results/4G6M_H_reduced.pdb
+        path: results/reference_H_reduced.pdb
     executor: *executor
     runtime:
       kind: command
@@ -1178,17 +1207,17 @@ tasks:
 
   - kind: horus_task
     id: cx_L_selchain
-    name: Extract light chain L from reference complex
+    name: Extract light chain from reference complex
     description: Runs biobb_pdb_selchain to extract the target chain from the reference complex.
     inputs:
-      - id: cx_L_selchain_config
-        name: Chain-L selection config
-        kind: file
-        path: configs/selchain_L.yaml
+      - id: light_chain
+        name: Light chain
+        kind: string
+        path: params/light_chain.txt
       - id: cx_L_selchain_in
-        name: Raw reference complex structure (4G6M)
+        name: Raw reference complex structure
         kind: file
-        path: results/4G6M_0.pdb
+        path: results/reference_0.pdb
     outputs:
       - id: cx_L_selchain_out
         name: Reference complex L chain
@@ -1199,7 +1228,7 @@ tasks:
       kind: command
       command: >-
         biobb_pdb_selchain
-        --config ${cx_L_selchain_config}
+        --config '{"properties":{"chains":"${light_chain}"}}'
         --input_file_path ${cx_L_selchain_in}
         --output_file_path ${cx_L_selchain_out}
     target:
@@ -1295,7 +1324,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        biobb_pdb_keepcoord
+        python -m biobb_pdb_tools.pdb_tools.biobb_pdb_keepcoord
         --input_file_path ${cx_L_keepcoord_in}
         --output_file_path ${cx_L_keepcoord_out}
     target:
@@ -1303,13 +1332,13 @@ tasks:
 
   - kind: horus_task
     id: cx_L_selres
-    name: Select VL domain residues 1-107 from reference complex L chain
+    name: Select VL domain residues from reference complex L chain
     description: Runs biobb_pdb_selres to select the configured residue range from the reference complex L chain.
     inputs:
-      - id: cx_L_selres_config
-        name: VL domain residue range config
-        kind: file
-        path: configs/selres_1_107.yaml
+      - id: vl_range
+        name: VL residue range
+        kind: string
+        path: params/vl_range.txt
       - id: cx_L_selres_in
         name: Reference complex L chain (coordinates only)
         kind: file
@@ -1324,7 +1353,7 @@ tasks:
       kind: command
       command: >-
         biobb_pdb_selres
-        --config ${cx_L_selres_config}
+        --config '{"properties":{"selection":"${vl_range}"}}'
         --input_file_path ${cx_L_selres_in}
         --output_file_path ${cx_L_selres_out}
     target:
@@ -1343,7 +1372,7 @@ tasks:
       - id: cx_L_reduced
         name: Reference complex L chain (reduced)
         kind: file
-        path: results/4G6M_L_reduced.pdb
+        path: results/reference_L_reduced.pdb
     executor: *executor
     runtime:
       kind: command
@@ -1364,16 +1393,16 @@ tasks:
       - id: cx_H_reduced
         name: Reference complex H chain (reduced)
         kind: file
-        path: results/4G6M_H_reduced.pdb
+        path: results/reference_H_reduced.pdb
       - id: cx_L_reduced
         name: Reference complex L chain (reduced)
         kind: file
-        path: results/4G6M_L_reduced.pdb
+        path: results/reference_L_reduced.pdb
     outputs:
       - id: cx_HL_zip
         name: Reference complex H+L chains (zipped)
         kind: file
-        path: results/4G6M_HL.zip
+        path: results/reference_HL.zip
     executor: *executor
     runtime:
       kind: command
@@ -1390,12 +1419,12 @@ tasks:
       - id: cx_HL_zip
         name: Reference complex H+L chains (zipped)
         kind: file
-        path: results/4G6M_HL.zip
+        path: results/reference_HL.zip
     outputs:
       - id: cx_ab_clean_merge
         name: Reference complex antibody merged structure
         kind: file
-        path: results/4G6M_antibody_clean_merge.pdb
+        path: results/reference_antibody_clean_merge.pdb
     executor: *executor
     runtime:
       kind: command
@@ -1418,7 +1447,7 @@ tasks:
       - id: cx_ab_reres_in
         name: Reference complex antibody merged structure
         kind: file
-        path: results/4G6M_antibody_clean_merge.pdb
+        path: results/reference_antibody_clean_merge.pdb
     outputs:
       - id: cx_ab_reres_out
         name: Reference complex antibody (renumbered)
@@ -1505,7 +1534,7 @@ tasks:
       - id: cx_antibody_final
         name: Reference complex antibody (final)
         kind: file
-        path: results/4G6M_clean_antibody_final.pdb
+        path: results/reference_clean_antibody_final.pdb
     executor: *executor
     runtime:
       kind: command
@@ -1529,9 +1558,9 @@ tasks:
         kind: file
         path: configs/pdb_tidy_strict.yaml
       - id: cx_ag_tidy_in
-        name: Raw reference complex structure (4G6M)
+        name: Raw reference complex structure
         kind: file
-        path: results/4G6M_0.pdb
+        path: results/reference_0.pdb
     outputs:
       - id: cx_ag_tidy_out
         name: Reference complex structure (tidied for antigen)
@@ -1550,14 +1579,13 @@ tasks:
 
   - kind: horus_task
     id: cx_ag_selchain
-    name: Extract chain A (antigen) from reference complex
+    name: Extract antigen chain from reference complex
     description: Runs biobb_pdb_selchain to extract the target chain from the reference complex antigen.
     inputs:
-      - id: cx_ag_selchain_config
-        name: Chain-A selection config
-        description: Configuration specifying chain A (antigen) to extract from the reference complex.
-        kind: file
-        path: configs/selchain_A.yaml
+      - id: reference_antigen_chain
+        name: Reference antigen chain
+        kind: string
+        path: params/reference_antigen_chain.txt
       - id: cx_ag_selchain_in
         name: Reference complex structure (tidied for antigen)
         kind: file
@@ -1572,7 +1600,7 @@ tasks:
       kind: command
       command: >-
         biobb_pdb_selchain
-        --config ${cx_ag_selchain_config}
+        --config '{"properties":{"chains":"${reference_antigen_chain}"}}'
         --input_file_path ${cx_ag_selchain_in}
         --output_file_path ${cx_ag_selchain_out}
     target:
@@ -1721,7 +1749,7 @@ tasks:
     runtime:
       kind: command
       command: >-
-        biobb_pdb_keepcoord
+        python -m biobb_pdb_tools.pdb_tools.biobb_pdb_keepcoord
         --input_file_path ${cx_ag_keepcoord_in}
         --output_file_path ${cx_ag_keepcoord_out}
     target:
@@ -1744,7 +1772,7 @@ tasks:
       - id: cx_antigen_final
         name: Reference complex antigen (final)
         kind: file
-        path: results/4G6M_clean_antigen_final.pdb
+        path: results/reference_clean_antigen_final.pdb
     executor: *executor
     runtime:
       kind: command
@@ -1766,16 +1794,16 @@ tasks:
       - id: cx_antibody_final
         name: Reference complex antibody (final)
         kind: file
-        path: results/4G6M_clean_antibody_final.pdb
+        path: results/reference_clean_antibody_final.pdb
       - id: cx_antigen_final
         name: Reference complex antigen (final)
         kind: file
-        path: results/4G6M_clean_antigen_final.pdb
+        path: results/reference_clean_antigen_final.pdb
     outputs:
       - id: cx_HL_B_zip
         name: Reference complex antibody+antigen (zipped)
         kind: file
-        path: results/4G6M_HL_B.zip
+        path: results/reference_HL_B.zip
     executor: *executor
     runtime:
       kind: command
@@ -1792,12 +1820,12 @@ tasks:
       - id: cx_HL_B_zip
         name: Reference complex antibody+antigen (zipped)
         kind: file
-        path: results/4G6M_HL_B.zip
+        path: results/reference_HL_B.zip
     outputs:
       - id: cx_clean_merge
         name: Reference complex merged structure
         kind: file
-        path: results/4G6M_clean_merge.pdb
+        path: results/reference_clean_merge.pdb
     executor: *executor
     runtime:
       kind: command
@@ -1820,12 +1848,12 @@ tasks:
       - id: cx_tidy_final_in
         name: Reference complex merged structure
         kind: file
-        path: results/4G6M_clean_merge.pdb
+        path: results/reference_clean_merge.pdb
     outputs:
       - id: complex_prep
-        name: Prepared reference complex structure (4G6M)
+        name: Prepared reference complex structure
         kind: file
-        path: results/4G6M_clean.pdb
+        path: results/reference_clean.pdb
     executor: *executor
     runtime:
       kind: command
@@ -1842,17 +1870,22 @@ tasks:
   - kind: horus_task
     id: write_ab_actpass
     name: Write antibody paratope active residues file
-    description: Writes the static list of antibody paratope active residues to a text file.
+    description: Writes the antibody paratope active residues (paratope_residues) to a text file.
+    inputs:
+      - id: paratope_residues
+        name: Paratope residues
+        kind: string
+        path: params/paratope_residues.txt
     outputs:
       - id: ab_actpass
         name: Antibody paratope active residues
         kind: file
-        path: results/4G6K_actpass.txt
+        path: results/antibody_actpass.txt
     executor: *executor
     runtime:
       kind: command
       command: >-
-        printf "31 32 33 34 35 52 54 55 56 100 101 102 103 104 105 106 151 152 169 170 173 211 212 213 214 216\n\n"
+        printf '%s\n\n' ${paratope_residues}
         > ${ab_actpass}
     target:
       kind: local
@@ -1862,26 +1895,25 @@ tasks:
     name: Compute passive residues around antigen epitope
     description: Derives epitope passive residues on the antigen surrounding the active residues using haddock3_passive_from_active.
     inputs:
-      - id: passive_from_active_config
-        name: Passive residues config
-        description: Configuration controlling how epitope passive residues are derived from the antigen active residues.
-        kind: file
-        path: configs/passive_from_active.yaml
+      - id: epitope_residues
+        name: Epitope residues
+        kind: string
+        path: params/epitope_residues.txt
       - id: antigen_prep
-        name: Prepared antigen structure (4I1B)
+        name: Prepared antigen structure
         kind: file
-        path: results/4I1B_clean.pdb
+        path: results/antigen_clean.pdb
     outputs:
       - id: ag_actpass
         name: Antigen epitope passive residues
         kind: file
-        path: results/4I1B_actpass.txt
+        path: results/antigen_actpass.txt
     executor: *executor
     runtime:
       kind: command
       command: >-
         haddock3_passive_from_active
-        --config ${passive_from_active_config}
+        --config '{"properties":{"active_list":"${epitope_residues}"}}'
         --input_pdb_path ${antigen_prep}
         --output_actpass_path ${ag_actpass}
     target:
@@ -1900,11 +1932,11 @@ tasks:
       - id: ab_actpass
         name: Antibody paratope active residues
         kind: file
-        path: results/4G6K_actpass.txt
+        path: results/antibody_actpass.txt
       - id: ag_actpass
         name: Antigen epitope passive residues
         kind: file
-        path: results/4I1B_actpass.txt
+        path: results/antigen_actpass.txt
     outputs:
       - id: complex_tbl
         name: Ambiguous interaction restraints (AIR) table
@@ -1928,9 +1960,9 @@ tasks:
     description: Generates multi-body restraints tying the antibody H and L chains together using haddock3_restrain_bodies.
     inputs:
       - id: antibody_prep
-        name: Prepared antibody structure (4G6K)
+        name: Prepared antibody structure
         kind: file
-        path: results/4G6K_clean.pdb
+        path: results/antibody_clean.pdb
     outputs:
       - id: body_tbl
         name: Antibody multi-body restraints table
@@ -1954,13 +1986,13 @@ tasks:
     description: Builds the HADDOCK3 topology for the antibody and antigen molecules.
     inputs:
       - id: antibody_prep
-        name: Prepared antibody structure (4G6K)
+        name: Prepared antibody structure
         kind: file
-        path: results/4G6K_clean.pdb
+        path: results/antibody_clean.pdb
       - id: antigen_prep
-        name: Prepared antigen structure (4I1B)
+        name: Prepared antigen structure
         kind: file
-        path: results/4I1B_clean.pdb
+        path: results/antigen_clean.pdb
     outputs:
       - id: mol1_top_zip
         name: Antibody topology (HADDOCK3)
@@ -2045,9 +2077,9 @@ tasks:
         kind: file
         path: results/haddock_wf_data
       - id: complex_prep
-        name: Prepared reference complex structure (4G6M)
+        name: Prepared reference complex structure
         kind: file
-        path: results/4G6M_clean.pdb
+        path: results/reference_clean.pdb
     outputs:
       - id: haddock_wf_data_capri1
         name: HADDOCK3 workflow state (post CAPRI eval 1)
@@ -2162,9 +2194,9 @@ tasks:
         kind: file
         path: results/haddock_wf_data
       - id: complex_prep
-        name: Prepared reference complex structure (4G6M)
+        name: Prepared reference complex structure
         kind: file
-        path: results/4G6M_clean.pdb
+        path: results/reference_clean.pdb
     outputs:
       - id: haddock_wf_data_capri2
         name: HADDOCK3 workflow state (post CAPRI eval 2)
@@ -2245,9 +2277,9 @@ tasks:
         kind: file
         path: results/haddock_wf_data
       - id: complex_prep
-        name: Prepared reference complex structure (4G6M)
+        name: Prepared reference complex structure
         kind: file
-        path: results/4G6M_clean.pdb
+        path: results/reference_clean.pdb
     outputs:
       - id: haddock_wf_data_capri3
         name: HADDOCK3 workflow state (post CAPRI eval 3)
@@ -2348,9 +2380,9 @@ tasks:
         kind: file
         path: results/haddock_wf_data
       - id: complex_prep
-        name: Prepared reference complex structure (4G6M)
+        name: Prepared reference complex structure
         kind: file
-        path: results/4G6M_clean.pdb
+        path: results/reference_clean.pdb
     outputs:
       - id: haddock_wf_data_capri4
         name: HADDOCK3 workflow state (post CAPRI eval 4)
@@ -2402,6 +2434,76 @@ tasks:
       kind: local
 
 edges:
+  - source: artifact-antibody_pdb_id
+    source_output: antibody_pdb_id
+    target: fetch_antibody
+    target_input: antibody_pdb_id
+
+  - source: artifact-antigen_pdb_id
+    source_output: antigen_pdb_id
+    target: fetch_antigen
+    target_input: antigen_pdb_id
+
+  - source: artifact-reference_pdb_id
+    source_output: reference_pdb_id
+    target: fetch_complex
+    target_input: reference_pdb_id
+
+  - source: artifact-epitope_residues
+    source_output: epitope_residues
+    target: passive_from_active
+    target_input: epitope_residues
+
+  - source: artifact-reference_antigen_chain
+    source_output: reference_antigen_chain
+    target: cx_ag_selchain
+    target_input: reference_antigen_chain
+
+  - source: artifact-heavy_chain
+    source_output: heavy_chain
+    target: ab_H_selchain
+    target_input: heavy_chain
+
+  - source: artifact-heavy_chain
+    source_output: heavy_chain
+    target: cx_H_selchain
+    target_input: heavy_chain
+
+  - source: artifact-light_chain
+    source_output: light_chain
+    target: ab_L_selchain
+    target_input: light_chain
+
+  - source: artifact-light_chain
+    source_output: light_chain
+    target: cx_L_selchain
+    target_input: light_chain
+
+  - source: artifact-vl_range
+    source_output: vl_range
+    target: ab_L_selres
+    target_input: vl_range
+
+  - source: artifact-vl_range
+    source_output: vl_range
+    target: cx_L_selres
+    target_input: vl_range
+
+  - source: artifact-vh_range
+    source_output: vh_range
+    target: ab_H_selres
+    target_input: vh_range
+
+  - source: artifact-vh_range
+    source_output: vh_range
+    target: cx_H_selres
+    target_input: vh_range
+
+  - source: artifact-paratope_residues
+    source_output: paratope_residues
+    target: write_ab_actpass
+    target_input: paratope_residues
+
   - source: artifact-rigid_body_models
     source_output: rigid_body_models
     target: rigid_body
@@ -2922,30 +3024,10 @@ edges:
     target: em_ref
     target_input: em_ref_config
 
-  - source: artifact-fetch_antibody_config
-    source_output: fetch_antibody_config
-    target: fetch_antibody
-    target_input: fetch_antibody_config
-
-  - source: artifact-fetch_antigen_config
-    source_output: fetch_antigen_config
-    target: fetch_antigen
-    target_input: fetch_antigen_config
-
-  - source: artifact-fetch_complex_config
-    source_output: fetch_complex_config
-    target: fetch_complex
-    target_input: fetch_complex_config
-
   - source: artifact-flex_ref_config
     source_output: flex_ref_config
     target: flex_ref
     target_input: flex_ref_config
-
-  - source: artifact-passive_from_active_config
-    source_output: passive_from_active_config
-    target: passive_from_active
-    target_input: passive_from_active_config
 
   - source: artifact-ab_H_tidy_config
     source_output: ab_H_tidy_config
@@ -3001,51 +3083,6 @@ edges:
     source_output: ab_reres_config
     target: cx_ab_reres
     target_input: cx_ab_reres_config
-
-  - source: artifact-cx_ag_selchain_config
-    source_output: cx_ag_selchain_config
-    target: cx_ag_selchain
-    target_input: cx_ag_selchain_config
-
-  - source: artifact-ab_H_selchain_config
-    source_output: ab_H_selchain_config
-    target: ab_H_selchain
-    target_input: ab_H_selchain_config
-
-  - source: artifact-ab_H_selchain_config
-    source_output: ab_H_selchain_config
-    target: cx_H_selchain
-    target_input: cx_H_selchain_config
-
-  - source: artifact-ab_L_selchain_config
-    source_output: ab_L_selchain_config
-    target: ab_L_selchain
-    target_input: ab_L_selchain_config
-
-  - source: artifact-ab_L_selchain_config
-    source_output: ab_L_selchain_config
-    target: cx_L_selchain
-    target_input: cx_L_selchain_config
-
-  - source: artifact-ab_L_selres_config
-    source_output: ab_L_selres_config
-    target: ab_L_selres
-    target_input: ab_L_selres_config
-
-  - source: artifact-ab_L_selres_config
-    source_output: ab_L_selres_config
-    target: cx_L_selres
-    target_input: cx_L_selres_config
-
-  - source: artifact-ab_H_selres_config
-    source_output: ab_H_selres_config
-    target: ab_H_selres
-    target_input: ab_H_selres_config
-
-  - source: artifact-ab_H_selres_config
-    source_output: ab_H_selres_config
-    target: cx_H_selres
-    target_input: cx_H_selres_config
 
 
 orchestrator_target:

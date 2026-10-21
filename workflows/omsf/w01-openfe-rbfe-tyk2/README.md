@@ -23,7 +23,7 @@ report          tables + Mol* view                         --> results/report.ht
 - `ligands`: SDF with 3D poses in the binding site; every record is charged and planned (default `examples/tyk2_ligands.sdf`).
 - `protein`: prepared PDB (default `examples/tyk2_protein.pdb`).
 - `results/ddg.tsv`: ddG per edge with uncertainty. `results/raw.tsv`: dG per leg and repeat. `results/dg.tsv`: MLE dG per ligand.
-- `results/report.html`: both tables, network edges and a Mol* view of TYK2 with the ligands.
+- `results/report.html`: both tables, network edges and a Mol* view of the protein with the ligands, titled with `target_name`.
 - `results/ligand_network.graphml`, `results/charged_ligands.sdf`, `results/transformations/`, `results/legs/<slot>/` (`result.json`, `quickrun.log`).
 - `results/dg.tsv` needs at least 3 edges and 2 repeats per edge; otherwise it holds a one-line note and the report shows ddG and raw values.
 
@@ -34,6 +34,7 @@ Defaults are the openfe 1.13.0 `RelativeHybridTopologyProtocol` defaults.
 | id | Default | Meaning |
 |---|---|---|
 | `ligands` / `protein` | TYK2 examples | Inputs above |
+| `target_name` | `TYK2` | Protein label in the report title and Mol* view |
 | `n_repeats` | 3 | Repeats per leg (1-10); `dg` needs >= 2 |
 | `lambda_windows` | 11 | Lambda windows per leg (2-32); `n_replicas` is set equal |
 | `equilibration_ns` | 1.0 | Equilibration per replica (0.1-20) |
@@ -46,6 +47,8 @@ Defaults are the openfe 1.13.0 `RelativeHybridTopologyProtocol` defaults.
 
 ## References
 
+- [OpenFE](https://github.com/OpenFreeEnergy/openfe)
+- [OpenMM](https://github.com/openmm/openmm)
 - OpenFE docs: <https://docs.openfree.energy>
 - Upstream tutorials (MIT): <https://github.com/OpenFreeEnergy/ExampleNotebooks>
 - OMSF workflow directory: <https://directory.omsf.io/workflows/>

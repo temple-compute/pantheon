@@ -85,8 +85,8 @@ artifacts:
 tasks:
   - kind: horus_task
     id: download_pdb
-    name: Download 3LFA structure from PDB (protein + ligand complex)
-    description: Downloads the 3LFA protein-ligand complex structure from the PDB.
+    name: Download the receptor structure from PDB (protein + ligand complex)
+    description: Downloads the receptor protein-ligand complex structure from the PDB.
     inputs:
       - id: pdb_id
         name: PDB ID
@@ -141,7 +141,7 @@ tasks:
     outputs:
       - id: residues_json
         name: Binding site residues
-        description: PDBe-annotated binding-site residues for 3LFA; used to populate resid_list in the cavity box config for the next run.
+        description: PDBe-annotated binding-site residues for the receptor; used to populate resid_list in the cavity box config for the next run.
         kind: file
         path: results/residues.json
     executor: *executor # api_binding_site is biobb_io, not in the biobb_vs image

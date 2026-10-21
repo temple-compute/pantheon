@@ -24,9 +24,9 @@ compute_flip_flop                       Lipid flip-flop events
 
 ## Inputs / Outputs
 
-The lipid selections in `configs/` assume a DPPC bilayer, so another entry must also be DPPC. Output file names keep the `A023K` prefix. Outputs (`results/`):
-- `A023K_10.pdb`, `A023K_10.xtc`, `A023K.tpr`: downloaded structure, trajectory, topology
-- `A023K_fit.xtc`, `A023K_fit2.xtc`: membrane-fitted and protein-fitted trajectories
+The entry must be a single-lipid bilayer whose lipid residue name is `lipid_resname`; the lipid headgroups are selected as its phosphorus atoms. Outputs (`results/`):
+- `structure.pdb`, `trajectory.xtc`, `topology.tpr`: downloaded structure, trajectory, topology
+- `membrane_fit.xtc`, `protein_fit.xtc`: membrane-fitted and protein-fitted trajectories
 - `leaflets.ndx`, `leaflets_data.csv`: leaflet groups and per-frame assignment
 - `zpositions.csv`, `zpositions_around.csv`, `order.csv`, `apl.csv`, `density.dat`
 - `hole.vmd`, `hole_profile.csv`: pore-radius profile
@@ -36,7 +36,8 @@ The lipid selections in `configs/` assume a DPPC bilayer, so another entry must 
 
 | id | Default | Meaning |
 |---|---|---|
-| `mddb_project` | `A023K` | MDDB accession of a protein in a DPPC membrane. |
+| `mddb_project` | `A023K` | MDDB accession of a protein in a lipid bilayer. |
+| `lipid_resname` | `DPPC` | Lipid residue name (1-4 characters). Its phosphorus atoms (element P) are the headgroup selection for leaflets, z-positions, area per lipid and flip-flop; the membrane fit uses the GROMACS index group of the same name. The density profile uses the first 3 characters, because cpptraj reads 3-character PDB residue names. |
 | `frame_stride` | 1000 | Keep every Nth frame when downloading (1-10000). |
 | `pore_frame_step` | 20 | Analyse the pore radius every Nth downloaded frame (1-1000). |
 
@@ -44,7 +45,8 @@ The lipid selections in `configs/` assume a DPPC bilayer, so another entry must 
 
 - [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [biobb_mem](https://github.com/bioexcel/biobb_mem)
+- [GROMACS](https://www.gromacs.org)
 - [FATSLiM](https://pythonhosted.org/fatslim/)
 - [Lipyphilic](https://lipyphilic.readthedocs.io)
 - [MDDB](https://mddbr.eu/)
-- [BioExcel protein-membrane MD analysis tutorial](https://biobb-wf-mem.readthedocs.io)
+- [BioExcel protein-membrane MD analysis tutorial](https://biobb-mem.readthedocs.io)

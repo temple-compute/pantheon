@@ -30,6 +30,22 @@ artifacts:
     value: CGCGAATTCGCG
     pattern: '[ACGT]{5,200}'
 
+  - &bp_step
+    id: bp_step
+    name: Base-pair step / base pair index
+    description: >-
+      Position whose time series feed the stiffness, bimodality and
+      helical-parameter correlation tasks: base-pair step i (bases i, i+1)
+      for shift/slide/rise/tilt/roll/twist and base pair i for
+      shear/stretch/stagger/buckle/propel/opening. Valid from 2 to the
+      sequence length minus 2. Default 3.
+    kind: number
+    path: params/bp_step.txt
+    value: 3
+    min: 2
+    max: 10
+    step: 1
+
 tasks:
   # ── Step 1: Curves+ ─────────────────────────────────────────────────────────
   - kind: horus_task
@@ -1084,6 +1100,7 @@ tasks:
     description: Extracts the per-frame time series for rise.
     inputs:
       - *sequence
+      - *bp_step
       - id: canal_rise_ser
         name: Rise series (rise.ser)
         description: Canal per-frame time series for rise.
@@ -1094,10 +1111,10 @@ tasks:
         name: Rise time series (zip)
         kind: file
         path: results/rise.timeseries.zip
-      - id: ts_rise_CG_csv
+      - id: ts_rise_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_rise_step3.csv
+        path: results/timeseries/series_rise_step.csv
     executor: *docker_executor
     runtime:
       kind: command
@@ -1107,7 +1124,7 @@ tasks:
         --input_ser_path ${canal_rise_ser}
         --output_zip_path ${ts_rise_zip}
         && unzip -o ${ts_rise_zip} -d "$$(dirname ${ts_rise_zip})/timeseries"
-        && cp "$$(dirname ${ts_rise_zip})/timeseries/series_rise_3_"*.csv ${ts_rise_CG_csv}
+        && cp "$$(dirname ${ts_rise_zip})/timeseries/series_rise_${bp_step}_"*.csv ${ts_rise_step_csv}
     target:
       kind: local
 
@@ -1117,6 +1134,7 @@ tasks:
     description: Extracts the per-frame time series for roll.
     inputs:
       - *sequence
+      - *bp_step
       - id: canal_roll_ser
         name: Roll series (roll.ser)
         description: Canal per-frame time series for roll.
@@ -1127,10 +1145,10 @@ tasks:
         name: Roll time series (zip)
         kind: file
         path: results/roll.timeseries.zip
-      - id: ts_roll_CG_csv
+      - id: ts_roll_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_roll_step3.csv
+        path: results/timeseries/series_roll_step.csv
     executor: *docker_executor
     runtime:
       kind: command
@@ -1140,7 +1158,7 @@ tasks:
         --input_ser_path ${canal_roll_ser}
         --output_zip_path ${ts_roll_zip}
         && unzip -o ${ts_roll_zip} -d "$$(dirname ${ts_roll_zip})/timeseries"
-        && cp "$$(dirname ${ts_roll_zip})/timeseries/series_roll_3_"*.csv ${ts_roll_CG_csv}
+        && cp "$$(dirname ${ts_roll_zip})/timeseries/series_roll_${bp_step}_"*.csv ${ts_roll_step_csv}
     target:
       kind: local
 
@@ -1150,6 +1168,7 @@ tasks:
     description: Extracts the per-frame time series for twist.
     inputs:
       - *sequence
+      - *bp_step
       - id: canal_twist_ser
         name: Twist series (twist.ser)
         description: Canal per-frame time series for twist.
@@ -1160,10 +1179,10 @@ tasks:
         name: Twist time series (zip)
         kind: file
         path: results/twist.timeseries.zip
-      - id: ts_twist_CG_csv
+      - id: ts_twist_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_twist_step3.csv
+        path: results/timeseries/series_twist_step.csv
     executor: *docker_executor
     runtime:
       kind: command
@@ -1173,7 +1192,7 @@ tasks:
         --input_ser_path ${canal_twist_ser}
         --output_zip_path ${ts_twist_zip}
         && unzip -o ${ts_twist_zip} -d "$$(dirname ${ts_twist_zip})/timeseries"
-        && cp "$$(dirname ${ts_twist_zip})/timeseries/series_twist_3_"*.csv ${ts_twist_CG_csv}
+        && cp "$$(dirname ${ts_twist_zip})/timeseries/series_twist_${bp_step}_"*.csv ${ts_twist_step_csv}
     target:
       kind: local
 
@@ -1183,6 +1202,7 @@ tasks:
     description: Extracts the per-frame time series for shift.
     inputs:
       - *sequence
+      - *bp_step
       - id: canal_shift_ser
         name: Shift series (shift.ser)
         description: Canal per-frame time series for shift.
@@ -1193,10 +1213,10 @@ tasks:
         name: Shift time series (zip)
         kind: file
         path: results/shift.timeseries.zip
-      - id: ts_shift_CG_csv
+      - id: ts_shift_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_shift_step3.csv
+        path: results/timeseries/series_shift_step.csv
     executor: *docker_executor
     runtime:
       kind: command
@@ -1206,7 +1226,7 @@ tasks:
         --input_ser_path ${canal_shift_ser}
         --output_zip_path ${ts_shift_zip}
         && unzip -o ${ts_shift_zip} -d "$$(dirname ${ts_shift_zip})/timeseries"
-        && cp "$$(dirname ${ts_shift_zip})/timeseries/series_shift_3_"*.csv ${ts_shift_CG_csv}
+        && cp "$$(dirname ${ts_shift_zip})/timeseries/series_shift_${bp_step}_"*.csv ${ts_shift_step_csv}
     target:
       kind: local
 
@@ -1216,6 +1236,7 @@ tasks:
     description: Extracts the per-frame time series for slide.
     inputs:
       - *sequence
+      - *bp_step
       - id: canal_slide_ser
         name: Slide series (slide.ser)
         description: Canal per-frame time series for slide.
@@ -1226,10 +1247,10 @@ tasks:
         name: Slide time series (zip)
         kind: file
         path: results/slide.timeseries.zip
-      - id: ts_slide_CG_csv
+      - id: ts_slide_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_slide_step3.csv
+        path: results/timeseries/series_slide_step.csv
     executor: *docker_executor
     runtime:
       kind: command
@@ -1239,7 +1260,7 @@ tasks:
         --input_ser_path ${canal_slide_ser}
         --output_zip_path ${ts_slide_zip}
         && unzip -o ${ts_slide_zip} -d "$$(dirname ${ts_slide_zip})/timeseries"
-        && cp "$$(dirname ${ts_slide_zip})/timeseries/series_slide_3_"*.csv ${ts_slide_CG_csv}
+        && cp "$$(dirname ${ts_slide_zip})/timeseries/series_slide_${bp_step}_"*.csv ${ts_slide_step_csv}
     target:
       kind: local
 
@@ -1249,6 +1270,7 @@ tasks:
     description: Extracts the per-frame time series for tilt.
     inputs:
       - *sequence
+      - *bp_step
       - id: canal_tilt_ser
         name: Tilt series (tilt.ser)
         description: Canal per-frame time series for tilt.
@@ -1259,10 +1281,10 @@ tasks:
         name: Tilt time series (zip)
         kind: file
         path: results/tilt.timeseries.zip
-      - id: ts_tilt_CG_csv
+      - id: ts_tilt_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_tilt_step3.csv
+        path: results/timeseries/series_tilt_step.csv
     executor: *docker_executor
     runtime:
       kind: command
@@ -1272,7 +1294,7 @@ tasks:
         --input_ser_path ${canal_tilt_ser}
         --output_zip_path ${ts_tilt_zip}
         && unzip -o ${ts_tilt_zip} -d "$$(dirname ${ts_tilt_zip})/timeseries"
-        && cp "$$(dirname ${ts_tilt_zip})/timeseries/series_tilt_3_"*.csv ${ts_tilt_CG_csv}
+        && cp "$$(dirname ${ts_tilt_zip})/timeseries/series_tilt_${bp_step}_"*.csv ${ts_tilt_step_csv}
     target:
       kind: local
 
@@ -1283,6 +1305,7 @@ tasks:
     description: Extracts the per-frame time series for shear.
     inputs:
       - *sequence
+      - *bp_step
       - id: canal_shear_ser
         name: Shear series (shear.ser)
         description: Canal per-frame time series for shear.
@@ -1293,10 +1316,10 @@ tasks:
         name: Shear time series (zip)
         kind: file
         path: results/shear.timeseries.zip
-      - id: ts_shear_C_csv
+      - id: ts_shear_bp_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_shear_bp3.csv
+        path: results/timeseries/series_shear_bp.csv
     executor: *docker_executor
     runtime:
       kind: command
@@ -1306,7 +1329,7 @@ tasks:
         --input_ser_path ${canal_shear_ser}
         --output_zip_path ${ts_shear_zip}
         && unzip -o ${ts_shear_zip} -d "$$(dirname ${ts_shear_zip})/timeseries"
-        && cp "$$(dirname ${ts_shear_zip})/timeseries/series_shear_3_"*.csv ${ts_shear_C_csv}
+        && cp "$$(dirname ${ts_shear_zip})/timeseries/series_shear_${bp_step}_"*.csv ${ts_shear_bp_csv}
     target:
       kind: local
 
@@ -1316,6 +1339,7 @@ tasks:
     description: Extracts the per-frame time series for stretch.
     inputs:
       - *sequence
+      - *bp_step
       - id: canal_stretch_ser
         name: Stretch series (stretch.ser)
         description: Canal per-frame time series for stretch.
@@ -1326,10 +1350,10 @@ tasks:
         name: Stretch time series (zip)
         kind: file
         path: results/stretch.timeseries.zip
-      - id: ts_stretch_C_csv
+      - id: ts_stretch_bp_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_stretch_bp3.csv
+        path: results/timeseries/series_stretch_bp.csv
     executor: *docker_executor
     runtime:
       kind: command
@@ -1339,7 +1363,7 @@ tasks:
         --input_ser_path ${canal_stretch_ser}
         --output_zip_path ${ts_stretch_zip}
         && unzip -o ${ts_stretch_zip} -d "$$(dirname ${ts_stretch_zip})/timeseries"
-        && cp "$$(dirname ${ts_stretch_zip})/timeseries/series_stretch_3_"*.csv ${ts_stretch_C_csv}
+        && cp "$$(dirname ${ts_stretch_zip})/timeseries/series_stretch_${bp_step}_"*.csv ${ts_stretch_bp_csv}
     target:
       kind: local
 
@@ -1349,6 +1373,7 @@ tasks:
     description: Extracts the per-frame time series for stagger.
     inputs:
       - *sequence
+      - *bp_step
       - id: canal_stagger_ser
         name: Stagger series (stagger.ser)
         description: Canal per-frame time series for stagger.
@@ -1359,10 +1384,10 @@ tasks:
         name: Stagger time series (zip)
         kind: file
         path: results/stagger.timeseries.zip
-      - id: ts_stagger_C_csv
+      - id: ts_stagger_bp_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_stagger_bp3.csv
+        path: results/timeseries/series_stagger_bp.csv
     executor: *docker_executor
     runtime:
       kind: command
@@ -1372,7 +1397,7 @@ tasks:
         --input_ser_path ${canal_stagger_ser}
         --output_zip_path ${ts_stagger_zip}
         && unzip -o ${ts_stagger_zip} -d "$$(dirname ${ts_stagger_zip})/timeseries"
-        && cp "$$(dirname ${ts_stagger_zip})/timeseries/series_stagger_3_"*.csv ${ts_stagger_C_csv}
+        && cp "$$(dirname ${ts_stagger_zip})/timeseries/series_stagger_${bp_step}_"*.csv ${ts_stagger_bp_csv}
     target:
       kind: local
 
@@ -1382,6 +1407,7 @@ tasks:
     description: Extracts the per-frame time series for buckle.
     inputs:
       - *sequence
+      - *bp_step
       - id: canal_buckle_ser
         name: Buckle series (buckle.ser)
         description: Canal per-frame time series for buckle.
@@ -1392,10 +1418,10 @@ tasks:
         name: Buckle time series (zip)
         kind: file
         path: results/buckle.timeseries.zip
-      - id: ts_buckle_C_csv
+      - id: ts_buckle_bp_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_buckle_bp3.csv
+        path: results/timeseries/series_buckle_bp.csv
     executor: *docker_executor
     runtime:
       kind: command
@@ -1405,7 +1431,7 @@ tasks:
         --input_ser_path ${canal_buckle_ser}
         --output_zip_path ${ts_buckle_zip}
         && unzip -o ${ts_buckle_zip} -d "$$(dirname ${ts_buckle_zip})/timeseries"
-        && cp "$$(dirname ${ts_buckle_zip})/timeseries/series_buckle_3_"*.csv ${ts_buckle_C_csv}
+        && cp "$$(dirname ${ts_buckle_zip})/timeseries/series_buckle_${bp_step}_"*.csv ${ts_buckle_bp_csv}
     target:
       kind: local
 
@@ -1415,6 +1441,7 @@ tasks:
     description: Extracts the per-frame time series for propeller.
     inputs:
       - *sequence
+      - *bp_step
       - id: canal_propel_ser
         name: Propeller series (propel.ser)
         description: Canal per-frame time series for propeller.
@@ -1425,10 +1452,10 @@ tasks:
         name: Propeller time series (zip)
         kind: file
         path: results/propel.timeseries.zip
-      - id: ts_propel_C_csv
+      - id: ts_propel_bp_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_propel_bp3.csv
+        path: results/timeseries/series_propel_bp.csv
     executor: *docker_executor
     runtime:
       kind: command
@@ -1438,7 +1465,7 @@ tasks:
         --input_ser_path ${canal_propel_ser}
         --output_zip_path ${ts_propel_zip}
         && unzip -o ${ts_propel_zip} -d "$$(dirname ${ts_propel_zip})/timeseries"
-        && cp "$$(dirname ${ts_propel_zip})/timeseries/series_propel_3_"*.csv ${ts_propel_C_csv}
+        && cp "$$(dirname ${ts_propel_zip})/timeseries/series_propel_${bp_step}_"*.csv ${ts_propel_bp_csv}
     target:
       kind: local
 
@@ -1448,6 +1475,7 @@ tasks:
     description: Extracts the per-frame time series for opening.
     inputs:
       - *sequence
+      - *bp_step
       - id: canal_opening_ser
         name: Opening series (opening.ser)
         description: Canal per-frame time series for opening.
@@ -1458,10 +1486,10 @@ tasks:
         name: Opening time series (zip)
         kind: file
         path: results/opening.timeseries.zip
-      - id: ts_opening_C_csv
+      - id: ts_opening_bp_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_opening_bp3.csv
+        path: results/timeseries/series_opening_bp.csv
     executor: *docker_executor
     runtime:
       kind: command
@@ -1471,7 +1499,7 @@ tasks:
         --input_ser_path ${canal_opening_ser}
         --output_zip_path ${ts_opening_zip}
         && unzip -o ${ts_opening_zip} -d "$$(dirname ${ts_opening_zip})/timeseries"
-        && cp "$$(dirname ${ts_opening_zip})/timeseries/series_opening_3_"*.csv ${ts_opening_C_csv}
+        && cp "$$(dirname ${ts_opening_zip})/timeseries/series_opening_${bp_step}_"*.csv ${ts_opening_bp_csv}
     target:
       kind: local
 
@@ -2185,33 +2213,33 @@ tasks:
 
   - kind: horus_task
     id: basepair_stiffness
-    name: Compute base-pair step stiffness matrix for CG step
-    description: Computes the base-pair step stiffness matrix from the CG-step time series.
+    name: Compute base-pair step stiffness matrix at the selected step
+    description: Computes the base-pair step stiffness matrix from the selected step's time series.
     inputs:
-      - id: ts_shift_CG_csv
+      - id: ts_shift_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_shift_step3.csv
-      - id: ts_slide_CG_csv
+        path: results/timeseries/series_shift_step.csv
+      - id: ts_slide_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_slide_step3.csv
-      - id: ts_rise_CG_csv
+        path: results/timeseries/series_slide_step.csv
+      - id: ts_rise_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_rise_step3.csv
-      - id: ts_tilt_CG_csv
+        path: results/timeseries/series_rise_step.csv
+      - id: ts_tilt_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_tilt_step3.csv
-      - id: ts_roll_CG_csv
+        path: results/timeseries/series_tilt_step.csv
+      - id: ts_roll_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_roll_step3.csv
-      - id: ts_twist_CG_csv
+        path: results/timeseries/series_roll_step.csv
+      - id: ts_twist_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_twist_step3.csv
+        path: results/timeseries/series_twist_step.csv
     outputs:
       - id: basepair_stiffness_csv
         name: Base pair step stiffness matrix (CSV)
@@ -2226,12 +2254,12 @@ tasks:
       kind: command
       command: >-
         basepair_stiffness
-        --input_filename_shift ${ts_shift_CG_csv}
-        --input_filename_slide ${ts_slide_CG_csv}
-        --input_filename_rise ${ts_rise_CG_csv}
-        --input_filename_tilt ${ts_tilt_CG_csv}
-        --input_filename_roll ${ts_roll_CG_csv}
-        --input_filename_twist ${ts_twist_CG_csv}
+        --input_filename_shift ${ts_shift_step_csv}
+        --input_filename_slide ${ts_slide_step_csv}
+        --input_filename_rise ${ts_rise_step_csv}
+        --input_filename_tilt ${ts_tilt_step_csv}
+        --input_filename_roll ${ts_roll_step_csv}
+        --input_filename_twist ${ts_twist_step_csv}
         --output_csv_path ${basepair_stiffness_csv}
         --output_jpg_path ${basepair_stiffness_jpg}
     target:
@@ -2240,13 +2268,13 @@ tasks:
   # ── Bimodality ────────────────────────────────────────────────────────────────
   - kind: horus_task
     id: dna_bimodality
-    name: Bimodality analysis of Twist at CG step
-    description: Detects bimodal distributions in the twist time series at the CG step.
+    name: Bimodality analysis of Twist at the selected step
+    description: Detects bimodal distributions in the twist time series at the selected step.
     inputs:
-      - id: ts_twist_CG_csv
+      - id: ts_twist_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_twist_step3.csv
+        path: results/timeseries/series_twist_step.csv
     outputs:
       - id: bimodality_csv
         name: Twist bimodality (CSV)
@@ -2262,7 +2290,7 @@ tasks:
       command: >-
         dna_bimodality
         --config '{"properties":{"max_iter":500}}'
-        --input_csv_file ${ts_twist_CG_csv}
+        --input_csv_file ${ts_twist_step_csv}
         --output_csv_path ${bimodality_csv}
         --output_jpg_path ${bimodality_jpg}
     target:
@@ -2335,33 +2363,33 @@ tasks:
 
   - kind: horus_task
     id: intrahpcorr
-    name: Intra-base pair helical parameter correlations at C base pair
+    name: Intra-base pair helical parameter correlations at the selected base pair
     description: Computes correlations between helical parameters within a base pair.
     inputs:
-      - id: ts_shear_C_csv
+      - id: ts_shear_bp_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_shear_bp3.csv
-      - id: ts_stretch_C_csv
+        path: results/timeseries/series_shear_bp.csv
+      - id: ts_stretch_bp_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_stretch_bp3.csv
-      - id: ts_stagger_C_csv
+        path: results/timeseries/series_stretch_bp.csv
+      - id: ts_stagger_bp_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_stagger_bp3.csv
-      - id: ts_buckle_C_csv
+        path: results/timeseries/series_stagger_bp.csv
+      - id: ts_buckle_bp_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_buckle_bp3.csv
-      - id: ts_propel_C_csv
+        path: results/timeseries/series_buckle_bp.csv
+      - id: ts_propel_bp_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_propel_bp3.csv
-      - id: ts_opening_C_csv
+        path: results/timeseries/series_propel_bp.csv
+      - id: ts_opening_bp_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_opening_bp3.csv
+        path: results/timeseries/series_opening_bp.csv
     outputs:
       - id: intrahpcorr_csv
         name: Intra-base-pair helical parameter correlations (CSV)
@@ -2376,12 +2404,12 @@ tasks:
       kind: command
       command: >-
         intrahpcorr
-        --input_filename_shear ${ts_shear_C_csv}
-        --input_filename_stretch ${ts_stretch_C_csv}
-        --input_filename_stagger ${ts_stagger_C_csv}
-        --input_filename_buckle ${ts_buckle_C_csv}
-        --input_filename_propel ${ts_propel_C_csv}
-        --input_filename_opening ${ts_opening_C_csv}
+        --input_filename_shear ${ts_shear_bp_csv}
+        --input_filename_stretch ${ts_stretch_bp_csv}
+        --input_filename_stagger ${ts_stagger_bp_csv}
+        --input_filename_buckle ${ts_buckle_bp_csv}
+        --input_filename_propel ${ts_propel_bp_csv}
+        --input_filename_opening ${ts_opening_bp_csv}
         --output_csv_path ${intrahpcorr_csv}
         --output_jpg_path ${intrahpcorr_jpg}
     target:
@@ -2389,33 +2417,33 @@ tasks:
 
   - kind: horus_task
     id: interhpcorr
-    name: Inter-base pair step helical parameter correlations at CG step
+    name: Inter-base pair step helical parameter correlations at the selected step
     description: Computes correlations between helical parameters across neighboring base pair steps.
     inputs:
-      - id: ts_shift_CG_csv
+      - id: ts_shift_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_shift_step3.csv
-      - id: ts_slide_CG_csv
+        path: results/timeseries/series_shift_step.csv
+      - id: ts_slide_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_slide_step3.csv
-      - id: ts_rise_CG_csv
+        path: results/timeseries/series_slide_step.csv
+      - id: ts_rise_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_rise_step3.csv
-      - id: ts_tilt_CG_csv
+        path: results/timeseries/series_rise_step.csv
+      - id: ts_tilt_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_tilt_step3.csv
-      - id: ts_roll_CG_csv
+        path: results/timeseries/series_tilt_step.csv
+      - id: ts_roll_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_roll_step3.csv
-      - id: ts_twist_CG_csv
+        path: results/timeseries/series_roll_step.csv
+      - id: ts_twist_step_csv
         name: Time series CSV
         kind: file
-        path: results/timeseries/series_twist_step3.csv
+        path: results/timeseries/series_twist_step.csv
     outputs:
       - id: interhpcorr_csv
         name: Inter-base-pair-step helical parameter correlations (CSV)
@@ -2430,12 +2458,12 @@ tasks:
       kind: command
       command: >-
         interhpcorr
-        --input_filename_shift ${ts_shift_CG_csv}
-        --input_filename_slide ${ts_slide_CG_csv}
-        --input_filename_rise ${ts_rise_CG_csv}
-        --input_filename_tilt ${ts_tilt_CG_csv}
-        --input_filename_roll ${ts_roll_CG_csv}
-        --input_filename_twist ${ts_twist_CG_csv}
+        --input_filename_shift ${ts_shift_step_csv}
+        --input_filename_slide ${ts_slide_step_csv}
+        --input_filename_rise ${ts_rise_step_csv}
+        --input_filename_tilt ${ts_tilt_step_csv}
+        --input_filename_roll ${ts_roll_step_csv}
+        --input_filename_twist ${ts_twist_step_csv}
         --output_csv_path ${interhpcorr_csv}
         --output_jpg_path ${interhpcorr_jpg}
     target:
@@ -2566,6 +2594,66 @@ tasks:
       kind: local
 
 edges:
+  - source: artifact-bp_step
+    source_output: bp_step
+    target: ts_rise
+    target_input: bp_step
+
+  - source: artifact-bp_step
+    source_output: bp_step
+    target: ts_roll
+    target_input: bp_step
+
+  - source: artifact-bp_step
+    source_output: bp_step
+    target: ts_twist
+    target_input: bp_step
+
+  - source: artifact-bp_step
+    source_output: bp_step
+    target: ts_shift
+    target_input: bp_step
+
+  - source: artifact-bp_step
+    source_output: bp_step
+    target: ts_slide
+    target_input: bp_step
+
+  - source: artifact-bp_step
+    source_output: bp_step
+    target: ts_tilt
+    target_input: bp_step
+
+  - source: artifact-bp_step
+    source_output: bp_step
+    target: ts_shear
+    target_input: bp_step
+
+  - source: artifact-bp_step
+    source_output: bp_step
+    target: ts_stretch
+    target_input: bp_step
+
+  - source: artifact-bp_step
+    source_output: bp_step
+    target: ts_stagger
+    target_input: bp_step
+
+  - source: artifact-bp_step
+    source_output: bp_step
+    target: ts_buckle
+    target_input: bp_step
+
+  - source: artifact-bp_step
+    source_output: bp_step
+    target: ts_propel
+    target_input: bp_step
+
+  - source: artifact-bp_step
+    source_output: bp_step
+    target: ts_opening
+    target_input: bp_step
+
   - source: artifact-sequence
     source_output: sequence
     target: average_stiffness
@@ -3320,102 +3408,102 @@ edges:
 
   # timeseries → basepair_stiffness
   - source: ts_shift
-    source_output: ts_shift_CG_csv
+    source_output: ts_shift_step_csv
     target: basepair_stiffness
-    target_input: ts_shift_CG_csv
+    target_input: ts_shift_step_csv
 
   - source: ts_slide
-    source_output: ts_slide_CG_csv
+    source_output: ts_slide_step_csv
     target: basepair_stiffness
-    target_input: ts_slide_CG_csv
+    target_input: ts_slide_step_csv
 
   - source: ts_rise
-    source_output: ts_rise_CG_csv
+    source_output: ts_rise_step_csv
     target: basepair_stiffness
-    target_input: ts_rise_CG_csv
+    target_input: ts_rise_step_csv
 
   - source: ts_tilt
-    source_output: ts_tilt_CG_csv
+    source_output: ts_tilt_step_csv
     target: basepair_stiffness
-    target_input: ts_tilt_CG_csv
+    target_input: ts_tilt_step_csv
 
   - source: ts_roll
-    source_output: ts_roll_CG_csv
+    source_output: ts_roll_step_csv
     target: basepair_stiffness
-    target_input: ts_roll_CG_csv
+    target_input: ts_roll_step_csv
 
   - source: ts_twist
-    source_output: ts_twist_CG_csv
+    source_output: ts_twist_step_csv
     target: basepair_stiffness
-    target_input: ts_twist_CG_csv
+    target_input: ts_twist_step_csv
 
   # timeseries → dna_bimodality
   - source: ts_twist
-    source_output: ts_twist_CG_csv
+    source_output: ts_twist_step_csv
     target: dna_bimodality
-    target_input: ts_twist_CG_csv
+    target_input: ts_twist_step_csv
 
   # timeseries → intrahpcorr
   - source: ts_shear
-    source_output: ts_shear_C_csv
+    source_output: ts_shear_bp_csv
     target: intrahpcorr
-    target_input: ts_shear_C_csv
+    target_input: ts_shear_bp_csv
 
   - source: ts_stretch
-    source_output: ts_stretch_C_csv
+    source_output: ts_stretch_bp_csv
     target: intrahpcorr
-    target_input: ts_stretch_C_csv
+    target_input: ts_stretch_bp_csv
 
   - source: ts_stagger
-    source_output: ts_stagger_C_csv
+    source_output: ts_stagger_bp_csv
     target: intrahpcorr
-    target_input: ts_stagger_C_csv
+    target_input: ts_stagger_bp_csv
 
   - source: ts_buckle
-    source_output: ts_buckle_C_csv
+    source_output: ts_buckle_bp_csv
     target: intrahpcorr
-    target_input: ts_buckle_C_csv
+    target_input: ts_buckle_bp_csv
 
   - source: ts_propel
-    source_output: ts_propel_C_csv
+    source_output: ts_propel_bp_csv
     target: intrahpcorr
-    target_input: ts_propel_C_csv
+    target_input: ts_propel_bp_csv
 
   - source: ts_opening
-    source_output: ts_opening_C_csv
+    source_output: ts_opening_bp_csv
     target: intrahpcorr
-    target_input: ts_opening_C_csv
+    target_input: ts_opening_bp_csv
 
   # timeseries → interhpcorr
   - source: ts_shift
-    source_output: ts_shift_CG_csv
+    source_output: ts_shift_step_csv
     target: interhpcorr
-    target_input: ts_shift_CG_csv
+    target_input: ts_shift_step_csv
 
   - source: ts_slide
-    source_output: ts_slide_CG_csv
+    source_output: ts_slide_step_csv
     target: interhpcorr
-    target_input: ts_slide_CG_csv
+    target_input: ts_slide_step_csv
 
   - source: ts_rise
-    source_output: ts_rise_CG_csv
+    source_output: ts_rise_step_csv
     target: interhpcorr
-    target_input: ts_rise_CG_csv
+    target_input: ts_rise_step_csv
 
   - source: ts_tilt
-    source_output: ts_tilt_CG_csv
+    source_output: ts_tilt_step_csv
     target: interhpcorr
-    target_input: ts_tilt_CG_csv
+    target_input: ts_tilt_step_csv
 
   - source: ts_roll
-    source_output: ts_roll_CG_csv
+    source_output: ts_roll_step_csv
     target: interhpcorr
-    target_input: ts_roll_CG_csv
+    target_input: ts_roll_step_csv
 
   - source: ts_twist
-    source_output: ts_twist_CG_csv
+    source_output: ts_twist_step_csv
     target: interhpcorr
-    target_input: ts_twist_CG_csv
+    target_input: ts_twist_step_csv
 
   - source: artifact-traj
     source_output: traj
