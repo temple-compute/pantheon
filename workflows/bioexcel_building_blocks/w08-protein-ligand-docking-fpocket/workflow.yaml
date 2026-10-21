@@ -62,12 +62,6 @@ artifacts:
     kind: file
     path: configs/extract_model_pdbqt.yaml
 
-  - id: fpocket_filter_config
-    name: Pocket filter config
-    description: Volume range (800-2000 Å³) used to filter candidate cavities detected by fpocket.
-    kind: file
-    path: configs/fpocket_filter.yaml
-
   - id: fpocket_run_config
     name: fpocket run config
     description: Parameters controlling fpocket's cavity-detection run on the receptor.
@@ -80,9 +74,36 @@ artifacts:
     kind: file
     path: configs/str_check_add_hydrogens.yaml
 
+  - id: min_druggability
+    name: Minimum druggability
+    description: Cavities with a lower fpocket druggability score are dropped.
+    kind: number
+    value: 0
+    min: 0
+    max: 1
+    step: 0.05
+    path: params/min_druggability.txt
+  - id: min_volume
+    name: Minimum cavity volume (Å³)
+    description: Smaller cavities are dropped.
+    kind: number
+    value: 800
+    min: 0
+    max: 5000
+    step: 50
+    path: params/min_volume.txt
+  - id: max_volume
+    name: Maximum cavity volume (Å³)
+    description: Larger cavities are dropped; keep it above min_volume.
+    kind: number
+    value: 2000
+    min: 100
+    max: 20000
+    step: 100
+    path: params/max_volume.txt
   - id: pocket
     name: fpocket pocket
-    description: 'Pocket (by fpocket rank, after the volume filter) that defines the docking box; inspect the fpocket output to choose one for a new receptor (3HEC: 6).'
+    description: 'Pocket (by fpocket rank, after the cavity filter) that defines the docking box; inspect the fpocket output to choose one for a new receptor (3HEC: 6).'
     kind: number
     path: params/pocket.txt
     value: 6
@@ -183,15 +204,25 @@ tasks:
     target:
       kind: local
 
+  # biobb lower bounds are exclusive and must be >= 0, so the druggability window is only applied when
+  # min_druggability > 0; at 0 cavities scoring 0.000 are kept, as with a volume-only filter.
   - kind: horus_task
     id: fpocket_filter
-    name: Filter protein cavities by volume (800-2000 Å³)
-    description: Filters the detected cavities to those within an 800-2000 Å³ volume range.
+    name: Filter protein cavities by druggability and volume
+    description: Keeps only the cavities whose fpocket druggability and volume fall inside the configured windows.
     inputs:
-      - id: fpocket_filter_config
-        name: Pocket filter config
-        kind: file
-        path: configs/fpocket_filter.yaml
+      - id: min_druggability
+        name: Minimum druggability
+        kind: number
+        path: params/min_druggability.txt
+      - id: min_volume
+        name: Minimum cavity volume
+        kind: number
+        path: params/min_volume.txt
+      - id: max_volume
+        name: Maximum cavity volume
+        kind: number
+        path: params/max_volume.txt
       - id: fpocket_all_pockets
         name: All detected pockets
         kind: file
@@ -209,8 +240,9 @@ tasks:
     runtime:
       kind: command
       command: >-
+        d=; [ "$(awk 'BEGIN{print (${min_druggability}>0)}')" = 1 ] && d="\"druggability_score\":[${min_druggability},1],";
         fpocket_filter
-        --config ${fpocket_filter_config}
+        --config "{\"properties\":{$d\"volume\":[${min_volume},${max_volume}]}}"
         --input_pockets_zip ${fpocket_all_pockets}
         --input_summary ${fpocket_summary}
         --output_filter_pockets_zip ${fpocket_filter_pockets}
@@ -613,11 +645,6 @@ edges:
     target: extract_model_pdbqt
     target_input: extract_model_pdbqt_config
 
-  - source: artifact-fpocket_filter_config
-    source_output: fpocket_filter_config
-    target: fpocket_filter
-    target_input: fpocket_filter_config
-
   - source: artifact-fpocket_run_config
     source_output: fpocket_run_config
     target: fpocket_run
@@ -645,6 +672,18 @@ edges:
     source_output: ligand_sdf
     target: ideal_sdf
     target_input: ligand_sdf
+  - source: artifact-min_druggability
+    source_output: min_druggability
+    target: fpocket_filter
+    target_input: min_druggability
+  - source: artifact-min_volume
+    source_output: min_volume
+    target: fpocket_filter
+    target_input: min_volume
+  - source: artifact-max_volume
+    source_output: max_volume
+    target: fpocket_filter
+    target_input: max_volume
   - source: artifact-pocket
     source_output: pocket
     target: fpocket_select

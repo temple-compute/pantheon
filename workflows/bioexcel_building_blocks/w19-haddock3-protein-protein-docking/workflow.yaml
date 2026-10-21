@@ -2022,7 +2022,7 @@ tasks:
   - kind: horus_task
     id: rigid_body
     name: Rigid-body docking (rigidbody)
-    description: Runs HADDOCK3 rigid-body sampling (10 models) using the AIR and multi-body restraints.
+    description: Runs HADDOCK3 rigid-body sampling (number of models set by `rigid_body_models`) using the AIR and multi-body restraints.
     inputs:
       - id: rigid_body_models
         name: Rigid-body models

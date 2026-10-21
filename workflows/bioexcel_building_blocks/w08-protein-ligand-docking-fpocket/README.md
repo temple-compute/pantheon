@@ -6,7 +6,7 @@ Dock a ligand with AutoDock Vina into a cavity found by fpocket.
 
 ## Overview
 
-Docks one ligand into a receptor with AutoDock Vina (default p38-alpha MAP kinase, PDB 3HEC, imatinib STI). fpocket detects cavities on the receptor, which are filtered by volume (800-2000 A^3); the chosen `pocket` defines the docking box. The top pose is assembled into a complex. The workflow has 14 tasks.
+Docks one ligand into a receptor with AutoDock Vina (default p38-alpha MAP kinase, PDB 3HEC, imatinib STI). fpocket detects cavities on the receptor, which are filtered by druggability and volume; the chosen `pocket` defines the docking box. The top pose is assembled into a complex. The workflow has 14 tasks.
 
 ## Pipeline
 
@@ -14,7 +14,7 @@ Docks one ligand into a receptor with AutoDock Vina (default p38-alpha MAP kinas
 fetch_pdb                    Download pdb_id or use the uploaded receptor
 extract_protein              Remove ligands, ions, water
 fpocket_run                  Detect cavities
-fpocket_filter               Filter by volume
+fpocket_filter               Filter by druggability and volume
 fpocket_select               Extract the chosen pocket
 box                          Docking box around the cavity
 str_check_add_hydrogens      Receptor PDBQT
@@ -38,7 +38,10 @@ cat_pdb                      Receptor + pose complex
 |---|---|---|
 | `pdb_id` | `3HEC` | RCSB PDB code; clear it to use `structure` |
 | `structure` | `examples/3hec.pdb` | Receptor used when `pdb_id` is empty |
-| `pocket` | `6` | fpocket rank (after the volume filter) of the pocket that defines the box; differs per receptor |
+| `min_druggability` | `0` | Cavities with a lower fpocket druggability score are dropped (0-1); at 0 no druggability filter is applied |
+| `min_volume` | `800` | Smaller cavities (Å³) are dropped (0-5000) |
+| `max_volume` | `2000` | Larger cavities (Å³) are dropped; keep it above `min_volume` (100-20000) |
+| `pocket` | `6` | fpocket rank (after the cavity filter) of the pocket that defines the box; differs per receptor |
 | `box_offset_a` | `12` | Padding around the pocket on each side of the box (A) |
 | `ligand_code` | `STI` | Ligand to dock, as PDB code; clear it to use `ligand_sdf` |
 | `ligand_sdf` | `examples/sti_ideal.sdf` | 3D SDF used when `ligand_code` is empty |
