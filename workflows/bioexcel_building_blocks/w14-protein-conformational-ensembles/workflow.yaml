@@ -3,13 +3,16 @@ name: Protein Conformational Ensembles (FlexDyn)
 
 _executor: &executor
   kind: conda_python_environment
-  environment_dir: "../.horus_conda_env"
+  environment_dir: "../../.horus_conda_env" # one env per run, shared by all tasks
   conda: micromamba
   environment_file: conda_env.yaml
 
 _docker_executor_flexdyn: &docker_executor_flexdyn
   kind: docker
   image: quay.io/biocontainers/biobb_flexdyn:5.2.2--py310ha6fa2df_0
+  # conda activate.d sets this; docker skips activation, so CONCOORD dist/disco need it here
+  env:
+    CONCOORDLIB: /usr/local/share/concoord/lib
 
 _docker_executor_flexserv: &docker_executor_flexserv
   kind: docker
@@ -288,7 +291,7 @@ tasks:
     outputs:
       - id: pdb_model
         kind: file
-        path: results/1ake_model.pdb
+        path: results/model.pdb
     executor: *executor
     runtime:
       kind: command
@@ -302,7 +305,7 @@ tasks:
 
   - kind: horus_task
     id: extract_chain
-    name: Extract chain A monomer
+    name: Extract the selected chain
     inputs:
       - id: chain
         name: Chain
@@ -310,11 +313,11 @@ tasks:
         path: params/chain.txt
       - id: pdb_model
         kind: file
-        path: results/1ake_model.pdb
+        path: results/model.pdb
     outputs:
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     executor: *executor
     runtime:
       kind: command
@@ -335,11 +338,11 @@ tasks:
         path: configs/cpptraj_mask_backbone.yaml
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     outputs:
       - id: prot_backbone
         kind: file
-        path: results/1ake_backbone.pdb
+        path: results/backbone.pdb
     executor: *executor
     runtime:
       kind: command
@@ -361,11 +364,11 @@ tasks:
         path: configs/cpptraj_mask_ca.yaml
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     outputs:
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
     executor: *executor
     runtime:
       kind: command
@@ -387,17 +390,17 @@ tasks:
         path: configs/concoord_dist.yaml
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     outputs:
       - id: concoord_dist_pdb
         kind: file
-        path: results/1ake_dist.pdb
+        path: results/dist.pdb
       - id: concoord_dist_gro
         kind: file
-        path: results/1ake_dist.gro
+        path: results/dist.gro
       - id: concoord_dist_dat
         kind: file
-        path: results/1ake_dist.dat
+        path: results/dist.dat
     executor: *docker_executor_flexdyn
     runtime:
       kind: command
@@ -421,20 +424,20 @@ tasks:
         path: params/n_structures.txt
       - id: concoord_dist_pdb
         kind: file
-        path: results/1ake_dist.pdb
+        path: results/dist.pdb
       - id: concoord_dist_dat
         kind: file
-        path: results/1ake_dist.dat
+        path: results/dist.dat
     outputs:
       - id: concoord_disco_pdb
         kind: file
-        path: results/1ake_disco_traj.pdb
+        path: results/disco_traj.pdb
       - id: concoord_disco_rmsd
         kind: file
-        path: results/1ake_disco_rmsd.dat
+        path: results/disco_rmsd.dat
       - id: concoord_disco_bfactor
         kind: file
-        path: results/1ake_disco_bfactor.pdb
+        path: results/disco_bfactor.pdb
     resources:
       cpus: 2
       memory_gb: 8
@@ -444,7 +447,7 @@ tasks:
       kind: command
       command: >-
         concoord_disco
-        --config '{"properties":{"vdw":4,"num_structs":${n_structures},"env_vars_dict":{"CONCOORD_OVERWRITE":"1","CONCOORDLIB":"${CONDA_PREFIX}/share/concoord/lib"}}}'
+        --config '{"properties":{"vdw":4,"num_structs":${n_structures},"env_vars_dict":{"CONCOORD_OVERWRITE":"1"}}}'
         --input_pdb_path ${concoord_dist_pdb}
         --input_dat_path ${concoord_dist_dat}
         --output_traj_path ${concoord_disco_pdb}
@@ -462,17 +465,17 @@ tasks:
         path: configs/cpptraj_rms_concoord.yaml
       - id: concoord_dist_pdb
         kind: file
-        path: results/1ake_dist.pdb
+        path: results/dist.pdb
       - id: concoord_disco_pdb
         kind: file
-        path: results/1ake_disco_traj.pdb
+        path: results/disco_traj.pdb
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     outputs:
       - id: concoord_rmsd
         kind: file
-        path: results/1ake_concoord_rmsd.dat
+        path: results/concoord_rmsd.dat
     executor: *executor
     runtime:
       kind: command
@@ -495,14 +498,14 @@ tasks:
         path: configs/cpptraj_convert_concoord.yaml
       - id: concoord_dist_pdb
         kind: file
-        path: results/1ake_dist.pdb
+        path: results/dist.pdb
       - id: concoord_disco_pdb
         kind: file
-        path: results/1ake_disco_traj.pdb
+        path: results/disco_traj.pdb
     outputs:
       - id: concoord_trr
         kind: file
-        path: results/1ake_disco_traj.trr
+        path: results/disco_traj.trr
     executor: *executor
     runtime:
       kind: command
@@ -525,11 +528,11 @@ tasks:
         path: params/n_structures.txt
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     outputs:
       - id: prody_ensemble
         kind: file
-        path: results/1ake_prody_anm_traj.pdb
+        path: results/prody_anm_traj.pdb
     resources:
       cpus: 2
       memory_gb: 8
@@ -554,14 +557,14 @@ tasks:
         path: configs/cpptraj_rms_prody.yaml
       - id: prody_ensemble
         kind: file
-        path: results/1ake_prody_anm_traj.pdb
+        path: results/prody_anm_traj.pdb
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     outputs:
       - id: prody_rmsd
         kind: file
-        path: results/1ake_prody_rmsd.dat
+        path: results/prody_rmsd.dat
     executor: *executor
     runtime:
       kind: command
@@ -584,14 +587,14 @@ tasks:
         path: configs/cpptraj_convert_prody.yaml
       - id: prot_backbone
         kind: file
-        path: results/1ake_backbone.pdb
+        path: results/backbone.pdb
       - id: prody_ensemble
         kind: file
-        path: results/1ake_prody_anm_traj.pdb
+        path: results/prody_anm_traj.pdb
     outputs:
       - id: prody_trr
         kind: file
-        path: results/1ake_prody_anm_traj.trr
+        path: results/prody_anm_traj.trr
     executor: *executor
     runtime:
       kind: command
@@ -613,14 +616,14 @@ tasks:
         path: configs/bd_run.yaml
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
     outputs:
       - id: bd_crd
         kind: file
-        path: results/1ake_flexserv_bd_ensemble.mdcrd
+        path: results/flexserv_bd_ensemble.mdcrd
       - id: bd_log
         kind: file
-        path: results/1ake_flexserv_bd_ensemble.log
+        path: results/flexserv_bd_ensemble.log
     resources:
       cpus: 2
       memory_gb: 8
@@ -646,20 +649,20 @@ tasks:
         path: configs/cpptraj_rms_bd.yaml
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
       - id: bd_crd
         kind: file
-        path: results/1ake_flexserv_bd_ensemble.mdcrd
+        path: results/flexserv_bd_ensemble.mdcrd
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     outputs:
       - id: flexserv_bd_rmsd
         kind: file
-        path: results/1ake_flexserv_bd_rmsd.dat
+        path: results/flexserv_bd_rmsd.dat
       - id: flexserv_bd_traj_fitted
         kind: file
-        path: results/1ake_flexserv_bd_traj_fitted.trr
+        path: results/flexserv_bd_traj_fitted.trr
     executor: *executor
     runtime:
       kind: command
@@ -684,14 +687,14 @@ tasks:
         path: params/n_structures.txt
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
     outputs:
       - id: dmd_crd
         kind: file
-        path: results/1ake_flexserv_dmd_ensemble.mdcrd
+        path: results/flexserv_dmd_ensemble.mdcrd
       - id: dmd_log
         kind: file
-        path: results/1ake_flexserv_dmd_ensemble.log
+        path: results/flexserv_dmd_ensemble.log
     resources:
       cpus: 2
       memory_gb: 8
@@ -717,20 +720,20 @@ tasks:
         path: configs/cpptraj_rms_dmd.yaml
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
       - id: dmd_crd
         kind: file
-        path: results/1ake_flexserv_dmd_ensemble.mdcrd
+        path: results/flexserv_dmd_ensemble.mdcrd
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     outputs:
       - id: flexserv_dmd_rmsd
         kind: file
-        path: results/1ake_flexserv_dmd_rmsd.dat
+        path: results/flexserv_dmd_rmsd.dat
       - id: flexserv_dmd_traj_fitted
         kind: file
-        path: results/1ake_flexserv_dmd_traj_fitted.trr
+        path: results/flexserv_dmd_traj_fitted.trr
     executor: *executor
     runtime:
       kind: command
@@ -755,14 +758,14 @@ tasks:
         path: params/n_structures.txt
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
     outputs:
       - id: nma_crd
         kind: file
-        path: results/1ake_flexserv_nma_ensemble.mdcrd
+        path: results/flexserv_nma_ensemble.mdcrd
       - id: nma_log
         kind: file
-        path: results/1ake_flexserv_nma_ensemble.log
+        path: results/flexserv_nma_ensemble.log
     resources:
       cpus: 2
       memory_gb: 8
@@ -788,17 +791,17 @@ tasks:
         path: configs/cpptraj_rms_nma.yaml
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
       - id: nma_crd
         kind: file
-        path: results/1ake_flexserv_nma_ensemble.mdcrd
+        path: results/flexserv_nma_ensemble.mdcrd
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     outputs:
       - id: flexserv_nma_rmsd
         kind: file
-        path: results/1ake_flexserv_nma_rmsd.dat
+        path: results/flexserv_nma_rmsd.dat
     executor: *executor
     runtime:
       kind: command
@@ -821,14 +824,14 @@ tasks:
         path: configs/cpptraj_convert_nma.yaml
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
       - id: nma_crd
         kind: file
-        path: results/1ake_flexserv_nma_ensemble.mdcrd
+        path: results/flexserv_nma_ensemble.mdcrd
     outputs:
       - id: nma_trr
         kind: file
-        path: results/1ake_flexserv_nma_ensemble.trr
+        path: results/flexserv_nma_ensemble.trr
     executor: *executor
     runtime:
       kind: command
@@ -851,11 +854,11 @@ tasks:
         path: params/n_structures.txt
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
     outputs:
       - id: nolb_pdb
         kind: file
-        path: results/1ake_nolb_ensemble.pdb
+        path: results/nolb_ensemble.pdb
     resources:
       cpus: 2
       memory_gb: 8
@@ -880,17 +883,17 @@ tasks:
         path: configs/cpptraj_rms_nolb.yaml
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
       - id: nolb_pdb
         kind: file
-        path: results/1ake_nolb_ensemble.pdb
+        path: results/nolb_ensemble.pdb
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     outputs:
       - id: nolb_rmsd
         kind: file
-        path: results/1ake_nolb_rmsd.dat
+        path: results/nolb_rmsd.dat
     executor: *executor
     runtime:
       kind: command
@@ -913,14 +916,14 @@ tasks:
         path: configs/cpptraj_convert_nolb.yaml
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
       - id: nolb_pdb
         kind: file
-        path: results/1ake_nolb_ensemble.pdb
+        path: results/nolb_ensemble.pdb
     outputs:
       - id: nolb_trr
         kind: file
-        path: results/1ake_nolb_ensemble.trr
+        path: results/nolb_ensemble.trr
     executor: *executor
     runtime:
       kind: command
@@ -942,11 +945,11 @@ tasks:
         path: configs/imod_imode.yaml
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     outputs:
       - id: imode_evecs
         kind: file
-        path: results/1ake_imode_evecs.dat
+        path: results/imode_evecs.dat
     resources:
       cpus: 2
       memory_gb: 8
@@ -972,14 +975,14 @@ tasks:
         path: params/n_structures.txt
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
       - id: imode_evecs
         kind: file
-        path: results/1ake_imode_evecs.dat
+        path: results/imode_evecs.dat
     outputs:
       - id: imc_pdb
         kind: file
-        path: results/1ake_imc.pdb
+        path: results/imc.pdb
     resources:
       cpus: 2
       memory_gb: 8
@@ -1005,14 +1008,14 @@ tasks:
         path: configs/cpptraj_rms_imods.yaml
       - id: imc_pdb
         kind: file
-        path: results/1ake_imc.pdb
+        path: results/imc.pdb
       - id: monomer
         kind: file
-        path: results/1ake_monomer.pdb
+        path: results/monomer.pdb
     outputs:
       - id: imods_rmsd
         kind: file
-        path: results/1ake_imods_rmsd.dat
+        path: results/imods_rmsd.dat
     executor: *executor
     runtime:
       kind: command
@@ -1035,11 +1038,11 @@ tasks:
         path: configs/cpptraj_convert_imods.yaml
       - id: imc_pdb
         kind: file
-        path: results/1ake_imc.pdb
+        path: results/imc.pdb
     outputs:
       - id: imods_trr
         kind: file
-        path: results/1ake_imods_ensemble.trr
+        path: results/imods_ensemble.trr
     executor: *executor
     runtime:
       kind: command
@@ -1058,23 +1061,23 @@ tasks:
     inputs:
       - id: concoord_trr
         kind: file
-        path: results/1ake_disco_traj.trr
+        path: results/disco_traj.trr
       - id: prody_trr
         kind: file
-        path: results/1ake_prody_anm_traj.trr
+        path: results/prody_anm_traj.trr
       - id: imods_trr
         kind: file
-        path: results/1ake_imods_ensemble.trr
+        path: results/imods_ensemble.trr
       - id: flexserv_dmd_traj_fitted
         kind: file
-        path: results/1ake_flexserv_dmd_traj_fitted.trr
+        path: results/flexserv_dmd_traj_fitted.trr
       - id: nma_trr
         kind: file
-        path: results/1ake_flexserv_nma_ensemble.trr
+        path: results/flexserv_nma_ensemble.trr
     outputs:
       - id: concat_traj_zip
         kind: file
-        path: results/1ake_concat_traj.zip
+        path: results/concat_traj.zip
     executor: *executor
     runtime:
       kind: command
@@ -1094,11 +1097,11 @@ tasks:
     inputs:
       - id: concat_traj_zip
         kind: file
-        path: results/1ake_concat_traj.zip
+        path: results/concat_traj.zip
     outputs:
       - id: concat_trr
         kind: file
-        path: results/1ake_concat_traj.trr
+        path: results/concat_traj.trr
     executor: *executor
     runtime:
       kind: command
@@ -1118,11 +1121,11 @@ tasks:
         path: configs/make_ndx.yaml
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
     outputs:
       - id: gmx_index_file
         kind: file
-        path: results/1ake_gmx_ndx.ndx
+        path: results/gmx_ndx.ndx
     executor: *executor
     runtime:
       kind: command
@@ -1144,17 +1147,17 @@ tasks:
         path: params/cluster_cutoff_nm.txt
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
       - id: concat_trr
         kind: file
-        path: results/1ake_concat_traj.trr
+        path: results/concat_traj.trr
       - id: gmx_index_file
         kind: file
-        path: results/1ake_gmx_ndx.ndx
+        path: results/gmx_ndx.ndx
     outputs:
       - id: cluster_concat_pdb
         kind: file
-        path: results/1ake_concat_cluster.pdb
+        path: results/concat_cluster.pdb
     resources:
       cpus: 4
       memory_gb: 16
@@ -1181,17 +1184,17 @@ tasks:
         path: configs/cpptraj_rms_meta.yaml
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
       - id: cluster_concat_pdb
         kind: file
-        path: results/1ake_concat_cluster.pdb
+        path: results/concat_cluster.pdb
     outputs:
       - id: meta_traj_rmsd
         kind: file
-        path: results/1ake_meta_traj_rmsd.dat
+        path: results/meta_traj_rmsd.dat
       - id: meta_traj_fitted
         kind: file
-        path: results/1ake_meta_traj_fitted.crd
+        path: results/meta_traj_fitted.crd
     executor: *executor
     runtime:
       kind: command
@@ -1215,14 +1218,14 @@ tasks:
         path: configs/pcz_zip_classic.yaml
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
       - id: meta_traj_fitted
         kind: file
-        path: results/1ake_meta_traj_fitted.crd
+        path: results/meta_traj_fitted.crd
     outputs:
       - id: concat_pcz
         kind: file
-        path: results/1ake_concat_ensemble.pcz
+        path: results/concat_ensemble.pcz
     resources:
       cpus: 4
       memory_gb: 16
@@ -1248,14 +1251,14 @@ tasks:
         path: configs/pcz_zip_gaussian.yaml
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
       - id: meta_traj_fitted
         kind: file
-        path: results/1ake_meta_traj_fitted.crd
+        path: results/meta_traj_fitted.crd
     outputs:
       - id: concat_pcz_gaussian
         kind: file
-        path: results/1ake_concat_ensemble_gaussian.pcz
+        path: results/concat_ensemble_gaussian.pcz
     resources:
       cpus: 4
       memory_gb: 16
@@ -1278,11 +1281,11 @@ tasks:
     inputs:
       - id: concat_pcz
         kind: file
-        path: results/1ake_concat_ensemble.pcz
+        path: results/concat_ensemble.pcz
     outputs:
       - id: pcz_report
         kind: file
-        path: results/1ake_pcz_report.json
+        path: results/pcz_report.json
     executor: *docker_executor_flexserv
     runtime:
       kind: command
@@ -1302,11 +1305,11 @@ tasks:
         path: configs/pcz_evecs.yaml
       - id: concat_pcz
         kind: file
-        path: results/1ake_concat_ensemble.pcz
+        path: results/concat_ensemble.pcz
     outputs:
       - id: pcz_evecs_report
         kind: file
-        path: results/1ake_pcz_evecs.json
+        path: results/pcz_evecs.json
     executor: *docker_executor_flexserv
     runtime:
       kind: command
@@ -1327,11 +1330,11 @@ tasks:
         path: configs/pcz_animate.yaml
       - id: concat_pcz
         kind: file
-        path: results/1ake_concat_ensemble.pcz
+        path: results/concat_ensemble.pcz
     outputs:
       - id: proj1_crd
         kind: file
-        path: results/1ake_pcz_proj1.crd
+        path: results/pcz_proj1.crd
     executor: *docker_executor_flexserv
     runtime:
       kind: command
@@ -1352,14 +1355,14 @@ tasks:
         path: configs/cpptraj_convert_proj.yaml
       - id: prot_ca
         kind: file
-        path: results/1ake_ca.pdb
+        path: results/ca.pdb
       - id: proj1_crd
         kind: file
-        path: results/1ake_pcz_proj1.crd
+        path: results/pcz_proj1.crd
     outputs:
       - id: proj1_xtc
         kind: file
-        path: results/1ake_pcz_proj1.xtc
+        path: results/pcz_proj1.xtc
     executor: *executor
     runtime:
       kind: command
@@ -1381,14 +1384,14 @@ tasks:
         path: configs/pcz_bfactor.yaml
       - id: concat_pcz
         kind: file
-        path: results/1ake_concat_ensemble.pcz
+        path: results/concat_ensemble.pcz
     outputs:
       - id: bfactor_all_dat
         kind: file
-        path: results/1ake_bfactor_all.dat
+        path: results/bfactor_all.dat
       - id: bfactor_all_pdb
         kind: file
-        path: results/1ake_bfactor_all.pdb
+        path: results/bfactor_all.pdb
     executor: *docker_executor_flexserv
     runtime:
       kind: command
@@ -1410,11 +1413,11 @@ tasks:
         path: configs/pcz_hinges_bfactor.yaml
       - id: concat_pcz_gaussian
         kind: file
-        path: results/1ake_concat_ensemble_gaussian.pcz
+        path: results/concat_ensemble_gaussian.pcz
     outputs:
       - id: hinges_bfactor_report
         kind: file
-        path: results/1ake_hinges_bfactor_report.json
+        path: results/hinges_bfactor_report.json
     executor: *docker_executor_flexserv
     runtime:
       kind: command
@@ -1435,11 +1438,11 @@ tasks:
         path: configs/pcz_hinges_dyndom.yaml
       - id: concat_pcz_gaussian
         kind: file
-        path: results/1ake_concat_ensemble_gaussian.pcz
+        path: results/concat_ensemble_gaussian.pcz
     outputs:
       - id: hinges_dyndom_report
         kind: file
-        path: results/1ake_hinges_dyndom_report.json
+        path: results/hinges_dyndom_report.json
     executor: *docker_executor_flexserv
     runtime:
       kind: command
@@ -1460,11 +1463,11 @@ tasks:
         path: configs/pcz_hinges_fcte.yaml
       - id: concat_pcz_gaussian
         kind: file
-        path: results/1ake_concat_ensemble_gaussian.pcz
+        path: results/concat_ensemble_gaussian.pcz
     outputs:
       - id: hinges_fcte_report
         kind: file
-        path: results/1ake_hinges_fcte_report.json
+        path: results/hinges_fcte_report.json
     executor: *docker_executor_flexserv
     runtime:
       kind: command
@@ -1485,11 +1488,11 @@ tasks:
         path: configs/pcz_stiffness.yaml
       - id: concat_pcz
         kind: file
-        path: results/1ake_concat_ensemble.pcz
+        path: results/concat_ensemble.pcz
     outputs:
       - id: stiffness_report
         kind: file
-        path: results/1ake_pcz_stiffness.json
+        path: results/pcz_stiffness.json
     executor: *docker_executor_flexserv
     runtime:
       kind: command
@@ -1510,11 +1513,11 @@ tasks:
         path: configs/pcz_collectivity.yaml
       - id: concat_pcz
         kind: file
-        path: results/1ake_concat_ensemble.pcz
+        path: results/concat_ensemble.pcz
     outputs:
       - id: pcz_collectivity_report
         kind: file
-        path: results/1ake_pcz_collectivity.json
+        path: results/pcz_collectivity.json
     executor: *docker_executor_flexserv
     runtime:
       kind: command

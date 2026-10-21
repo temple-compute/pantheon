@@ -392,8 +392,8 @@ tasks:
 
   - kind: horus_task
     id: mdrun_nvt
-    name: NVT equilibration (10 ps, restrained)
-    description: Runs GROMACS mdrun for a 10 ps restrained NVT (constant volume) equilibration.
+    name: NVT equilibration (restrained)
+    description: Runs GROMACS mdrun for a restrained NVT (constant volume) equilibration.
     inputs:
       - id: nvt_tpr
         name: NVT run file
@@ -464,8 +464,8 @@ tasks:
 
   - kind: horus_task
     id: mdrun_npt
-    name: NPT equilibration (10 ps, restrained)
-    description: Runs GROMACS mdrun for a 10 ps restrained NPT (constant pressure) equilibration.
+    name: NPT equilibration (restrained)
+    description: Runs GROMACS mdrun for a restrained NPT (constant pressure) equilibration.
     inputs:
       - id: npt_tpr
         name: NPT run file
@@ -536,8 +536,8 @@ tasks:
 
   - kind: horus_task
     id: mdrun_free
-    name: Free MD simulation (100 ps)
-    description: Runs GROMACS mdrun for the 100 ps unrestrained production MD simulation.
+    name: Free MD simulation
+    description: Runs GROMACS mdrun for the unrestrained production MD simulation.
     inputs:
       - id: md_tpr
         name: Production MD run file

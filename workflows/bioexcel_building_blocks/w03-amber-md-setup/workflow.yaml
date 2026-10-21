@@ -443,7 +443,7 @@ tasks:
   - kind: horus_task
     id: leap_add_ions
     name: Neutralize and add ions (leap)
-    description: Neutralizes the solvated system and adds 0.15 M NaCl using LEaP.
+    description: Neutralizes the solvated system and adds NaCl at the configured concentration using LEaP.
     inputs:
       - id: solv_pdb
         name: Solvated structure PDB
@@ -827,7 +827,7 @@ tasks:
       - id: rms_first_dat
         name: RMSd vs first frame
         kind: file
-        path: results/1aki_rms_first.dat
+        path: results/rms_first.dat
     executor: *executor
     runtime:
       kind: command
@@ -864,7 +864,7 @@ tasks:
       - id: rms_exp_dat
         name: RMSd vs experimental structure
         kind: file
-        path: results/1aki_rms_exp.dat
+        path: results/rms_exp.dat
     executor: *executor
     runtime:
       kind: command
@@ -898,7 +898,7 @@ tasks:
       - id: rgyr_dat
         name: Radius of gyration
         kind: file
-        path: results/1aki_rgyr.dat
+        path: results/rgyr.dat
     executor: *executor
     runtime:
       kind: command
@@ -931,7 +931,7 @@ tasks:
       - id: imaged_traj
         name: Imaged, solvent-stripped trajectory
         kind: file
-        path: results/1aki_imaged_traj.trr
+        path: results/imaged_traj.trr
     executor: *executor
     runtime:
       kind: command

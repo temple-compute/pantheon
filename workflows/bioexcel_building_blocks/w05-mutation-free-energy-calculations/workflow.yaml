@@ -11,6 +11,11 @@ _docker_executor_pmx: &docker_executor_pmx
   kind: docker
   image: quay.io/biocontainers/biobb_pmx:5.2.2--pyhdfd78af_0
 
+# 5.1.0 for pmxanalyse only: 5.2.x/5.3.0 ship numpy>=2.4, on which pmx analyse BAR crashes (float() of a 1-d array).
+_docker_executor_pmx_analyse: &docker_executor_pmx_analyse
+  kind: docker
+  image: quay.io/biocontainers/biobb_pmx:5.1.0--pyhdfd78af_0
+
 artifacts:
   - id: mutation_resnum
     name: Mutated residue number
@@ -253,8 +258,8 @@ tasks:
 
   - kind: horus_task
     id: pmxmutate_stateA
-    name: Model stateA mutated structure (Ile10 -> Ala, WT->Mut)
-    description: Runs pmx mutate to build the in-silico Ile10->Ala mutant structure for stateA (WT->Mut).
+    name: Model stateA mutated structure (WT->Mut)
+    description: Runs pmx mutate to build the in-silico wild-type to mutant structure for stateA (WT->Mut).
     inputs:
       - id: stateA_frames
         name: stateA snapshots
@@ -277,15 +282,17 @@ tasks:
     executor: *docker_executor_pmx
     runtime:
       kind: command
+      # pmx mutate reads one pdb/gro and the chain below is single-structure, so mutate the first snapshot (frameA0.pdb).
       command: >-
-        pmxmutate --config '{"properties":{"force_field":"amber99sb-star-ildn-mut","mutation_list":"${mutation_resnum}${mut_residue}","binary_path":"pmx"}}' --input_structure_path ${stateA_frames} --output_structure_path ${mutA_pdb}
+        python -c "import zipfile; zipfile.ZipFile('${stateA_frames}').extract('frameA0.pdb', '/tmp')" &&
+        pmxmutate --config '{"properties":{"force_field":"amber99sb-star-ildn-mut","mutation_list":"${mutation_resnum}${mut_residue}","binary_path":"pmx"}}' --input_structure_path /tmp/frameA0.pdb --output_structure_path ${mutA_pdb}
     target:
       kind: local
 
   - kind: horus_task
     id: pmxmutate_stateB
-    name: Model stateB mutated structure (Ala10 -> Ile, Mut->WT)
-    description: Runs pmx mutate to build the in-silico Ala10->Ile mutant structure for stateB (Mut->WT).
+    name: Model stateB mutated structure (Mut->WT)
+    description: Runs pmx mutate to build the in-silico mutant to wild-type structure for stateB (Mut->WT).
     inputs:
       - id: stateB_frames
         name: stateB snapshots
@@ -308,8 +315,10 @@ tasks:
     executor: *docker_executor_pmx
     runtime:
       kind: command
+      # pmx mutate reads one pdb/gro and the chain below is single-structure, so mutate the first snapshot (frameB0.pdb).
       command: >-
-        pmxmutate --config '{"properties":{"force_field":"amber99sb-star-ildn-mut","mutation_list":"${mutation_resnum}${wt_residue}","binary_path":"pmx"}}' --input_structure_path ${stateB_frames} --output_structure_path ${mutB_pdb}
+        python -c "import zipfile; zipfile.ZipFile('${stateB_frames}').extract('frameB0.pdb', '/tmp')" &&
+        pmxmutate --config '{"properties":{"force_field":"amber99sb-star-ildn-mut","mutation_list":"${mutation_resnum}${wt_residue}","binary_path":"pmx"}}' --input_structure_path /tmp/frameB0.pdb --output_structure_path ${mutB_pdb}
     target:
       kind: local
 
@@ -340,7 +349,9 @@ tasks:
     executor: *executor
     runtime:
       kind: command
+      # GMXLIB = the mutff shipped with pmx (pmx_biobb in conda_env.yaml); pdb2gmx and every grompp need its hybrid residues.
       command: >-
+        GMXLIB="$(python -c 'import os, pmx; print(os.path.dirname(pmx.__file__) + "/data/mutff")')"
         pdb2gmx
         --config ${pdb2gmx_stateA_config}
         --input_pdb_path ${mutA_pdb}
@@ -375,6 +386,7 @@ tasks:
     runtime:
       kind: command
       command: >-
+        GMXLIB="$(python -c 'import os, pmx; print(os.path.dirname(pmx.__file__) + "/data/mutff")')"
         pdb2gmx
         --config ${pdb2gmx_stateB_config}
         --input_pdb_path ${mutB_pdb}
@@ -404,10 +416,6 @@ tasks:
         description: Hybrid dual-topology files for stateA, combining the wild-type and mutant states for alchemical simulation.
         kind: file
         path: results/pmxA_top.zip
-      - id: pmxA_top_log
-        name: stateA hybrid topology log
-        kind: file
-        path: results/pmxA_top.log
     executor: *docker_executor_pmx
     runtime:
       kind: command
@@ -416,7 +424,6 @@ tasks:
         --config ${pmxgentop_stateA_config}
         --input_top_zip_path ${pdb2gmxA_top_zip}
         --output_top_zip_path ${pmxA_top_zip}
-        --output_log_path ${pmxA_top_log}
     target:
       kind: local
 
@@ -439,10 +446,6 @@ tasks:
         description: Hybrid dual-topology files for stateB, combining the wild-type and mutant states for alchemical simulation.
         kind: file
         path: results/pmxB_top.zip
-      - id: pmxB_top_log
-        name: stateB hybrid topology log
-        kind: file
-        path: results/pmxB_top.log
     executor: *docker_executor_pmx
     runtime:
       kind: command
@@ -451,7 +454,6 @@ tasks:
         --config ${pmxgentop_stateB_config}
         --input_top_zip_path ${pdb2gmxB_top_zip}
         --output_top_zip_path ${pmxB_top_zip}
-        --output_log_path ${pmxB_top_log}
     target:
       kind: local
 
@@ -519,6 +521,7 @@ tasks:
     runtime:
       kind: command
       command: >-
+        GMXLIB="$(python -c 'import os, pmx; print(os.path.dirname(pmx.__file__) + "/data/mutff")')"
         grompp
         --config ${grompp_min_stateB_config}
         --input_gro_path ${pdb2gmxB_gro}
@@ -620,6 +623,7 @@ tasks:
     runtime:
       kind: command
       command: >-
+        GMXLIB="$(python -c 'import os, pmx; print(os.path.dirname(pmx.__file__) + "/data/mutff")')"
         grompp
         --config ${grompp_eq_stateA_config}
         --input_gro_path ${pdb2gmxA_gro}
@@ -654,6 +658,7 @@ tasks:
     runtime:
       kind: command
       command: >-
+        GMXLIB="$(python -c 'import os, pmx; print(os.path.dirname(pmx.__file__) + "/data/mutff")')"
         grompp
         --config ${grompp_eq_stateB_config}
         --input_gro_path ${min_stateB_gro}
@@ -818,6 +823,7 @@ tasks:
     runtime:
       kind: command
       command: >-
+        GMXLIB="$(python -c 'import os, pmx; print(os.path.dirname(pmx.__file__) + "/data/mutff")')"
         grompp
         --config ${grompp_ti_stateA_config}
         --input_gro_path ${eq_stateA_gro}
@@ -852,6 +858,7 @@ tasks:
     runtime:
       kind: command
       command: >-
+        GMXLIB="$(python -c 'import os, pmx; print(os.path.dirname(pmx.__file__) + "/data/mutff")')"
         grompp
         --config ${grompp_ti_stateB_config}
         --input_gro_path ${eq_stateB_gro}
@@ -964,7 +971,7 @@ tasks:
         description: Work-distribution and convergence plots for the free-energy estimate.
         kind: file
         path: results/pmx.plots.png
-    executor: *docker_executor_pmx
+    executor: *docker_executor_pmx_analyse
     runtime:
       kind: command
       command: >-
@@ -1251,6 +1258,18 @@ edges:
     source_output: frame_interval_ps
     target: gmx_trjconv_str_ens_stateB
     target_input: frame_interval_ps
+
+
+  # Ordering-only: the stateB branch shares no data with stateA, so without this
+  # it is outside the downstream scope of the trigger task and never scheduled.
+  - source: gmx_trjconv_str_ens_stateA
+    target: gmx_trjconv_str_ens_stateB
+
+  # Ordering-only: pmxanalyse reads only the committed dHdl bundles, so without
+  # this it is outside the downstream scope of the trigger task and never scheduled.
+  - source: gmx_trjconv_str_ens_stateA
+    target: pmxanalyse
+
 orchestrator_target:
   kind: local
   working_directory: "./workflow_results"

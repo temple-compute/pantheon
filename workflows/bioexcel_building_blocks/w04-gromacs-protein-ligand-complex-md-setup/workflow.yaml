@@ -169,7 +169,7 @@ tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Fetch (PDB ID) or load the uploaded complex
-    description: Downloads the PDB entry given in pdb_id from the RCSB (default 3HTB, T4 lysozyme L99A/M102Q with JZ4), or copies the uploaded complex when pdb_id is empty.
+    description: Downloads the PDB entry given in pdb_id from the RCSB, or copies the uploaded complex when pdb_id is empty.
     inputs:
       - id: pdb_id
         name: PDB ID
@@ -1127,8 +1127,8 @@ tasks:
 
   - kind: horus_task
     id: mdrun_free
-    name: Free MD simulation (50 ps, unrestrained)
-    description: Runs GROMACS mdrun for the unrestrained free production MD simulation (50 ps).
+    name: Free MD simulation (unrestrained)
+    description: Runs GROMACS mdrun for the unrestrained free production MD simulation.
     inputs:
       - id: md_tpr
         name: Production MD run input

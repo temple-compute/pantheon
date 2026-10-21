@@ -69,7 +69,7 @@ def summarize(rows: list[dict]) -> list[dict]:
     return out
 
 
-def render(summary: list[dict], pdb: str) -> str:
+def render(summary: list[dict], pdb: str, label: str) -> str:
     cells = ("replica", "frames", "time_ps", "final_protein", "final_ligand", "mean_ligand")
     head = ("Replica", "Frames", "Time (ps)", "Protein Cα RMSD, final (Å)",
             "Ligand RMSD, final (Å)", "Ligand RMSD, mean (Å)")
@@ -87,7 +87,7 @@ def render(summary: list[dict], pdb: str) -> str:
         "<!doctype html><html><head><meta charset=utf-8>"
         f"<title>OpenFF protein-ligand MD</title><style>{CSS}</style>"
         f"<link rel=stylesheet href={MOLSTAR}/molstar.css></head><body>"
-        "<h1>PT2385 / HIF-2α (5TBM): Sage 2.3.0 + ff14SB MD</h1>"
+        f"<h1>{html.escape(label)}: Sage 2.3.0 + ff14SB MD</h1>"
         f"<div class=stats>{cards}</div>"
         "<h2>Final frame (replica 0, protein + ligand)</h2><div id=mol></div><div id=status></div>"
         "<h2>Replicas</h2><table><tr>"
@@ -140,7 +140,8 @@ def selftest() -> None:
     assert s[0]["frames"] == 3 and s[0]["final_ligand"] == 2.0 and s[0]["mean_ligand"] == 1.0
     log = '#"Step","Time (ps)","Temperature (K)"\n250,0.5000000000000003,240\n500,1.0,260\n'
     assert frame_times(log) == [0.5000000000000003, 1.0]
-    page = render(s, "ATOM </script>\nEND\n")
+    page = render(s, "ATOM </script>\nEND\n", "L<1")
+    assert "<h1>L&lt;1: " in page
     assert "</script>\\nEND" not in page and "<\\/script>" in page
     assert page.count("<tr>") == 3 and "molstar.js" in page
     import tempfile
@@ -160,12 +161,13 @@ def main() -> None:
     ap.add_argument("--table", type=Path)
     ap.add_argument("--final-frame", type=Path)
     ap.add_argument("--report", type=Path)
+    ap.add_argument("--system-label", help="system name in the report title")
     ap.add_argument("--selftest", action="store_true")
     a = ap.parse_args()
     if a.selftest:
         return selftest()
-    if not (a.trajectories and a.replicas and a.table and a.final_frame and a.report):
-        sys.exit("--trajectories, --replicas, --table, --final-frame and --report are required")
+    if not (a.trajectories and a.replicas and a.table and a.final_frame and a.report and a.system_label):
+        sys.exit("--trajectories, --replicas, --table, --final-frame, --report and --system-label are required")
     for p in (a.table, a.final_frame, a.report):
         p.parent.mkdir(parents=True, exist_ok=True)
     a.final_frame.unlink(missing_ok=True)
@@ -174,7 +176,7 @@ def main() -> None:
         w = csv.DictWriter(f, fieldnames=COLUMNS)
         w.writeheader()
         w.writerows(rows)
-    a.report.write_text(render(summarize(rows), a.final_frame.read_text()))
+    a.report.write_text(render(summarize(rows), a.final_frame.read_text(), a.system_label))
 
 
 if __name__ == "__main__":

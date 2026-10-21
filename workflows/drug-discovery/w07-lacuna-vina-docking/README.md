@@ -1,293 +1,65 @@
 # W-34 · Lacuna + AutoDock Vina Docking
 
-<img src="assets/logo.png" width="96" align="right" alt="W-34 logo">
-
 Find cryptic pockets in a protein with Lacuna, box the pocket you pick, and dock a ligand library into it with AutoDock Vina, one parallel job per ligand.
 
 ![Domain: Drug Discovery](https://img.shields.io/badge/domain-drug--discovery-blue)
 
-![W-34 cover](assets/cover.png)
-
 ## Overview
 
-Finds cryptic binding pockets: sites that look closed or shallow in an unbound
-structure and only open when something binds. It wraps
-[Lacuna](https://github.com/mooreneural/lacuna) (`lacuna-pockets` on PyPI), which
-generates a conformational ensemble from the input structure, detects pockets in
-every conformer, clusters them across the ensemble so a site that appears in only
-a few frames still gets reported, and ranks the survivors with a fitted model that
-also scores how much each site opens relative to the input (its crypticity).
+Finds cryptic pockets with [Lacuna](https://github.com/mooreneural/lacuna), boxes the pocket you pick and docks a ligand library into it with AutoDock Vina, one parallel clone per ligand. The example is apo KRAS(G12C), PDB 4LDJ, with a 3-compound demo library (imatinib, caffeine, aspirin). The workflow has 6 tasks; for discovery only see [W-33](../w06-lacuna-cryptic-pocket-discovery/README.md).
 
-This is the cryptic-site-aware counterpart to [W-31 Cavity
-Analysis](../../bioexcel_building_blocks/w23-cavity-analysis/README.md), which
-ranks fpocket cavities across a pre-built ensemble. fpocket only proposes a pocket
-where the surface is *already* concave, which is exactly the assumption a cryptic
-site violates. Lacuna 1.1.0 adds a second, learned surface detector alongside the
-original geometric one; pooling both (`--detector surface-fusion`) takes held-out
-CryptoBench coverage from 68.5% to 86.4% and top-five recovery from 57.1% to 73.9%
-over the geometric detector alone.
-
-The bundled example is PDB [4LDJ](https://www.rcsb.org/structure/4LDJ): a
-GDP-bound, apo KRAS(G12C) structure with no switch-II inhibitor present. That
-pocket is absent from apo KRAS structures and only forms on covalent inhibitor
-binding, and KRAS appears nowhere in the benchmark Lacuna's ranker and surface
-model were fitted on. Run against this structure Lacuna still surfaces it twice in
-the top ten: once as the compact switch-II groove (His95/Tyr96 plus the P-loop
-position that carries the G12C cysteine, 4.2 Å from where sotorasib sits) and once
-as the wider pocket with the fuller residue overlap (11 of 21 contact residues,
-pocket atoms 1.5 Å from the nearest ligand atom, opening nine-fold across the
-ensemble). Every site ranked above them is the GDP pocket, a real pocket with a
-real ligand already bound.
-
-For discovery only (no docking), see [Lacuna Cryptic Pocket Discovery](../w06-lacuna-cryptic-pocket-discovery/README.md). This workflow doesn't stop at discovery: it boxes Lacuna's top-ranked pocket,
-preps a small ligand library, and docks every ligand concurrently with real
-AutoDock Vina using a `horus_map` fan-out (one clone per ligand), so the
-output is ranked binding poses, not just a pocket report.
-
-## Quick start
-
-```bash
-# Install uv if you don't have it
-curl -LsSf https://astral.sh/uv/install.sh | sh
-
-cd workflows/drug-discovery/w07-lacuna-vina-docking
-uv sync
-# or: pip install horus-runtime horus-environments
-
-# First run builds the uv-managed lacuna environment and the docking conda
-# environments (micromamba/mamba/conda must be on PATH for the latter).
-uv run horus run workflow.yaml
-```
-
-`discover`/`dock_prep` are pip-only (`uv`); `prep`/`dock` need a conda-family
-tool on `PATH` for OpenBabel/Meeko/RDKit/Vina, the same prerequisite as
-[W-02](../w02-autodock-vina-docking/README.md).
-
-## Compute Pattern
-
-| Stage | Task | Executor | Concurrency | Est. walltime (example) |
-|---|---|---|---|---|
-| Ensemble generation + pocket discovery | `discover` | uv venv | serial | ~20 s - 2 min (20 conformers, NMA backend, CPU-only) |
-| Docking-input export | `dock_prep` | uv venv | serial | <1 s |
-| Receptor/ligand prep, boxed on the chosen pocket | `prep` | conda | serial | ~15 s (+ first-run env build) |
-| **AutoDock Vina docking** | `dock[00..NN]` | conda | **N clones in parallel** | ~1 min total for 3 demo ligands, CPU-only |
-| HTML report + CSV table | `report` | shell (stdlib) | serial | <1 s |
-| Ranked energy tables | `summary` | shell (stdlib) | serial | <1 s |
-
-`dock` is a `kind: horus_map` task: it runs `scripts/dock_one.py` once per
-ligand, concurrently, so docking scales with wall-clock concurrency rather
-than the ligand count — a 100-ligand library is 100 independent Vina runs, a
-natural cluster array job (see Horus Configuration below for how to point it
-at one). Every other stage is serial and CPU-only.
-
-## Tools & Dependencies
-
-- **horus-runtime**, **horus-environments** (`uv_python_environment` and
-  `conda_python_environment` executors)
-- **lacuna-pockets** ≥ 1.1.0 (PyPI), installed into a `uv`-managed venv via
-  `requirements:` — no `openmm`, `plm`, or `boltz` extras needed for the defaults
-  used here
-- `lacuna discover` / `lacuna dock-prep` CLI entrypoints (installed by the package)
-- **conda-forge**: `openbabel` (receptor → rigid PDBQT), `meeko` + `rdkit`
-  (ligand → PDBQT), `vina` (AutoDock Vina + Python bindings) — same stack as
-  [W-02](../w02-autodock-vina-docking/README.md#implementation-notes), chosen
-  there because conda-forge `vina` ships prebuilt osx-arm64/osx-64/linux-64/
-  linux-aarch64 wheels and the PyPI package does not
-
-## Horus Configuration
+## Pipeline
 
 ```
-receptor.pdb or RCSB pdb_id ──► discover ──► results/pockets/
-                        │               │             pocket_report.json
-                        │               │             pocket_*.pdb, receptor.pdb (the one used)
-                        │               ▼
-                        │          dock_prep ──► results/docking_inputs/
-                        │                            pocket_<i>_vina.conf (box per ranked pocket)
-                        │                            pocket_*_constraint.yaml (Boltz)
-                        │                            pocket_*_site.pdb
-                        │               │
-      examples/ligands.smi              ▼
-                    │              prep (boxed on pocket_${pocket})
-                    └────────────────►  │ ──► results/receptor_box/   (receptor.pdbqt, box.json)
-                                         │ ──► results/ligands_pdbqt/ (one *.pdbqt per ligand)
-                                         │
-                             dock[00..NN]  (horus_map: one clone per ligand)
-                              receptor_box/ + ligand.pdbqt ─► AutoDock Vina
-                                         │
-                                  results/docked/<i>/
-                                    {ligand}_out.pdbqt, status.json
-                                         ▼
-                                     summary ──► results/scores.csv, results/poses.csv
+discover  receptor.pdb or RCSB pdb_id ──► results/pockets/
+dock_prep ranked pockets              ──► results/docking_inputs/ (Vina box + Boltz constraints, top 5)
+prep      receptor + ligands.smi      ──► results/receptor_box/, results/ligands_pdbqt/
+dock      AutoDock Vina, 1 per ligand ──► results/docked/<i>/
+summary   parse affinities            ──► results/scores.csv + results/poses.csv
+report    pocket_report.json          ──► results/report.html + results/pockets.csv
 ```
 
-**Why `prep` writes two folders, not one.** A `horus_map` task fans out over
-the *children* of one folder input (`over.input_id`) and every clone also
-receives a copy of the map task's other declared inputs. So `ligands_pdbqt/`
-must contain nothing but ligand files — mapping over it treats every child as
-one item — while `receptor_box/` (receptor + box, shared by every clone) has
-to live in a separate folder that ligands cannot also occupy.
+## Inputs / Outputs
 
-Single local target for every task, with `resources` hints on the heavy ones:
-`discover` 4 CPU / 16 GB / 1 h, `prep` 2 CPU / 8 GB, and each `dock` clone
-2 CPU / 8 GB / 30 min (Vina's `--cpu` follows `resources.cpus`). A Slurm or
-auto-provisioned target on `dock` applies to every clone.
-
-## Input / Output
-
-**Input**
-
-- `receptor` — apo KRAS(G12C), PDB 4LDJ, by default. Any single PDB or mmCIF file
-  works; upload your own, or set `pdb_id` to fetch one from RCSB (protein `ATOM`
-  records of the first model).
-- `examples/ligands.smi` — a 3-compound SMILES demo set (imatinib, caffeine,
-  aspirin), reused from W-02. It exists to prove the docking mechanics work
-  end to end, not as a curated KRAS screening library; repoint the `ligands`
-  artifact at a real library for a real screen.
-
-**Output** (under `horus_workflow_results/results/`)
-
-- `pockets/pocket_report.json` — every surviving pocket cluster: rank, druggability,
-  persistence (fraction of conformers it appears in), crypticity (how much it opens
-  relative to the input), contact residues, and per-conformer detail
-- `pockets/pocket_*.pdb` — pseudoatom PDB files per pocket, for visualization
-- `report.html` — single-file ranked-pocket report (stats plus a sortable, filterable AG Grid table) with an interactive Mol* view of the receptor; each row's View button selects that pocket's lining residues and moves the camera to them. Mol* and AG Grid are loaded from the jsDelivr CDN, so the report needs internet access
-- `pockets.csv` — the same ranking as a flat table
-- `docking_inputs/` — for the top 5 ranked pockets: AutoDock Vina box configs,
-  Boltz-2 YAML constraints, and pocket PDBs
-- `receptor_box/` — the receptor PDBQT and the resolved box, boxed on
-  `docking_inputs/pocket_${pocket}_vina.conf` (rank 1 by default);
-  `ligands_pdbqt/` — one PDBQT per ligand
-- `docked/<i>/` — one slot per `dock` map clone: `{ligand}_out.pdbqt` (poses +
-  affinities) and `status.json` recording whether that ligand docked
-- `scores.csv` — ligands ranked by best affinity (kcal/mol, more negative is
-  stronger); `poses.csv` — every pose of every ligand
+- `receptor`: apo structure, PDB or mmCIF (default 4LDJ), or `pdb_id` to fetch from RCSB.
+- `ligands`: SMILES or SDF; each ligand becomes one `dock` clone.
+- `results/pockets/` (`pocket_report.json`, `pocket_*.pdb`, `receptor.pdb`), `results/report.html`, `results/pockets.csv`: ranked pockets, as in W-33.
+- `results/docking_inputs/`: Vina box configs, Boltz-2 YAML constraints and pocket PDBs for the top 5 pockets.
+- `results/receptor_box/`: `receptor.pdbqt` and `box.json`; `results/ligands_pdbqt/`: one PDBQT per ligand.
+- `results/docked/<i>/`: `{ligand}_out.pdbqt` and `status.json` per clone; a failed ligand is skipped.
+- `results/scores.csv`: ligands ranked by best affinity (kcal/mol, more negative is stronger); `results/poses.csv`: every pose.
 
 ## Parameters
 
-| id | Kind | Default | Range | Meaning |
-|---|---|---|---|---|
-| `receptor` | file | `examples/structures/receptor.pdb` (4LDJ) | PDB / mmCIF | Apo structure, used when `pdb_id` is empty |
-| `pdb_id` | string | empty | 4-char PDB code or empty | Fetch the structure from RCSB instead of the upload |
-| `ligands` | file | `examples/ligands.smi` | SMILES or SDF | Ligand library; each ligand becomes one `dock` clone |
-| `conformers` | number | 20 | 5–200 | Ensemble size (`--conformers`) |
-| `detector` | choice | `surface-fusion` | `surface-fusion`, `surface`, `alpha` | Pocket detector |
-| `rank_by` | choice | `learned` | `learned`, `crypticity`, `druggability`, `balanced`, `persistence` | Pocket ranking |
-| `pocket` | choice | Rank 1 | Rank 1–5 | Which ranked pocket gets the Vina box; on the KRAS example, Rank 4 is the switch-II cryptic pocket from the Overview |
-| `exhaustiveness` | number | 8 | 1–64 | Vina search effort per ligand |
-| `n_poses` | number | 9 | 1–20 | Poses per ligand |
-
-Fixed in `workflow.yaml`: `discover --top 10`, `dock_prep --top 5 --format all`,
-and the `dock` map's `max_concurrency` (see Implementation Notes). Further
-`lacuna discover` flags (`--backend`, the `--min-*` filters, `--homodimer`) can be
-added to the `discover` command.
-
-To change a value locally, edit its `value:` in `workflow.yaml`, then `rm -rf params/`:
-Horus writes `params/<id>` only when it is missing, so a stale file keeps the old value.
-
-## Running in Temple Compute
-
-Start a campaign from the library entry: the form shows the structure and ligand
-uploads, the PDB ID field, the pocket-search settings, the pocket to dock into and
-the Vina settings. Each heavy step carries its own `resources`, so auto-provisioned
-targets size `discover` as a 4-CPU node and the `dock` clones as small 2-CPU nodes;
-open `report.html` in the run view to check the ranked pockets before re-running
-with a different `pocket`.
-
-## Implementation Notes
-
-- **Two tasks instead of one.** `discover` could emit Vina boxes and Boltz
-  constraints directly via `--emit-vina-boxes --emit-boltz-constraints`. It is
-  split into `discover` + `dock_prep` instead so the number of pockets exported
-  and their format can be changed (`--top`, `--format`) without rerunning ensemble
-  generation and detection, the expensive part of the pipeline.
-- **Two executors, split at the discovery/docking boundary.** `discover` and
-  `dock_prep` need only `lacuna-pockets`, a plain pip package, so they run in a
-  `uv_python_environment`. `prep` and `dock` need OpenBabel/Meeko/RDKit/Vina,
-  which come from conda-forge for the same platform-coverage reason as W-02
-  (see Tools & Dependencies), so they run in `conda_python_environment`.
-- **`prep` strips the receptor to `ATOM` records before `obabel`.** An RCSB
-  export's `HEADER`/`TITLE`/`COMPND`/... lines get copied verbatim into the
-  PDBQT by `obabel`, which Vina's parser then rejects outright ("Unknown or
-  inappropriate tag found in rigid receptor"). Dropping `HETATM` at the same
-  time also removes the bound GDP and crystallographic waters — necessary
-  because the default docked pocket (rank 1) *is* the GDP site; docking a new
-  ligand there with GDP still present would score against an occupied pocket.
-  See `scripts/prep.py:extract_protein_only`.
-- **`dock` is a `kind: horus_map` task, not the older `map:`/`gather:` block.**
-  horus-runtime replaced the nested `map: {over, template, gather}` shape
-  (still used by [W-30's `dock`
-  task](../../bioexcel_building_blocks/w22-cavity-guided-virtual-screening/README.md))
-  with a first-class `horus_map` task kind: the task's own `inputs`,
-  `outputs`, `executor`, and `runtime` *are* the per-item body, named by
-  `over: {input_id, as}` instead of a nested template, and its single folder
-  output already holds every clone's numbered slot with no separate `gather:`
-  target or edge needed downstream. Pin `horus-runtime>=0.5.0` (this
-  workflow's floor) if reusing this pattern elsewhere in the repo before that
-  version is otherwise pulled in.
-- **Two disjoint output folders make the fan-out possible.** A `FolderArtifact`
-  maps over its own immediate children, so `ligands_pdbqt/` has to contain
-  only ligand PDBQTs — see the Horus Configuration section above for why
-  `prep` can't just write one `vina_inputs/` tree the way W-02 does.
-- **Each `dock` clone must not raise, whatever the ligand does.** A clone
-  failure aborts the run or blocks the ranking step, so `dock_one.py` catches
-  every exception around the Vina call itself and records `status: failed` in
-  its slot's `status.json` instead — `summary.py` treats that as a ligand to
-  skip, not a zero-affinity result.
-- **`--detector surface-fusion` auto-selects a matching ranker.** When both
-  detectors are pooled and `--rank-by` is left at its default, Lacuna switches to
-  `learned-fused`, the ranker fitted on the pooled candidate set; ranking a fused
-  pool with the alpha-only weights would cost top-five recovery, because a surface
-  proposal is a wrong answer that ranker scores highly.
-- The conformer that seeds detection always includes conformer 0 (the input
-  structure itself, unperturbed), so a pocket that never leaves the crystal
-  structure is still reported.
-
-Bundled result: docking the demo ligand library into Lacuna's rank-1 (GDP)
-pocket on 4LDJ ranks imatinib best (~-7.3 kcal/mol), then caffeine (~-4.6),
-then aspirin (~-4.3) — plausible relative to the ligands' sizes, and none of
-the three were built or fitted with this pocket in mind, so treat it as a
-mechanics check, not a hit. Vina's search is stochastic (no fixed seed here),
-so exact values shift a few tenths between runs; the ranking is stable.
-
-## Open Questions
-
-- **Docking W-02 as a separate downstream workflow instead of inline
-  `prep`/`dock`/`summary` tasks.** This workflow adapts W-02's `prep`/`summary`
-  scripts rather than chaining to it, because W-02's `prep` task takes an
-  explicit `--center`/`--size` while this one boxes on a Lacuna-emitted
-  `pocket_N_vina.conf` — inlining kept the box source a single `--box-config`
-  flag instead of a second bridging task. Revisit if W-02 grows a
-  `--box-config` option of its own; its own `dock` task could similarly be
-  ported to `horus_map` at that point.
-- **No batching for very large libraries.** `dock` maps one clone per ligand,
-  which is the simplest possible fan-out and fine for the 3-compound demo; a
-  library of thousands of ligands would want a batching layer in front of it
-  (group N ligands per clone) to bound clone count, the way [W-30's `dock`
-  task](../../bioexcel_building_blocks/w22-cavity-guided-virtual-screening/README.md)
-  batches SDF/SMILES records. Not needed at this workflow's demo scale.
-- **Higher-fidelity ensembles.** `--backend openmm` (100 ps implicit-solvent MD) or
-  `--backend boltz` (diffusion sampling, GPU) would need their extras added to
-  `requirements:` and, for Boltz, a GPU-capable `target:`; not wired up here to
-  keep the default run CPU-only and dependency-light.
-- **Sequence-assisted ranking.** `--rank-by learned-plm` / `--seed-from-sequence`
-  need the `plm` extra (`torch`, `transformers`) and download an ESM-2 checkpoint
-  on first use; left off by default for the same reason.
+| id | Default | Meaning |
+|---|---|---|
+| `receptor` | `examples/structures/receptor.pdb` (4LDJ) | Apo structure, used when `pdb_id` is empty |
+| `pdb_id` | empty | 4-character PDB code to fetch instead of the upload |
+| `ligands` | `examples/ligands.smi` | Ligand library |
+| `conformers` | 20 | Ensemble size (5-200) |
+| `detector` | `surface-fusion` | `surface-fusion`, `surface` or `alpha` |
+| `rank_by` | `learned` | `learned`, `crypticity`, `druggability`, `balanced` or `persistence` |
+| `pocket` | Rank 1 | Ranked pocket (1-5) that gets the Vina box; on 4LDJ, Rank 4 is the switch-II pocket |
+| `exhaustiveness` | 8 | Vina search effort per ligand (1-64) |
+| `n_poses` | 9 | Poses per ligand (1-20) |
 
 ## References
 
-- Lacuna: [mooreneural/lacuna](https://github.com/mooreneural/lacuna),
-  [PyPI](https://pypi.org/project/lacuna-pockets/)
+- [Lacuna (GitHub)](https://github.com/mooreneural/lacuna)
+- [Lacuna (PyPI)](https://pypi.org/project/lacuna-pockets/)
+- [AutoDock Vina](https://github.com/ccsb-scripps/AutoDock-Vina)
+- [AutoDock Vina docs](https://autodock-vina.readthedocs.io)
+- [Meeko](https://github.com/forlilab/Meeko)
+- [Open Babel](https://github.com/openbabel/openbabel)
 - Moore CW. *Lacuna: Cryptic Binding Pocket Discovery via Conformational Ensemble
   Analysis.* bioRxiv 2026. doi:10.64898/2026.08.14.744956
 - Moore CW. *Cryptic binding sites are detected but not ranked: coverage,
   conversion, and the limits of detector consensus.* bioRxiv 2026.
   doi:10.64898/2026.08.11.743381
 - CryptoBench: Vavra et al. 2024
-- Example structure: PDB [4LDJ](https://www.rcsb.org/structure/4LDJ) — Hunter et
+- Example structure: [PDB 4LDJ](https://www.rcsb.org/structure/4LDJ) — Hunter et
   al., apo GDP-bound KRAS(G12C)
 - Docking stack ported from: [W-02 AutoDock Vina Docking](../w02-autodock-vina-docking/README.md)
-- Downstream (Boltz constraints for unchosen pockets):
-  [W-01 Boltz-2 Virtual Screening](../w01-boltz2-virtual-screening/README.md)
 - Related: [W-31 Cavity Analysis](../../bioexcel_building_blocks/w23-cavity-analysis/README.md)
 - AutoDock Vina: Eberhardt et al., *J. Chem. Inf. Model.* (2021); Trott &
   Olson, *J. Comput. Chem.* (2010)

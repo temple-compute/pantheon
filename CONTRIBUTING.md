@@ -14,38 +14,30 @@ Each workflow also has a global **W-number** (`W-01` through `W-43` so far, uniq
 mkdir -p workflows/{domain}/wXX-your-workflow-name
 ```
 
-Domains: `ai`, `bioexcel_building_blocks`, `bioinformatics`, `clinical-trials`, `drug-discovery`, `engine-showcases`. Add a new domain directory if yours doesn't fit, and list it in the root `README.md`.
+Domains: `ai`, `bioexcel_building_blocks`, `bioinformatics`, `clinical-trials`, `drug-discovery`, `engine-showcases`, `omics`, `omsf`. Add a new domain directory if yours doesn't fit, and list it in the root `README.md`.
 
 ### 3. Write the README.md
 
-Use the template below. All sections are required before a workflow is considered ready for Tier 1 status.
+Use the template below. Keep it short (about 30–60 lines): no install or run instructions, no resource or runtime specifications, no implementation notes, no open questions.
 
 ```markdown
-# WXX · [Short Title]
+# W-NN · [Short Title]
+
+One-line tagline.
+
+![Domain: Name](https://img.shields.io/badge/domain-name-blue)
 
 ## Overview
-One paragraph: what problem this solves, who runs it, and why it needs HPC.
+2–4 sentences: what it does and with which tools. "The workflow has N tasks."
 
-## Compute Pattern
-Table of stages with cluster type, GPU/CPU requirements, and estimated walltime.
+## Pipeline
+One line per task.
 
-## Tools & Dependencies
-List every model, library, and container image required.
-
-## Horus Configuration
-Describe the cluster types needed, data flows between stages, and any special scheduler requirements (MPI, NVLink, InfiniBand).
-
-## Input / Output
+## Inputs / Outputs
 What the user provides; what they get back.
 
-## Parameterization
-Key variables a user will need to set (dataset path, library size, model choice, etc.).
-
-## Implementation Notes
-Known gotchas, performance tips, container caveats.
-
-## Open Questions
-What needs to be resolved before this workflow can be implemented.
+## Parameters
+Table of the parameters a user can set (id, default, meaning).
 
 ## References
 Links to papers, repos, and documentation.
@@ -53,11 +45,11 @@ Links to papers, repos, and documentation.
 
 ### 4. Update the root README.md
 
-Add your workflow to the structure table under its domain, using the next free global W-number. If you add a BioExcel workflow, also add a row to `workflows/bioexcel_building_blocks/README.md` and check the macOS ARM64 executor table there for any affected packages.
+Add your workflow to the structure table under its domain, using the next free global W-number. If you add a BioExcel workflow, also add a row to `workflows/bioexcel_building_blocks/README.md`.
 
-### 5. Document run instructions
+### 5. Add the cover
 
-Add a `## Quick start` section to your workflow README following the standard block (install uv, `uv sync`, `uv run horus run workflow.yaml`) and note which executors the workflow uses (conda, Docker, or both), since that determines the prerequisites.
+Add `assets/cover.png` (4:1, 1600x400, tc-os palette: charcoal `#0f1419`, navy `#1a2332`, amber `#d4a574`, cream `#faf9f6`) and the square `assets/logo.png` (512x512, uploaded as the icon). Neither is embedded in the README. Cover text is the W-number badge, title and tool names only. The app crops covers to 4:1.
 
 ### 6. Open a PR
 

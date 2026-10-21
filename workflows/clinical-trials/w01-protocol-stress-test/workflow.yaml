@@ -268,7 +268,7 @@ tasks:
   - kind: horus_task
     id: generate_variants
     name: Enumerate protocol variants
-    description: Baseline, leave-one-out and the full threshold grid (plus optional random combinations), hashed and written 50 per batch file.
+    description: Baseline, leave-one-out and the full threshold grid (plus optional random combinations), hashed and written in batch files of the configured size.
     inputs:
       - {id: rules, name: Reviewed computable criteria, kind: file, path: examples/criteria.reviewed.json}
       - {id: config, name: Run configuration, kind: file, path: config.json}

@@ -163,7 +163,7 @@ tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Fetch (PDB ID) or load the uploaded structure
-    description: Downloads the PDB entry given in pdb_id (default 6PTI, BPTI), or copies the uploaded structure when pdb_id is empty.
+    description: Downloads the PDB entry given in pdb_id, or copies the uploaded structure when pdb_id is empty.
     inputs:
       - id: pdb_id
         name: PDB ID
@@ -330,7 +330,7 @@ tasks:
   - kind: horus_task
     id: parmed_cpinutil
     name: Generate constant pH input file (cpinutil)
-    description: Runs cpinutil to generate the constant-pH input file for titratable residues (ASP, GLU, CYS, LYS, TYR).
+    description: Runs cpinutil to generate the constant-pH input file for the selected titratable residue types.
     inputs:
       - id: ions_top
         name: Ion-neutralized topology

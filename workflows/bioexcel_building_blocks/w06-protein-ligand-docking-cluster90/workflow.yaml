@@ -57,7 +57,7 @@ artifacts:
 
   - id: babel_convert_sdf2pdb_config
     name: Ligand SDF to PDB config
-    description: Configuration for the OpenBabel conversion of the Imatinib ligand from SDF to PDB format.
+    description: Configuration for the OpenBabel conversion of the ligand from SDF to PDB format.
     kind: file
     path: configs/babel_convert_sdf2pdb.yaml
 

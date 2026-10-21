@@ -1,11 +1,1 @@
-<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512">
-  <defs><linearGradient id="bg" x1="0" y1="0" x2="1" y2="1"><stop offset="0" stop-color="#475569"/><stop offset="1" stop-color="#0b0f17"/></linearGradient>
-  <marker id="ar" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="5" markerHeight="5" orient="auto"><path d="M0,0 L10,5 L0,10 z" fill="#e2e8f0"/></marker></defs>
-  <rect width="512" height="512" rx="112" fill="url(#bg)"/>
-  <g stroke="#94a3b8" stroke-width="12" stroke-linecap="round">
-    <line x1="130" y1="256" x2="250" y2="140"/><line x1="130" y1="256" x2="250" y2="216"/><line x1="130" y1="256" x2="250" y2="296"/><line x1="130" y1="256" x2="250" y2="372"/>
-    <line x1="262" y1="140" x2="382" y2="256"/><line x1="262" y1="216" x2="382" y2="256"/><line x1="262" y1="296" x2="382" y2="256"/><line x1="262" y1="372" x2="382" y2="256"/>
-  </g>
-  <circle cx="122" cy="256" r="40" fill="#f8fafc"/><circle cx="390" cy="256" r="40" fill="#f8fafc"/>
-  <g fill="#cbd5e1"><circle cx="256" cy="140" r="24"/><circle cx="256" cy="216" r="24"/><circle cx="256" cy="296" r="24"/><circle cx="256" cy="372" r="24"/></g>
-</svg>
+<svg xmlns="http://www.w3.org/2000/svg" width="512" height="512" viewBox="0 0 512 512"><rect width="512" height="512" fill="#0f1419"/><g fill="none" stroke="#5b7c99" stroke-width="16" stroke-linecap="round" stroke-linejoin="round"><path d="M120 256L256 130M120 256H256M120 256L256 382M256 130L392 256M256 256H392M256 382L392 256"/></g><circle cx="120" cy="256" r="30" fill="#faf9f6"/><circle cx="256" cy="130" r="26" fill="#d4a574"/><circle cx="256" cy="256" r="26" fill="#d4a574"/><circle cx="256" cy="382" r="26" fill="#d4a574"/><circle cx="392" cy="256" r="30" fill="#faf9f6"/></svg>

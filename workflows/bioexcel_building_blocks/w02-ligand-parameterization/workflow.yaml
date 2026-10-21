@@ -76,7 +76,7 @@ tasks:
   - kind: horus_task
     id: add_hydrogens
     name: Add hydrogen atoms (OpenBabel)
-    description: Adds hydrogen atoms to the ligand at pH 7.4 using OpenBabel.
+    description: Adds hydrogen atoms to the ligand at the configured pH using OpenBabel.
     inputs:
       - id: ligand_pdb
         name: Ligand structure (PDB)

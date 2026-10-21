@@ -7,7 +7,7 @@ name: Lacuna + AutoDock Vina Docking
 # it into a venv with `uv pip install` and runs the `lacuna` CLI entrypoint directly.
 _executor: &executor
   kind: uv_python_environment
-  environment_dir: "../.horus_uv_env_lacuna"
+  environment_dir: "../../.horus_uv_env_lacuna" # one env per run, shared by all tasks
   python: "3.11"
   requirements:
     - "lacuna-pockets>=1.1.0"
@@ -82,8 +82,7 @@ artifacts:
     id: pocket
     name: Pocket to dock into
     description: >-
-      Which of Lacuna's top five ranked pockets gets the Vina box. On the
-      KRAS example, rank 4 is the switch-II cryptic pocket.
+      Which of Lacuna's top five ranked pockets gets the Vina box.
     kind: choice
     path: params/pocket.txt
     value: 0

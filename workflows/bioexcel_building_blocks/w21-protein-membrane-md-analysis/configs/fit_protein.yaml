@@ -1,5 +1,0 @@
-properties:
-  fit_selection: Backbone
-  output_selection: System
-  center: false
-  fit: transxy
