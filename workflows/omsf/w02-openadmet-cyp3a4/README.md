@@ -43,12 +43,11 @@ report        CV metrics + top compounds  --> results/metrics.csv, results/top_p
 ## References
 
 - [OpenADMET models](https://github.com/OpenADMET/openadmet-models)
-- [OpenADMET demos](https://github.com/OpenADMET/openadmet-demos)
+- [OpenADMET demos (GitHub)](https://github.com/OpenADMET/openadmet-demos)
 - [molfeat (OpenADMET fork)](https://github.com/OpenADMET/molfeat)
 - [Chemprop](https://github.com/chemprop/chemprop)
 - [RDKit](https://github.com/rdkit/rdkit)
-- OMSF workflow directory: https://directory.omsf.io/workflows/
-- OpenADMET demos: https://demos.openadmet.org · https://github.com/OpenADMET/openadmet-demos
-- openadmet-models: https://github.com/OpenADMET/openadmet-models
-- Model comparison guidelines followed by `openadmet compare`: https://chemrxiv.org/engage/chemrxiv/article-details/672a91bd7be152b1d01a926b
+- [OpenADMET demos site](https://demos.openadmet.org)
+- [OMSF workflow directory](https://directory.omsf.io/workflows/)
+- [Model comparison guidelines followed by `openadmet compare` (ChemRxiv)](https://chemrxiv.org/engage/chemrxiv/article-details/672a91bd7be152b1d01a926b)
 - License: workflow glue is MIT. openadmet-demos and openadmet-models are Apache-2.0; data-catalogs is Apache-2.0, derived from ChEMBL 35 (CC BY-SA 3.0), and the bundled training parquet keeps that license.

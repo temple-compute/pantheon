@@ -37,8 +37,8 @@ A model with no cavity inside the filter windows is absent from the summaries an
 
 ## References
 
-- [BioExcel Building Blocks (biobb_vs)](https://github.com/bioexcel/biobb_vs)
 - [fpocket](https://github.com/Discngine/fpocket)
+- [biobb_vs](https://github.com/bioexcel/biobb_vs)
 - [MDAnalysis](https://github.com/MDAnalysis/mdanalysis)
 - fpocket: Le Guilloux, Schmidtke & Tuffery, *BMC Bioinformatics* (2009)
 - [BioExcel Building Blocks](https://mmb.irbbarcelona.org/biobb/) documentation

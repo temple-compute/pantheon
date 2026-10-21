@@ -51,13 +51,13 @@ Force field, box, ions and restraints are set in `configs/*.yaml`.
 
 ## References
 
-- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [GROMACS](https://www.gromacs.org)
+- [biobb_gromacs](https://github.com/bioexcel/biobb_gromacs)
 - [ACPype](https://github.com/alanwilter/acpype)
 - [Open Babel](https://github.com/openbabel/openbabel)
-- [biobb_gromacs](https://github.com/bioexcel/biobb_gromacs)
 - [biobb_chemistry](https://github.com/bioexcel/biobb_chemistry)
 - [biobb_model](https://github.com/bioexcel/biobb_model)
 - [biobb_structure_utils](https://github.com/bioexcel/biobb_structure_utils)
+- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [Official GROMACS protein-ligand complex tutorial](http://www.mdtutorials.com/gmx/complex/index.html)
 - [BioExcel protein-ligand complex MD setup tutorial](https://biobb-wf-protein-complex-md-setup.readthedocs.io)

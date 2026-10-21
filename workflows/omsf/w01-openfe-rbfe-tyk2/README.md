@@ -49,7 +49,7 @@ Defaults are the openfe 1.13.0 `RelativeHybridTopologyProtocol` defaults.
 
 - [OpenFE](https://github.com/OpenFreeEnergy/openfe)
 - [OpenMM](https://github.com/openmm/openmm)
-- OpenFE docs: <https://docs.openfree.energy>
-- Upstream tutorials (MIT): <https://github.com/OpenFreeEnergy/ExampleNotebooks>
-- OMSF workflow directory: <https://directory.omsf.io/workflows/>
+- [OpenFE docs](https://docs.openfree.energy)
+- [OpenFE ExampleNotebooks (upstream tutorials, MIT)](https://github.com/OpenFreeEnergy/ExampleNotebooks)
+- [OMSF workflow directory](https://directory.omsf.io/workflows/)
 - Workflow glue is MIT; the TYK2 inputs and tutorials are from OpenFreeEnergy/ExampleNotebooks (MIT) and openfe is MIT. Credit to the Open Free Energy team.

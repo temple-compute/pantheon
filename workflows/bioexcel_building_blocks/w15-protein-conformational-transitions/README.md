@@ -41,9 +41,9 @@ Outputs (`results/`):
 
 ## References
 
-- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
-- [biobb_godmd](https://github.com/bioexcel/biobb_godmd)
-- [biobb_wf_godmd tutorial notebook](https://github.com/bioexcel/biobb_wf_godmd)
 - [GOdMD web server](https://mmb.irbbarcelona.org/GOdMD/)
+- [biobb_godmd](https://github.com/bioexcel/biobb_godmd)
+- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
+- [biobb_wf_godmd tutorial notebook](https://github.com/bioexcel/biobb_wf_godmd)
 - [Exploration of conformational transition pathways from coarse-grained simulations (Sfriso et al., Bioinformatics)](https://doi.org/10.1093/bioinformatics/btt324)
 - [EMBOSS](https://www.ebi.ac.uk/Tools/emboss/)

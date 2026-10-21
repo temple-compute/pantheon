@@ -47,5 +47,3 @@ clone_repo
 ## References
 
 - [train-llm-from-scratch](https://github.com/FareedKhan-dev/train-llm-from-scratch) — source repo cloned by this workflow.
-- [horus-runtime](https://github.com/temple-compute/horus-runtime) — workflow engine and plugin framework.
-- [horus-environments](https://github.com/temple-compute/horus-environments) — horus plugin for conda-based Python environments.

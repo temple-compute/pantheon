@@ -40,7 +40,8 @@ summary parse affinities                        ──► results/summary.csv + 
 
 ## References
 
-- [AutoDock Vina](https://github.com/ccsb-scripps/AutoDock-Vina) ·
-  [docs](https://autodock-vina.readthedocs.io) ·
-  [1.2.0 paper](https://pubs.acs.org/doi/10.1021/acs.jcim.1c00203)
-- [Meeko](https://github.com/forlilab/Meeko) · [OpenBabel](https://openbabel.org)
+- [AutoDock Vina](https://github.com/ccsb-scripps/AutoDock-Vina)
+- [AutoDock Vina docs](https://autodock-vina.readthedocs.io)
+- [AutoDock Vina 1.2.0 paper (JCIM)](https://pubs.acs.org/doi/10.1021/acs.jcim.1c00203)
+- [Meeko](https://github.com/forlilab/Meeko)
+- [Open Babel](https://openbabel.org)

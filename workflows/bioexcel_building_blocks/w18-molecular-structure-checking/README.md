@@ -44,9 +44,9 @@ Outputs (`results/`):
 
 ## References
 
-- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
+- [Modeller](https://salilab.org/modeller/)
 - [biobb_structure_utils](https://github.com/bioexcel/biobb_structure_utils)
 - [biobb_model](https://github.com/bioexcel/biobb_model)
-- [Modeller](https://salilab.org/modeller/)
 - [AMBER / AmberTools](https://ambermd.org)
+- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [BioExcel structure checking tutorial](https://biobb-wf-structure-checking.readthedocs.io)

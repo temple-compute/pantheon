@@ -44,4 +44,5 @@ rank    affinity + confidence      ──► results/top_hits.csv
 
 ## References
 
-- [Boltz-2 GitHub](https://github.com/jwohlwend/boltz) · [paper](https://www.biorxiv.org/content/10.1101/2024.05.24.595648)
+- [Boltz-2 GitHub](https://github.com/jwohlwend/boltz)
+- [Boltz-2 paper (bioRxiv)](https://www.biorxiv.org/content/10.1101/2025.06.14.659707)

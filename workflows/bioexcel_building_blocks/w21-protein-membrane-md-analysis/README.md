@@ -43,10 +43,10 @@ The entry must be a single-lipid bilayer whose lipid residue name is `lipid_resn
 
 ## References
 
-- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
-- [biobb_mem](https://github.com/bioexcel/biobb_mem)
-- [GROMACS](https://www.gromacs.org)
 - [FATSLiM](https://pythonhosted.org/fatslim/)
 - [Lipyphilic](https://lipyphilic.readthedocs.io)
+- [biobb_mem](https://github.com/bioexcel/biobb_mem)
+- [GROMACS](https://www.gromacs.org)
+- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [MDDB](https://mddbr.eu/)
 - [BioExcel protein-membrane MD analysis tutorial](https://biobb-mem.readthedocs.io)

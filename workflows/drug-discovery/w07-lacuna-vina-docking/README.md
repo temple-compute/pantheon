@@ -45,16 +45,19 @@ report    pocket_report.json          ──► results/report.html + results/po
 
 ## References
 
-- [Lacuna](https://github.com/mooreneural/lacuna) · [PyPI](https://pypi.org/project/lacuna-pockets/)
-- [AutoDock Vina](https://github.com/ccsb-scripps/AutoDock-Vina) · [docs](https://autodock-vina.readthedocs.io)
-- [Meeko](https://github.com/forlilab/Meeko) · [Open Babel](https://github.com/openbabel/openbabel)
+- [Lacuna (GitHub)](https://github.com/mooreneural/lacuna)
+- [Lacuna (PyPI)](https://pypi.org/project/lacuna-pockets/)
+- [AutoDock Vina](https://github.com/ccsb-scripps/AutoDock-Vina)
+- [AutoDock Vina docs](https://autodock-vina.readthedocs.io)
+- [Meeko](https://github.com/forlilab/Meeko)
+- [Open Babel](https://github.com/openbabel/openbabel)
 - Moore CW. *Lacuna: Cryptic Binding Pocket Discovery via Conformational Ensemble
   Analysis.* bioRxiv 2026. doi:10.64898/2026.08.14.744956
 - Moore CW. *Cryptic binding sites are detected but not ranked: coverage,
   conversion, and the limits of detector consensus.* bioRxiv 2026.
   doi:10.64898/2026.08.11.743381
 - CryptoBench: Vavra et al. 2024
-- Example structure: PDB [4LDJ](https://www.rcsb.org/structure/4LDJ) — Hunter et
+- Example structure: [PDB 4LDJ](https://www.rcsb.org/structure/4LDJ) — Hunter et
   al., apo GDP-bound KRAS(G12C)
 - Docking stack ported from: [W-02 AutoDock Vina Docking](../w02-autodock-vina-docking/README.md)
 - Related: [W-31 Cavity Analysis](../../bioexcel_building_blocks/w23-cavity-analysis/README.md)

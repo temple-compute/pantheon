@@ -31,7 +31,7 @@ cpptraj_image    Image trajectory, strip solvent
 ## Inputs / Outputs
 
 - Input: `pdb_id` (RCSB code) or, when empty, the `structure` upload.
-- Outputs: `results/downloaded.pdb`, `structure.leap.top`/`.crd`, `structure.ions.parmtop`/`.crd`, `sander.free.netcdf`, `1aki_rms_first.dat`, `1aki_rms_exp.dat`, `1aki_rgyr.dat`, `1aki_imaged_traj.trr`.
+- Outputs: `results/downloaded.pdb`, `structure.leap.top`/`.crd`, `structure.ions.parmtop`/`.crd`, `sander.free.netcdf`, `rms_first.dat`, `rms_exp.dat`, `rgyr.dat`, `imaged_traj.trr`.
 
 ## Parameters
 
@@ -48,11 +48,11 @@ Restraints, heating protocol and cpptraj masks are set in `configs/*.yaml`.
 
 ## References
 
-- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [AMBER](https://ambermd.org)
 - [AmberTools](https://ambermd.org/AmberTools.php)
 - [cpptraj](https://github.com/Amber-MD/cpptraj)
 - [biobb_io](https://github.com/bioexcel/biobb_io)
 - [biobb_analysis](https://github.com/bioexcel/biobb_analysis)
+- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [ff14SB force field](https://pubs.acs.org/doi/10.1021/acs.jctc.5b00255)
 - [BioExcel AMBER MD setup tutorial](https://biobb-wf-amber-md-setup.readthedocs.io)

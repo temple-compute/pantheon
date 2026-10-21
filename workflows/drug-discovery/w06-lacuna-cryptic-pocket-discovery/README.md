@@ -37,14 +37,15 @@ report    pocket_report.json          ──► results/report.html + results/po
 
 ## References
 
-- [Lacuna](https://github.com/mooreneural/lacuna) · [PyPI](https://pypi.org/project/lacuna-pockets/)
+- [Lacuna (GitHub)](https://github.com/mooreneural/lacuna)
+- [Lacuna (PyPI)](https://pypi.org/project/lacuna-pockets/)
 - Moore CW. *Lacuna: Cryptic Binding Pocket Discovery via Conformational Ensemble
   Analysis.* bioRxiv 2026. doi:10.64898/2026.08.14.744956
 - Moore CW. *Cryptic binding sites are detected but not ranked: coverage,
   conversion, and the limits of detector consensus.* bioRxiv 2026.
   doi:10.64898/2026.08.11.743381
 - CryptoBench: Vavra et al. 2024
-- Example structure: PDB [4LDJ](https://www.rcsb.org/structure/4LDJ) — Hunter et
+- Example structure: [PDB 4LDJ](https://www.rcsb.org/structure/4LDJ) — Hunter et
   al., apo GDP-bound KRAS(G12C)
 - Downstream docking: [Lacuna + AutoDock Vina Docking](../w07-lacuna-vina-docking/README.md)
 - Related: [W-31 Cavity Analysis](../../bioexcel_building_blocks/w23-cavity-analysis/README.md)

@@ -45,12 +45,12 @@ cat_pdb                      Receptor + pose complex
 
 ## References
 
-- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
-- [AutoDock Vina](https://github.com/ccsb-scripps/AutoDock-Vina)
 - [fpocket](https://github.com/Discngine/fpocket)
+- [AutoDock Vina](https://github.com/ccsb-scripps/AutoDock-Vina)
 - [Open Babel](https://github.com/openbabel/openbabel)
 - [biobb_vs](https://github.com/bioexcel/biobb_vs)
 - [biobb_chemistry](https://github.com/bioexcel/biobb_chemistry)
 - [biobb_structure_utils](https://github.com/bioexcel/biobb_structure_utils)
 - [biobb_io](https://github.com/bioexcel/biobb_io)
+- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [BioExcel protein-ligand docking tutorial (fpocket variant)](https://biobb-wf-virtual-screening.readthedocs.io)

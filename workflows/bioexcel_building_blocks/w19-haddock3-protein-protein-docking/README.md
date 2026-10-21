@@ -51,9 +51,9 @@ Inputs are the three PDB codes downloaded from the PDBe (antibody, antigen, refe
 
 ## References
 
-- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
+- [HADDOCK3](https://github.com/haddocking/haddock3)
 - [biobb_haddock](https://github.com/bioexcel/biobb_haddock)
 - [biobb_pdb_tools](https://github.com/bioexcel/biobb_pdb_tools)
-- [HADDOCK3](https://github.com/haddocking/haddock3)
+- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [HADDOCK3 antibody-antigen tutorial](https://www.bonvinlab.org/education/HADDOCK3/HADDOCK3-antibody-antigen/)
 - [BioExcel HADDOCK3 tutorial](https://github.com/bioexcel/biobb_wf_haddock)

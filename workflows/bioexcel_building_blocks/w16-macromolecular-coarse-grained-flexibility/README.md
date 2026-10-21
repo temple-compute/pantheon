@@ -45,8 +45,8 @@ Outputs (`results/`):
 
 ## References
 
-- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
-- [biobb_flexserv](https://github.com/bioexcel/biobb_flexserv)
 - [FlexServ web server](https://mmb.irbbarcelona.org/FlexServ/)
+- [biobb_flexserv](https://github.com/bioexcel/biobb_flexserv)
 - [PCA suite](https://mmb.irbbarcelona.org/software/)
+- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [BioExcel FlexServ tutorial](https://biobb-wf-flexserv.readthedocs.io)

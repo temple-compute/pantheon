@@ -35,11 +35,11 @@ parameterize         ACPype / GAFF parameters
 
 ## References
 
-- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [ACPype](https://github.com/alanwilter/acpype)
 - [Open Babel](https://github.com/openbabel/openbabel)
 - [biobb_chemistry](https://github.com/bioexcel/biobb_chemistry)
 - [biobb_io](https://github.com/bioexcel/biobb_io)
 - [GROMACS](https://www.gromacs.org)
+- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [GAFF (General AMBER Force Field)](https://ambermd.org/antechamber/gaff.html)
 - [BioExcel ligand parameterization tutorial](https://biobb-wf-ligand-parameterization.readthedocs.io)

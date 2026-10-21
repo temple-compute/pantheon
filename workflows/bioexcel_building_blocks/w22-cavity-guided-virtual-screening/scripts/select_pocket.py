@@ -172,7 +172,7 @@ def run(args: argparse.Namespace) -> int:
     candidates = pockets_in_zip(args.pockets)
     if not candidates:
         raise SystemExit(
-            f"{args.pockets} contains no pockets -- loosen configs/fpocket_filter.yaml"
+            f"{args.pockets} contains no pockets -- loosen min_druggability / min_volume / max_volume"
         )
 
     surviving = candidates

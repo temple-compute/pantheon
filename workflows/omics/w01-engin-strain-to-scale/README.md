@@ -6,7 +6,7 @@ One Engin project file in; which host, which route and which runs to do next, ea
 
 ## Overview
 
-[Engin](https://github.com/enginbio/engin-suite) answers three questions for early bioprocess development, each with a calibrated 90% band: which host (`engin-host`), which route (`engin-pathway`) and what to run next (`engin-process`). The three stages read the same `project.yaml` and are independent, so they run in parallel and a `summary` task merges them into one decision brief that keeps every interval and caveat. Engin intervals land near nominal 90% coverage on 406 real fermentation batches, but its point predictions are weak (R² ≈ 0.02-0.11). The workflow has 4 tasks.
+Engin answers three questions for early bioprocess development, each with a calibrated 90% band: which host (`engin-host`), which route (`engin-pathway`) and what to run next (`engin-process`). The three stages read the same `project.yaml` and are independent, so they run in parallel and a `summary` task merges them into one decision brief that keeps every interval and caveat. Engin intervals land near nominal 90% coverage on 406 real fermentation batches, but its point predictions are weak (R² ≈ 0.02-0.11). The workflow has 4 tasks.
 
 ## Pipeline
 
@@ -39,6 +39,7 @@ Settings live in the project file: `host.weights` / `host.hard`, `pathway.routes
 
 ## References
 
-- Engin suite -- <https://github.com/enginbio/engin-suite> · docs <https://docs.engin.bio>
-- Real-data calibration -- <https://github.com/enginbio/engin-suite/blob/main/docs/methods/real-data-calibration.md>
-- API stability -- <https://github.com/enginbio/engin-suite/blob/main/docs/api-stability.md>
+- [Engin suite (GitHub)](https://github.com/enginbio/engin-suite)
+- [Engin docs](https://docs.engin.bio)
+- [Engin real-data calibration](https://github.com/enginbio/engin-suite/blob/main/docs/methods/real-data-calibration.md)
+- [Engin API stability](https://github.com/enginbio/engin-suite/blob/main/docs/api-stability.md)

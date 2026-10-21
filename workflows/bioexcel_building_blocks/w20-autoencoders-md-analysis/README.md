@@ -43,9 +43,9 @@ Inputs are two MDDB projects of the same protein: the apo (training) and holo (t
 
 ## References
 
-- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [biobb_pytorch](https://github.com/bioexcel/biobb_pytorch)
 - [GROMACS](https://www.gromacs.org)
 - [PLUMED](https://github.com/plumed/plumed2)
+- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [MDDB — MoDEL Database](https://mddbr.eu/)
 - [BioExcel AutoEncoder tutorial](https://biobb-wf-autoencoder.readthedocs.io)

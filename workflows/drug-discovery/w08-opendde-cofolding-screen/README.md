@@ -34,4 +34,5 @@ rank    parse summary confidence    ──► results/top_hits.csv
 
 ## References
 
-- [OpenDDE GitHub](https://github.com/aurekaresearch/OpenDDE) · [PyPI](https://pypi.org/project/opendde/)
+- [OpenDDE GitHub](https://github.com/aurekaresearch/OpenDDE)
+- [OpenDDE (PyPI)](https://pypi.org/project/opendde/)

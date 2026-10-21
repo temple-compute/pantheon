@@ -68,12 +68,6 @@ artifacts:
     kind: file
     path: configs/cpptraj_rms_first.yaml
 
-  - id: leap_add_ions_config
-    name: Leap ion addition config
-    description: Configures leap neutralization and counterion placement.
-    kind: file
-    path: configs/leap_add_ions.yaml
-
   - id: leap_gen_top_config
     name: Leap topology generation config
     description: Configures leap generation of the protein-ligand complex topology.
@@ -164,11 +158,20 @@ artifacts:
     min: 500
     max: 50000000
     step: 500
+  - id: ionic_concentration_mm
+    name: Salt concentration (mM)
+    description: Added salt on top of neutralisation.
+    kind: number
+    min: 0
+    max: 1000
+    step: 10
+    value: 150
+    path: params/ionic_concentration_mm.txt
 tasks:
   - kind: horus_task
     id: fetch_pdb
     name: Fetch (PDB ID) or load the uploaded complex
-    description: Downloads the PDB entry given in pdb_id (default 3HTB, T4 lysozyme L99A/M102Q with JZ4), or copies the uploaded complex when pdb_id is empty.
+    description: Downloads the PDB entry given in pdb_id, or copies the uploaded complex when pdb_id is empty.
     inputs:
       - id: pdb_id
         name: PDB ID
@@ -600,9 +603,10 @@ tasks:
     id: leap_add_ions
     name: Neutralize and add ions (leap)
     inputs:
-      - id: leap_add_ions_config
-        kind: file
-        path: configs/leap_add_ions.yaml
+      - id: ionic_concentration_mm
+        name: Salt concentration (mM)
+        kind: number
+        path: params/ionic_concentration_mm.txt
       - id: solv_pdb
         kind: file
         path: results/structure.solv.pdb
@@ -627,7 +631,7 @@ tasks:
       kind: command
       command: >-
         leap_add_ions
-        --config ${leap_add_ions_config}
+        --config '{"properties":{"forcefield":["protein.ff14SB","gaff"],"neutralise":true,"positive_ions_type":"Na+","negative_ions_type":"Cl-","ionic_concentration":${ionic_concentration_mm},"box_type":"truncated_octahedron"}}'
         --input_pdb_path ${solv_pdb}
         --input_lib_path ${acpype_lib}
         --input_frcmod_path ${acpype_frcmod}
@@ -1296,10 +1300,10 @@ edges:
     target: cpptraj_rms_first
     target_input: cpptraj_rms_first_config
 
-  - source: artifact-leap_add_ions_config
-    source_output: leap_add_ions_config
+  - source: artifact-ionic_concentration_mm
+    source_output: ionic_concentration_mm
     target: leap_add_ions
-    target_input: leap_add_ions_config
+    target_input: ionic_concentration_mm
 
   - source: artifact-leap_gen_top_config
     source_output: leap_gen_top_config

@@ -40,6 +40,5 @@ clone_repo
 ## References
 
 - [train-llm-from-scratch](https://github.com/FareedKhan-dev/train-llm-from-scratch) — source repo cloned by this workflow.
-- [TinyStories dataset](https://huggingface.co/datasets/roneneldan/TinyStories) · [paper](https://arxiv.org/abs/2305.07759) — short, simple GPT-generated children's stories.
-- [horus-runtime](https://github.com/temple-compute/horus-runtime) — workflow engine and plugin framework.
-- [horus-environments](https://github.com/temple-compute/horus-environments) — horus plugin for conda-based Python environments.
+- [TinyStories dataset (Hugging Face)](https://huggingface.co/datasets/roneneldan/TinyStories) — short, simple GPT-generated children's stories.
+- Eldan and Li, "TinyStories: How Small Can Language Models Be and Still Speak Coherent English?", [arXiv:2305.07759](https://arxiv.org/abs/2305.07759).

@@ -37,8 +37,8 @@ intraseqcorr, interseqcorr, intrahpcorr, interhpcorr, intrabpcorr, interbpcorr  
 
 ## References
 
-- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
-- [biobb_dna](https://github.com/bioexcel/biobb_dna)
 - [Curves+](https://curvesplus.bsc.es/)
+- [biobb_dna](https://github.com/bioexcel/biobb_dna)
+- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [biobb_wf_dna_helparms tutorial notebook](https://github.com/bioexcel/biobb_wf_dna_helparms)
 - [NAFlex server](https://mmb.irbbarcelona.org/NAFlex)

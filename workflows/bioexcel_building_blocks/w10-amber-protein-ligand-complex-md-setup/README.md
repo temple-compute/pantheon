@@ -44,12 +44,12 @@ cpptraj_rms_first / cpptraj_rms_exp / cpptraj_rgyr / cpptraj_image   RMSd, radiu
 | `ligand_charge` | `0` | Formal net charge of the ligand, passed to ACPype |
 | `equilibration_steps` | `500` | sander steps per restrained equilibration stage (2 fs/step) |
 | `production_steps` | `2500` | sander steps of the free production run (2 fs/step) |
+| `ionic_concentration_mm` | `150` | Na+/Cl- salt concentration (mM) added by LEaP on top of neutralisation |
 
 Force fields, restraints and thermostat are set in `configs/*.yaml`.
 
 ## References
 
-- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [AmberTools](https://ambermd.org/AmberTools.php)
 - [cpptraj](https://github.com/Amber-MD/cpptraj)
 - [ACPype](https://github.com/alanwilter/acpype)
@@ -58,4 +58,5 @@ Force fields, restraints and thermostat are set in `configs/*.yaml`.
 - [biobb_analysis](https://github.com/bioexcel/biobb_analysis)
 - [biobb_structure_utils](https://github.com/bioexcel/biobb_structure_utils)
 - [biobb_io](https://github.com/bioexcel/biobb_io)
+- [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [biobb_wf_amber tutorial notebooks](https://github.com/bioexcel/biobb_wf_amber)
