@@ -9,3 +9,4 @@ dependencies:
   - scipy==1.13
   - jupyter
   - plotly
+  - pmx_biobb==5.2.2 # mutant force fields (GMXLIB) for pdb2gmx/grompp; same pmx as the pmx docker image
