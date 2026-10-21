@@ -41,6 +41,6 @@ A model with no cavity inside the filter windows is absent from the summaries an
 - [biobb_vs](https://github.com/bioexcel/biobb_vs)
 - [MDAnalysis](https://github.com/MDAnalysis/mdanalysis)
 - fpocket: Le Guilloux, Schmidtke & Tuffery, *BMC Bioinformatics* (2009)
-- [BioExcel Building Blocks](https://mmb.irbbarcelona.org/biobb/) documentation
+- [BioExcel Building Blocks documentation](https://mmb.irbbarcelona.org/biobb/)
 - Downstream: [W-30 Cavity-Guided Virtual Screening](../w22-cavity-guided-virtual-screening/README.md)
 - Related: [W-06 Fan-out / Map / Gather](../../engine-showcases/w01-fanout-map-gather/README.md)

@@ -55,7 +55,7 @@ A ligand that fails to dock is recorded in `status.json` and the summary; it doe
 - [Open Babel](https://github.com/openbabel/openbabel)
 - [MDAnalysis](https://github.com/MDAnalysis/mdanalysis)
 - [Source workflow: biobb_wf_virtual-screening](https://github.com/bioexcel/biobb_wf_virtual-screening)
-- [BioExcel Building Blocks](https://mmb.irbbarcelona.org/biobb/) documentation
+- [BioExcel Building Blocks documentation](https://mmb.irbbarcelona.org/biobb/)
 - fpocket: Le Guilloux, Schmidtke & Tuffery, *BMC Bioinformatics* (2009)
 - AutoDock Vina: Eberhardt, Santos-Martins, Tillack & Forli, *J. Chem. Inf. Model.* (2021)
 - Related: [W-13 Protein-Ligand Docking (fpocket)](../w08-protein-ligand-docking-fpocket/README.md) — single-ligand version of the same chemistry

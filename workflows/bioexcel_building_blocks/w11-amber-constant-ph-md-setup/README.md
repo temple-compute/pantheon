@@ -51,4 +51,4 @@ cphstats           Protonation states and pKa
 - [biobb_io](https://github.com/bioexcel/biobb_io)
 - [BioExcel Building Blocks (biobb)](https://github.com/bioexcel/biobb)
 - [biobb_wf_amber tutorial notebooks](https://github.com/bioexcel/biobb_wf_amber)
-- [AMBER Constant pH MD Tutorial](https://ambermd.org/tutorials/advanced/tutorial18/index.htm)
+- [AMBER Constant pH MD Tutorial](https://ambermd.org/tutorials/advanced/tutorial18/)
