@@ -257,7 +257,7 @@ tasks:
 
   - kind: horus_task
     id: ab_H_tidy
-    name: Tidy antibody PDB (strict, pre H-chain extraction)
+    name: Tidy antibody PDB (strict, pre heavy-chain extraction)
     description: Runs biobb_pdb_tidy to clean up PDB formatting of the antibody heavy chain.
     inputs:
       - id: ab_H_tidy_config
@@ -441,7 +441,7 @@ tasks:
 
   - kind: horus_task
     id: ab_H_tidy_final
-    name: Final tidy of antibody H-chain reduced structure
+    name: Final tidy of antibody heavy-chain reduced structure
     description: Runs biobb_pdb_tidy to clean up PDB formatting of the antibody heavy chain.
     inputs:
       - id: ab_H_tidy_final_in
@@ -467,7 +467,7 @@ tasks:
 
   - kind: horus_task
     id: ab_L_tidy
-    name: Tidy antibody PDB (strict, pre L-chain extraction)
+    name: Tidy antibody PDB (strict, pre light-chain extraction)
     description: Runs biobb_pdb_tidy to clean up PDB formatting of the antibody light chain.
     inputs:
       - id: ab_L_tidy_config
@@ -650,7 +650,7 @@ tasks:
 
   - kind: horus_task
     id: ab_L_tidy_final
-    name: Final tidy of antibody L-chain reduced structure
+    name: Final tidy of antibody light-chain reduced structure
     description: Runs biobb_pdb_tidy to clean up PDB formatting of the antibody light chain.
     inputs:
       - id: ab_L_tidy_final_in
@@ -689,7 +689,7 @@ tasks:
         path: results/antibody_L_reduced.pdb
     outputs:
       - id: ab_HL_zip
-        name: Antibody H+L chains (zipped)
+        name: Antibody heavy+light chains (zipped)
         kind: file
         path: results/antibody_HL.zip
     executor: *executor
@@ -702,11 +702,11 @@ tasks:
 
   - kind: horus_task
     id: ab_merge
-    name: Merge antibody H and L chains into single PDB
+    name: Merge antibody heavy and light chains into single PDB
     description: Runs biobb_pdb_merge to merge the zipped chain PDBs into a single antibody structure.
     inputs:
       - id: ab_HL_zip
-        name: Antibody H+L chains (zipped)
+        name: Antibody heavy+light chains (zipped)
         kind: file
         path: results/antibody_HL.zip
     outputs:
@@ -1181,7 +1181,7 @@ tasks:
 
   - kind: horus_task
     id: cx_H_tidy_final
-    name: Final tidy of reference complex H-chain reduced structure
+    name: Final tidy of reference complex heavy-chain reduced structure
     description: Runs biobb_pdb_tidy to clean up PDB formatting of the reference complex heavy chain.
     inputs:
       - id: cx_H_tidy_final_in
@@ -1361,7 +1361,7 @@ tasks:
 
   - kind: horus_task
     id: cx_L_tidy_final
-    name: Final tidy of reference complex L-chain reduced structure
+    name: Final tidy of reference complex light-chain reduced structure
     description: Runs biobb_pdb_tidy to clean up PDB formatting of the reference complex light chain.
     inputs:
       - id: cx_L_tidy_final_in
@@ -1400,7 +1400,7 @@ tasks:
         path: results/reference_L_reduced.pdb
     outputs:
       - id: cx_HL_zip
-        name: Reference complex H+L chains (zipped)
+        name: Reference complex heavy+light chains (zipped)
         kind: file
         path: results/reference_HL.zip
     executor: *executor
@@ -1413,11 +1413,11 @@ tasks:
 
   - kind: horus_task
     id: cx_ab_merge
-    name: Merge reference complex H and L chains
+    name: Merge reference complex heavy and light chains
     description: Runs biobb_pdb_merge to merge the zipped chain PDBs into a single reference complex antibody structure.
     inputs:
       - id: cx_HL_zip
-        name: Reference complex H+L chains (zipped)
+        name: Reference complex heavy+light chains (zipped)
         kind: file
         path: results/reference_HL.zip
     outputs:
@@ -1957,7 +1957,7 @@ tasks:
   - kind: horus_task
     id: restrain_bodies
     name: Generate multi-body restraints to tie antibody chains
-    description: Generates multi-body restraints tying the antibody H and L chains together using haddock3_restrain_bodies.
+    description: Generates multi-body restraints tying the antibody heavy and light chains together using haddock3_restrain_bodies.
     inputs:
       - id: antibody_prep
         name: Prepared antibody structure

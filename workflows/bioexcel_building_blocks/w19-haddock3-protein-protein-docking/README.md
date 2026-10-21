@@ -16,7 +16,7 @@ ab_H_* / ab_L_*  -> ab_zip_HL -> ab_merge -> ab_reres -> ab_chain -> ab_chainxse
 ag_*                                              Antigen, renamed to chain B
 cx_*                                              Reference complex, same preparation
 write_ab_actpass -> passive_from_active -> actpass_to_ambig    Paratope/epitope active and passive residues, ambiguous restraints
-restrain_bodies                                   Restraints tying the antibody H and L chains
+restrain_bodies                                   Restraints tying the antibody heavy and light chains
 topology -> rigid_body -> capri_eval_1 -> sele_top -> flex_ref -> capri_eval_2
   -> em_ref -> capri_eval_3 -> clust_fcc -> sele_top_clusts -> capri_eval_4 -> contact_map
 ```
