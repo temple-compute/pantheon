@@ -1,0 +1,8 @@
+[project]
+name = "w01-uma-nitro-md"
+version = "0.1.0"
+requires-python = ">=3.13"
+dependencies = [
+  "horus-environments>=0.1.5",
+  "horus-runtime>=0.8.3", # task secrets
+]

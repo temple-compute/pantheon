@@ -94,6 +94,12 @@ uv run horus run workflow.yaml
 |---|---|---|
 | W-43 | [Influenza Segments Starter](workflows/bioinformatics/w01-flu-segments-starter/README.md) | Influenza segment FASTA → header parsing, QC, longest-ORF translation and an HTML report. |
 
+### Chemistry
+
+| ID | Workflow | Description |
+|---|---|---|
+| W-45 | [UMA Nitro Molecular Dynamics](workflows/chemistry/w01-uma-nitro-md/README.md) | Relax any structure and run NVT MD with Meta's UMA potential in its fast single-GPU UMA Nitro mode; reports the mode that ran and ns/day |
+
 ### AI
 
 | ID | Workflow | Description |
