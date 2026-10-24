@@ -1,0 +1,235 @@
+kind: horus_workflow
+name: UMA Nitro Molecular Dynamics
+# Relax a structure and run NVT MD with Meta's UMA potential in its default
+# UMA Nitro inference mode (fast single-GPU kernels, Ampere or newer).
+
+# --- reusable blocks -------------------------------------------------------
+# One uv environment shared by relax and md. environment_dir is resolved
+# against <target dir>/<task id>/<execution id>/, so ../../ puts it at the
+# target's root where both tasks reuse it.
+_env: &env
+  kind: uv_python_environment
+  environment_dir: "../../.horus_uv_env_w45"
+  python: "3.12"
+  requirements:
+    - "fairchem-core==2.24.0" # UMA Nitro is the default mode from 2.24.0
+
+# One L4-class GPU (Ampere or newer for Nitro).
+_gpu: &gpu
+  cpus: 4
+  gpus: 1
+  memory_gb: 16
+  walltime: "04:00:00"
+
+artifacts:
+  - id: structure
+    name: Input structure
+    description: >-
+      Any ASE-readable structure (extxyz, xyz, cif, POSCAR, pdb, sdf). Keep
+      the cell and pbc for periodic systems. The example is a periodic box of
+      64 water molecules.
+    kind: file
+    path: examples/water_box.xyz
+
+  - &task_name
+    id: task_name
+    name: UMA task
+    description: The UMA head for the chemistry of the system; charge and spin only apply to omol.
+    kind: choice
+    path: params/task_name.json
+    value: omol
+    options:
+      - {value: omol, label: "omol: molecules, liquids, polymers"}
+      - {value: omat, label: "omat: inorganic materials"}
+      - {value: oc20, label: "oc20: catalysis"}
+      - {value: oc22, label: "oc22: oxide catalysis"}
+      - {value: oc25, label: "oc25: electrocatalysis"}
+      - {value: odac, label: "odac: MOFs"}
+      - {value: omc, label: "omc: molecular crystals"}
+
+  - &charge
+    id: charge
+    name: Total charge
+    description: Total charge of the system (omol only).
+    kind: number
+    path: params/charge.json
+    value: 0
+    min: -10
+    max: 10
+    step: 1
+
+  - &spin
+    id: spin
+    name: Spin multiplicity
+    description: Spin multiplicity 2S+1 of the system (omol only).
+    kind: number
+    path: params/spin.json
+    value: 1
+    min: 1
+    max: 11
+    step: 1
+
+  - id: relax_steps
+    name: Relaxation steps
+    description: Maximum FIRE steps before MD; 0 skips the relaxation. The cell relaxes too for periodic omat systems.
+    kind: number
+    path: params/relax_steps.json
+    value: 200
+    min: 0
+    max: 5000
+    step: 50
+
+  - id: fmax
+    name: Force threshold (eV/Å)
+    description: The relaxation stops once every atomic force is below this.
+    kind: number
+    path: params/fmax.json
+    value: 0.05
+    min: 0.01
+    max: 1
+    step: 0.01
+
+  - id: temperature_K
+    name: Temperature (K)
+    description: Langevin thermostat temperature; initial velocities are drawn at it.
+    kind: number
+    path: params/temperature_K.json
+    value: 300
+    min: 10
+    max: 5000
+    step: 10
+
+  - id: timestep_fs
+    name: Timestep (fs)
+    description: MD timestep; 0.5 fs is safe with hydrogens.
+    kind: number
+    path: params/timestep_fs.json
+    value: 0.5
+    min: 0.1
+    max: 5
+    step: 0.1
+
+  - id: md_steps
+    name: MD steps
+    description: Number of MD steps (10000 at 0.5 fs is 5 ps).
+    kind: number
+    path: params/md_steps.json
+    value: 10000
+    min: 100
+    max: 10000000
+    step: 100
+
+  - id: save_every
+    name: Save every N steps
+    description: Interval for trajectory frames and thermo rows.
+    kind: number
+    path: params/save_every.json
+    value: 10
+    min: 1
+    max: 10000
+    step: 1
+
+tasks:
+  - kind: horus_task
+    id: relax
+    name: Relax with UMA
+    description: FIRE relaxation of the input structure with UMA (uma-s-1p2p1), so MD starts from a clean geometry.
+    inputs:
+      - {id: structure, name: Input structure, kind: file, path: examples/water_box.xyz}
+      - *task_name
+      - *charge
+      - *spin
+      - {id: relax_steps, name: Relaxation steps, kind: number, path: params/relax_steps.json}
+      - {id: fmax, name: Force threshold (eV/Å), kind: number, path: params/fmax.json}
+    outputs:
+      - {id: relaxed, name: Relaxed structure, kind: file, path: results/relaxed.xyz}
+    # The UMA checkpoints are gated on Hugging Face (facebook/UMA): bind
+    # hf_token to a credential holding a token from an approved account.
+    secrets: {HF_TOKEN: "${secret:hf_token}"}
+    resources: *gpu
+    executor: *env
+    runtime:
+      kind: python_script
+      script: scripts/uma.py
+      args: >-
+        relax --structure ${structure} --task ${task_name}
+        --charge ${charge} --spin ${spin}
+        --steps ${relax_steps} --fmax ${fmax} --out ${relaxed}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: md
+    name: UMA Nitro MD
+    description: >-
+      Langevin NVT dynamics with UMA in its default mode, which is UMA Nitro on
+      an Ampere-or-newer GPU. Records the mode that actually ran and the speed
+      in ns/day.
+    inputs:
+      - {id: relaxed, name: Relaxed structure, kind: file, path: results/relaxed.xyz}
+      - *task_name
+      - *charge
+      - *spin
+      - {id: temperature_K, name: Temperature (K), kind: number, path: params/temperature_K.json}
+      - {id: timestep_fs, name: Timestep (fs), kind: number, path: params/timestep_fs.json}
+      - {id: md_steps, name: MD steps, kind: number, path: params/md_steps.json}
+      - {id: save_every, name: Save every N steps, kind: number, path: params/save_every.json}
+    outputs:
+      - {id: trajectory, name: MD trajectory, kind: file, path: results/trajectory.xyz}
+      - {id: thermo, name: Thermodynamics table, kind: file, path: results/thermo.csv}
+      - {id: md_summary, name: Run summary, kind: file, path: results/md_summary.json}
+    secrets: {HF_TOKEN: "${secret:hf_token}"}
+    resources: *gpu
+    executor: *env
+    runtime:
+      kind: python_script
+      script: scripts/uma.py
+      args: >-
+        md --structure ${relaxed} --task ${task_name}
+        --charge ${charge} --spin ${spin}
+        --temperature ${temperature_K} --timestep ${timestep_fs}
+        --steps ${md_steps} --save-every ${save_every}
+        --traj ${trajectory} --thermo ${thermo} --summary ${md_summary}
+    target:
+      kind: local
+
+  - kind: horus_task
+    id: report
+    name: MD report
+    description: Plots temperature and energy over time and summarises the run (inference mode, ns/day, system size) in one HTML page.
+    inputs:
+      - {id: thermo, name: Thermodynamics table, kind: file, path: results/thermo.csv}
+      - {id: md_summary, name: Run summary, kind: file, path: results/md_summary.json}
+    outputs:
+      - {id: report, name: MD report, kind: file, path: results/report.html}
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/report.py
+      python: python3 # stdlib only; GPU nodes have no bare `python`
+      args: --thermo ${thermo} --summary ${md_summary} --out ${report}
+    target:
+      kind: local
+
+edges:
+  - {source: artifact-structure, source_output: structure, target: relax, target_input: structure}
+  - {source: artifact-task_name, source_output: task_name, target: relax, target_input: task_name}
+  - {source: artifact-charge, source_output: charge, target: relax, target_input: charge}
+  - {source: artifact-spin, source_output: spin, target: relax, target_input: spin}
+  - {source: artifact-relax_steps, source_output: relax_steps, target: relax, target_input: relax_steps}
+  - {source: artifact-fmax, source_output: fmax, target: relax, target_input: fmax}
+  - {source: relax, source_output: relaxed, target: md, target_input: relaxed}
+  - {source: artifact-task_name, source_output: task_name, target: md, target_input: task_name}
+  - {source: artifact-charge, source_output: charge, target: md, target_input: charge}
+  - {source: artifact-spin, source_output: spin, target: md, target_input: spin}
+  - {source: artifact-temperature_K, source_output: temperature_K, target: md, target_input: temperature_K}
+  - {source: artifact-timestep_fs, source_output: timestep_fs, target: md, target_input: timestep_fs}
+  - {source: artifact-md_steps, source_output: md_steps, target: md, target_input: md_steps}
+  - {source: artifact-save_every, source_output: save_every, target: md, target_input: save_every}
+  - {source: md, source_output: thermo, target: report, target_input: thermo}
+  - {source: md, source_output: md_summary, target: report, target_input: md_summary}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
