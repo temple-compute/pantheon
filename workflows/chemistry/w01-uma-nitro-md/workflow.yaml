@@ -29,7 +29,7 @@ artifacts:
       the cell and pbc for periodic systems. The example is a periodic box of
       64 water molecules.
     kind: file
-    path: examples/water_box.extxyz
+    path: examples/water_box.xyz
 
   - &task_name
     id: task_name
@@ -135,14 +135,14 @@ tasks:
     name: Relax with UMA
     description: FIRE relaxation of the input structure with UMA (uma-s-1p2p1), so MD starts from a clean geometry.
     inputs:
-      - {id: structure, name: Input structure, kind: file, path: examples/water_box.extxyz}
+      - {id: structure, name: Input structure, kind: file, path: examples/water_box.xyz}
       - *task_name
       - *charge
       - *spin
       - {id: relax_steps, name: Relaxation steps, kind: number, path: params/relax_steps.json}
       - {id: fmax, name: Force threshold (eV/Å), kind: number, path: params/fmax.json}
     outputs:
-      - {id: relaxed, name: Relaxed structure, kind: file, path: results/relaxed.extxyz}
+      - {id: relaxed, name: Relaxed structure, kind: file, path: results/relaxed.xyz}
     # The UMA checkpoints are gated on Hugging Face (facebook/UMA): bind
     # hf_token to a credential holding a token from an approved account.
     secrets: {HF_TOKEN: "${secret:hf_token}"}
@@ -166,7 +166,7 @@ tasks:
       an Ampere-or-newer GPU. Records the mode that actually ran and the speed
       in ns/day.
     inputs:
-      - {id: relaxed, name: Relaxed structure, kind: file, path: results/relaxed.extxyz}
+      - {id: relaxed, name: Relaxed structure, kind: file, path: results/relaxed.xyz}
       - *task_name
       - *charge
       - *spin
@@ -175,7 +175,7 @@ tasks:
       - {id: md_steps, name: MD steps, kind: number, path: params/md_steps.json}
       - {id: save_every, name: Save every N steps, kind: number, path: params/save_every.json}
     outputs:
-      - {id: trajectory, name: MD trajectory, kind: file, path: results/trajectory.extxyz}
+      - {id: trajectory, name: MD trajectory, kind: file, path: results/trajectory.xyz}
       - {id: thermo, name: Thermodynamics table, kind: file, path: results/thermo.csv}
       - {id: md_summary, name: Run summary, kind: file, path: results/md_summary.json}
     secrets: {HF_TOKEN: "${secret:hf_token}"}

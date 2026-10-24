@@ -8,9 +8,9 @@ back to a slower mode and says so. The checkpoint is gated on Hugging Face,
 so HF_TOKEN must hold a token with access to facebook/UMA.
 
 Usage:
-    uma.py relax --structure in.xyz --task omol --steps 200 --fmax 0.05 --out relaxed.extxyz
-    uma.py md --structure relaxed.extxyz --task omol --temperature 300 --timestep 0.5 \
-        --steps 10000 --save-every 10 --traj trajectory.extxyz --thermo thermo.csv \
+    uma.py relax --structure in.xyz --task omol --steps 200 --fmax 0.05 --out relaxed.xyz
+    uma.py md --structure relaxed.xyz --task omol --temperature 300 --timestep 0.5 \
+        --steps 10000 --save-every 10 --traj trajectory.xyz --thermo thermo.csv \
         --summary md_summary.json
     uma.py --selftest
 """
@@ -100,7 +100,7 @@ def relax(args: argparse.Namespace) -> None:
     else:
         print("relax: skipped (steps = 0)")
     args.out.parent.mkdir(parents=True, exist_ok=True)
-    atoms.write(args.out, format="extxyz")
+    atoms.write(args.out, format="extxyz")  # named .xyz: Mol* reads it, ASE keeps cell/pbc
 
 
 def md(args: argparse.Namespace) -> None:

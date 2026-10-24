@@ -13,15 +13,15 @@ The UMA checkpoints are gated on Hugging Face. Request access at [facebook/UMA](
 ## Pipeline
 
 ```
-relax   FIRE relaxation with UMA          ──► results/relaxed.extxyz
-md      Langevin NVT with UMA Nitro       ──► results/trajectory.extxyz, thermo.csv, md_summary.json
+relax   FIRE relaxation with UMA          ──► results/relaxed.xyz
+md      Langevin NVT with UMA Nitro       ──► results/trajectory.xyz, thermo.csv, md_summary.json
 report  temperature/energy plots, speed   ──► results/report.html
 ```
 
 ## Inputs / Outputs
 
 - `structure`: any ASE-readable file (extxyz, xyz, cif, POSCAR, pdb, sdf). Keep the cell and `pbc` for periodic systems. The example is a periodic box of 64 water molecules.
-- `results/trajectory.extxyz`: one frame every `save_every` steps.
+- `results/trajectory.xyz`: one frame every `save_every` steps. It opens as a playable trajectory in the built-in Mol* viewer; the content is extended XYZ, so ASE also reads the cell, momenta and forces.
 - `results/thermo.csv`: `step, time_ps, epot_eV, ekin_eV, etot_eV, temperature_K`.
 - `results/md_summary.json`: model, task, `inference_mode`, GPU, atoms, steps, `ns_per_day`.
 - `results/report.html`: the summary plus temperature and energy over time.
@@ -30,7 +30,7 @@ report  temperature/energy plots, speed   ──► results/report.html
 
 | id | Default | Meaning |
 |---|---|---|
-| `structure` | `examples/water_box.extxyz` | Input structure |
+| `structure` | `examples/water_box.xyz` | Input structure |
 | `task_name` | `omol` | UMA head: `omol`, `omat`, `oc20`, `oc22`, `oc25`, `odac` or `omc` |
 | `charge` | 0 | Total charge (`omol` only) |
 | `spin` | 1 | Spin multiplicity (`omol` only) |
