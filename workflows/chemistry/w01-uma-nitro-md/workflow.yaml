@@ -14,11 +14,6 @@ _env: &env
   requirements:
     - "fairchem-core==2.24.0" # UMA Nitro is the default mode from 2.24.0
 
-# The UMA checkpoints are gated on Hugging Face (facebook/UMA): bind hf_token
-# to a credential holding a token from an approved account.
-_secrets: &secrets
-  HF_TOKEN: "${secret:hf_token}"
-
 # One L4-class GPU (Ampere or newer for Nitro).
 _gpu: &gpu
   cpus: 4
@@ -148,7 +143,9 @@ tasks:
       - {id: fmax, name: Force threshold (eV/Å), kind: number, path: params/fmax.json}
     outputs:
       - {id: relaxed, name: Relaxed structure, kind: file, path: results/relaxed.extxyz}
-    secrets: *secrets
+    # The UMA checkpoints are gated on Hugging Face (facebook/UMA): bind
+    # hf_token to a credential holding a token from an approved account.
+    secrets: {HF_TOKEN: "${secret:hf_token}"}
     resources: *gpu
     executor: *env
     runtime:
@@ -181,7 +178,7 @@ tasks:
       - {id: trajectory, name: MD trajectory, kind: file, path: results/trajectory.extxyz}
       - {id: thermo, name: Thermodynamics table, kind: file, path: results/thermo.csv}
       - {id: md_summary, name: Run summary, kind: file, path: results/md_summary.json}
-    secrets: *secrets
+    secrets: {HF_TOKEN: "${secret:hf_token}"}
     resources: *gpu
     executor: *env
     runtime:

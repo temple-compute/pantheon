@@ -39,7 +39,10 @@ def chart(title: str, unit: str, xs: list[float], series: dict[str, list[float]]
             for x, y in zip(xs, ys, strict=True)
         )
         lines.append(f'<polyline fill="none" stroke="{color}" stroke-width="1.5" points="{pts}"><title>{html.escape(name)}</title></polyline>')
-    legend = " · ".join(html.escape(n) for n in series)
+    legend = " · ".join(
+        f'<span style="color:{c}">■</span> {html.escape(n)}'
+        for n, c in zip(series, colors, strict=False)
+    )
     return f"""<figure><figcaption>{html.escape(title)} <small>({legend})</small></figcaption>
 <svg viewBox="0 0 {W} {H}" role="img" aria-label="{html.escape(title)}">
 <line x1="{PAD}" y1="{H - PAD}" x2="{W - PAD}" y2="{H - PAD}" stroke="var(--grid)"/>
@@ -67,6 +70,8 @@ def build(thermo: Path, summary: Path, out: Path) -> int:
         for k, v in info.items()
     )
     mean_t = sum(temps) / len(temps)
+    # Absolute energies (~1e5 eV) lose every visible digit on the axis.
+    e0 = float(rows[0]["epot_eV"])
     page = f"""<!doctype html><html lang="en"><head><meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1">
 <title>UMA MD report</title>
@@ -83,7 +88,7 @@ figure {{ margin:1.5rem 0; }} figcaption {{ font-weight:500; }} .big {{ font-siz
 on {html.escape(str(info.get("device")))}, {info.get("atoms")} atoms. Mean T {mean_t:.1f} K over {len(rows)} frames.</p>
 <table>{table}</table>
 {chart("Temperature", "K", t, {"T": temps})}
-{chart("Energy", "eV", t, {"E total": col("etot_eV"), "E potential": col("epot_eV")})}
+{chart("Energy relative to the first frame's E potential", "eV", t, {"E total": [e - e0 for e in col("etot_eV")], "E potential": [e - e0 for e in col("epot_eV")]})}
 </body></html>"""
     out.parent.mkdir(parents=True, exist_ok=True)
     out.write_text(page)
@@ -104,6 +109,7 @@ def _selftest() -> None:
         assert n == 2, n
         assert "<b>nitro</b>" in page and "1.5 ns/day" in page and "Mean T 300.0 K" in page, page
         assert page.count("<polyline") == 3, page.count("<polyline")
+        assert ">1<" in page and ">-0.2<" in page, "energy axis is relative to frame 0"
     print("report.py selftest: OK")
 
 
