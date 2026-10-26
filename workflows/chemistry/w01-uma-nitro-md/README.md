@@ -48,3 +48,4 @@ report  temperature/energy plots, speed   ──► results/report.html
 - [UMA models on Hugging Face](https://huggingface.co/facebook/UMA)
 - [UMA paper (arXiv:2506.23971)](https://arxiv.org/abs/2506.23971)
 - [ASE (Atomic Simulation Environment)](https://ase-lib.org/)
+- Cover and icon: FAIR Chemistry and UMA artwork from facebookresearch/fairchem (MIT license)
