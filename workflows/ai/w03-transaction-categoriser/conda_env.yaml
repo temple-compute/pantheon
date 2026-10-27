@@ -1,0 +1,14 @@
+name: horus-transaction-categoriser
+channels:
+  - conda-forge
+dependencies:
+  - python=3.11
+  - pip
+  - pip:
+      - torch
+      - transformers==5.20.2 # Trainer API: warmup_steps as a ratio, processing_class
+      - accelerate # required by transformers' Trainer
+      - datasets
+      - scikit-learn
+      - pandas
+      - matplotlib
