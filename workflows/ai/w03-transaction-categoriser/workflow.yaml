@@ -1,0 +1,241 @@
+kind: horus_workflow
+name: Bank Transaction Categoriser - Fine-tune and Compare Runs
+# Fine-tune a small pretrained encoder to classify card transaction
+# descriptions into spending categories. Each run ends in a self-contained
+# HTML report, so a campaign of runs with different hyperparameters can be
+# compared side by side.
+
+# --- reusable blocks -------------------------------------------------------
+# One conda env shared by every task. environment_dir is resolved against
+# <target dir>/<task id>/<execution id>/, so ../../ puts it at the target's
+# root where all tasks reuse it.
+_env: &env
+  kind: conda_python_environment
+  environment_dir: "../../.horus_conda_env_w46"
+  conda: micromamba
+  environment_file: conda_env.yaml
+
+_small: &small
+  cpus: 2
+  memory_gb: 4
+  walltime: "00:30:00"
+
+# Where tasks run. prepare_data, evaluate and report share the small CPU
+# machine; train runs on its own target. To train on an L4 GPU, point
+# `trainer` at a GPU machine and set gpus: 1 on the train task, e.g.
+#   trainer: {kind: terraform, instance_type: g6.xlarge, gpus: 1}
+# train.py uses CUDA whenever the trainer has a GPU and records which ran.
+targets:
+  small_cpu: {kind: local}
+  trainer: {kind: local}
+
+artifacts:
+  - id: transactions_csv
+    name: Transactions CSV
+    description: >-
+      One row per transaction with a description column and a category
+      column. The example is a stratified 5,000-row sample (17 categories) of
+      the public DoDataThings/us-bank-transaction-categories-v2 dataset.
+    kind: file
+    path: examples/transactions.csv
+  - id: text_column
+    name: Text column
+    description: CSV column holding the transaction description.
+    kind: string
+    path: params/text_column.txt
+    value: description
+  - id: label_column
+    name: Label column
+    description: CSV column holding the spending category.
+    kind: string
+    path: params/label_column.txt
+    value: category
+  - id: model_name
+    name: Pretrained model
+    description: Hugging Face model id to fine-tune (any encoder with a sequence-classification head).
+    kind: string
+    path: params/model_name.txt
+    value: distilbert-base-multilingual-cased
+  - id: learning_rate
+    name: Learning rate
+    description: Peak AdamW learning rate (linear decay after a 10% warmup).
+    kind: number
+    path: params/learning_rate.json
+    value: 0.0001
+    min: 0.000001
+    max: 0.01
+    step: 0.000001
+  - id: epochs
+    name: Epochs
+    description: Passes over the training split; validation accuracy is logged after each.
+    kind: number
+    path: params/epochs.json
+    value: 3
+    min: 1
+    max: 50
+    step: 1
+  - id: batch_size
+    name: Batch size
+    description: Training examples per optimizer step.
+    kind: number
+    path: params/batch_size.json
+    value: 32
+    min: 4
+    max: 512
+    step: 4
+  - id: max_length
+    name: Max tokens
+    description: Descriptions are truncated to this many tokens; transaction strings are short, so 32 covers most.
+    kind: number
+    path: params/max_length.json
+    value: 32
+    min: 8
+    max: 512
+    step: 8
+  - id: seed
+    name: Seed
+    description: Training seed (weight init and shuffling). The data split always uses seed 42 so runs stay comparable.
+    kind: number
+    path: params/seed.json
+    value: 42
+    min: 0
+    max: 1000000
+    step: 1
+
+tasks:
+  - kind: horus_task
+    id: prepare_data
+    name: Prepare data
+    description: >-
+      Loads the CSV, cleans the descriptions, and writes a stratified 80/10/10
+      train/validation/test split and the label mapping.
+    inputs:
+      - {id: transactions_csv, name: Transactions CSV, kind: file, path: examples/transactions.csv}
+      - {id: text_column, name: Text column, kind: string, path: params/text_column.txt}
+      - {id: label_column, name: Label column, kind: string, path: params/label_column.txt}
+    outputs:
+      - {id: train_csv, name: Train split, kind: file, path: data/train.csv}
+      - {id: val_csv, name: Validation split, kind: file, path: data/val.csv}
+      - {id: test_csv, name: Test split, kind: file, path: data/test.csv}
+      - {id: label_map, name: Label mapping, kind: file, path: data/label_map.json}
+    # Cached: it only sees the data inputs, so runs that change only
+    # hyperparameters reuse the split instead of recomputing it.
+    skip_if_complete: true
+    resources: *small
+    executor: *env
+    runtime:
+      kind: python_script
+      script: scripts/prepare_data.py
+      args: >-
+        --csv ${transactions_csv} --text_column ${text_column} --label_column ${label_column}
+        --train ${train_csv} --val ${val_csv} --test ${test_csv} --label_map ${label_map}
+    target: {ref: small_cpu}
+
+  - kind: horus_task
+    id: train
+    name: Fine-tune classifier
+    description: >-
+      Fine-tunes the pretrained model on the train split with the Hugging Face
+      Trainer, evaluating on the validation split after every epoch.
+    inputs:
+      - {id: train_csv, name: Train split, kind: file, path: data/train.csv}
+      - {id: val_csv, name: Validation split, kind: file, path: data/val.csv}
+      - {id: label_map, name: Label mapping, kind: file, path: data/label_map.json}
+      - {id: model_name, name: Pretrained model, kind: string, path: params/model_name.txt}
+      - {id: learning_rate, name: Learning rate, kind: number, path: params/learning_rate.json}
+      - {id: epochs, name: Epochs, kind: number, path: params/epochs.json}
+      - {id: batch_size, name: Batch size, kind: number, path: params/batch_size.json}
+      - {id: max_length, name: Max tokens, kind: number, path: params/max_length.json}
+      - {id: seed, name: Seed, kind: number, path: params/seed.json}
+    outputs:
+      - {id: model, name: Fine-tuned checkpoint, kind: folder, path: model}
+      - {id: train_log, name: Training log, kind: file, path: logs/train_log.jsonl}
+      - {id: train_summary, name: Training summary, kind: file, path: logs/train_summary.json}
+    resources:
+      cpus: 4
+      gpus: 0 # 1 when `trainer` is an L4 machine
+      memory_gb: 16
+      walltime: "02:00:00"
+    executor: *env
+    runtime:
+      kind: python_script
+      script: scripts/train.py
+      args: >-
+        --train ${train_csv} --val ${val_csv} --label_map ${label_map}
+        --model_name ${model_name} --learning_rate ${learning_rate} --epochs ${epochs}
+        --batch_size ${batch_size} --max_length ${max_length} --seed ${seed}
+        --out_model ${model} --out_log ${train_log} --out_summary ${train_summary}
+    target: {ref: trainer}
+
+  - kind: horus_task
+    id: evaluate
+    name: Evaluate on test split
+    description: >-
+      Scores the checkpoint on the held-out test split: accuracy, macro F1,
+      per-class precision/recall and a confusion matrix.
+    inputs:
+      - {id: model, name: Fine-tuned checkpoint, kind: folder, path: model}
+      - {id: test_csv, name: Test split, kind: file, path: data/test.csv}
+      - {id: label_map, name: Label mapping, kind: file, path: data/label_map.json}
+      - {id: max_length, name: Max tokens, kind: number, path: params/max_length.json}
+    outputs:
+      - {id: metrics, name: Test metrics, kind: file, path: results/metrics.json}
+      - {id: confusion_png, name: Confusion matrix, kind: file, path: results/confusion_matrix.png}
+    resources: *small
+    executor: *env
+    runtime:
+      kind: python_script
+      script: scripts/evaluate.py
+      args: >-
+        --model ${model} --test ${test_csv} --label_map ${label_map} --max_length ${max_length}
+        --out_metrics ${metrics} --out_png ${confusion_png}
+    target: {ref: small_cpu}
+
+  - kind: horus_task
+    id: report
+    name: Run report
+    description: >-
+      One HTML page with the run's metrics, confusion matrix, training time,
+      hardware and hyperparameters, for side-by-side comparison of runs.
+    inputs:
+      - {id: metrics, name: Test metrics, kind: file, path: results/metrics.json}
+      - {id: confusion_png, name: Confusion matrix, kind: file, path: results/confusion_matrix.png}
+      - {id: train_summary, name: Training summary, kind: file, path: logs/train_summary.json}
+      - {id: train_log, name: Training log, kind: file, path: logs/train_log.jsonl}
+    outputs:
+      - {id: report_html, name: Run report, kind: file, path: results/report.html}
+    resources: *small
+    executor: *env
+    runtime:
+      kind: python_script
+      script: scripts/report.py
+      args: >-
+        --metrics ${metrics} --png ${confusion_png} --summary ${train_summary}
+        --log ${train_log} --out ${report_html}
+    target: {ref: small_cpu}
+
+edges:
+  - {source: artifact-transactions_csv, source_output: transactions_csv, target: prepare_data, target_input: transactions_csv}
+  - {source: artifact-text_column, source_output: text_column, target: prepare_data, target_input: text_column}
+  - {source: artifact-label_column, source_output: label_column, target: prepare_data, target_input: label_column}
+  - {source: prepare_data, source_output: train_csv, target: train, target_input: train_csv}
+  - {source: prepare_data, source_output: val_csv, target: train, target_input: val_csv}
+  - {source: prepare_data, source_output: label_map, target: train, target_input: label_map}
+  - {source: artifact-model_name, source_output: model_name, target: train, target_input: model_name}
+  - {source: artifact-learning_rate, source_output: learning_rate, target: train, target_input: learning_rate}
+  - {source: artifact-epochs, source_output: epochs, target: train, target_input: epochs}
+  - {source: artifact-batch_size, source_output: batch_size, target: train, target_input: batch_size}
+  - {source: artifact-max_length, source_output: max_length, target: train, target_input: max_length}
+  - {source: artifact-seed, source_output: seed, target: train, target_input: seed}
+  - {source: train, source_output: model, target: evaluate, target_input: model}
+  - {source: prepare_data, source_output: test_csv, target: evaluate, target_input: test_csv}
+  - {source: prepare_data, source_output: label_map, target: evaluate, target_input: label_map}
+  - {source: artifact-max_length, source_output: max_length, target: evaluate, target_input: max_length}
+  - {source: evaluate, source_output: metrics, target: report, target_input: metrics}
+  - {source: evaluate, source_output: confusion_png, target: report, target_input: confusion_png}
+  - {source: train, source_output: train_summary, target: report, target_input: train_summary}
+  - {source: train, source_output: train_log, target: report, target_input: train_log}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results

@@ -106,6 +106,7 @@ uv run horus run workflow.yaml
 |---|---|---|
 | W-28 | [LLM From Scratch - Pretrain, SFT & Eval](workflows/ai/w01-train-llm/README.md) | Clone a from-scratch Transformer repo, tokenize Pile/instruction data, pretrain, SFT, and evaluate GSM8K accuracy |
 | W-29 | [Tiny LLM From Scratch - TinyStories Pretrain & Sample](workflows/ai/w02-tiny-llm/README.md) | Pretrain a small from-scratch Transformer on TinyStories (not the 900GB Pile) and sample a generated story |
+| W-46 | [Bank Transaction Categoriser - Fine-tune & Compare Runs](workflows/ai/w03-transaction-categoriser/README.md) | Fine-tune a small pretrained encoder to classify card transactions into spending categories; one report per run (metrics, confusion matrix, time, hardware, hyperparameters) for side-by-side comparison |
 
 ### Omics
 
