@@ -10,7 +10,7 @@ _executor: &executor
   environment_dir: "../../.horus_uv_env_lacuna" # one env per run, shared by all tasks
   python: "3.11"
   requirements:
-    - "lacuna-pockets>=1.1.0"
+    - "lacuna-pockets>=1.4.0"
 
 artifacts:
   - id: receptor
@@ -99,6 +99,8 @@ tasks:
   # clustering, and ranking. --detector surface-fusion is 1.1.0's headline
   # addition: the alpha detector only proposes where there is already a
   # concavity, which is exactly the wrong assumption for a cryptic site.
+  # Since 1.4.0 the report also carries a per-residue `residue_propensity` map
+  # and per-pocket `chain_shares` / `interface`; ranking is unchanged.
   - kind: horus_task
     id: discover
     name: Discover cryptic pockets across a conformational ensemble
@@ -152,7 +154,7 @@ tasks:
   - kind: horus_task
     id: report
     name: Render the pocket report
-    description: Builds a self-contained HTML report (with a Mol* 3D view of the receptor and pockets) and a CSV table from pocket_report.json.
+    description: Builds a self-contained HTML report (with a Mol* 3D view of the receptor and pockets), a pocket CSV and a per-residue propensity CSV from pocket_report.json.
     inputs:
       - id: pockets
         name: Ranked pocket report + pocket PDBs
@@ -167,13 +169,17 @@ tasks:
         name: Pocket table (CSV)
         kind: file
         path: results/pockets.csv
+      - id: residues
+        name: Residue propensity (CSV)
+        kind: file
+        path: results/residue_propensity.csv
     executor:
       kind: shell
     runtime:
       kind: python_script
       script: scripts/report.py
       python: python3 # stdlib-only; use the target's python3
-      args: --pockets ${pockets} --receptor ${pockets}/receptor.pdb --report ${report} --table ${table}
+      args: --pockets ${pockets} --receptor ${pockets}/receptor.pdb --report ${report} --table ${table} --residues ${residues}
     target:
       kind: local
 

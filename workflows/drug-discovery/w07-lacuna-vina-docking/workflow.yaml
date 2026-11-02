@@ -10,7 +10,7 @@ _executor: &executor
   environment_dir: "../../.horus_uv_env_lacuna" # one env per run, shared by all tasks
   python: "3.11"
   requirements:
-    - "lacuna-pockets>=1.1.0"
+    - "lacuna-pockets>=1.4.0"
 
 _docking_executor: &docking_executor
   kind: conda_python_environment
