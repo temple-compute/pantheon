@@ -94,6 +94,14 @@ uv run horus run workflow.yaml
 |---|---|---|
 | W-43 | [Influenza Segments Starter](workflows/bioinformatics/w01-flu-segments-starter/README.md) | Influenza segment FASTA → header parsing, QC, longest-ORF translation and an HTML report. |
 
+### nf-core Ports
+
+Native Horus ports of nf-core pipelines, with the same containers, command lines and resources as the Nextflow original.
+
+| ID | Workflow | Description |
+|---|---|---|
+| W-48 | [nf-core/demo](workflows/nf-core-ports/w01-demo/README.md) | nf-core/demo 1.2.0 as native tasks: FastQC and seqtk per sample as `horus_map` stages, then a MultiQC report |
+
 ### Chemistry
 
 | ID | Workflow | Description |

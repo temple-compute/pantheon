@@ -1,0 +1,256 @@
+kind: horus_workflow
+name: nf-core demo
+
+# Native port of nf-core/demo 1.2.0 (FASTQC, SEQTK_TRIM, COWPY, MULTIQC).
+# Images, command lines (ext.args from conf/modules.config) and per-process
+# cpus/memory are the ones `nextflow run nf-core/demo -r 1.2.0
+# -profile test,docker` executes: the test profile caps every process at
+# 2 cpus / 4 GB.
+
+_target: &target
+  kind: local
+
+# Run on a remote node instead: point every task at this anchor.
+# _target: &target
+#   kind: ssh
+#   host: bench-node.example.org
+#   username: ubuntu
+#   working_directory: /home/ubuntu/horus
+
+artifacts:
+  - id: samplesheet
+    name: Samplesheet
+    description: >-
+      nf-core samplesheet (sample,fastq_1,fastq_2). Reads may be URLs or paths
+      relative to the samplesheet; rows sharing a sample name are merged.
+      Default: the nf-core/demo test profile samplesheet (3 samples).
+    kind: file
+    path: examples/samplesheet.csv
+  - id: multiqc_config
+    name: MultiQC config
+    description: The pipeline's assets/multiqc_config.yml.
+    kind: file
+    path: examples/multiqc_config.yml
+  - id: skip_trim
+    name: Skip trimming
+    description: Skip seqtk trimfq (--skip_trim); the trimmed reads folder stays empty.
+    kind: boolean
+    path: params/skip_trim.json
+    value: false
+  - id: multiqc_title
+    name: MultiQC report title
+    description: Title for the MultiQC report (--multiqc_title); empty keeps the default.
+    kind: string
+    path: params/multiqc_title.txt
+    value: ""
+    pattern: '[^"`$\\]*'
+
+_seqtk: &seqtk
+  kind: docker
+  image: quay.io/biocontainers/seqtk:1.4--he4a0461_1
+_fastqc: &fastqc
+  kind: docker
+  image: quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0
+_cowpy: &cowpy
+  kind: docker
+  image: community.wave.seqera.io/library/cowpy:1.1.5--3db457ae1977a273
+_multiqc: &multiqc
+  kind: docker
+  image: community.wave.seqera.io/library/multiqc:1.34--db7c73dae76bc9e6
+
+tasks:
+  - kind: horus_task
+    id: stage_samples
+    name: Split the samplesheet into sample folders
+    description: Downloads each sample's reads into its own folder, merging repeated sample rows.
+    inputs:
+      - id: samplesheet
+        name: Samplesheet
+        kind: file
+        path: examples/samplesheet.csv
+    outputs:
+      - id: samples
+        name: Sample folders
+        kind: folder
+        path: samples/
+    executor:
+      kind: shell
+    runtime:
+      kind: python_script
+      script: scripts/stage_samples.py
+      python: python3 # stdlib only
+      args: --samplesheet ${samplesheet} --out ${samples}
+    target: *target
+
+  # FASTQC: reads are linked as <id>.gz (one file) or <id>_<n>.gz, as the
+  # nf-core module does, so report names match. --memory is task memory
+  # (MB) over threads, clamped to FastQC's 100-10000 range.
+  - kind: horus_map
+    id: fastqc
+    name: FastQC per sample
+    description: Runs FastQC on each sample's reads.
+    over:
+      input_id: samples
+      as: sample
+    max_concurrency: 8
+    inputs:
+      - id: samples
+        name: Sample folders
+        kind: folder
+        path: samples/
+    outputs:
+      - id: fastqc_reports
+        name: FastQC reports
+        kind: folder
+        path: results/fastqc/
+    resources:
+      cpus: 2
+      memory_gb: 4
+      walltime: "01:00:00"
+    executor: *fastqc
+    runtime:
+      kind: command
+      command: |
+        set -eu
+        id=$$(basename ${sample})
+        trap 'chown -R $$(stat -c %u:%g $$(dirname ${fastqc_reports})) ${fastqc_reports}' EXIT
+        n=$$(wc -l < ${sample}/reads.txt)
+        mem=$$(( ${task.resources.memory_gb} * 1024 / ${task.resources.cpus} ))
+        [ $$mem -gt 10000 ] && mem=10000
+        [ $$mem -lt 100 ] && mem=100
+        mkdir -p ${fastqc_reports} && cd ${fastqc_reports}
+        i=0; names=""
+        while read f; do
+          i=$$((i + 1))
+          if [ $$n -eq 1 ]; then new=$$id.$${f##*.}; else new=$${id}_$$i.$${f##*.}; fi
+          ln -s ${sample}/$$f $$new
+          names="$$names $$new"
+        done < ${sample}/reads.txt
+        fastqc --quiet --threads ${task.resources.cpus} --memory $$mem $$names
+        rm -f $$names
+    target: *target
+
+  - kind: horus_map
+    id: seqtk_trim
+    name: Trim reads per sample
+    description: Quality-trims each read file with seqtk trimfq.
+    over:
+      input_id: samples
+      as: sample
+    max_concurrency: 8
+    inputs:
+      - id: samples
+        name: Sample folders
+        kind: folder
+        path: samples/
+      - id: skip_trim
+        name: Skip trimming
+        kind: boolean
+        path: params/skip_trim.json
+    outputs:
+      - id: trimmed
+        name: Trimmed reads
+        kind: folder
+        path: results/fq/
+    resources:
+      cpus: 2
+      memory_gb: 4
+      walltime: "01:00:00"
+    executor: *seqtk
+    runtime:
+      kind: command
+      command: |
+        set -euo pipefail # /bin/sh is bash in biocontainers images
+        trap 'chown -R $$(stat -c %u:%g $$(dirname ${trimmed})) ${trimmed}' EXIT
+        mkdir -p ${trimmed}
+        if [ ${skip_trim} = false ]; then
+          id=$$(basename ${sample})
+          while read f; do
+            seqtk trimfq ${sample}/$$f | gzip --no-name > ${trimmed}/$${id}_$$f
+          done < ${sample}/reads.txt
+        fi
+    target: *target
+
+  - kind: horus_task
+    id: cowpy
+    name: Cowpy greeting
+    description: Prints "nf-core rules!" as ASCII art.
+    outputs:
+      - id: cowpy_txt
+        name: Cowpy text
+        kind: file
+        path: results/cowpy/cowpy.txt
+    resources:
+      cpus: 1
+      memory_gb: 4
+      walltime: "01:00:00"
+    executor: *cowpy
+    runtime:
+      kind: command
+      command: |
+        trap 'chown $$(stat -c %u:%g $$(dirname ${cowpy_txt})) ${cowpy_txt}' EXIT
+        echo "nf-core rules!" | cowpy > ${cowpy_txt}
+    target: *target
+
+  # MULTIQC reads the FastQC map's output folder (the channel collect()).
+  # trimmed and cowpy_txt are not read: they mirror Nextflow, where MULTIQC
+  # waits on every process through the software versions topic.
+  - kind: horus_task
+    id: multiqc
+    name: MultiQC report
+    description: Aggregates the FastQC reports into one MultiQC report.
+    inputs:
+      - id: fastqc_reports
+        name: FastQC reports
+        kind: folder
+        path: results/fastqc/
+      - id: trimmed
+        name: Trimmed reads
+        kind: folder
+        path: results/fq/
+      - id: cowpy_txt
+        name: Cowpy text
+        kind: file
+        path: results/cowpy/cowpy.txt
+      - id: multiqc_config
+        name: MultiQC config
+        kind: file
+        path: examples/multiqc_config.yml
+      - id: multiqc_title
+        name: MultiQC report title
+        kind: string
+        path: params/multiqc_title.txt
+    outputs:
+      - id: multiqc_out
+        name: MultiQC report
+        kind: folder
+        path: results/multiqc/
+    resources:
+      cpus: 1
+      memory_gb: 4
+      walltime: "01:00:00"
+    executor: *multiqc
+    runtime:
+      kind: command
+      command: |
+        set -eu
+        title=${multiqc_title}
+        trap 'chown -R $$(stat -c %u:%g $$(dirname ${multiqc_out})) ${multiqc_out}' EXIT
+        mkdir -p ${multiqc_out} && cd ${multiqc_out}
+        multiqc --force $${title:+--title "$$title"} --config ${multiqc_config} ${fastqc_reports}
+    target: *target
+
+edges:
+  - {source: artifact-samplesheet, source_output: samplesheet, target: stage_samples, target_input: samplesheet}
+  - {source: stage_samples, source_output: samples, target: fastqc, target_input: samples}
+  - {source: stage_samples, source_output: samples, target: seqtk_trim, target_input: samples}
+  - {source: artifact-skip_trim, source_output: skip_trim, target: seqtk_trim, target_input: skip_trim}
+  - {source: fastqc, source_output: fastqc_reports, target: multiqc, target_input: fastqc_reports}
+  - {source: seqtk_trim, source_output: trimmed, target: multiqc, target_input: trimmed}
+  - {source: cowpy, source_output: cowpy_txt, target: multiqc, target_input: cowpy_txt}
+  - {source: artifact-multiqc_config, source_output: multiqc_config, target: multiqc, target_input: multiqc_config}
+  - {source: artifact-multiqc_title, source_output: multiqc_title, target: multiqc, target_input: multiqc_title}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
