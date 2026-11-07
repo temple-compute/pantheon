@@ -6,7 +6,19 @@ RNA-seq QC, alignment and quantification: a native port of nf-core/rnaseq 3.27.0
 
 ## Overview
 
-Runs the route `nextflow run nf-core/rnaseq -r 3.27.0 -profile test,docker` takes, as Horus tasks with the same containers, rendered command lines and per-process cpus/memory: TrimGalore, BBSplit, STAR with Salmon (`star_salmon`), Salmon pseudo-alignment, Picard MarkDuplicates, StringTie, featureCounts biotypes, Qualimap, dupRadar, RSeQC, bigWigs and MultiQC. Per-sample steps are `horus_map` stages over a list of sample meta files. The pipeline's Groovy logic runs as small decision tasks: the minimum trimmed reads filter, `auto` strandedness from a Salmon subsample, the minimum mapped reads filter and the MultiQC sample renaming, so other samplesheets and references work too. The workflow has 71 tasks (45 maps). `workflow.tuned.yaml` (54 tasks, 28 maps) chains per-sample steps that share an image and gives the same outputs.
+Runs the route `nextflow run nf-core/rnaseq -r 3.27.0 -profile test,docker` takes, as Horus tasks with the same containers, rendered command lines and per-process cpus/memory: TrimGalore, BBSplit, STAR with Salmon (`star_salmon`), Salmon pseudo-alignment, Picard MarkDuplicates, StringTie, featureCounts biotypes, Qualimap, dupRadar, RSeQC, bigWigs and MultiQC. Per-sample steps are `horus_map` stages over a list of sample meta files. The pipeline's Groovy logic runs as small decision tasks: the minimum trimmed reads filter, `auto` strandedness from a Salmon subsample, the minimum mapped reads filter and the MultiQC sample renaming, so other samplesheets and references work too. The workflow has 71 tasks (45 maps).
+
+## Variants
+
+Other entry points next to `workflow.yaml`. Each file's header says how it was generated.
+
+- `workflow.tuned.yaml` (54 tasks, 28 maps): per-sample steps that share an image run as one task, with the same outputs.
+- `workflow.chained.yaml`: per-sample maps set `chain: true`, so a sample moves to its next step without waiting for the others, with the same outputs.
+- `workflow.unrolled.yaml`: the chained DAG with every map unrolled into one task per sample of the example samplesheet (263 tasks), for timing against chaining.
+- `workflow.rightsized.yaml`: per-task resources from a measured run, on managed nodes per size class.
+- `workflow.real.yaml`, `workflow.real.deep.yaml`, `workflow.real.fast.yaml`: the chained port on a Slurm cluster with Apptainer, given references and prebuilt STAR and Salmon indexes, and no BBSplit (`scripts/gen_real.py`). The deep and fast files set the input `cache:` mode. `workflow.real.rightsized.yaml` sets each task's resources from a measured real-data run.
+
+`chain: true` and `cache:` need horus-runtime 0.9.0 or later, so the chained and real variants do too.
 
 ## Pipeline
 
