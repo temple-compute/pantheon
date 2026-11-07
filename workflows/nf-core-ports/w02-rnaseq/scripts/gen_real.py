@@ -13,11 +13,12 @@ gives them there. The YAML header (HEAD below) lists every change.
 Edges are rebuilt from the input ids, as gen_tuned.py does, and the result is
 checked (see check()).
 
-usage: gen_real.py [workflow.chained.yaml] [workflow.real.yaml]   (needs PyYAML)
+usage: gen_real.py [--cache deep|fast] [workflow.chained.yaml] [workflow.real[.<cache>].yaml]   (needs PyYAML)
 """
 
 from __future__ import annotations
 
+import argparse
 import re
 import sys
 from pathlib import Path
@@ -126,8 +127,10 @@ TARGETS = {
     "highmem": {"kind": "slurm", "partition": "highmem", "working_directory": SLURM_DIR, "inner": {"kind": "local"}},
 }
 HIGHMEM = {"star_align"}
-# Containers kept on the head node: pass-throughs for most samples (see HEAD).
-LOCAL = {"cat_fastq", "subsample", "salmon_strand", "mqc_inputs"}
+# Containers on the head node. None: every container task is a Slurm job, as in
+# Nextflow. Until bench run real2 cat_fastq, subsample, salmon_strand and mqc_inputs
+# ran here, and on real data they competed with the runtime for the head's 2 vCPUs.
+LOCAL: set[str] = set()
 MAX_CONCURRENCY = 200  # Nextflow's queueSize in slurm.config
 
 # The reference prep tasks the given files replace, and the BBSplit steps.
@@ -212,12 +215,12 @@ HEAD = """\
 #   nextflow.config `env` scope, and --cleanenv --no-home as Nextflow launches
 #   singularity (`env -` and its default --no-home). Not its --pid: commands
 #   write /tmp/.command.$$$$.sh on the host's shared /tmp, so PIDs must stay unique.
-# - Head node (kind: local), as Nextflow runs its Groovy there: staging, links,
-#   filters, strandedness and MultiQC inputs. cat_fastq, subsample and
-#   salmon_strand run there too: for single-run and known-strand samples they
-#   only pass meta.env on, where Nextflow runs no job, and a pass-through
-#   salmon_strand would book 6 cpus / 36 GB per sample on Slurm. The cost: on
-#   other samplesheets, run merging and auto-strand probes use the head node.
+# - Head node (kind: local): only the shell glue Nextflow runs as Groovy there
+#   (staging, links, filters, strandedness). Every container task is a Slurm
+#   job, cat_fastq, subsample, salmon_strand and mqc_inputs included. For
+#   single-run and known-strand samples the first three only pass meta.env on,
+#   where Nextflow runs no job, so each still books its label on Slurm briefly.
+# - Input cache mode: {cache}.
 # - stage_inputs.py links local absolute read paths instead of copying them.
 # - No capacity block; max_concurrency {mc} (Nextflow's queueSize), so Slurm queues.
 # - Slurm working_directory is {slurm}; the driver replaces it (matrix.sh).
@@ -248,7 +251,7 @@ def sif_name(url: str) -> str:
     return name.replace(":", "-").replace("/", "-") + ext
 
 
-def build(doc: dict) -> dict:
+def build(doc: dict, cache: str | None = None) -> dict:
     canon: dict[str, dict] = {}  # one shared dict per artifact id, so the dump anchors it
 
     def art(a: dict) -> dict:
@@ -352,6 +355,7 @@ def build(doc: dict) -> dict:
                                 "rows sharing a sample are runs of one sample.")
     new = {
         "kind": doc["kind"], "name": "nf-core rnaseq real", "max_concurrency": MAX_CONCURRENCY,
+        **({"cache": cache} if cache else {}),
         "_targets": targets, "_res": res,
         "_img": {SIF[d][0]: e for d, e in img.items() if id(e) in used},
         "_art": [a for a in canon.values() if id(a) in live],
@@ -444,16 +448,23 @@ def dump(doc: dict) -> str:
 
 
 def main() -> int:
-    src = Path(sys.argv[1]) if len(sys.argv) > 1 else HERE / "workflow.chained.yaml"
-    dst = Path(sys.argv[2]) if len(sys.argv) > 2 else HERE / "workflow.real.yaml"
+    ap = argparse.ArgumentParser(description="Generate the real-data rnaseq port.")
+    ap.add_argument("--cache", choices=("deep", "fast"), help="workflow-level input cache mode (runtime default: deep)")
+    ap.add_argument("src", nargs="?", type=Path, default=HERE / "workflow.chained.yaml")
+    ap.add_argument("dst", nargs="?", type=Path)
+    a = ap.parse_args()
+    src = a.src
+    dst = a.dst or HERE / (f"workflow.real.{a.cache}.yaml" if a.cache else "workflow.real.yaml")
     doc = yaml.safe_load(src.read_text())
     assert edge_set(derive_edges(doc)) == edge_set(doc["edges"]), f"{src.name} edges differ from its input ids"
-    new = build(doc)
+    new = build(doc, a.cache)
+    assert new.get("cache") == a.cache
     check(new)
     text = dump(new)
     check(yaml.safe_load(text))  # the dumped file reads back the same
     maps = sum(t["kind"] == "horus_map" for t in new["tasks"])
-    dst.write_text(HEAD.format(src=src.name, mc=MAX_CONCURRENCY, slurm=SLURM_DIR, n=len(new["tasks"]), maps=maps)
+    dst.write_text(HEAD.format(src=src.name, mc=MAX_CONCURRENCY, slurm=SLURM_DIR, n=len(new["tasks"]), maps=maps,
+                               cache=f"cache: {a.cache}" if a.cache else "runtime default (deep)")
                    + text)
     print(f"wrote {dst}: {len(new['tasks'])} tasks, {maps} maps")
     return 0

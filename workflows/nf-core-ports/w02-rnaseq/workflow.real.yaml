@@ -27,12 +27,12 @@
 #   nextflow.config `env` scope, and --cleanenv --no-home as Nextflow launches
 #   singularity (`env -` and its default --no-home). Not its --pid: commands
 #   write /tmp/.command.$$$$.sh on the host's shared /tmp, so PIDs must stay unique.
-# - Head node (kind: local), as Nextflow runs its Groovy there: staging, links,
-#   filters, strandedness and MultiQC inputs. cat_fastq, subsample and
-#   salmon_strand run there too: for single-run and known-strand samples they
-#   only pass meta.env on, where Nextflow runs no job, and a pass-through
-#   salmon_strand would book 6 cpus / 36 GB per sample on Slurm. The cost: on
-#   other samplesheets, run merging and auto-strand probes use the head node.
+# - Head node (kind: local): only the shell glue Nextflow runs as Groovy there
+#   (staging, links, filters, strandedness). Every container task is a Slurm
+#   job, cat_fastq, subsample, salmon_strand and mqc_inputs included. For
+#   single-run and known-strand samples the first three only pass meta.env on,
+#   where Nextflow runs no job, so each still books its label on Slurm briefly.
+# - Input cache mode: runtime default (deep).
 # - stage_inputs.py links local absolute read paths instead of copying them.
 # - No capacity block; max_concurrency 200 (Nextflow's queueSize), so Slurm queues.
 # - Slurm working_directory is @SLURM_DIR@; the driver replaces it (matrix.sh).
@@ -517,7 +517,7 @@ tasks:
       fi
       NF
       exec bash -C -e -u -o pipefail /tmp/.command.$$$$.sh
-  target: *t_local
+  target: *t_compute
 - kind: horus_map
   id: lint_raw
   name: FQ_LINT
@@ -747,7 +747,7 @@ tasks:
       rm $$fqs
       NF
       exec bash -C -e -u -o pipefail /tmp/.command.$$$$.sh
-  target: *t_local
+  target: *t_compute
 - kind: horus_map
   id: salmon_strand
   name: FASTQ_SUBSAMPLE_FQ_SALMON SALMON_QUANT
@@ -791,7 +791,7 @@ tasks:
       rm $$g $$idx $$fqs
       NF
       exec bash -C -e -u -o pipefail /tmp/.command.$$$$.sh
-  target: *t_local
+  target: *t_compute
 - kind: horus_map
   id: set_strandedness
   name: Set strandedness
@@ -2361,7 +2361,7 @@ tasks:
           --stranded-threshold ${stranded_threshold} --unstranded-threshold ${unstranded_threshold} --out ${mqc_inputs}
       NF
       exec bash -C -e -u -o pipefail /tmp/.command.$$$$.sh
-  target: *t_local
+  target: *t_compute
 - kind: horus_task
   id: multiqc
   name: MULTIQC
