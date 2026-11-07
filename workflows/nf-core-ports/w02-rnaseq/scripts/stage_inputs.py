@@ -19,8 +19,9 @@ and compression. It writes
   merges (several runs, or uncompressed reads).
 
 Sources are URLs (``curl -fL`` to ``<name>.part``, then renamed) or paths
-relative to the samplesheet. With ``--mirror DIR``, a file whose name exists
-anywhere under DIR is copied from there instead of downloaded.
+relative to the samplesheet (copied). An absolute local path is symlinked, as
+Nextflow stages it. With ``--mirror DIR``, a file whose name exists anywhere
+under DIR is copied from there instead of downloaded.
 
 stdlib only.
 
@@ -57,10 +58,15 @@ def find_in_mirror(mirror: str, name: str) -> Path | None:
 
 
 def fetch(src: str, base: Path, dest: Path, mirror: str) -> None:
-    """Copy *src* (URL or path) to *dest* through ``dest.part``."""
+    """Copy *src* (URL or path) to *dest* through ``dest.part``; link an absolute path."""
     part = dest.with_name(dest.name + ".part")
     local = find_in_mirror(mirror, Path(src).name) if "://" in src else base / src
-    if local is not None:
+    if "://" not in src and Path(src).is_absolute():
+        # Nextflow stages local inputs as symlinks; a copy would move every byte.
+        local.stat()  # a missing input fails here, as the copy would
+        part.unlink(missing_ok=True)
+        part.symlink_to(local)
+    elif local is not None:
         shutil.copyfile(local, part)
     else:
         subprocess.run(["curl", "-fsSL", "--retry", "3", "-o", str(part), src], check=True)
@@ -208,6 +214,9 @@ def selftest() -> None:
         assert (t / "r/A/reads.txt").read_text() == "a1.fq.gz\na2.fq.gz\na3.fq.gz\na4.fq.gz\n"
         assert sorted(p.name for p in (t / "m").iterdir()) == ["A"]
         assert "strandedness=reverse" in (t / "s/B").read_text()
+        assert not (t / "r/A/a1.fq.gz").is_symlink()
+        fetch(str(t / "a1.fq.gz"), t, t / "abs.fq.gz", "")
+        assert (t / "abs.fq.gz").is_symlink() and (t / "abs.fq.gz").read_text() == "a1.fq.gz"
         gtf = t / "g.gtf"
         gtf.write_text('1\tx\texon\t1\t9\t.\t+\t.\tgene_id "g"; gene_biotype "pc";\n')
         assert biotype_qc_usable(gtf) and not biotype_qc_usable(gtf, "gene_type")
