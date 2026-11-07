@@ -6,7 +6,7 @@ From a PDB ID or an uploaded structure to a solvated protein–ligand system, N 
 
 ## Overview
 
-Conventional MD with AMBER, from a PDB ID or uploaded structure to a solvated protein-ligand system (optional GAFF2 ligand), N parallel replicas of a 10-step equilibration plus chunked production, per-replica analysis and one clustered HTML report. The protocol is ported from [MolBioMedUAB/protocols](https://github.com/MolBioMedUAB/protocols). The workflow has 10 tasks.
+Conventional MD with AMBER, from a PDB ID or uploaded structure to a solvated protein-ligand system (optional GAFF2 ligand), N parallel replicas of a 10-step equilibration plus chunked production, per-replica analysis and one clustered HTML report. The protocol is ported from [MolBioMedUAB/protocols](https://github.com/MolBioMedUAB/protocols). The workflow has 10 tasks. `produce` and `analyze` set `chain: true`, so each replica moves on without waiting for the others; this needs horus-runtime 0.9.0 or later.
 
 ## Pipeline
 

@@ -721,9 +721,11 @@ tasks:
 
   # Fans out one clone per replica over prepare_replicas' output. A
   # horus_map clone gets exactly one item (its slot) and runs one flat
-  # command, so equilibration and production are two chained map stages,
-  # each copying the slot forward so the next stage's items are
-  # self-contained too. max_concurrency is unset: horus_map caps at 8 by
+  # command, so equilibration and production are two map stages, each
+  # copying the slot forward so the next stage's items are self-contained
+  # too. produce and analyze set chain: true, so each replica starts its
+  # next stage as soon as its own previous stage ends, without waiting for
+  # the other replicas. max_concurrency is unset: horus_map caps at 8 by
   # default; set it if n_replicas exceeds 8.
   - kind: horus_map
     id: equilibrate
@@ -766,6 +768,7 @@ tasks:
     description: Fans out one clone per replica; each runs the chunked
       production loop in one SLURM GPU job and carries the slot's small
       files (topology, settings, scripts) forward for analysis.
+    chain: true
     over:
       input_id: equilibrated_in
       as: slot
@@ -801,6 +804,7 @@ tasks:
     description: cpptraj per replica on the cluster (next to the
       trajectories) - backbone RMSD, CA RMSF, Rg, H-bonds, ligand RMSD and
       contacts, plus a dry strided trajectory for clustering.
+    chain: true
     over:
       input_id: produced_in
       as: slot
