@@ -1,0 +1,927 @@
+kind: horus_workflow
+name: nf-core sarek
+
+# Native port of nf-core/sarek 3.12.0, the route `-profile test,docker` runs:
+# germline calling with Strelka from paired FASTQ. Intervals from the
+# interval_list, BWA index, FastQC and bwa mem per lane, GATK MarkDuplicates,
+# BQSR (BaseRecalibrator + ApplyBQSR), mosdepth and samtools stats on both
+# CRAMs, Strelka, bcftools stats, vcftools and MultiQC. Images, rendered
+# command lines (ext.args from conf/modules/*.config) and per-process
+# cpus/memory are the executed ones; the test profile caps every process at
+# 4 cpus / 15 GB.
+#
+# Every command runs under `bash -C -e -u -o pipefail`, the pipeline's
+# process.shell: the wave images link /bin/sh to dash, so each command writes
+# its script to /tmp/.command.sh and runs that with bash, as .command.run does.
+#
+# Per-lane processes (FASTQC, BWAMEM1_MEM) are horus_map stages over a folder
+# of lane meta files (<sample>-<lane>); per-sample processes map over sample
+# meta files (<sample>). Both are bash-sourceable and written by
+# scripts/stage_inputs.py, which also builds sarek's read group. Map slots are
+# numbered, so every file carries the lane or sample id and a downstream stage
+# finds its inputs as <upstream>/*/<id>.<suffix>.
+#
+# capacity: memory-based admission like Nextflow's local executor. The key
+# is the target's location_id (local://<hostname>); set it to the host that
+# runs the tasks, or the gate does not apply.
+
+capacity:
+  local://ubuntu-awow:
+    cpus: 16
+    memory_gb: 31
+max_concurrency: 16
+
+_target: &target
+  kind: local
+
+# Run on a remote node instead: point every task at this anchor.
+# _target: &target
+#   kind: ssh
+#   host: bench-node.example.org
+#   username: ubuntu
+#   working_directory: /home/ubuntu/horus
+
+# Containers (.command.run docker lines); `user: host` runs them as the
+# calling user, as nf-core's `-u $(id -u):$(id -g)` does.
+_img:
+  gawk: &gawk {kind: docker, user: host, image: "quay.io/biocontainers/gawk:5.3.0"}
+  gatk: &gatk {kind: docker, user: host, image: "community.wave.seqera.io/library/gatk4-lite:4.7.0.0--79918b8b2632f4b1"}
+  gatk_samtools: &gatk_samtools {kind: docker, user: host, image: "community.wave.seqera.io/library/gatk4-lite_samtools:9b6806e26dd32afe"}
+  htslib_xz: &htslib_xz {kind: docker, user: host, image: "community.wave.seqera.io/library/htslib_xz:32f2772a564b3cd2"}
+  bwa: &bwa {kind: docker, user: host, image: "community.wave.seqera.io/library/bwa_htslib_samtools:83b50ff84ead50d0"}
+  fastqc: &fastqc {kind: docker, user: host, image: "community.wave.seqera.io/library/fastqc:0.13.0--b342db7b694c9af4"}
+  samtools: &samtools {kind: docker, user: host, image: "community.wave.seqera.io/library/htslib_samtools:1.24--d697cfb9dce007cd"}
+  mosdepth: &mosdepth {kind: docker, user: host, image: "community.wave.seqera.io/library/htslib_mosdepth_gzip:4108dd38be84e40a"}
+  strelka: &strelka {kind: docker, user: host, image: "quay.io/biocontainers/strelka:2.9.10--h9ee0642_1"}
+  bcftools: &bcftools {kind: docker, user: host, image: "community.wave.seqera.io/library/bcftools_htslib:1.23.1--9f08ec665533d64a"}
+  vcftools: &vcftools {kind: docker, user: host, image: "quay.io/biocontainers/vcftools:0.1.17--pl5321h077b44d_0"}
+  multiqc: &multiqc {kind: docker, user: host, image: "community.wave.seqera.io/library/multiqc:1.35--c17fb751507e9dfc"}
+
+# trace.txt cpus / memory after the test profile's resourceLimits.
+# BWAMEM1_INDEX asks for 28 x the fasta size (278 KB here, so Docker gets
+# --memory 0m, no cap); 1 GB is the smallest Horus value.
+_res:
+  r1_1: &r1_1 {cpus: 1, memory_gb: 1, walltime: "02:00:00"}
+  r1_6: &r1_6 {cpus: 1, memory_gb: 6, walltime: "02:00:00"}
+  r2_4: &r2_4 {cpus: 2, memory_gb: 4, walltime: "02:00:00"}
+  r2_12: &r2_12 {cpus: 2, memory_gb: 12, walltime: "02:00:00"}
+  r4_4: &r4_4 {cpus: 4, memory_gb: 4, walltime: "02:00:00"}
+  r4_8: &r4_8 {cpus: 4, memory_gb: 8, walltime: "02:00:00"}
+  r4_12: &r4_12 {cpus: 4, memory_gb: 12, walltime: "02:00:00"}
+  r4_15: &r4_15 {cpus: 4, memory_gb: 15, walltime: "02:00:00"}
+
+# Artifacts, shared by the producing task's outputs and every consumer's inputs.
+_art:
+  - &a_samplesheet {id: samplesheet, name: Samplesheet, kind: file, path: examples/samplesheet.csv}
+  - &a_mqc_config {id: multiqc_config, name: MultiQC config, kind: file, path: nfcore/assets/multiqc_config.yml}
+  - &a_mirror {id: input_mirror, name: Local input mirror, kind: string, path: params/input_mirror.txt}
+  - &a_fasta_url {id: fasta_url, name: Genome fasta, kind: string, path: params/fasta_url.txt}
+  - &a_title {id: multiqc_title, name: MultiQC report title, kind: string, path: params/multiqc_title.txt}
+  - &a_reference {id: reference, name: Reference files, kind: folder, path: work/reference/}
+  - &a_reads {id: reads, name: Reads, kind: folder, path: work/reads/}
+  - &a_lanes {id: lanes, name: Lanes, kind: folder, path: work/lanes/}
+  - &a_samples {id: samples, name: Samples, kind: folder, path: work/samples/}
+  - &a_intervals_split {id: intervals_split, name: Intervals BED, kind: folder, path: work/intervals/split/}
+  - &a_intervals_bed {id: intervals_bed, name: Intervals combined BED, kind: folder, path: work/intervals/combined/}
+  - &a_intervals_split_gz {id: intervals_split_gz, name: Intervals BED bgzipped, kind: folder, path: work/intervals/split_gz/}
+  - &a_intervals_bed_gz {id: intervals_bed_gz, name: Intervals combined BED bgzipped, kind: folder, path: work/intervals/combined_gz/}
+  - &a_bwa_index {id: bwa_index, name: BWA index, kind: folder, path: work/bwa_index/}
+  - &a_fastqc {id: fastqc, name: FastQC, kind: folder, path: results/reports/fastqc/}
+  - &a_mapped {id: mapped, name: Mapped lanes, kind: folder, path: work/mapped/}
+  - &a_markdup {id: markdup, name: MarkDuplicates, kind: folder, path: results/preprocessing/markduplicates/}
+  - &a_md_stats {id: md_stats, name: samtools stats (markduplicates), kind: folder, path: results/reports/samtools/markduplicates/}
+  - &a_md_mosdepth {id: md_mosdepth, name: mosdepth (markduplicates), kind: folder, path: results/reports/mosdepth/markduplicates/}
+  - &a_recal_table {id: recal_table, name: BQSR table, kind: folder, path: results/preprocessing/recal_table/}
+  - &a_recal {id: recal, name: Recalibrated CRAM, kind: folder, path: results/preprocessing/recalibrated/}
+  - &a_recal_stats {id: recal_stats, name: samtools stats (recalibrated), kind: folder, path: results/reports/samtools/recalibrated/}
+  - &a_recal_mosdepth {id: recal_mosdepth, name: mosdepth (recalibrated), kind: folder, path: results/reports/mosdepth/recalibrated/}
+  - &a_strelka {id: strelka, name: Strelka, kind: folder, path: results/variant_calling/strelka/}
+  - &a_bcftools {id: bcftools, name: bcftools stats, kind: folder, path: results/reports/bcftools/strelka/}
+  - &a_tstv_count {id: tstv_count, name: vcftools TsTv by count, kind: folder, path: results/reports/vcftools/strelka/tstv_count/}
+  - &a_tstv_qual {id: tstv_qual, name: vcftools TsTv by qual, kind: folder, path: results/reports/vcftools/strelka/tstv_qual/}
+  - &a_filter_summary {id: filter_summary, name: vcftools FILTER summary, kind: folder, path: results/reports/vcftools/strelka/filter_summary/}
+  - &a_multiqc {id: multiqc, name: MultiQC report, kind: folder, path: results/multiqc/}
+
+artifacts:
+  - <<: *a_samplesheet
+    description: >-
+      nf-core/sarek samplesheet (patient,sex,status,sample,lane,fastq_1,fastq_2).
+      Reads may be URLs or paths relative to the samplesheet; rows sharing a
+      sample are lanes of one sample. Default: the test profile samplesheet
+      (one sample, two lanes).
+  - <<: *a_mqc_config
+    description: The pipeline's assets/multiqc_config.yml (MIT).
+  - <<: *a_mirror
+    description: >-
+      Folder searched for each input file by name before downloading it (e.g. a
+      local copy of the test data). Empty downloads everything.
+    value: ""
+    pattern: '[^"`$\\]*'
+  - <<: *a_fasta_url
+    description: "--fasta; the value also goes into the read group DS tag"
+    value: "https://raw.githubusercontent.com/nf-core/test-datasets/modules/data//genomics/homo_sapiens/genome/genome.fasta"
+    pattern: '[^"`$\\]*'
+  - {id: fasta_fai_url, name: Fasta index, kind: string, path: params/fasta_fai_url.txt, pattern: '[^"`$\\]*', description: "--fasta_fai", value: "https://raw.githubusercontent.com/nf-core/test-datasets/modules/data//genomics/homo_sapiens/genome/genome.fasta.fai"}
+  - {id: dict_url, name: Sequence dictionary, kind: string, path: params/dict_url.txt, pattern: '[^"`$\\]*', description: "--dict", value: "https://raw.githubusercontent.com/nf-core/test-datasets/modules/data//genomics/homo_sapiens/genome/genome.dict"}
+  - {id: intervals_url, name: Intervals, kind: string, path: params/intervals_url.txt, pattern: '[^"`$\\]*', description: "--intervals (GATK interval_list)", value: "https://raw.githubusercontent.com/nf-core/test-datasets/modules/data//genomics/homo_sapiens/genome/genome.interval_list"}
+  - {id: dbsnp_url, name: dbSNP, kind: string, path: params/dbsnp_url.txt, pattern: '[^"`$\\]*', description: "--dbsnp", value: "https://raw.githubusercontent.com/nf-core/test-datasets/modules/data//genomics/homo_sapiens/genome/vcf/dbsnp_146.hg38.vcf.gz"}
+  - {id: dbsnp_tbi_url, name: dbSNP index, kind: string, path: params/dbsnp_tbi_url.txt, pattern: '[^"`$\\]*', description: "--dbsnp_tbi", value: "https://raw.githubusercontent.com/nf-core/test-datasets/modules/data//genomics/homo_sapiens/genome/vcf/dbsnp_146.hg38.vcf.gz.tbi"}
+  - {id: known_indels_url, name: Known indels, kind: string, path: params/known_indels_url.txt, pattern: '[^"`$\\]*', description: "--known_indels", value: "https://raw.githubusercontent.com/nf-core/test-datasets/modules/data//genomics/homo_sapiens/genome/vcf/mills_and_1000G.indels.vcf.gz"}
+  - {id: known_indels_tbi_url, name: Known indels index, kind: string, path: params/known_indels_tbi_url.txt, pattern: '[^"`$\\]*', description: "--known_indels_tbi", value: "https://raw.githubusercontent.com/nf-core/test-datasets/modules/data//genomics/homo_sapiens/genome/vcf/mills_and_1000G.indels.vcf.gz.tbi"}
+  - {id: seq_platform, name: Sequencing platform, kind: string, path: params/seq_platform.txt, pattern: '[^"`$\\]*', description: "--seq_platform (read group PL)", value: "ILLUMINA"}
+  - {id: seq_center, name: Sequencing center, kind: string, path: params/seq_center.txt, pattern: '[^"`$\\]*', description: "--seq_center (read group CN); empty leaves it out", value: ""}
+  - <<: *a_title
+    description: Title for the MultiQC report (--multiqc_title); empty keeps the default.
+    value: ""
+    pattern: '[^"`$\\]*'
+
+tasks:
+  # ---------------------------------------------------------------- inputs
+  - kind: horus_task
+    id: fetch_reference
+    name: Fetch reference files
+    description: Downloads the genome, its index and dictionary, the intervals and the known sites (or copies them from the mirror).
+    inputs:
+      - *a_mirror
+      - *a_fasta_url
+      - {id: fasta_fai_url, name: Fasta index, kind: string, path: params/fasta_fai_url.txt}
+      - {id: dict_url, name: Sequence dictionary, kind: string, path: params/dict_url.txt}
+      - {id: intervals_url, name: Intervals, kind: string, path: params/intervals_url.txt}
+      - {id: dbsnp_url, name: dbSNP, kind: string, path: params/dbsnp_url.txt}
+      - {id: dbsnp_tbi_url, name: dbSNP index, kind: string, path: params/dbsnp_tbi_url.txt}
+      - {id: known_indels_url, name: Known indels, kind: string, path: params/known_indels_url.txt}
+      - {id: known_indels_tbi_url, name: Known indels index, kind: string, path: params/known_indels_tbi_url.txt}
+    outputs: [*a_reference]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: >-
+        reference --fasta ${fasta_url} --fasta_fai ${fasta_fai_url} --dict ${dict_url}
+        --intervals ${intervals_url} --dbsnp ${dbsnp_url} --dbsnp_tbi ${dbsnp_tbi_url}
+        --known_indels ${known_indels_url} --known_indels_tbi ${known_indels_tbi_url}
+        --mirror ${input_mirror} --out ${reference}
+    target: *target
+
+  - kind: horus_task
+    id: stage_samples
+    name: Split the samplesheet into lanes and samples
+    description: Fetches each lane's reads and writes one meta file per lane (with its read group) and per sample.
+    inputs:
+      - *a_samplesheet
+      - *a_mirror
+      - *a_fasta_url
+      - {id: seq_platform, name: Sequencing platform, kind: string, path: params/seq_platform.txt}
+      - {id: seq_center, name: Sequencing center, kind: string, path: params/seq_center.txt}
+    outputs: [*a_reads, *a_lanes, *a_samples]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: >-
+        samples --samplesheet ${samplesheet} --fasta ${fasta_url} --seq_platform ${seq_platform}
+        --seq_center ${seq_center} --mirror ${input_mirror}
+        --reads ${reads} --lanes ${lanes} --samples ${samples}
+    target: *target
+
+  # ------------------------------------------------------- genome, intervals
+  # One BED per interval_list row. Several rows make sarek scatter BQSR,
+  # ApplyBQSR and Strelka per interval and merge them, which is not ported.
+  - kind: horus_task
+    id: create_intervals_bed
+    name: CREATE_INTERVALS_BED
+    inputs: [*a_reference]
+    outputs: [*a_intervals_split]
+    resources: *r1_1
+    executor: *gawk
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${intervals_split} && mkdir -p ${intervals_split} && cd ${intervals_split}
+        f=$$ref_intervals
+        ln -s ${reference}/$$f $$f
+        grep -v '^@' $$f | awk -vFS="\t" '{
+            name = sprintf("%s_%d-%d", $$1, $$2, $$3);
+            printf("%s\t%d\t%d\n", $$1, $$2-1, $$3) > name ".bed"
+        }'
+        rm $$f
+        n=$$(ls *.bed | wc -l)
+        [ $$n -eq 1 ] || { echo "$$n intervals: per-interval scatter is not ported" >&2; exit 1; }
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: intervallisttobed
+    name: GATK4_INTERVALLISTTOBED
+    inputs: [*a_reference]
+    outputs: [*a_intervals_bed]
+    resources: *r2_12
+    executor: *gatk
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${intervals_bed} && mkdir -p ${intervals_bed} && cd ${intervals_bed}
+        f=$$ref_intervals
+        ln -s ${reference}/$$f $$f
+        gatk --java-options "-Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M -XX:-UsePerfData" \
+            IntervalListToBed \
+            --INPUT $$f \
+            --OUTPUT $${f%.*}.bed \
+            --TMP_DIR . \
+
+        rm $$f
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: tabix_interval_split
+    name: TABIX_BGZIPTABIX_INTERVAL_SPLIT
+    inputs: [*a_intervals_split]
+    outputs: [*a_intervals_split_gz]
+    resources: *r1_1
+    executor: *htslib_xz
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${intervals_split_gz} && mkdir -p ${intervals_split_gz} && cd ${intervals_split_gz}
+        for bed in ${intervals_split}/*.bed; do
+        in=$$(basename $$bed); out=$$in.gz
+        ln -s $$bed $$in
+        FILE_TYPE=$$(htsfile $$in)
+
+        case "$$FILE_TYPE" in
+            *BGZF-compressed*)
+                [ '$$(basename $$in)' != '$$(basename $$out)' ] && ln -s $$in $$out ;;
+            *gzip-compressed*)
+                [ "$$(basename $$in)" == "$$(basename $$out)" ] && echo "Input and output names cannot be the same" && exit 1
+                bgzip -d -c -@ ${task.resources.cpus} $$in | bgzip -c  -@ ${task.resources.cpus} > $$out ;;
+            *bzip2-compressed*)
+                bzcat $$in | bgzip -c  -@ ${task.resources.cpus} > $$out ;;
+            *XZ-compressed*)
+                xzcat $$in | bgzip -c  -@ ${task.resources.cpus} > $$out ;;
+            *)
+                bgzip -c  -@ ${task.resources.cpus} $$in > $$out ;;
+        esac
+
+        tabix -@ ${task.resources.cpus}   -f $$out
+        rm $$in
+        done
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # Its outputs feed no step of the test route (sarek keeps them for others).
+  - kind: horus_task
+    id: tabix_interval_combined
+    name: TABIX_BGZIPTABIX_INTERVAL_COMBINED
+    inputs: [*a_intervals_bed]
+    outputs: [*a_intervals_bed_gz]
+    resources: *r1_1
+    executor: *htslib_xz
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${intervals_bed_gz} && mkdir -p ${intervals_bed_gz} && cd ${intervals_bed_gz}
+        bed=$$(ls ${intervals_bed}/*.bed)
+        in=$$(basename $$bed); out=$$in.gz
+        ln -s $$bed $$in
+        FILE_TYPE=$$(htsfile $$in)
+
+        case "$$FILE_TYPE" in
+            *BGZF-compressed*)
+                [ '$$(basename $$in)' != '$$(basename $$out)' ] && ln -s $$in $$out ;;
+            *gzip-compressed*)
+                [ "$$(basename $$in)" == "$$(basename $$out)" ] && echo "Input and output names cannot be the same" && exit 1
+                bgzip -d -c -@ ${task.resources.cpus} $$in | bgzip -c  -@ ${task.resources.cpus} > $$out ;;
+            *bzip2-compressed*)
+                bzcat $$in | bgzip -c  -@ ${task.resources.cpus} > $$out ;;
+            *XZ-compressed*)
+                xzcat $$in | bgzip -c  -@ ${task.resources.cpus} > $$out ;;
+            *)
+                bgzip -c  -@ ${task.resources.cpus} $$in > $$out ;;
+        esac
+
+        tabix -@ ${task.resources.cpus}   -f $$out
+        rm $$in
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: bwamem1_index
+    name: BWAMEM1_INDEX
+    inputs: [*a_reference]
+    outputs: [*a_bwa_index]
+    resources: *r1_1
+    executor: *bwa
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${bwa_index} && mkdir -p ${bwa_index} && cd ${bwa_index}
+        f=$$ref_fasta
+        ln -s ${reference}/$$f $$f
+        mkdir bwa
+        bwa \
+            index \
+             \
+            -p bwa/$${f%.*} \
+            $$f
+        rm $$f
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- per lane
+  # FASTQC links the reads as <sample>-<lane>_<n>.gz, as the module does.
+  - kind: horus_map
+    id: fastqc
+    name: FASTQC
+    over: {input_id: lanes, as: lane}
+    max_concurrency: 16
+    inputs: [*a_lanes, *a_reads]
+    outputs: [*a_fastqc]
+    resources: *r4_4
+    executor: *fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${lane}); . ${lane}
+        rm -rf ${fastqc} && mkdir -p ${fastqc}/$$id && cd ${fastqc}/$$id
+        mkdir -p 1 2 && ln -s ${reads}/$$id/$$fastq_1 1/$$fastq_1 && ln -s ${reads}/$$id/$$fastq_2 2/$$fastq_2
+        mem=$$(( ${task.resources.memory_gb} * 1024 / ${task.resources.cpus} ))
+        [ $$mem -gt 10000 ] && mem=10000
+        [ $$mem -lt 100 ] && mem=100
+        printf "%s %s\n" 1/$$fastq_1 $${id}_1.gz 2/$$fastq_2 $${id}_2.gz | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            --memory $$mem \
+            $${id}_1.gz $${id}_2.gz
+        rm $${id}_1.gz $${id}_2.gz; rm -r 1 2
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: bwamem1_mem
+    name: BWAMEM1_MEM
+    over: {input_id: lanes, as: lane}
+    max_concurrency: 16
+    inputs: [*a_lanes, *a_reads, *a_bwa_index]
+    outputs: [*a_mapped]
+    resources: *r4_15
+    executor: *bwa
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${lane}); . ${lane}
+        rm -rf ${mapped} && mkdir -p ${mapped} && cd ${mapped}
+        ln -s ${bwa_index}/bwa bwa
+        ln -s ${reads}/$$id/$$fastq_1 $$fastq_1; ln -s ${reads}/$$id/$$fastq_2 $$fastq_2
+        INDEX=`find -L ./ -name "*.amb" | sed 's/\.amb$$//'`
+
+        bwa mem \
+            -K 100000000 -Y -R "$$read_group" \
+            -t ${task.resources.cpus} \
+            $$INDEX \
+            $$fastq_1 $$fastq_2 \
+            | samtools sort   --threads ${task.resources.cpus} -o $$id.sorted.bam -
+        rm bwa $$fastq_1 $$fastq_2
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # -------------------------------------------------------------- per sample
+  # Lanes go in samplesheet order (Nextflow passes them in arrival order).
+  - kind: horus_map
+    id: markduplicates
+    name: GATK4_MARKDUPLICATES
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_reference, *a_mapped]
+    outputs: [*a_markdup]
+    resources: *r4_15
+    executor: *gatk_samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}; . ${reference}/refs.env
+        rm -rf ${markdup} && mkdir -p ${markdup} && cd ${markdup}
+        ln -s ${reference}/$$ref_fasta $$ref_fasta; ln -s ${reference}/$$ref_fasta_fai $$ref_fasta_fai
+        inputs=""; bams=""
+        for l in $$lanes; do ln -s ${mapped}/*/$$l.sorted.bam .; inputs="$$inputs --INPUT $$l.sorted.bam"; bams="$$bams $$l.sorted.bam"; done
+        gatk --java-options "-Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M -XX:-UsePerfData" \
+            MarkDuplicates \
+           $$inputs \
+            --OUTPUT $$id.md.bam \
+            --METRICS_FILE $$id.md.cram.metrics \
+            --TMP_DIR . \
+            --REFERENCE_SEQUENCE $$ref_fasta \
+            --REMOVE_DUPLICATES false --VALIDATION_STRINGENCY LENIENT
+
+        # If cram files are wished as output, the run samtools for conversion
+        if [[ $$id.md.cram == *.cram ]]; then
+            samtools view -Ch -T $$ref_fasta -o $$id.md.cram $$id.md.bam
+            rm $$id.md.bam
+            samtools index $$id.md.cram
+        fi
+        rm $$bams $$ref_fasta $$ref_fasta_fai
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: md_samtools_stats
+    name: CRAM_QC_MOSDEPTH_SAMTOOLS:SAMTOOLS_STATS
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_reference, *a_markdup]
+    outputs: [*a_md_stats]
+    resources: *r1_6
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${reference}/refs.env
+        rm -rf ${md_stats} && mkdir -p ${md_stats} && cd ${md_stats}
+        links="$$ref_fasta $$ref_fasta_fai $$id.md.cram $$id.md.cram.crai"
+        ln -s ${reference}/$$ref_fasta ${reference}/$$ref_fasta_fai ${markdup}/*/$$id.md.cram ${markdup}/*/$$id.md.cram.crai .
+        samtools \
+            stats \
+             \
+            --threads ${task.resources.cpus} \
+            --reference $$ref_fasta \
+            $$id.md.cram \
+            > $$id.md.cram.stats
+        rm $$links
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: md_mosdepth
+    name: CRAM_QC_MOSDEPTH_SAMTOOLS:MOSDEPTH
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_reference, *a_markdup]
+    outputs: [*a_md_mosdepth]
+    resources: *r4_4
+    executor: *mosdepth
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${reference}/refs.env
+        rm -rf ${md_mosdepth} && mkdir -p ${md_mosdepth} && cd ${md_mosdepth}
+        links="$$ref_fasta $$id.md.cram $$id.md.cram.crai"
+        ln -s ${reference}/$$ref_fasta ${markdup}/*/$$id.md.cram ${markdup}/*/$$id.md.cram.crai .
+        mosdepth \
+           --threads ${task.resources.cpus} \
+            \
+           --fasta $$ref_fasta \
+           -n --by 500 --fast-mode \
+           $$id.md \
+           $$id.md.cram
+        rm $$links; rm -f $$ref_fasta.fai # htslib indexes the fasta to decode the CRAM
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: baserecalibrator
+    name: GATK4_BASERECALIBRATOR
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_reference, *a_markdup, *a_intervals_split]
+    outputs: [*a_recal_table]
+    resources: *r2_4
+    executor: *gatk
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${reference}/refs.env
+        rm -rf ${recal_table} && mkdir -p ${recal_table} && cd ${recal_table}
+        bed=$$(basename ${intervals_split}/*.bed)
+        links="$$ref_fasta $$ref_fasta_fai $$ref_dict $$ref_dbsnp $$ref_dbsnp_tbi $$ref_known_indels $$ref_known_indels_tbi $$bed $$id.md.cram $$id.md.cram.crai"
+        for f in $$ref_fasta $$ref_fasta_fai $$ref_dict $$ref_dbsnp $$ref_dbsnp_tbi $$ref_known_indels $$ref_known_indels_tbi; do ln -s ${reference}/$$f .; done
+        ln -s ${intervals_split}/$$bed ${markdup}/*/$$id.md.cram ${markdup}/*/$$id.md.cram.crai .
+        gatk --java-options "-Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M -XX:-UsePerfData" \
+            BaseRecalibrator  \
+            --input $$id.md.cram \
+            --output $$id.recal.table \
+            --reference $$ref_fasta \
+            --intervals $$bed \
+            --known-sites $$ref_dbsnp --known-sites $$ref_known_indels \
+            --tmp-dir . \
+
+        rm $$links
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: applybqsr
+    name: GATK4_APPLYBQSR
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_reference, *a_markdup, *a_intervals_split, *a_recal_table]
+    outputs: [*a_recal]
+    resources: *r2_4
+    executor: *gatk_samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${reference}/refs.env
+        rm -rf ${recal} && mkdir -p ${recal} && cd ${recal}
+        bed=$$(basename ${intervals_split}/*.bed)
+        links="$$ref_fasta $$ref_fasta_fai $$ref_dict $$bed $$id.md.cram $$id.md.cram.crai $$id.recal.table"
+        ln -s ${reference}/$$ref_fasta ${reference}/$$ref_fasta_fai ${reference}/$$ref_dict ${intervals_split}/$$bed .
+        ln -s ${markdup}/*/$$id.md.cram ${markdup}/*/$$id.md.cram.crai ${recal_table}/*/$$id.recal.table .
+        gatk --java-options "-Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M -XX:-UsePerfData" \
+            ApplyBQSR \
+            --input $$id.md.cram \
+            --output /dev/stdout \
+            --reference $$ref_fasta \
+            --bqsr-recal-file $$id.recal.table \
+            --intervals $$bed \
+            -OBI false \
+            --tmp-dir . \
+             | samtools view --write-index --reference $$ref_fasta -C -o $$id.recal.cram##idx##$$id.recal.cram.crai --output-fmt cram,version=3.0 -
+        rm $$links
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: recal_mosdepth
+    name: CRAM_QC_RECAL:MOSDEPTH
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_reference, *a_recal]
+    outputs: [*a_recal_mosdepth]
+    resources: *r4_4
+    executor: *mosdepth
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${reference}/refs.env
+        rm -rf ${recal_mosdepth} && mkdir -p ${recal_mosdepth} && cd ${recal_mosdepth}
+        links="$$ref_fasta $$id.recal.cram $$id.recal.cram.crai"
+        ln -s ${reference}/$$ref_fasta ${recal}/*/$$id.recal.cram ${recal}/*/$$id.recal.cram.crai .
+        mosdepth \
+           --threads ${task.resources.cpus} \
+            \
+           --fasta $$ref_fasta \
+           -n --by 500 --fast-mode \
+           $$id.recal \
+           $$id.recal.cram
+        rm $$links; rm -f $$ref_fasta.fai # htslib indexes the fasta to decode the CRAM
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: recal_samtools_stats
+    name: CRAM_QC_RECAL:SAMTOOLS_STATS
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_reference, *a_recal]
+    outputs: [*a_recal_stats]
+    resources: *r1_6
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${reference}/refs.env
+        rm -rf ${recal_stats} && mkdir -p ${recal_stats} && cd ${recal_stats}
+        links="$$ref_fasta $$ref_fasta_fai $$id.recal.cram $$id.recal.cram.crai"
+        ln -s ${reference}/$$ref_fasta ${reference}/$$ref_fasta_fai ${recal}/*/$$id.recal.cram ${recal}/*/$$id.recal.cram.crai .
+        samtools \
+            stats \
+             \
+            --threads ${task.resources.cpus} \
+            --reference $$ref_fasta \
+            $$id.recal.cram \
+            > $$id.recal.cram.stats
+        rm $$links
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: strelka_single
+    name: STRELKA_SINGLE
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_reference, *a_recal, *a_intervals_split_gz]
+    outputs: [*a_strelka]
+    resources: *r4_8
+    executor: *strelka
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${reference}/refs.env
+        rm -rf ${strelka} && mkdir -p ${strelka} && cd ${strelka}
+        bed=$$(basename ${intervals_split_gz}/*.bed.gz)
+        links="$$ref_fasta $$ref_fasta_fai $$id.recal.cram $$id.recal.cram.crai $$bed $$bed.tbi"
+        ln -s ${reference}/$$ref_fasta ${reference}/$$ref_fasta_fai ${recal}/*/$$id.recal.cram ${recal}/*/$$id.recal.cram.crai .
+        ln -s ${intervals_split_gz}/$$bed ${intervals_split_gz}/$$bed.tbi .
+        configureStrelkaGermlineWorkflow.py \
+            --bam $$id.recal.cram \
+            --referenceFasta $$ref_fasta \
+            --callRegions $$bed \
+             \
+            --runDir strelka
+
+        sed -i s/"isEmail = isLocalSmtp()"/"isEmail = False"/g strelka/runWorkflow.py
+
+        python strelka/runWorkflow.py -m local -j ${task.resources.cpus}
+        mv strelka/results/variants/genome.*.vcf.gz     $$id.strelka.genome.vcf.gz
+        mv strelka/results/variants/genome.*.vcf.gz.tbi $$id.strelka.genome.vcf.gz.tbi
+        mv strelka/results/variants/variants.vcf.gz     $$id.strelka.variants.vcf.gz
+        mv strelka/results/variants/variants.vcf.gz.tbi $$id.strelka.variants.vcf.gz.tbi
+        rm -r strelka $$links
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: bcftools_stats
+    name: BCFTOOLS_STATS
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_strelka]
+    outputs: [*a_bcftools]
+    resources: *r1_1
+    executor: *bcftools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${bcftools} && mkdir -p ${bcftools} && cd ${bcftools}
+        ln -s ${strelka}/*/$$id.strelka.variants.vcf.gz .
+        bcftools stats \
+             \
+             \
+             \
+             \
+             \
+             \
+            $$id.strelka.variants.vcf.gz > $$id.strelka.variants.bcftools_stats.txt
+        rm $$id.strelka.variants.vcf.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # The VCFTOOLS_* processes also stage the combined intervals BED without
+  # using it (no --bed in ext.args); the input keeps that DAG edge.
+  - kind: horus_map
+    id: vcftools_tstv_count
+    name: VCFTOOLS_TSTV_COUNT
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_strelka, *a_intervals_bed]
+    outputs: [*a_tstv_count]
+    resources: *r1_1
+    executor: *vcftools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${tstv_count} && mkdir -p ${tstv_count} && cd ${tstv_count}
+        ln -s ${strelka}/*/$$id.strelka.variants.vcf.gz .
+        vcftools \
+            --gzvcf $$id.strelka.variants.vcf.gz \
+            --out $$id.strelka.variants \
+            --TsTv-by-count \
+             \
+
+        rm $$id.strelka.variants.vcf.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: vcftools_tstv_qual
+    name: VCFTOOLS_TSTV_QUAL
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_strelka, *a_intervals_bed]
+    outputs: [*a_tstv_qual]
+    resources: *r1_1
+    executor: *vcftools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${tstv_qual} && mkdir -p ${tstv_qual} && cd ${tstv_qual}
+        ln -s ${strelka}/*/$$id.strelka.variants.vcf.gz .
+        vcftools \
+            --gzvcf $$id.strelka.variants.vcf.gz \
+            --out $$id.strelka.variants \
+            --TsTv-by-qual \
+             \
+
+        rm $$id.strelka.variants.vcf.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: vcftools_summary
+    name: VCFTOOLS_SUMMARY
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_strelka, *a_intervals_bed]
+    outputs: [*a_filter_summary]
+    resources: *r1_1
+    executor: *vcftools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${filter_summary} && mkdir -p ${filter_summary} && cd ${filter_summary}
+        ln -s ${strelka}/*/$$id.strelka.variants.vcf.gz .
+        vcftools \
+            --gzvcf $$id.strelka.variants.vcf.gz \
+            --out $$id.strelka.variants \
+            --FILTER-summary \
+             \
+
+        rm $$id.strelka.variants.vcf.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ------------------------------------------------------------------ report
+  # The files MULTIQC stages, one per numbered dir as Nextflow does. The
+  # workflow summary, methods description and software versions files come
+  # from Nextflow run metadata and are left out.
+  - kind: horus_task
+    id: multiqc
+    name: MULTIQC
+    inputs:
+      - *a_mqc_config
+      - *a_title
+      - *a_fastqc
+      - *a_recal_table
+      - *a_recal_mosdepth
+      - *a_recal_stats
+      - *a_markdup
+      - *a_md_mosdepth
+      - *a_md_stats
+      - *a_bcftools
+      - *a_tstv_qual
+      - *a_tstv_count
+      - *a_filter_summary
+    outputs: [*a_multiqc]
+    resources: *r4_12
+    executor: *multiqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        title=${multiqc_title}
+        rm -rf ${multiqc} && mkdir -p ${multiqc} && cd ${multiqc}
+        n=0
+        stage() { for f in "$$@"; do [ -e "$$f" ] || continue; n=$$((n + 1)); mkdir $$n; ln -s "$$f" $$n/; done; }
+        stage ${multiqc_config}
+        stage ${fastqc}/*/*/*_fastqc.zip
+        stage ${recal_table}/*/*.recal.table
+        stage ${recal_mosdepth}/*/*.mosdepth.region.dist.txt ${recal_mosdepth}/*/*.mosdepth.global.dist.txt
+        stage ${recal_stats}/*/*.recal.cram.stats
+        stage ${markdup}/*/*.md.cram.metrics
+        stage ${md_mosdepth}/*/*.mosdepth.region.dist.txt ${md_mosdepth}/*/*.mosdepth.global.dist.txt
+        stage ${md_stats}/*/*.md.cram.stats
+        stage ${bcftools}/*/*.bcftools_stats.txt
+        stage ${tstv_qual}/*/*.TsTv.qual ${tstv_count}/*/*.TsTv.count ${filter_summary}/*/*.FILTER.summary
+        multiqc \
+            --force \
+            $${title:+--title "$$title"} \
+            --config 1/$$(basename ${multiqc_config}) \
+             \
+             \
+             \
+             \
+            .
+        rm -r $$(seq 1 $$n)
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+edges:
+  # inputs
+  - {source: artifact-input_mirror, source_output: input_mirror, target: fetch_reference, target_input: input_mirror}
+  - {source: artifact-fasta_url, source_output: fasta_url, target: fetch_reference, target_input: fasta_url}
+  - {source: artifact-fasta_fai_url, source_output: fasta_fai_url, target: fetch_reference, target_input: fasta_fai_url}
+  - {source: artifact-dict_url, source_output: dict_url, target: fetch_reference, target_input: dict_url}
+  - {source: artifact-intervals_url, source_output: intervals_url, target: fetch_reference, target_input: intervals_url}
+  - {source: artifact-dbsnp_url, source_output: dbsnp_url, target: fetch_reference, target_input: dbsnp_url}
+  - {source: artifact-dbsnp_tbi_url, source_output: dbsnp_tbi_url, target: fetch_reference, target_input: dbsnp_tbi_url}
+  - {source: artifact-known_indels_url, source_output: known_indels_url, target: fetch_reference, target_input: known_indels_url}
+  - {source: artifact-known_indels_tbi_url, source_output: known_indels_tbi_url, target: fetch_reference, target_input: known_indels_tbi_url}
+  - {source: artifact-samplesheet, source_output: samplesheet, target: stage_samples, target_input: samplesheet}
+  - {source: artifact-input_mirror, source_output: input_mirror, target: stage_samples, target_input: input_mirror}
+  - {source: artifact-fasta_url, source_output: fasta_url, target: stage_samples, target_input: fasta_url}
+  - {source: artifact-seq_platform, source_output: seq_platform, target: stage_samples, target_input: seq_platform}
+  - {source: artifact-seq_center, source_output: seq_center, target: stage_samples, target_input: seq_center}
+  - {source: artifact-multiqc_config, source_output: multiqc_config, target: multiqc, target_input: multiqc_config}
+  - {source: artifact-multiqc_title, source_output: multiqc_title, target: multiqc, target_input: multiqc_title}
+  # genome, intervals
+  - {source: fetch_reference, source_output: reference, target: create_intervals_bed, target_input: reference}
+  - {source: fetch_reference, source_output: reference, target: intervallisttobed, target_input: reference}
+  - {source: fetch_reference, source_output: reference, target: bwamem1_index, target_input: reference}
+  - {source: create_intervals_bed, source_output: intervals_split, target: tabix_interval_split, target_input: intervals_split}
+  - {source: intervallisttobed, source_output: intervals_bed, target: tabix_interval_combined, target_input: intervals_bed}
+  # per lane
+  - {source: stage_samples, source_output: lanes, target: fastqc, target_input: lanes}
+  - {source: stage_samples, source_output: reads, target: fastqc, target_input: reads}
+  - {source: stage_samples, source_output: lanes, target: bwamem1_mem, target_input: lanes}
+  - {source: stage_samples, source_output: reads, target: bwamem1_mem, target_input: reads}
+  - {source: bwamem1_index, source_output: bwa_index, target: bwamem1_mem, target_input: bwa_index}
+  # markduplicates
+  - {source: stage_samples, source_output: samples, target: markduplicates, target_input: samples}
+  - {source: fetch_reference, source_output: reference, target: markduplicates, target_input: reference}
+  - {source: bwamem1_mem, source_output: mapped, target: markduplicates, target_input: mapped}
+  - {source: stage_samples, source_output: samples, target: md_samtools_stats, target_input: samples}
+  - {source: fetch_reference, source_output: reference, target: md_samtools_stats, target_input: reference}
+  - {source: markduplicates, source_output: markdup, target: md_samtools_stats, target_input: markdup}
+  - {source: stage_samples, source_output: samples, target: md_mosdepth, target_input: samples}
+  - {source: fetch_reference, source_output: reference, target: md_mosdepth, target_input: reference}
+  - {source: markduplicates, source_output: markdup, target: md_mosdepth, target_input: markdup}
+  # bqsr
+  - {source: stage_samples, source_output: samples, target: baserecalibrator, target_input: samples}
+  - {source: fetch_reference, source_output: reference, target: baserecalibrator, target_input: reference}
+  - {source: markduplicates, source_output: markdup, target: baserecalibrator, target_input: markdup}
+  - {source: create_intervals_bed, source_output: intervals_split, target: baserecalibrator, target_input: intervals_split}
+  - {source: stage_samples, source_output: samples, target: applybqsr, target_input: samples}
+  - {source: fetch_reference, source_output: reference, target: applybqsr, target_input: reference}
+  - {source: markduplicates, source_output: markdup, target: applybqsr, target_input: markdup}
+  - {source: create_intervals_bed, source_output: intervals_split, target: applybqsr, target_input: intervals_split}
+  - {source: baserecalibrator, source_output: recal_table, target: applybqsr, target_input: recal_table}
+  - {source: stage_samples, source_output: samples, target: recal_mosdepth, target_input: samples}
+  - {source: fetch_reference, source_output: reference, target: recal_mosdepth, target_input: reference}
+  - {source: applybqsr, source_output: recal, target: recal_mosdepth, target_input: recal}
+  - {source: stage_samples, source_output: samples, target: recal_samtools_stats, target_input: samples}
+  - {source: fetch_reference, source_output: reference, target: recal_samtools_stats, target_input: reference}
+  - {source: applybqsr, source_output: recal, target: recal_samtools_stats, target_input: recal}
+  # variant calling and VCF QC
+  - {source: stage_samples, source_output: samples, target: strelka_single, target_input: samples}
+  - {source: fetch_reference, source_output: reference, target: strelka_single, target_input: reference}
+  - {source: applybqsr, source_output: recal, target: strelka_single, target_input: recal}
+  - {source: tabix_interval_split, source_output: intervals_split_gz, target: strelka_single, target_input: intervals_split_gz}
+  - {source: stage_samples, source_output: samples, target: bcftools_stats, target_input: samples}
+  - {source: strelka_single, source_output: strelka, target: bcftools_stats, target_input: strelka}
+  - {source: stage_samples, source_output: samples, target: vcftools_tstv_count, target_input: samples}
+  - {source: strelka_single, source_output: strelka, target: vcftools_tstv_count, target_input: strelka}
+  - {source: intervallisttobed, source_output: intervals_bed, target: vcftools_tstv_count, target_input: intervals_bed}
+  - {source: stage_samples, source_output: samples, target: vcftools_tstv_qual, target_input: samples}
+  - {source: strelka_single, source_output: strelka, target: vcftools_tstv_qual, target_input: strelka}
+  - {source: intervallisttobed, source_output: intervals_bed, target: vcftools_tstv_qual, target_input: intervals_bed}
+  - {source: stage_samples, source_output: samples, target: vcftools_summary, target_input: samples}
+  - {source: strelka_single, source_output: strelka, target: vcftools_summary, target_input: strelka}
+  - {source: intervallisttobed, source_output: intervals_bed, target: vcftools_summary, target_input: intervals_bed}
+  # multiqc
+  - {source: fastqc, source_output: fastqc, target: multiqc, target_input: fastqc}
+  - {source: baserecalibrator, source_output: recal_table, target: multiqc, target_input: recal_table}
+  - {source: recal_mosdepth, source_output: recal_mosdepth, target: multiqc, target_input: recal_mosdepth}
+  - {source: recal_samtools_stats, source_output: recal_stats, target: multiqc, target_input: recal_stats}
+  - {source: markduplicates, source_output: markdup, target: multiqc, target_input: markdup}
+  - {source: md_mosdepth, source_output: md_mosdepth, target: multiqc, target_input: md_mosdepth}
+  - {source: md_samtools_stats, source_output: md_stats, target: multiqc, target_input: md_stats}
+  - {source: bcftools_stats, source_output: bcftools, target: multiqc, target_input: bcftools}
+  - {source: vcftools_tstv_qual, source_output: tstv_qual, target: multiqc, target_input: tstv_qual}
+  - {source: vcftools_tstv_count, source_output: tstv_count, target: multiqc, target_input: tstv_count}
+  - {source: vcftools_summary, source_output: filter_summary, target: multiqc, target_input: filter_summary}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
