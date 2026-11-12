@@ -338,7 +338,7 @@ def build(doc: dict, rv: Resolver, prefix: str, highmem: str | None = None, link
     for aid, v in sets.items():
         a = next((a for a in roots if a["id"] == aid), None)
         assert a is not None, f"--set {aid}: no root artifact {aid}"
-        a["value"] = v
+        a["value"] = yaml.safe_load(v) if a["kind"] == "number" else v  # 500000, not '500000'
     linked = set(links)
     edges = [e for e in doc["edges"] if e["target"] not in linked]
     sif, inames = {}, {}
