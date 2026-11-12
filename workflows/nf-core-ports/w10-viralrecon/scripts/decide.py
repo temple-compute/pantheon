@@ -19,6 +19,8 @@ samples that passed, which is what the pipeline's channel ``filter`` and
   (VARIANTS_IVAR getNumLinesInFile > 1).
 - ``clade``: ``nextclade_clade_mqc.tsv`` from the Nextclade CSVs
   (getNextcladeFieldMapFromCsv).
+- ``item``: the fastp, mapped or ivar check for one sample of a chained map
+  (workflow.chained.yaml): exits 10 to drop it, or passes its meta.env on.
 
 The ``*_mqc.tsv`` tables are only written when they have rows, as
 ``collect().ifEmpty([])`` does. Rows are sorted by sample id (Nextflow
@@ -35,6 +37,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+DROP = 10  # drop_exit_codes in workflow.chained.yaml
 
 def metas(folder: str) -> list[tuple[str, str]]:
     """(sample id, meta text) per meta file in *folder*."""
@@ -130,6 +133,23 @@ def cmd_clade(a: argparse.Namespace) -> None:
     write_mqc(a.out, ["Sample", "clade"], rows)
 
 
+def cmd_item(a: argparse.Namespace) -> None:
+    meta = Path(a.meta).read_text()
+    sid = dict(line.split("=", 1) for line in meta.splitlines() if "=" in line)["id"]
+    data = Path(a.data)
+    if a.check == "fastp":
+        keep = int(json.loads((data / f"{sid}.fastp.json").read_text())["summary"]["after_filtering"]["total_reads"]) > 0
+    elif a.check == "mapped":
+        keep = flagstat_mapped((data / f"{sid}.sorted.bam.flagstat").read_text()) > a.min_mapped_reads
+    else:
+        keep = len((data / f"{sid}.tsv").read_text().splitlines()) > 1
+    if not keep:
+        print(f"{sid}: dropped by the {a.check} filter", file=sys.stderr)
+        sys.exit(DROP)
+    Path(a.out).mkdir(parents=True, exist_ok=True)
+    (Path(a.out) / "meta.env").write_text(meta)
+
+
 def selftest() -> None:
     assert flagstat_mapped("10 + 0 in total\n7 + 0 mapped (70.00% : N/A)\n3 + 0 primary mapped (30.00% : N/A)\n") == 3
     assert nextclade_field("index;seqName;clade;x\n0;S A;19A;;\n", "clade") == "19A"
@@ -153,6 +173,23 @@ def selftest() -> None:
         (t / "fs/0/A.sorted.bam.flagstat").write_text("1001 + 0 mapped (1%)\n")
         cmd_mapped(argparse.Namespace(samples=t / "p", flagstat=str(t / "fs"), min_mapped_reads=1000, out=str(t / "m"), fail_tsv=str(t / "m.tsv")))
         assert [p.name for p in (t / "m").iterdir()] == ["A"] and not (t / "m.tsv").exists()
+        (t / "meta.env").write_text("id=A\nsingle_end=false\n")
+        item = argparse.Namespace(check="mapped", meta=str(t / "meta.env"), data=str(t / "fs/0"), min_mapped_reads=1000, out=str(t / "i"))
+        cmd_item(item)
+        assert (t / "i/meta.env").read_text() == "id=A\nsingle_end=false\n"
+        (t / "fs/0/A.sorted.bam.flagstat").write_text("1000 + 0 mapped (1%)\n")
+        try:
+            cmd_item(argparse.Namespace(**{**vars(item), "out": str(t / "j")}))
+            raise AssertionError("not dropped")
+        except SystemExit as e:
+            assert e.code == DROP and not (t / "j").exists()
+        (t / "iv").mkdir()
+        (t / "iv/A.tsv").write_text("REGION\tPOS\n")
+        try:
+            cmd_item(argparse.Namespace(check="ivar", meta=str(t / "meta.env"), data=str(t / "iv"), out=str(t / "k")))
+            raise AssertionError("not dropped")
+        except SystemExit as e:
+            assert e.code == DROP
 
 
 def main() -> int:
@@ -177,11 +214,17 @@ def main() -> int:
     p = sub.add_parser("clade")
     p.add_argument("--nextclade", required=True)
     p.add_argument("--out", required=True)
+    p = sub.add_parser("item")
+    p.add_argument("--check", choices=["fastp", "mapped", "ivar"], required=True)
+    p.add_argument("--meta", required=True, help="the sample's meta.env")
+    p.add_argument("--data", required=True, help="the map slot holding the tool output")
+    p.add_argument("--min-mapped-reads", dest="min_mapped_reads", type=int, default=0)
+    p.add_argument("--out", required=True)
     a = ap.parse_args()
     if a.selftest:
         selftest()
         return 0
-    cmds = {"fastp": cmd_fastp, "mapped": cmd_mapped, "ivar": cmd_ivar, "clade": cmd_clade}
+    cmds = {"fastp": cmd_fastp, "mapped": cmd_mapped, "ivar": cmd_ivar, "clade": cmd_clade, "item": cmd_item}
     if a.cmd not in cmds:
         ap.error("pick a subcommand or --selftest")
     cmds[a.cmd](a)

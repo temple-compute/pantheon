@@ -10,6 +10,10 @@ Runs the route `nextflow run nf-core/viralrecon -r 3.0.0 -profile test,docker` t
 
 Left out, because the test profile does not run them: the Nanopore route, `--variant_caller bcftools`, `--consensus_caller ivar`, the minia assembler, PlasmidID, Picard MarkDuplicates (`--skip_markduplicates` is the default), the metagenomic protocol and `--additional_annotation`.
 
+## Variants
+
+- `workflow.chained.yaml` (88 tasks, 62 maps): the per-sample maps set `chain: true`, so a sample moves to its next step without waiting for the others, with the same outputs. The three Groovy filters are maps that drop a sample with exit 10 (`drop_exit_codes`). It needs horus-runtime 0.9.0 or later.
+
 ## Pipeline
 
 ```
