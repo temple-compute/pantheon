@@ -102,6 +102,7 @@ Native Horus ports of nf-core pipelines, with the same containers, command lines
 |---|---|---|
 | W-48 | [nf-core/demo](workflows/nf-core-ports/w01-demo/README.md) | nf-core/demo 1.2.0 as native tasks: FastQC and seqtk per sample as `horus_map` stages, then a MultiQC report |
 | W-49 | [nf-core/rnaseq](workflows/nf-core-ports/w02-rnaseq/README.md) | nf-core/rnaseq 3.27.0 test route as native tasks: TrimGalore, BBSplit, STAR + Salmon and Salmon pseudo-alignment, RSeQC, Qualimap and bigWigs per sample, then tximport and MultiQC |
+| W-53 | [nf-core/chipseq](workflows/nf-core-ports/w06-chipseq/README.md) | nf-core/chipseq 2.1.0 test route as native tasks: BWA, Picard and BAMTools filtering, MACS3 broad peaks with HOMER annotation, consensus peaks with featureCounts and DESeq2 QC, then MultiQC |
 
 ### Chemistry
 
