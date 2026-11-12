@@ -10,9 +10,13 @@ name: nf-core fetchngs
 # and per-process cpus/memory are the executed ones; the test profile caps
 # every process at 4 cpus / 15 GB / 1 h.
 #
-# Every command runs under `bash -C -e -u -o pipefail`, the pipeline's
-# process.shell: it writes its script to /tmp/.command.sh and runs that with
-# bash, as .command.run does. nfcore/bin is on PATH, as Nextflow puts bin/.
+# Every command writes its script to /tmp/.command.sh and runs that with
+# bash, as .command.run does: under `bash -C -e -u -o pipefail`, the
+# pipeline's process.shell, except the two sra-tools template modules
+# (CUSTOM_SRATOOLSNCBISETTINGS, SRATOOLS_PREFETCH). Their template has its own
+# `#!/usr/bin/env bash` shebang and `set -u`, so Nextflow runs it with plain
+# bash; the staging lines before it run under `set -e`.
+# nfcore/bin is on PATH, as Nextflow puts bin/.
 #
 # The Groovy steps (id list check, splitCsv + branch, samplesheet and id
 # mappings) are scripts/fetchngs.py. Per-id and per-run processes are
@@ -136,7 +140,8 @@ tasks:
             $${fields:+--ena_metadata_fields "$$fields"}
         rm id.txt
         NF
-        exec bash -C -e -u -o pipefail /tmp/.command.sh
+        # label 'error_retry': errorStrategy retry, maxRetries 2
+        for try in 1 2 3; do bash -C -e -u -o pipefail /tmp/.command.sh && exit 0; done; exit 1
     target: *target
 
   - kind: horus_map
@@ -222,7 +227,8 @@ tasks:
         fi
         mkdir md5 && mv *.md5 md5/
         NF
-        exec bash -C -e -u -o pipefail /tmp/.command.sh
+        # label 'error_retry': errorStrategy retry, maxRetries 2
+        for try in 1 2 3; do bash -C -e -u -o pipefail /tmp/.command.sh && exit 0; done; exit 1
     target: *target
 
   # FASTQ_DOWNLOAD_PREFETCH_FASTERQDUMP_SRATOOLS. The settings task runs
@@ -239,9 +245,11 @@ tasks:
       kind: command
       command: |
         cat > /tmp/.command.sh <<'NF'
+        set -e
         rm -rf ${ncbi_settings} && mkdir -p ${ncbi_settings} && cd ${ncbi_settings}
         [ -z "$$(ls ${sratools_runs})" ] && exit 0
         config="/LIBS/GUID = \"$$(cat /proc/sys/kernel/random/uuid)\"\n/libs/cloud/report_instance_identity = \"true\"\n"
+        set +e
         set -u
 
         # Get the expected NCBI settings path and define the environment variable
@@ -280,7 +288,7 @@ tasks:
             cp "$${NCBI_SETTINGS}" ./
         fi
         NF
-        exec bash -C -e -u -o pipefail /tmp/.command.sh
+        exec bash /tmp/.command.sh
     target: *target
 
   - kind: horus_map
@@ -296,10 +304,12 @@ tasks:
       kind: command
       command: |
         cat > /tmp/.command.sh <<'NF'
+        set -e
         . ${run}
         rm -rf ${sra} && mkdir -p ${sra} && cd ${sra}
         settings=$$(cd ${ncbi_settings} && ls *.mkfg)
         ln -s ${ncbi_settings}/$$settings $$settings
+        set +e
         set -u
 
         retry_with_backoff() {
@@ -359,7 +369,7 @@ tasks:
         fi
         rm $$settings
         NF
-        exec bash -C -e -u -o pipefail /tmp/.command.sh
+        exec bash /tmp/.command.sh
     target: *target
 
   - kind: horus_map

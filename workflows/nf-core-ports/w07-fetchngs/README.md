@@ -32,7 +32,16 @@ multiqc_mappings_config     ──► results/multiqc_config/multiqc_config.yml
 - `results/samplesheet/`: `samplesheet.csv` (read paths point at the downloaded files) and `id_mappings.csv`.
 - `results/multiqc_config/multiqc_config.yml`: sample-name mappings for MultiQC.
 
-Reads, md5 files, run tables, samplesheet, id mappings and MultiQC config match the Nextflow run (reads byte for byte; read paths compared by file name). The run tables match as sets of rows: `sra_runinfo_to_ftp.py` orders the columns it adds through a Python set, so their order changes between runs of either engine. There is no `pipeline_info/` software versions file, which nf-core builds from Nextflow run metadata.
+Reads, md5 files, run tables, samplesheet, id mappings and MultiQC config match the Nextflow run (reads byte for byte; read paths compared by file name). Run tables match with the same header and the same set of rows: the row order for an id follows the ENA/NCBI API response, which can change between runs. There is no `pipeline_info/` software versions file, which nf-core builds from Nextflow run metadata.
+
+Layout differences from the Nextflow outdir:
+
+- Reads from sra-tools are in `results/fastq_sratools/` (Nextflow: `fastq/`, next to the FTP reads).
+- Per-id and per-run files sit in one subfolder per map slot (`results/metadata/<slot>/`, `results/fastq/<slot>/`); Nextflow writes them flat.
+- `multiqc_config.yml` is in `results/multiqc_config/` (Nextflow: `samplesheet/`).
+- `custom/user-settings.mkfg` (the NCBI settings with a fresh GUID) stays in `work/ncbi_settings/` and is not published.
+
+SRA_IDS_TO_RUNINFO and SRA_FASTQ_FTP have `label 'error_retry'` in the pipeline (`maxRetries 2`). Horus has no per-task retry, so their command runs the script up to 3 times; each try starts from an empty output folder.
 
 ## Parameters
 
