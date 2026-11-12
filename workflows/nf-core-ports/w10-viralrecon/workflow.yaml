@@ -1,0 +1,2914 @@
+kind: horus_workflow
+name: nf-core viralrecon
+
+# Native port of nf-core/viralrecon 3.0.0, the route `-profile test,docker`
+# runs: Illumina amplicon (ARTIC V1) SARS-CoV-2 reads through fastp, Kraken2,
+# Bowtie2, iVar primer trimming and variant calling, SnpEff/SnpSift, Freyja,
+# a BCFtools consensus with Nextclade, Pangolin and QUAST, and SPAdes plus
+# Unicycler assemblies with Bandage, ABACAS, BLAST and QUAST, then MultiQC.
+# Images, rendered command lines (ext.args from conf/modules_illumina.config)
+# and per-process cpus/memory are the executed ones; the test profile caps
+# every process at 4 cpus / 15 GB.
+#
+# Every command runs under `bash -C -e -u -o pipefail`, the shell of every
+# rendered .command.sh: wave images link /bin/sh to dash, so each command
+# writes its script to /tmp/.command.sh and runs that with bash.
+#
+# Per-sample processes are horus_map stages over a folder of meta files
+# (one per sample, named by sample id, bash-sourceable: single_end). Map
+# slots are numbered, so every output file carries the sample id and a
+# downstream stage finds its inputs as <upstream>/*/<id>.<suffix>. The
+# pipeline's Groovy filters (reads left after fastp, min mapped reads,
+# non-empty iVar tables) are decision tasks (scripts/decide.py) that write
+# the next sample list. Inputs are linked into the task folder under the
+# names Nextflow stages, the verbatim command runs, and the links are removed.
+#
+# capacity: memory-based admission like Nextflow's local executor. The key
+# is the target's location_id (local://<hostname>); set it to the host that
+# runs the tasks, or the gate does not apply.
+
+capacity:
+  local://ubuntu-awow:
+    cpus: 16
+    memory_gb: 31
+max_concurrency: 16
+
+_target: &target
+  kind: local
+
+# Run on a remote node instead: point every task at this anchor.
+# _target: &target
+#   kind: ssh
+#   host: bench-node.example.org
+#   username: ubuntu
+#   working_directory: /home/ubuntu/horus
+
+# Containers (.command.run docker lines); `user: host` runs them as the
+# calling user, as nf-core's `-u $(id -u):$(id -g)` does.
+_img:
+  coreutils: &coreutils {kind: docker, user: host, image: "community.wave.seqera.io/library/coreutils_grep_gzip_lbzip2_pruned:838ba80435a629f8"}
+  python313: &python313 {kind: docker, user: host, image: "quay.io/biocontainers/python:3.13"}
+  ubuntu: &ubuntu {kind: docker, user: host, image: "quay.io/nf-core/ubuntu:24.04"}
+  samtools: &samtools {kind: docker, user: host, image: "quay.io/biocontainers/samtools:1.22.1--h96c455f_0"}
+  bedtools: &bedtools {kind: docker, user: host, image: "quay.io/biocontainers/bedtools:2.31.1--hf5e1c6e_0"}
+  makeblastdb: &makeblastdb {kind: docker, user: host, image: "quay.io/biocontainers/blast:2.16.0--h66d330f_5"}
+  blastn: &blastn {kind: docker, user: host, image: "community.wave.seqera.io/library/blast:2.16.0--540f4b669b0a0ddd"}
+  bowtie2: &bowtie2 {kind: docker, user: host, image: "community.wave.seqera.io/library/bowtie2_htslib_samtools_pigz:edeb13799090a2a6"}
+  fastqc: &fastqc {kind: docker, user: host, image: "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0"}
+  fastp: &fastp {kind: docker, user: host, image: "community.wave.seqera.io/library/fastp:1.0.1--c8b87fe62dcc103c"}
+  snpeff: &snpeff {kind: docker, user: host, image: "quay.io/biocontainers/snpeff:5.0--hdfd78af_1"}
+  snpsift: &snpsift {kind: docker, user: host, image: "quay.io/biocontainers/snpsift:4.3.1t--hdfd78af_3"}
+  kraken2: &kraken2 {kind: docker, user: host, image: "community.wave.seqera.io/library/kraken2_coreutils_pigz:920ecc6b96e2ba71"}
+  cutadapt: &cutadapt {kind: docker, user: host, image: "community.wave.seqera.io/library/cutadapt:5.0--991bbd2e184b7014"}
+  spades: &spades {kind: docker, user: host, image: "community.wave.seqera.io/library/spades:4.1.0--77799c52e1d1054a"}
+  unicycler: &unicycler {kind: docker, user: host, image: "community.wave.seqera.io/library/unicycler:0.5.1--b9d21c454db1e56b"}
+  bandage: &bandage {kind: docker, user: host, image: "community.wave.seqera.io/library/bandage:0.9.0--4f0567049a14ea6d"}
+  abacas: &abacas {kind: docker, user: host, image: "quay.io/biocontainers/abacas:1.3.1--pl526_0"}
+  quast: &quast {kind: docker, user: host, image: "community.wave.seqera.io/library/quast:5.3.0--755a216045b6dbdd"}
+  ivar: &ivar {kind: docker, user: host, image: "quay.io/biocontainers/ivar:1.4.4--h077b44d_0"}
+  ivar2vcf: &ivar2vcf {kind: docker, user: host, image: "community.wave.seqera.io/library/biopython_matplotlib_pandas_python_pruned:46d87e2ad1f8a063"}
+  bcftools: &bcftools {kind: docker, user: host, image: "community.wave.seqera.io/library/bcftools_htslib:0a3fa2654b52006f"}
+  htslib: &htslib {kind: docker, user: host, image: "community.wave.seqera.io/library/htslib:1.21--ff8e28a189fbecaa"}
+  freyja: &freyja {kind: docker, user: host, image: "quay.io/biocontainers/freyja:2.0.1--pyhdfd78af_0"}
+  picard: &picard {kind: docker, user: host, image: "community.wave.seqera.io/library/picard:3.4.0--e9963040df0a9bf6"}
+  mosdepth: &mosdepth {kind: docker, user: host, image: "community.wave.seqera.io/library/mosdepth_htslib:0f58993cb6d93294"}
+  rplots: &rplots {kind: docker, user: host, image: "community.wave.seqera.io/library/bioconductor-biostrings_bioconductor-complexheatmap_r-base_r-ggplot2_pruned:6c26995a32d99713"}
+  bedmask: &bedmask {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-1a35167f7a491c7086c13835aaa74b39f1f43979:6b5cffa1187cfccf2dc983ed3b5359d49b999eb0-0"}
+  nextclade: &nextclade {kind: docker, user: host, image: "community.wave.seqera.io/library/nextclade:3.11.0--155203da8341cfe6"}
+  pangolin: &pangolin {kind: docker, user: host, image: "community.wave.seqera.io/library/pangolin-data_pangolin_pip_snakemake:7987089a2a044e70"}
+  longtable: &longtable {kind: docker, user: host, image: "community.wave.seqera.io/library/matplotlib_pandas_python_r-sys_pruned:23244d66110fcdf2"}
+  multiqc: &multiqc {kind: docker, user: host, image: "community.wave.seqera.io/library/multiqc:1.31--1efbafd542a23882"}
+
+# Labels after the test profile's resourceLimits (trace.txt cpus / memory).
+_res:
+  single: &single {cpus: 1, memory_gb: 6, walltime: "01:00:00"}
+  low: &low {cpus: 2, memory_gb: 12, walltime: "01:00:00"}
+  high: &high {cpus: 4, memory_gb: 15, walltime: "01:00:00"}
+
+# Artifacts, shared by the producing task's outputs and every consumer's inputs.
+_art:
+  - &a_samplesheet {id: samplesheet, name: Samplesheet, kind: file, path: examples/samplesheet.csv}
+  - &a_nfcore {id: nfcore, name: nf-core/viralrecon files, kind: folder, path: nfcore/}
+  - &a_mirror {id: input_mirror, name: Local input mirror, kind: string, path: params/input_mirror.txt}
+  - &a_min_mapped {id: min_mapped_reads, name: Min mapped reads, kind: number, path: params/min_mapped_reads.json}
+  - &a_freyja_repeats {id: freyja_repeats, name: Freyja bootstrap repeats, kind: number, path: params/freyja_repeats.json}
+  - &a_reference {id: reference, name: Reference files, kind: folder, path: work/reference/}
+  - &a_reads {id: reads, name: Reads, kind: folder, path: work/reads/}
+  - &a_samples {id: samples, name: Samples, kind: folder, path: work/samples/}
+  - &a_fasta {id: fasta, name: Genome fasta, kind: folder, path: work/genome/fasta/}
+  - &a_gff {id: gff, name: Genome GFF, kind: folder, path: work/genome/gff/}
+  - &a_kraken2_db {id: kraken2_db, name: Kraken2 database, kind: folder, path: work/genome/kraken2_db/}
+  - &a_nextclade_db {id: nextclade_db, name: Nextclade dataset, kind: folder, path: work/genome/nextclade_db/}
+  - &a_collapsed {id: primer_collapsed, name: Collapsed primer BED, kind: folder, path: work/genome/primer_collapsed/}
+  - &a_chromsizes {id: chromsizes, name: Fasta index and sizes, kind: folder, path: work/genome/chromsizes/}
+  - &a_primer_fasta {id: primer_fasta, name: Primer fasta, kind: folder, path: work/genome/primer_fasta/}
+  - &a_adapters {id: adapters, name: Cutadapt primer fasta, kind: folder, path: work/genome/adapters/}
+  - &a_blast_db {id: blast_db, name: BLAST database, kind: folder, path: work/genome/blast_db/}
+  - &a_bowtie2_idx {id: bowtie2_idx, name: Bowtie2 index, kind: folder, path: work/genome/bowtie2/}
+  - &a_snpeff_db {id: snpeff_db, name: SnpEff database, kind: folder, path: work/genome/snpeff/}
+  - &a_freyja_db {id: freyja_db, name: Freyja barcodes, kind: folder, path: results/variants/freyja/freyja_db/}
+  - &a_pangolin_db {id: pangolin_db, name: Pangolin data, kind: folder, path: work/genome/pangolin_db/}
+  - &a_cat_fastq {id: cat_fastq, name: Merged reads, kind: folder, path: work/cat_fastq/}
+  - &a_fastqc_raw {id: fastqc_raw, name: FastQC raw, kind: folder, path: results/fastqc/raw/}
+  - &a_fastp {id: fastp, name: fastp, kind: folder, path: results/fastp/}
+  - &a_fastp_pass {id: fastp_pass, name: Samples with reads after fastp, kind: folder, path: work/lists/fastp_pass/}
+  - &a_mqc_fastp {id: mqc_fastp, name: Failed reads table, kind: folder, path: work/mqc/fastp/}
+  - &a_fastqc_trim {id: fastqc_trim, name: FastQC trimmed, kind: folder, path: results/fastqc/trim/}
+  - &a_kraken2 {id: kraken2, name: Kraken2, kind: folder, path: results/kraken2/}
+  - &a_bowtie2 {id: bowtie2, name: Bowtie2 alignments, kind: folder, path: results/variants/bowtie2/align/}
+  - &a_sort {id: sort, name: Sorted BAM, kind: folder, path: results/variants/bowtie2/sort/}
+  - &a_sort_index {id: sort_index, name: Sorted BAM index, kind: folder, path: results/variants/bowtie2/sort_index/}
+  - &a_sort_stats {id: sort_stats, name: Sorted BAM stats, kind: folder, path: results/variants/bowtie2/samtools_stats/sort_stats/}
+  - &a_sort_flagstat {id: sort_flagstat, name: Sorted BAM flagstat, kind: folder, path: results/variants/bowtie2/samtools_stats/sort_flagstat/}
+  - &a_sort_idxstats {id: sort_idxstats, name: Sorted BAM idxstats, kind: folder, path: results/variants/bowtie2/samtools_stats/sort_idxstats/}
+  - &a_map_pass {id: map_pass, name: Samples passing mapping, kind: folder, path: work/lists/map_pass/}
+  - &a_mqc_mapped {id: mqc_mapped, name: Failed mapping table, kind: folder, path: work/mqc/mapped/}
+  - &a_ivar_trim {id: ivar_trim, name: iVar primer trimming, kind: folder, path: work/ivar_trim/}
+  - &a_trim_sort {id: trim_sort, name: Primer-trimmed BAM, kind: folder, path: results/variants/bowtie2/trim_sort/}
+  - &a_trim_index {id: trim_index, name: Primer-trimmed BAM index, kind: folder, path: results/variants/bowtie2/trim_index/}
+  - &a_trim_stats {id: trim_stats, name: Primer-trimmed BAM stats, kind: folder, path: results/variants/bowtie2/samtools_stats/trim_stats/}
+  - &a_trim_flagstat {id: trim_flagstat, name: Primer-trimmed BAM flagstat, kind: folder, path: results/variants/bowtie2/samtools_stats/trim_flagstat/}
+  - &a_trim_idxstats {id: trim_idxstats, name: Primer-trimmed BAM idxstats, kind: folder, path: results/variants/bowtie2/samtools_stats/trim_idxstats/}
+  - &a_picard {id: picard, name: Picard metrics, kind: folder, path: results/variants/bowtie2/picard_metrics/}
+  - &a_mosdepth_genome {id: mosdepth_genome, name: mosdepth genome, kind: folder, path: results/variants/bowtie2/mosdepth/genome/}
+  - &a_mosdepth_amplicon {id: mosdepth_amplicon, name: mosdepth amplicon, kind: folder, path: results/variants/bowtie2/mosdepth/amplicon/}
+  - &a_plot_genome {id: plot_genome, name: Genome coverage plots, kind: folder, path: results/variants/bowtie2/mosdepth/plot_genome/}
+  - &a_plot_amplicon {id: plot_amplicon, name: Amplicon coverage plots, kind: folder, path: results/variants/bowtie2/mosdepth/plot_amplicon/}
+  - &a_ivar_variants {id: ivar_variants, name: iVar variants, kind: folder, path: results/variants/ivar/variants/}
+  - &a_var_pass {id: var_pass, name: Samples with variants, kind: folder, path: work/lists/var_pass/}
+  - &a_ivar_vcf {id: ivar_vcf, name: iVar VCF, kind: folder, path: results/variants/ivar/vcf/}
+  - &a_vcf_sort {id: vcf_sort, name: Sorted VCF, kind: folder, path: results/variants/ivar/sort/}
+  - &a_vcf_tbi {id: vcf_tbi, name: VCF index, kind: folder, path: results/variants/ivar/tbi/}
+  - &a_vcf_stats {id: vcf_stats, name: BCFtools stats, kind: folder, path: results/variants/ivar/bcftools_stats/}
+  - &a_snpeff_ann {id: snpeff_ann, name: SnpEff, kind: folder, path: results/variants/ivar/snpeff/ann/}
+  - &a_snpeff_bgzip {id: snpeff_bgzip, name: SnpEff VCF bgzip, kind: folder, path: results/variants/ivar/snpeff/bgzip/}
+  - &a_snpeff_tbi {id: snpeff_tbi, name: SnpEff VCF index, kind: folder, path: results/variants/ivar/snpeff/tbi/}
+  - &a_snpeff_stats {id: snpeff_stats, name: SnpEff BCFtools stats, kind: folder, path: results/variants/ivar/snpeff/bcftools_stats/}
+  - &a_snpsift {id: snpsift, name: SnpSift, kind: folder, path: results/variants/ivar/snpeff/snpsift/}
+  - &a_bcftools_query {id: bcftools_query, name: BCFtools query, kind: folder, path: work/bcftools_query/}
+  - &a_long_table {id: long_table, name: Variants long table, kind: folder, path: results/variants/ivar/long_table/}
+  - &a_freyja_variants {id: freyja_variants, name: Freyja variants, kind: folder, path: results/variants/freyja/variants/}
+  - &a_freyja_demix {id: freyja_demix, name: Freyja demix, kind: folder, path: results/variants/freyja/demix/}
+  - &a_freyja_boot {id: freyja_boot, name: Freyja bootstrap, kind: folder, path: results/variants/freyja/bootstrap/}
+  - &a_vcf_filter {id: vcf_filter, name: Filtered VCF, kind: folder, path: work/consensus/filter/}
+  - &a_filter_tbi {id: filter_tbi, name: Filtered VCF index, kind: folder, path: work/consensus/filter_tbi/}
+  - &a_bed_mask {id: bed_mask, name: Coverage mask, kind: folder, path: work/consensus/bed_mask/}
+  - &a_bed_merge {id: bed_merge, name: Merged coverage mask, kind: folder, path: work/consensus/bed_merge/}
+  - &a_maskfasta {id: maskfasta, name: Masked genome, kind: folder, path: work/consensus/maskfasta/}
+  - &a_consensus_raw {id: consensus_raw, name: Consensus, kind: folder, path: work/consensus/consensus/}
+  - &a_consensus {id: consensus, name: Consensus fasta, kind: folder, path: results/variants/ivar/consensus/bcftools/fasta/}
+  - &a_nextclade {id: nextclade, name: Nextclade, kind: folder, path: results/variants/ivar/consensus/bcftools/nextclade/}
+  - &a_base_density {id: base_density, name: Base density plots, kind: folder, path: results/variants/ivar/consensus/bcftools/base_qc/}
+  - &a_pangolin {id: pangolin, name: Pangolin, kind: folder, path: results/variants/ivar/consensus/bcftools/pangolin/}
+  - &a_quast_consensus {id: quast_consensus, name: QUAST consensus, kind: folder, path: results/variants/ivar/consensus/bcftools/quast/}
+  - &a_mqc_clade {id: mqc_clade, name: Nextclade clade table, kind: folder, path: work/mqc/clade/}
+  - &a_cutadapt {id: cutadapt, name: Cutadapt, kind: folder, path: results/assembly/cutadapt/trim/}
+  - &a_fastqc_cutadapt {id: fastqc_cutadapt, name: FastQC primer-trimmed, kind: folder, path: results/assembly/cutadapt/fastqc/}
+  - &a_spades {id: spades, name: SPAdes, kind: folder, path: results/assembly/spades/rnaviral/assembly/}
+  - &a_spades_scaffolds {id: spades_scaffolds, name: SPAdes scaffolds, kind: folder, path: work/assembly/spades/scaffolds/}
+  - &a_spades_gfa {id: spades_gfa, name: SPAdes graph, kind: folder, path: work/assembly/spades/gfa/}
+  - &a_spades_bandage {id: spades_bandage, name: SPAdes Bandage, kind: folder, path: results/assembly/spades/rnaviral/bandage/}
+  - &a_spades_abacas {id: spades_abacas, name: SPAdes ABACAS, kind: folder, path: results/assembly/spades/rnaviral/abacas/}
+  - &a_spades_blastn {id: spades_blastn, name: SPAdes BLAST, kind: folder, path: work/assembly/spades/blastn/}
+  - &a_spades_filter {id: spades_filter, name: SPAdes BLAST filtered, kind: folder, path: results/assembly/spades/rnaviral/blastn/}
+  - &a_spades_quast {id: spades_quast, name: SPAdes QUAST, kind: folder, path: results/assembly/spades/rnaviral/quast/}
+  - &a_unicycler {id: unicycler, name: Unicycler, kind: folder, path: results/assembly/unicycler/assembly/}
+  - &a_uni_scaffolds {id: uni_scaffolds, name: Unicycler scaffolds, kind: folder, path: work/assembly/unicycler/scaffolds/}
+  - &a_uni_gfa {id: uni_gfa, name: Unicycler graph, kind: folder, path: work/assembly/unicycler/gfa/}
+  - &a_uni_bandage {id: uni_bandage, name: Unicycler Bandage, kind: folder, path: results/assembly/unicycler/bandage/}
+  - &a_uni_abacas {id: uni_abacas, name: Unicycler ABACAS, kind: folder, path: results/assembly/unicycler/abacas/}
+  - &a_uni_blastn {id: uni_blastn, name: Unicycler BLAST, kind: folder, path: work/assembly/unicycler/blastn/}
+  - &a_uni_filter {id: uni_filter, name: Unicycler BLAST filtered, kind: folder, path: results/assembly/unicycler/blastn/}
+  - &a_uni_quast {id: uni_quast, name: Unicycler QUAST, kind: folder, path: results/assembly/unicycler/quast/}
+  - &a_multiqc {id: multiqc_out, name: MultiQC report, kind: folder, path: results/multiqc/}
+
+artifacts:
+  - *a_samplesheet
+  - *a_nfcore
+  - {id: input_mirror, name: Local input mirror, description: "Folder searched by file name before downloading a reference file or read; empty downloads everything.", kind: string, path: params/input_mirror.txt, value: ""}
+  - {id: min_mapped_reads, name: Min mapped reads, description: "Samples with this many mapped reads or fewer stop after alignment (--min_mapped_reads).", kind: number, path: params/min_mapped_reads.json, value: 1000}
+  - {id: freyja_repeats, name: Freyja bootstrap repeats, description: "freyja boot --nb (--freyja_repeats; the test profile sets 10).", kind: number, path: params/freyja_repeats.json, value: 10}
+  - {id: fasta_url, name: Genome fasta, kind: string, path: params/fasta_url.txt, value: "https://github.com/nf-core/test-datasets/raw/viralrecon/genome/MN908947.3/GCA_009858895.3_ASM985889v3_genomic.200409.fna.gz"}
+  - {id: gff_url, name: Genome GFF, kind: string, path: params/gff_url.txt, value: "https://github.com/nf-core/test-datasets/raw/viralrecon/genome/MN908947.3/GCA_009858895.3_ASM985889v3_genomic.200409.gff.gz"}
+  - {id: primer_bed_url, name: Primer BED, description: "ARTIC nCoV-2019 V1 (--primer_set artic --primer_set_version 1).", kind: string, path: params/primer_bed_url.txt, value: "https://github.com/artic-network/artic-ncov2019/raw/master/primer_schemes/nCoV-2019/V1/nCoV-2019.primer.bed"}
+  - {id: kraken2_db_url, name: Kraken2 database, kind: string, path: params/kraken2_db_url.txt, value: "https://raw.githubusercontent.com/nf-core/test-datasets/viralrecon/genome/kraken2/kraken2_hs22.tar.gz"}
+  - {id: nextclade_dataset_url, name: Nextclade dataset, kind: string, path: params/nextclade_dataset_url.txt, value: "https://github.com/nf-core/test-datasets/raw/viralrecon/genome/MN908947.3/nextclade_sars-cov-2_MN908947_2024-10-17--16_48_48Z.tar.gz"}
+
+tasks:
+  # ---------------------------------------------------------------- inputs
+  - kind: horus_task
+    id: fetch_reference
+    name: Fetch reference files
+    description: Downloads the genome fasta and GFF, primer BED, Kraken2 database and Nextclade dataset (or copies them from the mirror).
+    inputs:
+      - *a_mirror
+      - {id: fasta_url, name: Genome fasta, kind: string, path: params/fasta_url.txt}
+      - {id: gff_url, name: Genome GFF, kind: string, path: params/gff_url.txt}
+      - {id: primer_bed_url, name: Primer BED, kind: string, path: params/primer_bed_url.txt}
+      - {id: kraken2_db_url, name: Kraken2 database, kind: string, path: params/kraken2_db_url.txt}
+      - {id: nextclade_dataset_url, name: Nextclade dataset, kind: string, path: params/nextclade_dataset_url.txt}
+    outputs: [*a_reference]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: >-
+        reference --fasta ${fasta_url} --gff ${gff_url} --primer_bed ${primer_bed_url}
+        --kraken2_db ${kraken2_db_url} --nextclade_dataset ${nextclade_dataset_url}
+        --mirror ${input_mirror} --out ${reference}
+    target: *target
+
+  - kind: horus_task
+    id: stage_samples
+    name: Split the samplesheet into samples
+    description: Fetches each sample's reads and writes one meta file per sample, merging runs as the samplesheet check does.
+    inputs: [*a_samplesheet, *a_mirror]
+    outputs: [*a_reads, *a_samples]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: samples --samplesheet ${samplesheet} --mirror ${input_mirror} --reads ${reads} --samples ${samples}
+    target: *target
+
+  # ---------------------------------------------------------------- genome
+  - kind: horus_task
+    id: gunzip_fasta
+    name: GUNZIP_FASTA
+    inputs: [*a_reference]
+    outputs: [*a_fasta]
+    resources: *single
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${fasta} && mkdir -p ${fasta} && cd ${fasta}
+        ln -s ${reference}/$$ref_fasta .
+        gzip \
+            -cd \
+            $$ref_fasta \
+            > $${ref_fasta%.gz}
+        rm $$ref_fasta
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: gunzip_gff
+    name: GUNZIP_GFF
+    inputs: [*a_reference]
+    outputs: [*a_gff]
+    resources: *single
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${gff} && mkdir -p ${gff} && cd ${gff}
+        ln -s ${reference}/$$ref_gff .
+        gzip \
+            -cd \
+            $$ref_gff \
+            > $${ref_gff%.gz}
+        rm $$ref_gff
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: untar_kraken2_db
+    name: UNTAR_KRAKEN2_DB
+    inputs: [*a_reference]
+    outputs: [*a_kraken2_db]
+    resources: *single
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${kraken2_db} && mkdir -p ${kraken2_db} && cd ${kraken2_db}
+        ln -s ${reference}/$$ref_kraken2_db .
+        db=$${ref_kraken2_db%.tar.gz}
+        mkdir $$db
+        if [[ $$(tar -taf $$ref_kraken2_db | grep -o -P "^.*?\/" | uniq | wc -l) -eq 1 ]]; then
+            tar -C $$db --strip-components 1 -xavf $$ref_kraken2_db --no-same-owner
+        else
+            tar -C $$db -xavf $$ref_kraken2_db --no-same-owner
+        fi
+        rm $$ref_kraken2_db
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: untar_nextclade_db
+    name: UNTAR_NEXTCLADE_DB
+    inputs: [*a_reference]
+    outputs: [*a_nextclade_db]
+    resources: *single
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${nextclade_db} && mkdir -p ${nextclade_db} && cd ${nextclade_db}
+        ln -s ${reference}/$$ref_nextclade_dataset .
+        db=$${ref_nextclade_dataset%.tar.gz}
+        mkdir $$db
+        if [[ $$(tar -taf $$ref_nextclade_dataset | grep -o -P "^.*?\/" | uniq | wc -l) -eq 1 ]]; then
+            tar -C $$db --strip-components 1 -xavf $$ref_nextclade_dataset --no-same-owner
+        else
+            tar -C $$db -xavf $$ref_nextclade_dataset --no-same-owner
+        fi
+        rm $$ref_nextclade_dataset
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: collapse_primers
+    name: COLLAPSE_PRIMERS
+    inputs: [*a_reference, *a_nfcore]
+    outputs: [*a_collapsed]
+    resources: *high
+    executor: *python313
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env; export PATH=${nfcore}/bin:$$PATH
+        rm -rf ${primer_collapsed} && mkdir -p ${primer_collapsed} && cd ${primer_collapsed}
+        ln -s ${reference}/$$ref_primer_bed .
+        collapse_primer_bed.py \
+            --left_primer_suffix _LEFT \
+            --right_primer_suffix _RIGHT \
+            $$ref_primer_bed \
+            $${ref_primer_bed%.bed}.collapsed.bed
+        rm $$ref_primer_bed
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: getchromsizes
+    name: CUSTOM_GETCHROMSIZES
+    inputs: [*a_fasta]
+    outputs: [*a_chromsizes]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        fa=$$(ls ${fasta})
+        rm -rf ${chromsizes} && mkdir -p ${chromsizes} && cd ${chromsizes}
+        ln -s ${fasta}/$$fa .
+        samtools faidx $$fa
+        cut -f 1,2 $$fa.fai > $$fa.sizes
+        rm $$fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # BEDTOOLS_GETFASTA runs with an empty meta, hence the "null" prefix.
+  - kind: horus_task
+    id: getfasta
+    name: BEDTOOLS_GETFASTA
+    inputs: [*a_reference, *a_fasta]
+    outputs: [*a_primer_fasta]
+    resources: *single
+    executor: *bedtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env; fa=$$(ls ${fasta})
+        rm -rf ${primer_fasta} && mkdir -p ${primer_fasta} && cd ${primer_fasta}
+        ln -s ${reference}/$$ref_primer_bed ${fasta}/$$fa .
+        bedtools \
+            getfasta \
+            -s -nameOnly \
+            -fi $$fa \
+            -bed $$ref_primer_bed \
+            -fo null.fa
+        rm $$fa $$ref_primer_bed
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: prepare_primer_fasta
+    name: PREPARE_PRIMER_FASTA
+    inputs: [*a_primer_fasta]
+    outputs: [*a_adapters]
+    resources: *low
+    executor: *ubuntu
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${adapters} && mkdir -p ${adapters} && cd ${adapters}
+        sed -r '/^[ACTGactg]+$$/ s/^/X/g' ${primer_fasta}/null.fa > adapters.sub.fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: makeblastdb
+    name: BLAST_MAKEBLASTDB
+    inputs: [*a_fasta]
+    outputs: [*a_blast_db]
+    resources: *high
+    executor: *makeblastdb
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        fa=$$(ls ${fasta})
+        rm -rf ${blast_db} && mkdir -p ${blast_db} && cd ${blast_db}
+        ln -s ${fasta}/$$fa .
+        makeblastdb \
+            -in $$fa \
+            -out null/$$fa \
+            -parse_seqids -dbtype nucl
+        rm $$fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: bowtie2_build
+    name: BOWTIE2_BUILD
+    inputs: [*a_fasta]
+    outputs: [*a_bowtie2_idx]
+    resources: *high
+    executor: *bowtie2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        fa=$$(ls ${fasta})
+        rm -rf ${bowtie2_idx} && mkdir -p ${bowtie2_idx} && cd ${bowtie2_idx}
+        ln -s ${fasta}/$$fa .
+        mkdir bowtie2
+        bowtie2-build --seed 1 --threads ${task.resources.cpus} $$fa bowtie2/$${fa%.*}
+        rm $$fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: snpeff_build
+    name: SNPEFF_BUILD
+    inputs: [*a_fasta, *a_gff]
+    outputs: [*a_snpeff_db]
+    resources: *low
+    executor: *snpeff
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        fa=$$(ls ${fasta}); gff_file=$$(ls ${gff}); base=$${fa%.*}
+        rm -rf ${snpeff_db} && mkdir -p ${snpeff_db} && cd ${snpeff_db}
+        cp ${fasta}/$$fa ${gff}/$$gff_file .
+        mkdir -p snpeff_db/genomes/
+        cd snpeff_db/genomes/
+        ln -s ../../$$fa $$base.fa
+
+        cd ../../
+        mkdir -p snpeff_db/$$base/
+        cd snpeff_db/$$base/
+        ln -s ../../$$gff_file genes.gff
+
+        cd ../../
+        echo "$$base.genome : $$base" > snpeff.config
+
+        snpEff \
+            -Xmx${task.resources.memory_gb}g \
+            build \
+            -config snpeff.config \
+            -dataDir ./snpeff_db \
+            -gff3 \
+            -v \
+            $$base
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # Downloads the current barcodes, as the pipeline does without
+  # --freyja_barcodes: results follow the barcode release of the run day.
+  - kind: horus_task
+    id: freyja_update
+    name: FREYJA_UPDATE
+    outputs: [*a_freyja_db]
+    resources: *single
+    executor: *freyja
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${freyja_db} && mkdir -p ${freyja_db} && cd ${freyja_db}
+        freyja \
+            update \
+            --outdir .
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # Same for pangolin-data without --pango_database.
+  - kind: horus_task
+    id: pangolin_updatedata
+    name: PANGOLIN_UPDATEDATA
+    outputs: [*a_pangolin_db]
+    resources: *single
+    executor: *pangolin
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export XDG_CACHE_HOME=/tmp/.cache
+        rm -rf ${pangolin_db} && mkdir -p ${pangolin_db} && cd ${pangolin_db}
+        mkdir -p pangolin_db
+
+        pangolin \
+            --update-data \
+            --threads ${task.resources.cpus} \
+            --datadir pangolin_db
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- read QC
+  # CAT_FASTQ runs for every sample in 3.0.0: reads are staged as input<n>/,
+  # R1 files (odd positions) and R2 files (even positions) concatenated.
+  - kind: horus_map
+    id: cat_fastq
+    name: CAT_FASTQ
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_reads]
+    outputs: [*a_cat_fastq]
+    resources: *single
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${cat_fastq} && mkdir -p ${cat_fastq} && cd ${cat_fastq}
+        i=0; r1=""; r2=""
+        while read f; do
+            i=$$((i + 1)); mkdir input$$i; ln -s ${reads}/$$id/$$f input$$i/
+            if [ $$single_end = true ] || [ $$((i % 2)) -eq 1 ]; then r1="$$r1 input$$i/$$f"; else r2="$$r2 input$$i/$$f"; fi
+        done < ${reads}/$$id/reads.txt
+        if [ $$single_end = true ]; then
+            cat $$r1 > $${id}.merged.fastq.gz
+        else
+            cat $$r1 > $${id}_1.merged.fastq.gz
+            cat $$r2 > $${id}_2.merged.fastq.gz
+        fi
+        rm -r $$(seq -f input%g 1 $$i)
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: fastqc_raw
+    name: FASTQC_RAW
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_cat_fastq]
+    outputs: [*a_fastqc_raw]
+    resources: *high
+    executor: *fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${fastqc_raw} && mkdir -p ${fastqc_raw} && cd ${fastqc_raw}
+        if [ $$single_end = true ]; then
+            ln -s ${cat_fastq}/*/$${id}.merged.fastq.gz .
+            pairs="$${id}.merged.fastq.gz $${id}.gz"; names="$${id}.gz"
+        else
+            ln -s ${cat_fastq}/*/$${id}_[12].merged.fastq.gz .
+            pairs="$${id}_1.merged.fastq.gz $${id}_1.gz $${id}_2.merged.fastq.gz $${id}_2.gz"; names="$${id}_1.gz $${id}_2.gz"
+        fi
+        mem=$$(( ${task.resources.memory_gb} * 1024 / ${task.resources.cpus} ))
+        printf "%s %s\n" $$pairs | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            --memory $$mem \
+            $$names
+        rm $$names $${id}*.merged.fastq.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: fastp
+    name: FASTP
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_cat_fastq]
+    outputs: [*a_fastp]
+    resources: *high
+    executor: *fastp
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${fastp} && mkdir -p ${fastp} && cd ${fastp}
+        if [ $$single_end = true ]; then
+        ln -s ${cat_fastq}/*/$${id}.merged.fastq.gz .
+        [ ! -f  $${id}.fastq.gz ] && ln -sf $${id}.merged.fastq.gz $${id}.fastq.gz
+
+        fastp \
+            --in1 $${id}.fastq.gz \
+            --out1 $${id}.fastp.fastq.gz \
+            --thread ${task.resources.cpus} \
+            --json $${id}.fastp.json \
+            --html $${id}.fastp.html \
+            --cut_front --cut_tail --trim_poly_x --cut_mean_quality 30 --qualified_quality_phred 30 --unqualified_percent_limit 10 --length_required 50 \
+            2>| >(tee $${id}.fastp.log >&2)
+        else
+        ln -s ${cat_fastq}/*/$${id}_[12].merged.fastq.gz .
+        [ ! -f  $${id}_1.fastq.gz ] && ln -sf $${id}_1.merged.fastq.gz $${id}_1.fastq.gz
+        [ ! -f  $${id}_2.fastq.gz ] && ln -sf $${id}_2.merged.fastq.gz $${id}_2.fastq.gz
+        fastp \
+            --in1 $${id}_1.fastq.gz \
+            --in2 $${id}_2.fastq.gz \
+            --out1 $${id}_1.fastp.fastq.gz \
+            --out2 $${id}_2.fastp.fastq.gz \
+            --json $${id}.fastp.json \
+            --html $${id}.fastp.html \
+            --thread ${task.resources.cpus} \
+            --detect_adapter_for_pe \
+            --cut_front --cut_tail --trim_poly_x --cut_mean_quality 30 --qualified_quality_phred 30 --unqualified_percent_limit 10 --length_required 50 \
+            2>| >(tee $${id}.fastp.log >&2)
+        fi
+        wait
+        rm $${id}*.merged.fastq.gz; find . -maxdepth 1 -type l -name "$${id}*.fastq.gz" -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: decide_fastp
+    name: Filter samples with reads after fastp
+    description: Keeps the samples fastp left reads for, and writes fail_mapped_reads_mqc.tsv for the rest.
+    inputs: [*a_samples, *a_fastp]
+    outputs: [*a_fastp_pass, *a_mqc_fastp]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: fastp --samples ${samples} --fastp ${fastp} --out ${fastp_pass} --fail-tsv ${mqc_fastp}/fail_mapped_reads_mqc.tsv
+    target: *target
+
+  - kind: horus_map
+    id: fastqc_trim
+    name: FASTQC_TRIM
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_fastp]
+    outputs: [*a_fastqc_trim]
+    resources: *high
+    executor: *fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${fastqc_trim} && mkdir -p ${fastqc_trim} && cd ${fastqc_trim}
+        if [ $$single_end = true ]; then
+            ln -s ${fastp}/*/$${id}.fastp.fastq.gz .
+            pairs="$${id}.fastp.fastq.gz $${id}.gz"; names="$${id}.gz"
+        else
+            ln -s ${fastp}/*/$${id}_[12].fastp.fastq.gz .
+            pairs="$${id}_1.fastp.fastq.gz $${id}_1.gz $${id}_2.fastp.fastq.gz $${id}_2.gz"; names="$${id}_1.gz $${id}_2.gz"
+        fi
+        mem=$$(( ${task.resources.memory_gb} * 1024 / ${task.resources.cpus} ))
+        printf "%s %s\n" $$pairs | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            --memory $$mem \
+            $$names
+        rm $$names $${id}*.fastp.fastq.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # --kraken2_assembly_host_filter (default true): the unclassified reads go
+  # to the assembly branch; variant calling uses the fastp reads.
+  - kind: horus_map
+    id: kraken2
+    name: KRAKEN2_KRAKEN2
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_fastp, *a_kraken2_db]
+    outputs: [*a_kraken2]
+    resources: *high
+    executor: *kraken2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${kraken2} && mkdir -p ${kraken2} && cd ${kraken2}
+        db=$$(ls ${kraken2_db}); ln -s ${kraken2_db}/$$db .
+        if [ $$single_end = true ]; then
+        ln -s ${fastp}/*/$${id}.fastp.fastq.gz .
+        kraken2 \
+            --db $$db \
+            --threads ${task.resources.cpus} \
+            --report $${id}.kraken2.report.txt \
+            --gzip-compressed \
+            --unclassified-out $${id}.unclassified.fastq \
+            --classified-out $${id}.classified.fastq \
+            --output $${id}.kraken2.classifiedreads.txt \
+            --report-zero-counts \
+            $${id}.fastp.fastq.gz
+        else
+        ln -s ${fastp}/*/$${id}_[12].fastp.fastq.gz .
+        kraken2 \
+            --db $$db \
+            --threads ${task.resources.cpus} \
+            --report $${id}.kraken2.report.txt \
+            --gzip-compressed \
+            --unclassified-out $${id}.unclassified#.fastq \
+            --classified-out $${id}.classified#.fastq \
+            --output $${id}.kraken2.classifiedreads.txt \
+            --paired \
+            --report-zero-counts \
+            $${id}_1.fastp.fastq.gz $${id}_2.fastp.fastq.gz
+        fi
+
+        pigz -p ${task.resources.cpus} *.fastq
+        rm $$db $${id}*.fastp.fastq.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- alignment
+  - kind: horus_map
+    id: bowtie2_align
+    name: BOWTIE2_ALIGN
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_fastp, *a_bowtie2_idx, *a_fasta]
+    outputs: [*a_bowtie2]
+    resources: *high
+    executor: *bowtie2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${bowtie2} && mkdir -p ${bowtie2} && cd ${bowtie2}
+        ln -s ${bowtie2_idx}/bowtie2 ${fasta}/$$(ls ${fasta}) .
+        if [ $$single_end = true ]; then ln -s ${fastp}/*/$${id}.fastp.fastq.gz .; else ln -s ${fastp}/*/$${id}_[12].fastp.fastq.gz .; fi
+        INDEX=`find -L ./ -name "*.rev.1.bt2" | sed "s/\.rev.1.bt2$$//"`
+        [ -z "$$INDEX" ] && INDEX=`find -L ./ -name "*.rev.1.bt2l" | sed "s/\.rev.1.bt2l$$//"`
+        [ -z "$$INDEX" ] && echo "Bowtie2 index files not found" 1>&2 && exit 1
+        if [ $$single_end = true ]; then reads="-U $${id}.fastp.fastq.gz"; else reads="-1 $${id}_1.fastp.fastq.gz -2 $${id}_2.fastp.fastq.gz"; fi
+
+        bowtie2 \
+            -x $$INDEX \
+            $$reads \
+            --threads ${task.resources.cpus} \
+            --local --very-sensitive-local --seed 1 \
+            2>| >(tee $${id}.bowtie2.log >&2) \
+            | samtools view -F4 -bhS --threads ${task.resources.cpus}  -o $${id}.bam -
+        wait
+        rm bowtie2 $$(ls ${fasta}) $${id}*.fastp.fastq.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: sort
+    name: SAMTOOLS_SORT
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_bowtie2, *a_fasta]
+    outputs: [*a_sort]
+    resources: *high
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta})
+        rm -rf ${sort} && mkdir -p ${sort} && cd ${sort}
+        ln -s ${bowtie2}/*/$${id}.bam ${fasta}/$$fa .
+        samtools cat \
+            $${id}.bam \
+        | \
+        samtools sort \
+            -T $${id}.sorted \
+            --threads ${task.resources.cpus} \
+            --reference $$fa \
+            -o $${id}.sorted.bam \
+            -
+        rm $${id}.bam $$fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: sort_index
+    name: SAMTOOLS_INDEX
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_sort]
+    outputs: [*a_sort_index]
+    resources: *low
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${sort_index} && mkdir -p ${sort_index} && cd ${sort_index}
+        ln -s ${sort}/*/$${id}.sorted.bam .
+        samtools \
+            index \
+            -@ ${task.resources.cpus} \
+            $${id}.sorted.bam
+        rm $${id}.sorted.bam
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: sort_stats
+    name: SAMTOOLS_STATS
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_sort, *a_sort_index, *a_fasta]
+    outputs: [*a_sort_stats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta})
+        rm -rf ${sort_stats} && mkdir -p ${sort_stats} && cd ${sort_stats}
+        ln -s ${sort}/*/$${id}.sorted.bam ${sort_index}/*/$${id}.sorted.bam.bai ${fasta}/$$fa .
+        samtools \
+            stats \
+            --threads ${task.resources.cpus} \
+            --reference $$fa \
+            $${id}.sorted.bam \
+            > $${id}.sorted.bam.stats
+        rm $${id}.sorted.bam $${id}.sorted.bam.bai $$fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: sort_flagstat
+    name: SAMTOOLS_FLAGSTAT
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_sort, *a_sort_index]
+    outputs: [*a_sort_flagstat]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${sort_flagstat} && mkdir -p ${sort_flagstat} && cd ${sort_flagstat}
+        ln -s ${sort}/*/$${id}.sorted.bam ${sort_index}/*/$${id}.sorted.bam.bai .
+        samtools \
+            flagstat \
+            --threads ${task.resources.cpus} \
+            $${id}.sorted.bam \
+            > $${id}.sorted.bam.flagstat
+        rm $${id}.sorted.bam $${id}.sorted.bam.bai
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: sort_idxstats
+    name: SAMTOOLS_IDXSTATS
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_sort, *a_sort_index]
+    outputs: [*a_sort_idxstats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${sort_idxstats} && mkdir -p ${sort_idxstats} && cd ${sort_idxstats}
+        ln -s ${sort}/*/$${id}.sorted.bam ${sort_index}/*/$${id}.sorted.bam.bai .
+        samtools \
+            idxstats \
+            --threads $$(( ${task.resources.cpus} - 1 )) \
+            $${id}.sorted.bam \
+            > $${id}.sorted.bam.idxstats
+        rm $${id}.sorted.bam $${id}.sorted.bam.bai
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: decide_mapped
+    name: Filter samples by mapped reads
+    description: Keeps the samples with more than min_mapped_reads mapped reads, and writes fail_mapped_samples_mqc.tsv for the rest.
+    inputs: [*a_fastp_pass, *a_sort_flagstat, *a_min_mapped]
+    outputs: [*a_map_pass, *a_mqc_mapped]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: >-
+        mapped --samples ${fastp_pass} --flagstat ${sort_flagstat} --min-mapped-reads ${min_mapped_reads}
+        --out ${map_pass} --fail-tsv ${mqc_mapped}/fail_mapped_samples_mqc.tsv
+    target: *target
+
+  # ---------------------------------------------------------------- primer trimming
+  - kind: horus_map
+    id: ivar_trim
+    name: IVAR_TRIM
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_sort, *a_sort_index, *a_reference]
+    outputs: [*a_ivar_trim]
+    resources: *high
+    executor: *ivar
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${reference}/refs.env
+        rm -rf ${ivar_trim} && mkdir -p ${ivar_trim} && cd ${ivar_trim}
+        ln -s ${sort}/*/$${id}.sorted.bam ${sort_index}/*/$${id}.sorted.bam.bai ${reference}/$$ref_primer_bed .
+        ivar trim \
+            -m 30 -q 20 -e \
+            -i $${id}.sorted.bam \
+            -b $$ref_primer_bed \
+            -p $${id}.ivar_trim \
+            > $${id}.ivar_trim.ivar.log
+        rm $${id}.sorted.bam $${id}.sorted.bam.bai $$ref_primer_bed
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: trim_sort
+    name: SAMTOOLS_SORT (primer-trimmed)
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_ivar_trim, *a_fasta]
+    outputs: [*a_trim_sort]
+    resources: *high
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta})
+        rm -rf ${trim_sort} && mkdir -p ${trim_sort} && cd ${trim_sort}
+        ln -s ${ivar_trim}/*/$${id}.ivar_trim.bam ${fasta}/$$fa .
+        samtools cat \
+            $${id}.ivar_trim.bam \
+        | \
+        samtools sort \
+            -T $${id}.ivar_trim.sorted \
+            --threads ${task.resources.cpus} \
+            --reference $$fa \
+            -o $${id}.ivar_trim.sorted.bam \
+            -
+        rm $${id}.ivar_trim.bam $$fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: trim_index
+    name: SAMTOOLS_INDEX (primer-trimmed)
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_trim_sort]
+    outputs: [*a_trim_index]
+    resources: *low
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${trim_index} && mkdir -p ${trim_index} && cd ${trim_index}
+        ln -s ${trim_sort}/*/$${id}.ivar_trim.sorted.bam .
+        samtools \
+            index \
+            -@ ${task.resources.cpus} \
+            $${id}.ivar_trim.sorted.bam
+        rm $${id}.ivar_trim.sorted.bam
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: trim_stats
+    name: SAMTOOLS_STATS (primer-trimmed)
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_trim_sort, *a_trim_index, *a_fasta]
+    outputs: [*a_trim_stats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta})
+        rm -rf ${trim_stats} && mkdir -p ${trim_stats} && cd ${trim_stats}
+        ln -s ${trim_sort}/*/$${id}.ivar_trim.sorted.bam ${trim_index}/*/$${id}.ivar_trim.sorted.bam.bai ${fasta}/$$fa .
+        samtools \
+            stats \
+            --threads ${task.resources.cpus} \
+            --reference $$fa \
+            $${id}.ivar_trim.sorted.bam \
+            > $${id}.ivar_trim.sorted.bam.stats
+        rm $${id}.ivar_trim.sorted.bam $${id}.ivar_trim.sorted.bam.bai $$fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: trim_flagstat
+    name: SAMTOOLS_FLAGSTAT (primer-trimmed)
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_trim_sort, *a_trim_index]
+    outputs: [*a_trim_flagstat]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${trim_flagstat} && mkdir -p ${trim_flagstat} && cd ${trim_flagstat}
+        ln -s ${trim_sort}/*/$${id}.ivar_trim.sorted.bam ${trim_index}/*/$${id}.ivar_trim.sorted.bam.bai .
+        samtools \
+            flagstat \
+            --threads ${task.resources.cpus} \
+            $${id}.ivar_trim.sorted.bam \
+            > $${id}.ivar_trim.sorted.bam.flagstat
+        rm $${id}.ivar_trim.sorted.bam $${id}.ivar_trim.sorted.bam.bai
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: trim_idxstats
+    name: SAMTOOLS_IDXSTATS (primer-trimmed)
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_trim_sort, *a_trim_index]
+    outputs: [*a_trim_idxstats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${trim_idxstats} && mkdir -p ${trim_idxstats} && cd ${trim_idxstats}
+        ln -s ${trim_sort}/*/$${id}.ivar_trim.sorted.bam ${trim_index}/*/$${id}.ivar_trim.sorted.bam.bai .
+        samtools \
+            idxstats \
+            --threads $$(( ${task.resources.cpus} - 1 )) \
+            $${id}.ivar_trim.sorted.bam \
+            > $${id}.ivar_trim.sorted.bam.idxstats
+        rm $${id}.ivar_trim.sorted.bam $${id}.ivar_trim.sorted.bam.bai
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- BAM QC
+  - kind: horus_map
+    id: picard
+    name: PICARD_COLLECTMULTIPLEMETRICS
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_trim_sort, *a_trim_index, *a_fasta]
+    outputs: [*a_picard]
+    resources: *single
+    executor: *picard
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta})
+        rm -rf ${picard} && mkdir -p ${picard} && cd ${picard}
+        ln -s ${trim_sort}/*/$${id}.ivar_trim.sorted.bam ${trim_index}/*/$${id}.ivar_trim.sorted.bam.bai ${fasta}/$$fa .
+        picard \
+            -Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M \
+            CollectMultipleMetrics \
+            --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp \
+            --INPUT $${id}.ivar_trim.sorted.bam \
+            --OUTPUT $${id}.CollectMultipleMetrics \
+            --REFERENCE_SEQUENCE $$fa
+        rm -rf tmp $${id}.ivar_trim.sorted.bam $${id}.ivar_trim.sorted.bam.bai $$fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mosdepth_genome
+    name: MOSDEPTH_GENOME
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_trim_sort, *a_trim_index]
+    outputs: [*a_mosdepth_genome]
+    resources: *high
+    executor: *mosdepth
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${mosdepth_genome} && mkdir -p ${mosdepth_genome} && cd ${mosdepth_genome}
+        ln -s ${trim_sort}/*/$${id}.ivar_trim.sorted.bam ${trim_index}/*/$${id}.ivar_trim.sorted.bam.bai .
+        mosdepth \
+            --threads ${task.resources.cpus} \
+            --fast-mode --by 200 \
+            $${id} \
+            $${id}.ivar_trim.sorted.bam
+        rm $${id}.ivar_trim.sorted.bam $${id}.ivar_trim.sorted.bam.bai
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mosdepth_amplicon
+    name: MOSDEPTH_AMPLICON
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_trim_sort, *a_trim_index, *a_collapsed]
+    outputs: [*a_mosdepth_amplicon]
+    resources: *high
+    executor: *mosdepth
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); bed=$$(ls ${primer_collapsed})
+        rm -rf ${mosdepth_amplicon} && mkdir -p ${mosdepth_amplicon} && cd ${mosdepth_amplicon}
+        ln -s ${trim_sort}/*/$${id}.ivar_trim.sorted.bam ${trim_index}/*/$${id}.ivar_trim.sorted.bam.bai ${primer_collapsed}/$$bed .
+        mosdepth \
+            --threads ${task.resources.cpus} \
+            --by $$bed \
+            --fast-mode --use-median --thresholds 0,1,10,50,100,500 \
+            $${id} \
+            $${id}.ivar_trim.sorted.bam
+        rm $${id}.ivar_trim.sorted.bam $${id}.ivar_trim.sorted.bam.bai $$bed
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: plot_mosdepth_genome
+    name: PLOT_MOSDEPTH_REGIONS_GENOME
+    inputs: [*a_mosdepth_genome, *a_nfcore]
+    outputs: [*a_plot_genome]
+    resources: *high
+    executor: *rplots
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH=${nfcore}/bin:$$PATH
+        rm -rf ${plot_genome} && mkdir -p ${plot_genome} && cd ${plot_genome}
+        ln -s ${mosdepth_genome}/*/*.regions.bed.gz .
+        plot_mosdepth_regions.r \
+            --input_files $$(ls *.regions.bed.gz | paste -sd,) \
+            --output_dir ./ \
+            --output_suffix mosdepth \
+            --input_suffix .regions.bed.gz
+        rm *.regions.bed.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: plot_mosdepth_amplicon
+    name: PLOT_MOSDEPTH_REGIONS_AMPLICON
+    inputs: [*a_mosdepth_amplicon, *a_nfcore]
+    outputs: [*a_plot_amplicon]
+    resources: *high
+    executor: *rplots
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH=${nfcore}/bin:$$PATH
+        rm -rf ${plot_amplicon} && mkdir -p ${plot_amplicon} && cd ${plot_amplicon}
+        ln -s ${mosdepth_amplicon}/*/*.regions.bed.gz .
+        plot_mosdepth_regions.r \
+            --input_files $$(ls *.regions.bed.gz | paste -sd,) \
+            --output_dir ./ \
+            --output_suffix mosdepth \
+            --input_suffix .regions.bed.gz
+        rm *.regions.bed.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- iVar variants
+  - kind: horus_map
+    id: ivar_variants
+    name: IVAR_VARIANTS
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_trim_sort, *a_fasta, *a_gff, *a_chromsizes]
+    outputs: [*a_ivar_variants]
+    resources: *high
+    executor: *ivar
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta}); gff_file=$$(ls ${gff})
+        rm -rf ${ivar_variants} && mkdir -p ${ivar_variants} && cd ${ivar_variants}
+        ln -s ${trim_sort}/*/$${id}.ivar_trim.sorted.bam ${fasta}/$$fa ${chromsizes}/$$fa.fai ${gff}/$$gff_file .
+        samtools \
+            mpileup \
+            --ignore-overlaps --count-orphans --no-BAQ --max-depth 0 --min-BQ 0 \
+            --reference $$fa \
+            $${id}.ivar_trim.sorted.bam \
+            | ivar \
+                variants \
+                -t 0.25 -q 20 -m 10 \
+                -g $$gff_file \
+                -r $$fa \
+                -p $${id}
+        rm $${id}.ivar_trim.sorted.bam $$fa $$fa.fai $$gff_file
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: decide_ivar
+    name: Filter samples with iVar variants
+    description: Keeps the samples whose iVar variants table has rows.
+    inputs: [*a_map_pass, *a_ivar_variants]
+    outputs: [*a_var_pass]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: ivar --samples ${map_pass} --tsv ${ivar_variants} --out ${var_pass}
+    target: *target
+
+  - kind: horus_map
+    id: ivar_vcf
+    name: IVAR_VARIANTS_TO_VCF
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_ivar_variants, *a_fasta, *a_nfcore]
+    outputs: [*a_ivar_vcf]
+    resources: *single
+    executor: *ivar2vcf
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta}); export PATH=${nfcore}/bin:$$PATH
+        rm -rf ${ivar_vcf} && mkdir -p ${ivar_vcf} && cd ${ivar_vcf}
+        ln -s ${ivar_variants}/*/$${id}.tsv ${fasta}/$$fa ${nfcore}/assets/headers/ivar_variants_header_mqc.txt .
+        ivar_variants_to_vcf.py \
+            $${id}.tsv \
+            $${id}.vcf \
+            --fasta $$fa \
+            --ignore_strand_bias \
+            > $${id}.variant_counts.log
+
+        cat ivar_variants_header_mqc.txt $${id}.variant_counts.log > $${id}.variant_counts_mqc.tsv
+        rm $${id}.tsv $$fa ivar_variants_header_mqc.txt
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: vcf_sort
+    name: BCFTOOLS_SORT
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_ivar_vcf]
+    outputs: [*a_vcf_sort]
+    resources: *high
+    executor: *bcftools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${vcf_sort} && mkdir -p ${vcf_sort} && cd ${vcf_sort}
+        ln -s ${ivar_vcf}/*/$${id}.vcf ${ivar_vcf}/*/$${id}_all_hap.vcf .
+        bcftools \
+            sort \
+            --output $${id}.vcf.gz \
+            --temp-dir . \
+            --output-type z \
+            $${id}.vcf $${id}_all_hap.vcf
+        rm $${id}.vcf $${id}_all_hap.vcf
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: vcf_tbi
+    name: TABIX_TABIX
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_vcf_sort]
+    outputs: [*a_vcf_tbi]
+    resources: *single
+    executor: *htslib
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${vcf_tbi} && mkdir -p ${vcf_tbi} && cd ${vcf_tbi}
+        ln -s ${vcf_sort}/*/$${id}.vcf.gz .
+        tabix \
+            --threads ${task.resources.cpus} \
+            -p vcf -f \
+            $${id}.vcf.gz
+        rm $${id}.vcf.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: vcf_stats
+    name: BCFTOOLS_STATS
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_vcf_sort, *a_vcf_tbi]
+    outputs: [*a_vcf_stats]
+    resources: *single
+    executor: *bcftools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${vcf_stats} && mkdir -p ${vcf_stats} && cd ${vcf_stats}
+        ln -s ${vcf_sort}/*/$${id}.vcf.gz ${vcf_tbi}/*/$${id}.vcf.gz.tbi .
+        bcftools stats \
+            $${id}.vcf.gz > $${id}.bcftools_stats.txt
+        rm $${id}.vcf.gz $${id}.vcf.gz.tbi
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: snpeff_ann
+    name: SNPEFF_ANN
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_vcf_sort, *a_snpeff_db, *a_fasta]
+    outputs: [*a_snpeff_ann]
+    resources: *high
+    executor: *snpeff
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta})
+        rm -rf ${snpeff_ann} && mkdir -p ${snpeff_ann} && cd ${snpeff_ann}
+        ln -s ${vcf_sort}/*/$${id}.vcf.gz ${snpeff_db}/snpeff_db ${snpeff_db}/snpeff.config ${fasta}/$$fa .
+        snpEff \
+            -Xmx${task.resources.memory_gb}g \
+            $${fa%.*} \
+            -config snpeff.config \
+            -dataDir snpeff_db \
+            $${id}.vcf.gz \
+            -csvStats $${id}.snpeff.csv \
+            > $${id}.snpeff.vcf
+        mv snpEff_summary.html $${id}.snpeff.summary.html
+        rm $${id}.vcf.gz snpeff_db snpeff.config $$fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: snpeff_bgzip
+    name: TABIX_BGZIP
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_snpeff_ann]
+    outputs: [*a_snpeff_bgzip]
+    resources: *single
+    executor: *htslib
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${snpeff_bgzip} && mkdir -p ${snpeff_bgzip} && cd ${snpeff_bgzip}
+        ln -s ${snpeff_ann}/*/$${id}.snpeff.vcf .
+        bgzip  -c  -@${task.resources.cpus} $${id}.snpeff.vcf > $${id}.snpeff.vcf.gz
+        rm $${id}.snpeff.vcf
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: snpeff_tbi
+    name: TABIX_TABIX (SnpEff)
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_snpeff_bgzip]
+    outputs: [*a_snpeff_tbi]
+    resources: *single
+    executor: *htslib
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${snpeff_tbi} && mkdir -p ${snpeff_tbi} && cd ${snpeff_tbi}
+        ln -s ${snpeff_bgzip}/*/$${id}.snpeff.vcf.gz .
+        tabix \
+            --threads ${task.resources.cpus} \
+            -p vcf -f \
+            $${id}.snpeff.vcf.gz
+        rm $${id}.snpeff.vcf.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: snpeff_stats
+    name: BCFTOOLS_STATS (SnpEff)
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_snpeff_bgzip, *a_snpeff_tbi]
+    outputs: [*a_snpeff_stats]
+    resources: *single
+    executor: *bcftools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${snpeff_stats} && mkdir -p ${snpeff_stats} && cd ${snpeff_stats}
+        ln -s ${snpeff_bgzip}/*/$${id}.snpeff.vcf.gz ${snpeff_tbi}/*/$${id}.snpeff.vcf.gz.tbi .
+        bcftools stats \
+            $${id}.snpeff.vcf.gz > $${id}.snpeff.bcftools_stats.txt
+        rm $${id}.snpeff.vcf.gz $${id}.snpeff.vcf.gz.tbi
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: snpsift
+    name: SNPSIFT_EXTRACTFIELDS
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_snpeff_bgzip]
+    outputs: [*a_snpsift]
+    resources: *high
+    executor: *snpsift
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${snpsift} && mkdir -p ${snpsift} && cd ${snpsift}
+        ln -s ${snpeff_bgzip}/*/$${id}.snpeff.vcf.gz .
+        SnpSift \
+            -Xmx${task.resources.memory_gb}g \
+            extractFields \
+            -s "," \
+            -e "." \
+            $${id}.snpeff.vcf.gz \
+            CHROM POS REF ALT \
+            "ANN[*].GENE" "ANN[*].GENEID" \
+            "ANN[*].IMPACT" "ANN[*].EFFECT" \
+            "ANN[*].FEATURE" "ANN[*].FEATUREID" \
+            "ANN[*].BIOTYPE" "ANN[*].RANK" "ANN[*].HGVS_C" \
+            "ANN[*].HGVS_P" "ANN[*].CDNA_POS" "ANN[*].CDNA_LEN" \
+            "ANN[*].CDS_POS" "ANN[*].CDS_LEN" "ANN[*].AA_POS" \
+            "ANN[*].AA_LEN" "ANN[*].DISTANCE" "EFF[*].EFFECT" \
+            "EFF[*].FUNCLASS" "EFF[*].CODON" "EFF[*].AA" "EFF[*].AA_LEN" \
+            > $${id}.snpsift.txt
+        rm $${id}.snpeff.vcf.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: bcftools_query
+    name: BCFTOOLS_QUERY
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_vcf_sort, *a_vcf_tbi]
+    outputs: [*a_bcftools_query]
+    resources: *single
+    executor: *bcftools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${bcftools_query} && mkdir -p ${bcftools_query} && cd ${bcftools_query}
+        ln -s ${vcf_sort}/*/$${id}.vcf.gz ${vcf_tbi}/*/$${id}.vcf.gz.tbi .
+        bcftools query \
+            -H -f '%CHROM\t%POS\t%REF\t%ALT\t%FILTER\t[%DP\t]\t[%REF_DP\t]\t[%ALT_DP\t]\n' \
+            $${id}.vcf.gz \
+            > $${id}.bcftools_query.txt
+        rm $${id}.vcf.gz $${id}.vcf.gz.tbi
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- Freyja
+  - kind: horus_map
+    id: freyja_variants
+    name: FREYJA_VARIANTS
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_trim_sort, *a_fasta]
+    outputs: [*a_freyja_variants]
+    resources: *high
+    executor: *freyja
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta})
+        rm -rf ${freyja_variants} && mkdir -p ${freyja_variants} && cd ${freyja_variants}
+        ln -s ${trim_sort}/*/$${id}.ivar_trim.sorted.bam ${fasta}/$$fa .
+        freyja \
+            variants \
+            --ref $$fa \
+            --variants $${id}.variants.tsv \
+            --depths $${id}.depth.tsv \
+            $${id}.ivar_trim.sorted.bam
+        rm -f $${id}.ivar_trim.sorted.bam $$fa $$fa.fai
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: freyja_demix
+    name: FREYJA_DEMIX
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_freyja_variants, *a_freyja_db]
+    outputs: [*a_freyja_demix]
+    resources: *low
+    executor: *freyja
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${freyja_demix} && mkdir -p ${freyja_demix} && cd ${freyja_demix}
+        ln -s ${freyja_variants}/*/$${id}.variants.tsv ${freyja_variants}/*/$${id}.depth.tsv ${freyja_db}/usher_barcodes.feather ${freyja_db}/curated_lineages.json .
+        freyja \
+            demix \
+            --output $${id}.tsv \
+            --barcodes usher_barcodes.feather \
+            --meta curated_lineages.json \
+            $${id}.variants.tsv \
+            $${id}.depth.tsv
+        rm $${id}.variants.tsv $${id}.depth.tsv usher_barcodes.feather curated_lineages.json
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: freyja_boot
+    name: FREYJA_BOOT
+    over: {input_id: map_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_map_pass, *a_freyja_variants, *a_freyja_db, *a_freyja_repeats]
+    outputs: [*a_freyja_boot]
+    resources: *high
+    executor: *freyja
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${freyja_boot} && mkdir -p ${freyja_boot} && cd ${freyja_boot}
+        ln -s ${freyja_variants}/*/$${id}.variants.tsv ${freyja_variants}/*/$${id}.depth.tsv ${freyja_db}/usher_barcodes.feather ${freyja_db}/curated_lineages.json .
+        freyja \
+            boot \
+            --boxplot pdf \
+            --nt ${task.resources.cpus} \
+            --nb ${freyja_repeats} \
+            --output_base $${id} \
+            --barcodes usher_barcodes.feather \
+            --meta curated_lineages.json \
+            $${id}.variants.tsv \
+            $${id}.depth.tsv
+        rm $${id}.variants.tsv $${id}.depth.tsv usher_barcodes.feather curated_lineages.json
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- consensus (BCFtools)
+  - kind: horus_map
+    id: vcf_filter
+    name: BCFTOOLS_FILTER
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_vcf_sort, *a_vcf_tbi]
+    outputs: [*a_vcf_filter]
+    resources: *high
+    executor: *bcftools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${vcf_filter} && mkdir -p ${vcf_filter} && cd ${vcf_filter}
+        ln -s ${vcf_sort}/*/$${id}.vcf.gz ${vcf_tbi}/*/$${id}.vcf.gz.tbi .
+        bcftools filter \
+            --output $${id}.filtered.vcf.gz \
+            --threads ${task.resources.cpus} \
+            --output-type z --include 'FORMAT/ALT_FREQ >= 0.75' \
+            $${id}.vcf.gz
+        rm $${id}.vcf.gz $${id}.vcf.gz.tbi
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: filter_tbi
+    name: TABIX_TABIX (filtered)
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_vcf_filter]
+    outputs: [*a_filter_tbi]
+    resources: *single
+    executor: *htslib
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${filter_tbi} && mkdir -p ${filter_tbi} && cd ${filter_tbi}
+        ln -s ${vcf_filter}/*/$${id}.filtered.vcf.gz .
+        tabix \
+            --threads ${task.resources.cpus} \
+            -p vcf -f \
+            $${id}.filtered.vcf.gz
+        rm $${id}.filtered.vcf.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: bed_mask
+    name: MAKE_BED_MASK
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_vcf_filter, *a_trim_sort, *a_fasta, *a_nfcore]
+    outputs: [*a_bed_mask]
+    resources: *single
+    executor: *bedmask
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta}); export PATH=${nfcore}/bin:$$PATH
+        rm -rf ${bed_mask} && mkdir -p ${bed_mask} && cd ${bed_mask}
+        ln -s ${vcf_filter}/*/$${id}.filtered.vcf.gz ${trim_sort}/*/$${id}.ivar_trim.sorted.bam ${fasta}/$$fa .
+        samtools \
+            mpileup \
+            -a --ignore-overlaps --count-orphans --no-BAQ --max-depth 0 --min-BQ 0 \
+            --reference $$fa \
+            $${id}.ivar_trim.sorted.bam \
+            | awk -v OFS='\t' '{print $$1, $$2-1, $$2, $$4}' | awk '$$4 < 10' > lowcov_positions.txt
+
+        make_bed_mask.py \
+            $${id}.filtered.vcf.gz \
+            lowcov_positions.txt \
+            $${id}.coverage.masked.bed
+        rm -f $${id}.filtered.vcf.gz $${id}.ivar_trim.sorted.bam $$fa $$fa.fai lowcov_positions.txt
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: bed_merge
+    name: BEDTOOLS_MERGE
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_bed_mask]
+    outputs: [*a_bed_merge]
+    resources: *single
+    executor: *bedtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${bed_merge} && mkdir -p ${bed_merge} && cd ${bed_merge}
+        ln -s ${bed_mask}/*/$${id}.coverage.masked.bed .
+        bedtools \
+            merge \
+            -i $${id}.coverage.masked.bed \
+            > $${id}.coverage.merged.bed
+        rm $${id}.coverage.masked.bed
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: maskfasta
+    name: BEDTOOLS_MASKFASTA
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_bed_merge, *a_fasta]
+    outputs: [*a_maskfasta]
+    resources: *single
+    executor: *bedtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta})
+        rm -rf ${maskfasta} && mkdir -p ${maskfasta} && cd ${maskfasta}
+        ln -s ${bed_merge}/*/$${id}.coverage.merged.bed ${fasta}/$$fa .
+        bedtools \
+            maskfasta \
+            -fi $$fa \
+            -bed $${id}.coverage.merged.bed \
+            -fo $${id}.masked.fa
+        rm -f $${id}.coverage.merged.bed $$fa $$fa.fai
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: bcftools_consensus
+    name: BCFTOOLS_CONSENSUS
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_vcf_filter, *a_filter_tbi, *a_maskfasta]
+    outputs: [*a_consensus_raw]
+    resources: *high
+    executor: *bcftools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${consensus_raw} && mkdir -p ${consensus_raw} && cd ${consensus_raw}
+        ln -s ${vcf_filter}/*/$${id}.filtered.vcf.gz ${filter_tbi}/*/$${id}.filtered.vcf.gz.tbi ${maskfasta}/*/$${id}.masked.fa .
+        cat $${id}.masked.fa \
+            | bcftools \
+                consensus \
+                $${id}.filtered.vcf.gz \
+                > $${id}.fa
+        rm $${id}.filtered.vcf.gz $${id}.filtered.vcf.gz.tbi $${id}.masked.fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: rename_fasta_header
+    name: RENAME_FASTA_HEADER
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_consensus_raw]
+    outputs: [*a_consensus]
+    resources: *single
+    executor: *ubuntu
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${consensus} && mkdir -p ${consensus} && cd ${consensus}
+        sed "s/>/>$${id} /g" ${consensus_raw}/*/$${id}.fa > $${id}.consensus.fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: nextclade_run
+    name: NEXTCLADE_RUN
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_consensus, *a_nextclade_db]
+    outputs: [*a_nextclade]
+    resources: *low
+    executor: *nextclade
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); db=$$(ls ${nextclade_db})
+        rm -rf ${nextclade} && mkdir -p ${nextclade} && cd ${nextclade}
+        ln -s ${consensus}/*/$${id}.consensus.fa ${nextclade_db}/$$db .
+        nextclade \
+            run \
+            --jobs ${task.resources.cpus} \
+            --input-dataset $$db \
+            --output-all ./ \
+            --output-basename $${id} \
+            $${id}.consensus.fa
+        rm $${id}.consensus.fa $$db
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: plot_base_density
+    name: PLOT_BASE_DENSITY
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_consensus, *a_nfcore]
+    outputs: [*a_base_density]
+    resources: *high
+    executor: *rplots
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); export PATH=${nfcore}/bin:$$PATH
+        rm -rf ${base_density} && mkdir -p ${base_density} && cd ${base_density}
+        ln -s ${consensus}/*/$${id}.consensus.fa .
+        plot_base_density.r \
+            --fasta_files $${id}.consensus.fa \
+            --prefixes $${id}.consensus \
+            --output_dir ./
+        rm $${id}.consensus.fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: pangolin_run
+    name: PANGOLIN_RUN
+    over: {input_id: var_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_var_pass, *a_consensus, *a_pangolin_db]
+    outputs: [*a_pangolin]
+    resources: *high
+    executor: *pangolin
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        export XDG_CACHE_HOME=/tmp/.cache
+        rm -rf ${pangolin} && mkdir -p ${pangolin} && cd ${pangolin}
+        ln -s ${consensus}/*/$${id}.consensus.fa ${pangolin_db}/pangolin_db .
+
+        pangolin \
+            $${id}.consensus.fa\
+            --datadir pangolin_db \
+            --outfile $${id}.pangolin.csv \
+            --threads ${task.resources.cpus}
+        rm $${id}.consensus.fa pangolin_db
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: quast_consensus
+    name: QUAST (consensus)
+    inputs: [*a_consensus, *a_fasta, *a_gff]
+    outputs: [*a_quast_consensus]
+    resources: *high
+    executor: *quast
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        fa=$$(ls ${fasta}); gff_file=$$(ls ${gff})
+        rm -rf ${quast_consensus} && mkdir -p ${quast_consensus} && cd ${quast_consensus}
+        ln -s ${consensus}/*/*.consensus.fa ${fasta}/$$fa ${gff}/$$gff_file .
+        quast.py \
+            --output-dir quast.consensus \
+            -r $$fa \
+            --features $$gff_file \
+            --threads ${task.resources.cpus} \
+            $$(ls *.consensus.fa)
+
+        ln -s quast.consensus/report.tsv quast.consensus.tsv
+        [ -f  quast.consensus/contigs_reports/all_alignments_transcriptome.tsv ] && ln -s quast.consensus/contigs_reports/all_alignments_transcriptome.tsv quast.consensus_transcriptome.tsv
+        [ -f  quast.consensus/contigs_reports/misassemblies_report.tsv         ] && ln -s quast.consensus/contigs_reports/misassemblies_report.tsv quast.consensus_misassemblies.tsv
+        [ -f  quast.consensus/contigs_reports/unaligned_report.tsv             ] && ln -s quast.consensus/contigs_reports/unaligned_report.tsv quast.consensus_unaligned.tsv
+        rm *.consensus.fa $$fa $$gff_file
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: make_variants_long_table
+    name: MAKE_VARIANTS_LONG_TABLE
+    inputs: [*a_bcftools_query, *a_snpsift, *a_pangolin, *a_nfcore]
+    outputs: [*a_long_table]
+    resources: *single
+    executor: *longtable
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH=${nfcore}/bin:$$PATH
+        rm -rf ${long_table} && mkdir -p ${long_table} && cd ${long_table}
+        mkdir bcftools_query snpsift pangolin
+        ln -s ${bcftools_query}/*/*.bcftools_query.txt bcftools_query/
+        ln -s ${snpsift}/*/*.snpsift.txt snpsift/
+        ln -s ${pangolin}/*/*.pangolin.csv pangolin/
+        make_variants_long_table.py \
+            --bcftools_query_dir ./bcftools_query \
+            --snpsift_dir ./snpsift \
+            --pangolin_dir ./pangolin \
+            --variant_caller ivar
+        rm -r bcftools_query snpsift pangolin
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: decide_clade
+    name: Nextclade clade table
+    description: Writes nextclade_clade_mqc.tsv from the Nextclade CSVs.
+    inputs: [*a_nextclade]
+    outputs: [*a_mqc_clade]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: clade --nextclade ${nextclade} --out ${mqc_clade}/nextclade_clade_mqc.tsv
+    target: *target
+
+  # ---------------------------------------------------------------- assembly
+  - kind: horus_map
+    id: cutadapt
+    name: CUTADAPT
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_kraken2, *a_adapters]
+    outputs: [*a_cutadapt]
+    resources: *high
+    executor: *cutadapt
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${cutadapt} && mkdir -p ${cutadapt} && cd ${cutadapt}
+        ln -s ${kraken2}/*/$${id}.unclassified*.fastq.gz ${adapters}/adapters.sub.fa .
+        if [ $$single_end = true ]; then
+        cutadapt \
+            -Z \
+            --cores ${task.resources.cpus} \
+            --overlap 5 --minimum-length 30 --error-rate 0.1 \
+            -g file:adapters.sub.fa \
+            -o $${id}.primer_trim.trim.fastq.gz \
+            $${id}.unclassified.fastq.gz \
+            > $${id}.primer_trim.cutadapt.log
+        else
+        cutadapt \
+            -Z \
+            --cores ${task.resources.cpus} \
+            --overlap 5 --minimum-length 30 --error-rate 0.1 \
+            -g file:adapters.sub.fa -G file:adapters.sub.fa \
+            -o $${id}.primer_trim_1.trim.fastq.gz -p $${id}.primer_trim_2.trim.fastq.gz \
+            $${id}.unclassified_1.fastq.gz $${id}.unclassified_2.fastq.gz \
+            > $${id}.primer_trim.cutadapt.log
+        fi
+        rm $${id}.unclassified*.fastq.gz adapters.sub.fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: fastqc_cutadapt
+    name: FASTQC
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_cutadapt]
+    outputs: [*a_fastqc_cutadapt]
+    resources: *high
+    executor: *fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${fastqc_cutadapt} && mkdir -p ${fastqc_cutadapt} && cd ${fastqc_cutadapt}
+        ln -s ${cutadapt}/*/$${id}.primer_trim*.trim.fastq.gz .
+        if [ $$single_end = true ]; then
+            pairs="$${id}.primer_trim.trim.fastq.gz $${id}.primer_trim.gz"; names="$${id}.primer_trim.gz"
+        else
+            pairs="$${id}.primer_trim_1.trim.fastq.gz $${id}.primer_trim_1.gz $${id}.primer_trim_2.trim.fastq.gz $${id}.primer_trim_2.gz"
+            names="$${id}.primer_trim_1.gz $${id}.primer_trim_2.gz"
+        fi
+        mem=$$(( ${task.resources.memory_gb} * 1024 / ${task.resources.cpus} ))
+        printf "%s %s\n" $$pairs | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            --memory $$mem \
+            $$names
+        rm $$names $${id}.primer_trim*.trim.fastq.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: spades
+    name: SPADES
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_cutadapt]
+    outputs: [*a_spades]
+    resources: *high
+    executor: *spades
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${spades} && mkdir -p ${spades} && cd ${spades}
+        ln -s ${cutadapt}/*/$${id}.primer_trim*.trim.fastq.gz .
+        if [ $$single_end = true ]; then reads="-s $${id}.primer_trim.trim.fastq.gz"
+        else reads="-1 $${id}.primer_trim_1.trim.fastq.gz -2 $${id}.primer_trim_2.trim.fastq.gz"; fi
+        spades.py \
+            --rnaviral \
+            --threads ${task.resources.cpus} \
+            --memory ${task.resources.memory_gb} \
+            $$reads   \
+            -o ./
+        mv spades.log $${id}.spades.log
+
+        if [ -f scaffolds.fasta ]; then
+            mv scaffolds.fasta $${id}.scaffolds.fa
+            gzip -n $${id}.scaffolds.fa
+        fi
+        if [ -f contigs.fasta ]; then
+            mv contigs.fasta $${id}.contigs.fa
+            gzip -n $${id}.contigs.fa
+        fi
+        if [ -f transcripts.fasta ]; then
+            mv transcripts.fasta $${id}.transcripts.fa
+            gzip -n $${id}.transcripts.fa
+        fi
+        if [ -f assembly_graph_with_scaffolds.gfa ]; then
+            mv assembly_graph_with_scaffolds.gfa $${id}.assembly.gfa
+            gzip -n $${id}.assembly.gfa
+        fi
+
+        if [ -f gene_clusters.fasta ]; then
+            mv gene_clusters.fasta $${id}.gene_clusters.fa
+            gzip -n $${id}.gene_clusters.fa
+        fi
+
+        if [ -f warnings.log ]; then
+            mv warnings.log $${id}.warnings.log
+        fi
+        rm $${id}.primer_trim*.trim.fastq.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: spades_scaffolds
+    name: GUNZIP_SCAFFOLDS (SPAdes)
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_spades]
+    outputs: [*a_spades_scaffolds]
+    resources: *single
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${spades_scaffolds} && mkdir -p ${spades_scaffolds} && cd ${spades_scaffolds}
+        gzip \
+            -cd \
+            ${spades}/*/$${id}.scaffolds.fa.gz \
+            > $${id}.scaffolds.fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: spades_gfa
+    name: GUNZIP_GFA (SPAdes)
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_spades]
+    outputs: [*a_spades_gfa]
+    resources: *single
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${spades_gfa} && mkdir -p ${spades_gfa} && cd ${spades_gfa}
+        gzip \
+            -cd \
+            ${spades}/*/$${id}.assembly.gfa.gz \
+            > $${id}.assembly.gfa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: spades_bandage
+    name: BANDAGE_IMAGE (SPAdes)
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_spades_gfa]
+    outputs: [*a_spades_bandage]
+    resources: *low
+    executor: *bandage
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${spades_bandage} && mkdir -p ${spades_bandage} && cd ${spades_bandage}
+        ln -s ${spades_gfa}/*/$${id}.assembly.gfa .
+        Bandage image $${id}.assembly.gfa $${id}.png --height 1000
+        Bandage image $${id}.assembly.gfa $${id}.svg --height 1000
+        rm $${id}.assembly.gfa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: spades_abacas
+    name: ABACAS (SPAdes)
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_spades_scaffolds, *a_fasta]
+    outputs: [*a_spades_abacas]
+    resources: *high
+    executor: *abacas
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta})
+        rm -rf ${spades_abacas} && mkdir -p ${spades_abacas} && cd ${spades_abacas}
+        ln -s ${spades_scaffolds}/*/$${id}.scaffolds.fa ${fasta}/$$fa .
+        abacas.pl \
+            -r $$fa \
+            -q $${id}.scaffolds.fa \
+            -m -p nucmer \
+            -o $${id}.abacas
+
+        sort "$${id}.abacas.bin" > "$${id}.abacas.bin.tmp" && mv "$${id}.abacas.bin.tmp" "$${id}.abacas.bin" # Needs to be sorted for consistency
+        mv nucmer.delta $${id}.abacas.nucmer.delta
+        mv nucmer.filtered.delta $${id}.abacas.nucmer.filtered.delta
+        mv nucmer.tiling $${id}.abacas.nucmer.tiling
+        mv unused_contigs.out $${id}.abacas.unused.contigs.out
+        rm $${id}.scaffolds.fa $$fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: spades_blastn
+    name: BLAST_BLASTN (SPAdes)
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_spades_scaffolds, *a_blast_db]
+    outputs: [*a_spades_blastn]
+    resources: *high
+    executor: *blastn
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${spades_blastn} && mkdir -p ${spades_blastn} && cd ${spades_blastn}
+        ln -s ${spades_scaffolds}/*/$${id}.scaffolds.fa ${blast_db}/null .
+        DB=`find -L ./ -name "*.nal" | sed 's/\.nal$$//'`
+        if [ -z "$$DB" ]; then
+            DB=`find -L ./ -name "*.nin" | sed 's/\.nin$$//'`
+        fi
+        echo Using $$DB
+
+        blastn \
+            -num_threads ${task.resources.cpus} \
+            -db $$DB \
+            -query $${id}.scaffolds.fa \
+            -outfmt '6 stitle staxids std slen qlen qcovs' \
+            -out $${id}.txt
+        rm $${id}.scaffolds.fa null
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: spades_filter
+    name: FILTER_BLASTN (SPAdes)
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_spades_blastn, *a_nfcore]
+    outputs: [*a_spades_filter]
+    resources: *low
+    executor: *ubuntu
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${spades_filter} && mkdir -p ${spades_filter} && cd ${spades_filter}
+        ln -s ${spades_blastn}/*/$${id}.txt ${nfcore}/assets/headers/blast_outfmt6_header.txt ${nfcore}/assets/headers/blast_filtered_outfmt6_header.txt .
+        cat blast_outfmt6_header.txt $${id}.txt > $${id}.results.blastn.txt
+        awk 'BEGIN{OFS="\t";FS="\t"}{print $$0,$$6/$$16,$$6/$$15}' $${id}.txt | awk 'BEGIN{OFS="\t";FS="\t"} $$16 > 200 && $$18 > 0.7 && $$1 !~ /phage/ {print $$0}' > tmp.out
+        cat blast_filtered_outfmt6_header.txt tmp.out > $${id}.filter.blastn.txt
+        rm $${id}.txt blast_outfmt6_header.txt blast_filtered_outfmt6_header.txt tmp.out
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: spades_quast
+    name: QUAST (SPAdes)
+    inputs: [*a_spades_scaffolds, *a_fasta, *a_gff]
+    outputs: [*a_spades_quast]
+    resources: *high
+    executor: *quast
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        fa=$$(ls ${fasta}); gff_file=$$(ls ${gff})
+        rm -rf ${spades_quast} && mkdir -p ${spades_quast} && cd ${spades_quast}
+        ln -s ${spades_scaffolds}/*/*.scaffolds.fa ${fasta}/$$fa ${gff}/$$gff_file .
+        quast.py \
+            --output-dir quast.spades \
+            -r $$fa \
+            --features $$gff_file \
+            --threads ${task.resources.cpus} \
+            $$(ls *.scaffolds.fa)
+
+        ln -s quast.spades/report.tsv quast.spades.tsv
+        [ -f  quast.spades/contigs_reports/all_alignments_transcriptome.tsv ] && ln -s quast.spades/contigs_reports/all_alignments_transcriptome.tsv quast.spades_transcriptome.tsv
+        [ -f  quast.spades/contigs_reports/misassemblies_report.tsv         ] && ln -s quast.spades/contigs_reports/misassemblies_report.tsv quast.spades_misassemblies.tsv
+        [ -f  quast.spades/contigs_reports/unaligned_report.tsv             ] && ln -s quast.spades/contigs_reports/unaligned_report.tsv quast.spades_unaligned.tsv
+        rm *.scaffolds.fa $$fa $$gff_file
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: unicycler
+    name: UNICYCLER
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_cutadapt]
+    outputs: [*a_unicycler]
+    resources: *high
+    executor: *unicycler
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${unicycler} && mkdir -p ${unicycler} && cd ${unicycler}
+        ln -s ${cutadapt}/*/$${id}.primer_trim*.trim.fastq.gz .
+        if [ $$single_end = true ]; then reads="-s $${id}.primer_trim.trim.fastq.gz"
+        else reads="-1 $${id}.primer_trim_1.trim.fastq.gz -2 $${id}.primer_trim_2.trim.fastq.gz"; fi
+        unicycler \
+            --threads ${task.resources.cpus} \
+            $$reads \
+            --out ./
+
+        mv assembly.fasta $${id}.scaffolds.fa
+        gzip -n $${id}.scaffolds.fa
+        mv assembly.gfa $${id}.assembly.gfa
+        gzip -n $${id}.assembly.gfa
+        mv unicycler.log $${id}.unicycler.log
+        rm $${id}.primer_trim*.trim.fastq.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: uni_scaffolds
+    name: GUNZIP_SCAFFOLDS (Unicycler)
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_unicycler]
+    outputs: [*a_uni_scaffolds]
+    resources: *single
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${uni_scaffolds} && mkdir -p ${uni_scaffolds} && cd ${uni_scaffolds}
+        gzip \
+            -cd \
+            ${unicycler}/*/$${id}.scaffolds.fa.gz \
+            > $${id}.scaffolds.fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: uni_gfa
+    name: GUNZIP_GFA (Unicycler)
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_unicycler]
+    outputs: [*a_uni_gfa]
+    resources: *single
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${uni_gfa} && mkdir -p ${uni_gfa} && cd ${uni_gfa}
+        gzip \
+            -cd \
+            ${unicycler}/*/$${id}.assembly.gfa.gz \
+            > $${id}.assembly.gfa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: uni_bandage
+    name: BANDAGE_IMAGE (Unicycler)
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_uni_gfa]
+    outputs: [*a_uni_bandage]
+    resources: *low
+    executor: *bandage
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${uni_bandage} && mkdir -p ${uni_bandage} && cd ${uni_bandage}
+        ln -s ${uni_gfa}/*/$${id}.assembly.gfa .
+        Bandage image $${id}.assembly.gfa $${id}.png --height 1000
+        Bandage image $${id}.assembly.gfa $${id}.svg --height 1000
+        rm $${id}.assembly.gfa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: uni_abacas
+    name: ABACAS (Unicycler)
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_uni_scaffolds, *a_fasta]
+    outputs: [*a_uni_abacas]
+    resources: *high
+    executor: *abacas
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); fa=$$(ls ${fasta})
+        rm -rf ${uni_abacas} && mkdir -p ${uni_abacas} && cd ${uni_abacas}
+        ln -s ${uni_scaffolds}/*/$${id}.scaffolds.fa ${fasta}/$$fa .
+        abacas.pl \
+            -r $$fa \
+            -q $${id}.scaffolds.fa \
+            -m -p nucmer \
+            -o $${id}.abacas
+
+        sort "$${id}.abacas.bin" > "$${id}.abacas.bin.tmp" && mv "$${id}.abacas.bin.tmp" "$${id}.abacas.bin" # Needs to be sorted for consistency
+        mv nucmer.delta $${id}.abacas.nucmer.delta
+        mv nucmer.filtered.delta $${id}.abacas.nucmer.filtered.delta
+        mv nucmer.tiling $${id}.abacas.nucmer.tiling
+        mv unused_contigs.out $${id}.abacas.unused.contigs.out
+        rm $${id}.scaffolds.fa $$fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: uni_blastn
+    name: BLAST_BLASTN (Unicycler)
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_uni_scaffolds, *a_blast_db]
+    outputs: [*a_uni_blastn]
+    resources: *high
+    executor: *blastn
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${uni_blastn} && mkdir -p ${uni_blastn} && cd ${uni_blastn}
+        ln -s ${uni_scaffolds}/*/$${id}.scaffolds.fa ${blast_db}/null .
+        DB=`find -L ./ -name "*.nal" | sed 's/\.nal$$//'`
+        if [ -z "$$DB" ]; then
+            DB=`find -L ./ -name "*.nin" | sed 's/\.nin$$//'`
+        fi
+        echo Using $$DB
+
+        blastn \
+            -num_threads ${task.resources.cpus} \
+            -db $$DB \
+            -query $${id}.scaffolds.fa \
+            -outfmt '6 stitle staxids std slen qlen qcovs' \
+            -out $${id}.txt
+        rm $${id}.scaffolds.fa null
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: uni_filter
+    name: FILTER_BLASTN (Unicycler)
+    over: {input_id: fastp_pass, as: sample}
+    max_concurrency: 16
+    inputs: [*a_fastp_pass, *a_uni_blastn, *a_nfcore]
+    outputs: [*a_uni_filter]
+    resources: *low
+    executor: *ubuntu
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${uni_filter} && mkdir -p ${uni_filter} && cd ${uni_filter}
+        ln -s ${uni_blastn}/*/$${id}.txt ${nfcore}/assets/headers/blast_outfmt6_header.txt ${nfcore}/assets/headers/blast_filtered_outfmt6_header.txt .
+        cat blast_outfmt6_header.txt $${id}.txt > $${id}.results.blastn.txt
+        awk 'BEGIN{OFS="\t";FS="\t"}{print $$0,$$6/$$16,$$6/$$15}' $${id}.txt | awk 'BEGIN{OFS="\t";FS="\t"} $$16 > 200 && $$18 > 0.7 && $$1 !~ /phage/ {print $$0}' > tmp.out
+        cat blast_filtered_outfmt6_header.txt tmp.out > $${id}.filter.blastn.txt
+        rm $${id}.txt blast_outfmt6_header.txt blast_filtered_outfmt6_header.txt tmp.out
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: uni_quast
+    name: QUAST (Unicycler)
+    inputs: [*a_uni_scaffolds, *a_fasta, *a_gff]
+    outputs: [*a_uni_quast]
+    resources: *high
+    executor: *quast
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        fa=$$(ls ${fasta}); gff_file=$$(ls ${gff})
+        rm -rf ${uni_quast} && mkdir -p ${uni_quast} && cd ${uni_quast}
+        ln -s ${uni_scaffolds}/*/*.scaffolds.fa ${fasta}/$$fa ${gff}/$$gff_file .
+        quast.py \
+            --output-dir quast.unicycler \
+            -r $$fa \
+            --features $$gff_file \
+            --threads ${task.resources.cpus} \
+            $$(ls *.scaffolds.fa)
+
+        ln -s quast.unicycler/report.tsv quast.unicycler.tsv
+        [ -f  quast.unicycler/contigs_reports/all_alignments_transcriptome.tsv ] && ln -s quast.unicycler/contigs_reports/all_alignments_transcriptome.tsv quast.unicycler_transcriptome.tsv
+        [ -f  quast.unicycler/contigs_reports/misassemblies_report.tsv         ] && ln -s quast.unicycler/contigs_reports/misassemblies_report.tsv quast.unicycler_misassemblies.tsv
+        [ -f  quast.unicycler/contigs_reports/unaligned_report.tsv             ] && ln -s quast.unicycler/contigs_reports/unaligned_report.tsv quast.unicycler_unaligned.tsv
+        rm *.scaffolds.fa $$fa $$gff_file
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- MultiQC
+  # Links exactly the files the pipeline sends to MULTIQC into numbered
+  # folders. The software versions, workflow summary and methods sections
+  # come from Nextflow run metadata and are not produced here. The unused
+  # inputs mirror Nextflow, where MULTIQC waits on every process through the
+  # versions channel.
+  - kind: horus_task
+    id: multiqc
+    name: MULTIQC
+    inputs:
+      - *a_nfcore
+      - *a_fastqc_raw
+      - *a_fastp
+      - *a_mqc_fastp
+      - *a_kraken2
+      - *a_cutadapt
+      - *a_bowtie2
+      - *a_sort_flagstat
+      - *a_mqc_mapped
+      - *a_trim_flagstat
+      - *a_ivar_vcf
+      - *a_freyja_demix
+      - *a_mosdepth_genome
+      - *a_plot_amplicon
+      - *a_snpeff_ann
+      - *a_vcf_stats
+      - *a_mqc_clade
+      - *a_quast_consensus
+      - *a_pangolin
+      - *a_spades_quast
+      - *a_uni_quast
+      - *a_fastqc_trim
+      - *a_fastqc_cutadapt
+      - *a_picard
+      - *a_plot_genome
+      - *a_freyja_boot
+      - *a_snpeff_stats
+      - *a_snpsift
+      - *a_long_table
+      - *a_base_density
+      - *a_spades_bandage
+      - *a_spades_abacas
+      - *a_spades_filter
+      - *a_uni_bandage
+      - *a_uni_abacas
+      - *a_uni_filter
+      - *a_sort_stats
+      - *a_sort_idxstats
+      - *a_trim_stats
+      - *a_trim_idxstats
+    outputs: [*a_multiqc]
+    resources: *single
+    executor: *multiqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH=${nfcore}/bin:$$PATH
+        rm -rf ${multiqc_out} && mkdir -p ${multiqc_out} && cd ${multiqc_out}
+        n=0
+        stage() { for f in "$$@"; do [ -e "$$f" ] || continue; n=$$((n + 1)); mkdir $$n; ln -s "$$f" $$n/; done; }
+        stage ${fastqc_raw}/*/*_fastqc.zip
+        stage ${fastp}/*/*.fastp.json
+        stage ${mqc_fastp}/fail_mapped_reads_mqc.tsv
+        stage ${kraken2}/*/*.kraken2.report.txt
+        stage ${cutadapt}/*/*.cutadapt.log
+        stage ${bowtie2}/*/*.bowtie2.log
+        stage ${sort_flagstat}/*/*.sorted.bam.flagstat
+        stage ${mqc_mapped}/fail_mapped_samples_mqc.tsv
+        stage ${trim_flagstat}/*/*.flagstat
+        stage ${ivar_vcf}/*/*.variant_counts_mqc.tsv
+        stage ${freyja_demix}/*/*.tsv
+        stage ${mosdepth_genome}/*/*.mosdepth.global.dist.txt
+        stage ${plot_amplicon}/all_samples.mosdepth.heatmap.tsv
+        stage ${snpeff_ann}/*/*.snpeff.csv
+        stage ${vcf_stats}/*/*.bcftools_stats.txt
+        stage ${mqc_clade}/nextclade_clade_mqc.tsv
+        stage ${quast_consensus}/quast.consensus
+        stage ${pangolin}/*/*.pangolin.csv
+        stage ${spades_quast}/quast.spades
+        stage ${uni_quast}/quast.unicycler
+        find . -mindepth 2 -maxdepth 2 | sort -V > /tmp/multiqc_inputs.txt
+        ln -s ${nfcore}/assets/multiqc_config_illumina.yml .
+
+        ## Run MultiQC once to parse tool logs
+        multiqc \
+            --force \
+            -k yaml \
+            --config multiqc_config_illumina.yml \
+            .
+
+        ## Parse YAML files dumped by MultiQC to obtain metrics
+        multiqc_to_custom_csv.py --platform illumina
+
+        ## Manually remove files that we don't want in the report
+        if grep -q ">skip_assembly<" multiqc_report.html; then
+            rm -f *assembly_metrics_mqc.csv
+        fi
+
+        if grep -q ">skip_variants<" multiqc_report.html; then
+            rm -f *variants_metrics_mqc.csv
+        fi
+
+        rm -f variants/report.tsv
+
+        ## Run MultiQC a second time
+            multiqc \
+            --force \
+            -e general_stats --ignore *nextclade_clade_mqc.tsv \
+            --config multiqc_config_illumina.yml \
+            .
+        rm -r $$(seq 1 $$n) multiqc_config_illumina.yml
+        mv /tmp/multiqc_inputs.txt .
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+edges:
+  # inputs
+  - {source: artifact-input_mirror, source_output: input_mirror, target: fetch_reference, target_input: input_mirror}
+  - {source: artifact-fasta_url, source_output: fasta_url, target: fetch_reference, target_input: fasta_url}
+  - {source: artifact-gff_url, source_output: gff_url, target: fetch_reference, target_input: gff_url}
+  - {source: artifact-primer_bed_url, source_output: primer_bed_url, target: fetch_reference, target_input: primer_bed_url}
+  - {source: artifact-kraken2_db_url, source_output: kraken2_db_url, target: fetch_reference, target_input: kraken2_db_url}
+  - {source: artifact-nextclade_dataset_url, source_output: nextclade_dataset_url, target: fetch_reference, target_input: nextclade_dataset_url}
+  - {source: artifact-samplesheet, source_output: samplesheet, target: stage_samples, target_input: samplesheet}
+  - {source: artifact-input_mirror, source_output: input_mirror, target: stage_samples, target_input: input_mirror}
+  # genome
+  - {source: fetch_reference, source_output: reference, target: gunzip_fasta, target_input: reference}
+  - {source: fetch_reference, source_output: reference, target: gunzip_gff, target_input: reference}
+  - {source: fetch_reference, source_output: reference, target: untar_kraken2_db, target_input: reference}
+  - {source: fetch_reference, source_output: reference, target: untar_nextclade_db, target_input: reference}
+  - {source: fetch_reference, source_output: reference, target: collapse_primers, target_input: reference}
+  - {source: artifact-nfcore, source_output: nfcore, target: collapse_primers, target_input: nfcore}
+  - {source: gunzip_fasta, source_output: fasta, target: getchromsizes, target_input: fasta}
+  - {source: fetch_reference, source_output: reference, target: getfasta, target_input: reference}
+  - {source: gunzip_fasta, source_output: fasta, target: getfasta, target_input: fasta}
+  - {source: getfasta, source_output: primer_fasta, target: prepare_primer_fasta, target_input: primer_fasta}
+  - {source: gunzip_fasta, source_output: fasta, target: makeblastdb, target_input: fasta}
+  - {source: gunzip_fasta, source_output: fasta, target: bowtie2_build, target_input: fasta}
+  - {source: gunzip_fasta, source_output: fasta, target: snpeff_build, target_input: fasta}
+  - {source: gunzip_gff, source_output: gff, target: snpeff_build, target_input: gff}
+  # read QC
+  - {source: stage_samples, source_output: samples, target: cat_fastq, target_input: samples}
+  - {source: stage_samples, source_output: reads, target: cat_fastq, target_input: reads}
+  - {source: stage_samples, source_output: samples, target: fastqc_raw, target_input: samples}
+  - {source: cat_fastq, source_output: cat_fastq, target: fastqc_raw, target_input: cat_fastq}
+  - {source: stage_samples, source_output: samples, target: fastp, target_input: samples}
+  - {source: cat_fastq, source_output: cat_fastq, target: fastp, target_input: cat_fastq}
+  - {source: stage_samples, source_output: samples, target: decide_fastp, target_input: samples}
+  - {source: fastp, source_output: fastp, target: decide_fastp, target_input: fastp}
+  - {source: decide_fastp, source_output: fastp_pass, target: fastqc_trim, target_input: fastp_pass}
+  - {source: fastp, source_output: fastp, target: fastqc_trim, target_input: fastp}
+  - {source: decide_fastp, source_output: fastp_pass, target: kraken2, target_input: fastp_pass}
+  - {source: fastp, source_output: fastp, target: kraken2, target_input: fastp}
+  - {source: untar_kraken2_db, source_output: kraken2_db, target: kraken2, target_input: kraken2_db}
+  # alignment
+  - {source: decide_fastp, source_output: fastp_pass, target: bowtie2_align, target_input: fastp_pass}
+  - {source: fastp, source_output: fastp, target: bowtie2_align, target_input: fastp}
+  - {source: bowtie2_build, source_output: bowtie2_idx, target: bowtie2_align, target_input: bowtie2_idx}
+  - {source: gunzip_fasta, source_output: fasta, target: bowtie2_align, target_input: fasta}
+  - {source: decide_fastp, source_output: fastp_pass, target: sort, target_input: fastp_pass}
+  - {source: bowtie2_align, source_output: bowtie2, target: sort, target_input: bowtie2}
+  - {source: gunzip_fasta, source_output: fasta, target: sort, target_input: fasta}
+  - {source: decide_fastp, source_output: fastp_pass, target: sort_index, target_input: fastp_pass}
+  - {source: sort, source_output: sort, target: sort_index, target_input: sort}
+  - {source: decide_fastp, source_output: fastp_pass, target: sort_stats, target_input: fastp_pass}
+  - {source: sort, source_output: sort, target: sort_stats, target_input: sort}
+  - {source: sort_index, source_output: sort_index, target: sort_stats, target_input: sort_index}
+  - {source: gunzip_fasta, source_output: fasta, target: sort_stats, target_input: fasta}
+  - {source: decide_fastp, source_output: fastp_pass, target: sort_flagstat, target_input: fastp_pass}
+  - {source: sort, source_output: sort, target: sort_flagstat, target_input: sort}
+  - {source: sort_index, source_output: sort_index, target: sort_flagstat, target_input: sort_index}
+  - {source: decide_fastp, source_output: fastp_pass, target: sort_idxstats, target_input: fastp_pass}
+  - {source: sort, source_output: sort, target: sort_idxstats, target_input: sort}
+  - {source: sort_index, source_output: sort_index, target: sort_idxstats, target_input: sort_index}
+  - {source: decide_fastp, source_output: fastp_pass, target: decide_mapped, target_input: fastp_pass}
+  - {source: sort_flagstat, source_output: sort_flagstat, target: decide_mapped, target_input: sort_flagstat}
+  - {source: artifact-min_mapped_reads, source_output: min_mapped_reads, target: decide_mapped, target_input: min_mapped_reads}
+  # primer trimming
+  - {source: decide_mapped, source_output: map_pass, target: ivar_trim, target_input: map_pass}
+  - {source: sort, source_output: sort, target: ivar_trim, target_input: sort}
+  - {source: sort_index, source_output: sort_index, target: ivar_trim, target_input: sort_index}
+  - {source: fetch_reference, source_output: reference, target: ivar_trim, target_input: reference}
+  - {source: decide_mapped, source_output: map_pass, target: trim_sort, target_input: map_pass}
+  - {source: ivar_trim, source_output: ivar_trim, target: trim_sort, target_input: ivar_trim}
+  - {source: gunzip_fasta, source_output: fasta, target: trim_sort, target_input: fasta}
+  - {source: decide_mapped, source_output: map_pass, target: trim_index, target_input: map_pass}
+  - {source: trim_sort, source_output: trim_sort, target: trim_index, target_input: trim_sort}
+  - {source: decide_mapped, source_output: map_pass, target: trim_stats, target_input: map_pass}
+  - {source: trim_sort, source_output: trim_sort, target: trim_stats, target_input: trim_sort}
+  - {source: trim_index, source_output: trim_index, target: trim_stats, target_input: trim_index}
+  - {source: gunzip_fasta, source_output: fasta, target: trim_stats, target_input: fasta}
+  - {source: decide_mapped, source_output: map_pass, target: trim_flagstat, target_input: map_pass}
+  - {source: trim_sort, source_output: trim_sort, target: trim_flagstat, target_input: trim_sort}
+  - {source: trim_index, source_output: trim_index, target: trim_flagstat, target_input: trim_index}
+  - {source: decide_mapped, source_output: map_pass, target: trim_idxstats, target_input: map_pass}
+  - {source: trim_sort, source_output: trim_sort, target: trim_idxstats, target_input: trim_sort}
+  - {source: trim_index, source_output: trim_index, target: trim_idxstats, target_input: trim_index}
+  # BAM QC
+  - {source: decide_mapped, source_output: map_pass, target: picard, target_input: map_pass}
+  - {source: trim_sort, source_output: trim_sort, target: picard, target_input: trim_sort}
+  - {source: trim_index, source_output: trim_index, target: picard, target_input: trim_index}
+  - {source: gunzip_fasta, source_output: fasta, target: picard, target_input: fasta}
+  - {source: decide_mapped, source_output: map_pass, target: mosdepth_genome, target_input: map_pass}
+  - {source: trim_sort, source_output: trim_sort, target: mosdepth_genome, target_input: trim_sort}
+  - {source: trim_index, source_output: trim_index, target: mosdepth_genome, target_input: trim_index}
+  - {source: decide_mapped, source_output: map_pass, target: mosdepth_amplicon, target_input: map_pass}
+  - {source: trim_sort, source_output: trim_sort, target: mosdepth_amplicon, target_input: trim_sort}
+  - {source: trim_index, source_output: trim_index, target: mosdepth_amplicon, target_input: trim_index}
+  - {source: collapse_primers, source_output: primer_collapsed, target: mosdepth_amplicon, target_input: primer_collapsed}
+  - {source: mosdepth_genome, source_output: mosdepth_genome, target: plot_mosdepth_genome, target_input: mosdepth_genome}
+  - {source: artifact-nfcore, source_output: nfcore, target: plot_mosdepth_genome, target_input: nfcore}
+  - {source: mosdepth_amplicon, source_output: mosdepth_amplicon, target: plot_mosdepth_amplicon, target_input: mosdepth_amplicon}
+  - {source: artifact-nfcore, source_output: nfcore, target: plot_mosdepth_amplicon, target_input: nfcore}
+  # iVar variants
+  - {source: decide_mapped, source_output: map_pass, target: ivar_variants, target_input: map_pass}
+  - {source: trim_sort, source_output: trim_sort, target: ivar_variants, target_input: trim_sort}
+  - {source: gunzip_fasta, source_output: fasta, target: ivar_variants, target_input: fasta}
+  - {source: gunzip_gff, source_output: gff, target: ivar_variants, target_input: gff}
+  - {source: getchromsizes, source_output: chromsizes, target: ivar_variants, target_input: chromsizes}
+  - {source: decide_mapped, source_output: map_pass, target: decide_ivar, target_input: map_pass}
+  - {source: ivar_variants, source_output: ivar_variants, target: decide_ivar, target_input: ivar_variants}
+  - {source: decide_ivar, source_output: var_pass, target: ivar_vcf, target_input: var_pass}
+  - {source: ivar_variants, source_output: ivar_variants, target: ivar_vcf, target_input: ivar_variants}
+  - {source: gunzip_fasta, source_output: fasta, target: ivar_vcf, target_input: fasta}
+  - {source: artifact-nfcore, source_output: nfcore, target: ivar_vcf, target_input: nfcore}
+  - {source: decide_ivar, source_output: var_pass, target: vcf_sort, target_input: var_pass}
+  - {source: ivar_vcf, source_output: ivar_vcf, target: vcf_sort, target_input: ivar_vcf}
+  - {source: decide_ivar, source_output: var_pass, target: vcf_tbi, target_input: var_pass}
+  - {source: vcf_sort, source_output: vcf_sort, target: vcf_tbi, target_input: vcf_sort}
+  - {source: decide_ivar, source_output: var_pass, target: vcf_stats, target_input: var_pass}
+  - {source: vcf_sort, source_output: vcf_sort, target: vcf_stats, target_input: vcf_sort}
+  - {source: vcf_tbi, source_output: vcf_tbi, target: vcf_stats, target_input: vcf_tbi}
+  - {source: decide_ivar, source_output: var_pass, target: snpeff_ann, target_input: var_pass}
+  - {source: vcf_sort, source_output: vcf_sort, target: snpeff_ann, target_input: vcf_sort}
+  - {source: snpeff_build, source_output: snpeff_db, target: snpeff_ann, target_input: snpeff_db}
+  - {source: gunzip_fasta, source_output: fasta, target: snpeff_ann, target_input: fasta}
+  - {source: decide_ivar, source_output: var_pass, target: snpeff_bgzip, target_input: var_pass}
+  - {source: snpeff_ann, source_output: snpeff_ann, target: snpeff_bgzip, target_input: snpeff_ann}
+  - {source: decide_ivar, source_output: var_pass, target: snpeff_tbi, target_input: var_pass}
+  - {source: snpeff_bgzip, source_output: snpeff_bgzip, target: snpeff_tbi, target_input: snpeff_bgzip}
+  - {source: decide_ivar, source_output: var_pass, target: snpeff_stats, target_input: var_pass}
+  - {source: snpeff_bgzip, source_output: snpeff_bgzip, target: snpeff_stats, target_input: snpeff_bgzip}
+  - {source: snpeff_tbi, source_output: snpeff_tbi, target: snpeff_stats, target_input: snpeff_tbi}
+  - {source: decide_ivar, source_output: var_pass, target: snpsift, target_input: var_pass}
+  - {source: snpeff_bgzip, source_output: snpeff_bgzip, target: snpsift, target_input: snpeff_bgzip}
+  - {source: decide_ivar, source_output: var_pass, target: bcftools_query, target_input: var_pass}
+  - {source: vcf_sort, source_output: vcf_sort, target: bcftools_query, target_input: vcf_sort}
+  - {source: vcf_tbi, source_output: vcf_tbi, target: bcftools_query, target_input: vcf_tbi}
+  # Freyja
+  - {source: decide_mapped, source_output: map_pass, target: freyja_variants, target_input: map_pass}
+  - {source: trim_sort, source_output: trim_sort, target: freyja_variants, target_input: trim_sort}
+  - {source: gunzip_fasta, source_output: fasta, target: freyja_variants, target_input: fasta}
+  - {source: decide_mapped, source_output: map_pass, target: freyja_demix, target_input: map_pass}
+  - {source: freyja_variants, source_output: freyja_variants, target: freyja_demix, target_input: freyja_variants}
+  - {source: freyja_update, source_output: freyja_db, target: freyja_demix, target_input: freyja_db}
+  - {source: decide_mapped, source_output: map_pass, target: freyja_boot, target_input: map_pass}
+  - {source: freyja_variants, source_output: freyja_variants, target: freyja_boot, target_input: freyja_variants}
+  - {source: freyja_update, source_output: freyja_db, target: freyja_boot, target_input: freyja_db}
+  - {source: artifact-freyja_repeats, source_output: freyja_repeats, target: freyja_boot, target_input: freyja_repeats}
+  # consensus
+  - {source: decide_ivar, source_output: var_pass, target: vcf_filter, target_input: var_pass}
+  - {source: vcf_sort, source_output: vcf_sort, target: vcf_filter, target_input: vcf_sort}
+  - {source: vcf_tbi, source_output: vcf_tbi, target: vcf_filter, target_input: vcf_tbi}
+  - {source: decide_ivar, source_output: var_pass, target: filter_tbi, target_input: var_pass}
+  - {source: vcf_filter, source_output: vcf_filter, target: filter_tbi, target_input: vcf_filter}
+  - {source: decide_ivar, source_output: var_pass, target: bed_mask, target_input: var_pass}
+  - {source: vcf_filter, source_output: vcf_filter, target: bed_mask, target_input: vcf_filter}
+  - {source: trim_sort, source_output: trim_sort, target: bed_mask, target_input: trim_sort}
+  - {source: gunzip_fasta, source_output: fasta, target: bed_mask, target_input: fasta}
+  - {source: artifact-nfcore, source_output: nfcore, target: bed_mask, target_input: nfcore}
+  - {source: decide_ivar, source_output: var_pass, target: bed_merge, target_input: var_pass}
+  - {source: bed_mask, source_output: bed_mask, target: bed_merge, target_input: bed_mask}
+  - {source: decide_ivar, source_output: var_pass, target: maskfasta, target_input: var_pass}
+  - {source: bed_merge, source_output: bed_merge, target: maskfasta, target_input: bed_merge}
+  - {source: gunzip_fasta, source_output: fasta, target: maskfasta, target_input: fasta}
+  - {source: decide_ivar, source_output: var_pass, target: bcftools_consensus, target_input: var_pass}
+  - {source: vcf_filter, source_output: vcf_filter, target: bcftools_consensus, target_input: vcf_filter}
+  - {source: filter_tbi, source_output: filter_tbi, target: bcftools_consensus, target_input: filter_tbi}
+  - {source: maskfasta, source_output: maskfasta, target: bcftools_consensus, target_input: maskfasta}
+  - {source: decide_ivar, source_output: var_pass, target: rename_fasta_header, target_input: var_pass}
+  - {source: bcftools_consensus, source_output: consensus_raw, target: rename_fasta_header, target_input: consensus_raw}
+  - {source: decide_ivar, source_output: var_pass, target: nextclade_run, target_input: var_pass}
+  - {source: rename_fasta_header, source_output: consensus, target: nextclade_run, target_input: consensus}
+  - {source: untar_nextclade_db, source_output: nextclade_db, target: nextclade_run, target_input: nextclade_db}
+  - {source: decide_ivar, source_output: var_pass, target: plot_base_density, target_input: var_pass}
+  - {source: rename_fasta_header, source_output: consensus, target: plot_base_density, target_input: consensus}
+  - {source: artifact-nfcore, source_output: nfcore, target: plot_base_density, target_input: nfcore}
+  - {source: decide_ivar, source_output: var_pass, target: pangolin_run, target_input: var_pass}
+  - {source: rename_fasta_header, source_output: consensus, target: pangolin_run, target_input: consensus}
+  - {source: pangolin_updatedata, source_output: pangolin_db, target: pangolin_run, target_input: pangolin_db}
+  - {source: rename_fasta_header, source_output: consensus, target: quast_consensus, target_input: consensus}
+  - {source: gunzip_fasta, source_output: fasta, target: quast_consensus, target_input: fasta}
+  - {source: gunzip_gff, source_output: gff, target: quast_consensus, target_input: gff}
+  - {source: bcftools_query, source_output: bcftools_query, target: make_variants_long_table, target_input: bcftools_query}
+  - {source: snpsift, source_output: snpsift, target: make_variants_long_table, target_input: snpsift}
+  - {source: pangolin_run, source_output: pangolin, target: make_variants_long_table, target_input: pangolin}
+  - {source: artifact-nfcore, source_output: nfcore, target: make_variants_long_table, target_input: nfcore}
+  - {source: nextclade_run, source_output: nextclade, target: decide_clade, target_input: nextclade}
+  # assembly
+  - {source: decide_fastp, source_output: fastp_pass, target: cutadapt, target_input: fastp_pass}
+  - {source: kraken2, source_output: kraken2, target: cutadapt, target_input: kraken2}
+  - {source: prepare_primer_fasta, source_output: adapters, target: cutadapt, target_input: adapters}
+  - {source: decide_fastp, source_output: fastp_pass, target: fastqc_cutadapt, target_input: fastp_pass}
+  - {source: cutadapt, source_output: cutadapt, target: fastqc_cutadapt, target_input: cutadapt}
+  - {source: decide_fastp, source_output: fastp_pass, target: spades, target_input: fastp_pass}
+  - {source: cutadapt, source_output: cutadapt, target: spades, target_input: cutadapt}
+  - {source: decide_fastp, source_output: fastp_pass, target: spades_scaffolds, target_input: fastp_pass}
+  - {source: spades, source_output: spades, target: spades_scaffolds, target_input: spades}
+  - {source: decide_fastp, source_output: fastp_pass, target: spades_gfa, target_input: fastp_pass}
+  - {source: spades, source_output: spades, target: spades_gfa, target_input: spades}
+  - {source: decide_fastp, source_output: fastp_pass, target: spades_bandage, target_input: fastp_pass}
+  - {source: spades_gfa, source_output: spades_gfa, target: spades_bandage, target_input: spades_gfa}
+  - {source: decide_fastp, source_output: fastp_pass, target: spades_abacas, target_input: fastp_pass}
+  - {source: spades_scaffolds, source_output: spades_scaffolds, target: spades_abacas, target_input: spades_scaffolds}
+  - {source: gunzip_fasta, source_output: fasta, target: spades_abacas, target_input: fasta}
+  - {source: decide_fastp, source_output: fastp_pass, target: spades_blastn, target_input: fastp_pass}
+  - {source: spades_scaffolds, source_output: spades_scaffolds, target: spades_blastn, target_input: spades_scaffolds}
+  - {source: makeblastdb, source_output: blast_db, target: spades_blastn, target_input: blast_db}
+  - {source: decide_fastp, source_output: fastp_pass, target: spades_filter, target_input: fastp_pass}
+  - {source: spades_blastn, source_output: spades_blastn, target: spades_filter, target_input: spades_blastn}
+  - {source: artifact-nfcore, source_output: nfcore, target: spades_filter, target_input: nfcore}
+  - {source: spades_scaffolds, source_output: spades_scaffolds, target: spades_quast, target_input: spades_scaffolds}
+  - {source: gunzip_fasta, source_output: fasta, target: spades_quast, target_input: fasta}
+  - {source: gunzip_gff, source_output: gff, target: spades_quast, target_input: gff}
+  - {source: decide_fastp, source_output: fastp_pass, target: unicycler, target_input: fastp_pass}
+  - {source: cutadapt, source_output: cutadapt, target: unicycler, target_input: cutadapt}
+  - {source: decide_fastp, source_output: fastp_pass, target: uni_scaffolds, target_input: fastp_pass}
+  - {source: unicycler, source_output: unicycler, target: uni_scaffolds, target_input: unicycler}
+  - {source: decide_fastp, source_output: fastp_pass, target: uni_gfa, target_input: fastp_pass}
+  - {source: unicycler, source_output: unicycler, target: uni_gfa, target_input: unicycler}
+  - {source: decide_fastp, source_output: fastp_pass, target: uni_bandage, target_input: fastp_pass}
+  - {source: uni_gfa, source_output: uni_gfa, target: uni_bandage, target_input: uni_gfa}
+  - {source: decide_fastp, source_output: fastp_pass, target: uni_abacas, target_input: fastp_pass}
+  - {source: uni_scaffolds, source_output: uni_scaffolds, target: uni_abacas, target_input: uni_scaffolds}
+  - {source: gunzip_fasta, source_output: fasta, target: uni_abacas, target_input: fasta}
+  - {source: decide_fastp, source_output: fastp_pass, target: uni_blastn, target_input: fastp_pass}
+  - {source: uni_scaffolds, source_output: uni_scaffolds, target: uni_blastn, target_input: uni_scaffolds}
+  - {source: makeblastdb, source_output: blast_db, target: uni_blastn, target_input: blast_db}
+  - {source: decide_fastp, source_output: fastp_pass, target: uni_filter, target_input: fastp_pass}
+  - {source: uni_blastn, source_output: uni_blastn, target: uni_filter, target_input: uni_blastn}
+  - {source: artifact-nfcore, source_output: nfcore, target: uni_filter, target_input: nfcore}
+  - {source: uni_scaffolds, source_output: uni_scaffolds, target: uni_quast, target_input: uni_scaffolds}
+  - {source: gunzip_fasta, source_output: fasta, target: uni_quast, target_input: fasta}
+  - {source: gunzip_gff, source_output: gff, target: uni_quast, target_input: gff}
+  # MultiQC
+  - {source: artifact-nfcore, source_output: nfcore, target: multiqc, target_input: nfcore}
+  - {source: fastqc_raw, source_output: fastqc_raw, target: multiqc, target_input: fastqc_raw}
+  - {source: fastp, source_output: fastp, target: multiqc, target_input: fastp}
+  - {source: decide_fastp, source_output: mqc_fastp, target: multiqc, target_input: mqc_fastp}
+  - {source: kraken2, source_output: kraken2, target: multiqc, target_input: kraken2}
+  - {source: cutadapt, source_output: cutadapt, target: multiqc, target_input: cutadapt}
+  - {source: bowtie2_align, source_output: bowtie2, target: multiqc, target_input: bowtie2}
+  - {source: sort_flagstat, source_output: sort_flagstat, target: multiqc, target_input: sort_flagstat}
+  - {source: decide_mapped, source_output: mqc_mapped, target: multiqc, target_input: mqc_mapped}
+  - {source: trim_flagstat, source_output: trim_flagstat, target: multiqc, target_input: trim_flagstat}
+  - {source: ivar_vcf, source_output: ivar_vcf, target: multiqc, target_input: ivar_vcf}
+  - {source: freyja_demix, source_output: freyja_demix, target: multiqc, target_input: freyja_demix}
+  - {source: mosdepth_genome, source_output: mosdepth_genome, target: multiqc, target_input: mosdepth_genome}
+  - {source: plot_mosdepth_amplicon, source_output: plot_amplicon, target: multiqc, target_input: plot_amplicon}
+  - {source: snpeff_ann, source_output: snpeff_ann, target: multiqc, target_input: snpeff_ann}
+  - {source: vcf_stats, source_output: vcf_stats, target: multiqc, target_input: vcf_stats}
+  - {source: decide_clade, source_output: mqc_clade, target: multiqc, target_input: mqc_clade}
+  - {source: quast_consensus, source_output: quast_consensus, target: multiqc, target_input: quast_consensus}
+  - {source: pangolin_run, source_output: pangolin, target: multiqc, target_input: pangolin}
+  - {source: spades_quast, source_output: spades_quast, target: multiqc, target_input: spades_quast}
+  - {source: uni_quast, source_output: uni_quast, target: multiqc, target_input: uni_quast}
+  - {source: fastqc_trim, source_output: fastqc_trim, target: multiqc, target_input: fastqc_trim}
+  - {source: fastqc_cutadapt, source_output: fastqc_cutadapt, target: multiqc, target_input: fastqc_cutadapt}
+  - {source: picard, source_output: picard, target: multiqc, target_input: picard}
+  - {source: plot_mosdepth_genome, source_output: plot_genome, target: multiqc, target_input: plot_genome}
+  - {source: freyja_boot, source_output: freyja_boot, target: multiqc, target_input: freyja_boot}
+  - {source: snpeff_stats, source_output: snpeff_stats, target: multiqc, target_input: snpeff_stats}
+  - {source: snpsift, source_output: snpsift, target: multiqc, target_input: snpsift}
+  - {source: make_variants_long_table, source_output: long_table, target: multiqc, target_input: long_table}
+  - {source: plot_base_density, source_output: base_density, target: multiqc, target_input: base_density}
+  - {source: spades_bandage, source_output: spades_bandage, target: multiqc, target_input: spades_bandage}
+  - {source: spades_abacas, source_output: spades_abacas, target: multiqc, target_input: spades_abacas}
+  - {source: spades_filter, source_output: spades_filter, target: multiqc, target_input: spades_filter}
+  - {source: uni_bandage, source_output: uni_bandage, target: multiqc, target_input: uni_bandage}
+  - {source: uni_abacas, source_output: uni_abacas, target: multiqc, target_input: uni_abacas}
+  - {source: uni_filter, source_output: uni_filter, target: multiqc, target_input: uni_filter}
+  - {source: sort_stats, source_output: sort_stats, target: multiqc, target_input: sort_stats}
+  - {source: sort_idxstats, source_output: sort_idxstats, target: multiqc, target_input: sort_idxstats}
+  - {source: trim_stats, source_output: trim_stats, target: multiqc, target_input: trim_stats}
+  - {source: trim_idxstats, source_output: trim_idxstats, target: multiqc, target_input: trim_idxstats}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
