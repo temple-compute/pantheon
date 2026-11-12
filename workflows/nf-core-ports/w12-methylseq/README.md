@@ -6,7 +6,11 @@ Bisulfite sequencing methylation calls with Bismark: a native port of nf-core/me
 
 ## Overview
 
-Runs the route `nextflow run nf-core/methylseq -r 4.2.0 -profile test,docker` takes, as Horus tasks with the same containers, rendered command lines and per-process cpus/memory: a Bismark (bowtie2) index built from the fasta, FastQC, TrimGalore, Bismark alignment, deduplication and methylation extraction, per-sample and summary Bismark reports, samtools sort/index and MultiQC. Per-sample steps are `horus_map` stages over a list of sample meta files. The workflow has 14 tasks (9 maps).
+Runs the route `nextflow run nf-core/methylseq -r 4.2.0 -profile test,docker` takes, as Horus tasks with the same containers, rendered command lines and per-process cpus/memory: a Bismark (bowtie2) index built from the fasta, FastQC, TrimGalore, Bismark alignment, deduplication and methylation extraction, per-sample and summary Bismark reports, samtools sort/index and MultiQC. Per-sample steps are `horus_map` stages over a list of sample meta files. The workflow has 14 tasks (8 maps).
+
+## Variants
+
+- `workflow.chained.yaml`: per-sample maps after TrimGalore set `chain: true`, so a sample moves to its next step without waiting for the others, with the same outputs. Needs horus-runtime 0.9.0 or later.
 
 ## Pipeline
 
