@@ -8,6 +8,10 @@ ChIP-seq peak calling and QC: a native port of nf-core/chipseq 2.1.0.
 
 Runs the route `nextflow run nf-core/chipseq -r 2.1.0 -profile test,docker` takes, as Horus tasks with the same containers, rendered command lines and per-process cpus/memory: TrimGalore, BWA, Picard merge and MarkDuplicates, BAMTools filtering and orphan removal, Picard metrics, phantompeakqualtools, bigWigs, deepTools, MACS3 broad peaks with FRiP and HOMER annotation, consensus peaks with featureCounts and DESeq2 QC, an IGV session and MultiQC. Per-library, per-sample, per-IP and per-antibody steps are `horus_map` stages over lists of meta files. The pipeline's Groovy logic runs as tasks too: the samplesheet check, the library-to-sample merge, IP/control pairing, the empty-peaks filter and the consensus grouping per antibody, so other samplesheets work as well. The workflow has 53 tasks (40 maps).
 
+## Variants
+
+- `workflow.chained.yaml`: the per-library, per-sample and per-antibody maps set `chain: true`, so a library or sample moves to its next step without waiting for the others, with the same outputs. FRiP and HOMER drop an IP with no peaks themselves (`drop_exit_codes`). It needs horus-runtime 0.9.0 or later.
+
 ## Pipeline
 
 ```
