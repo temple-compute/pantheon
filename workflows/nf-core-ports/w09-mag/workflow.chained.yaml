@@ -1,0 +1,1891 @@
+kind: horus_workflow
+name: nf-core mag chained
+
+# Native port of nf-core/mag 5.5.0, the route `-profile test,docker` runs:
+# FastQC, fastp and Bowtie2 PhiX removal per run, CAT_FASTQ for multi-run
+# samples, MEGAHIT and metaSPAdes per sample, QUAST and Prodigal per assembly,
+# Bowtie2 mapping of every sample of a group to each assembly, MetaBAT2,
+# MaxBin2 and SemiBin2 binning, SPLIT_FASTA of unbinned contigs, then BUSCO,
+# QUAST, CAT, GTDB-Tk and Prokka on the bins, bin depths, the bin summary and
+# MultiQC. Images, rendered command lines (ext.args from conf/modules.config
+# and conf/test.config) and per-process cpus/memory are the executed ones; the
+# test profile caps every process at 4 cpus / 15 GB.
+#
+# Every command runs under `bash -C -e -u -o pipefail`, the pipeline's
+# process.shell: each command writes its script to /tmp/.command.sh and runs
+# it with bash, as .command.run does. The executors set the pipeline's `env`
+# block (PYTHONNOUSERSITE, R_PROFILE_USER, R_ENVIRON_USER, JULIA_DEPOT_PATH).
+# Commands link their inputs into the output folder under the names Nextflow
+# stages, run the rendered script, and remove the links.
+#
+# Per-run, per-sample and per-assembly steps are horus_map stages over folders
+# of meta files written by stage_samples (bash-sourceable, named by the
+# Nextflow tag). After binning, scripts/decide.py turns the channel logic
+# (bin size filter, unbinned splits, post-binning sets, BUSCO filter for
+# GTDB-Tk) into folders of item folders named by the Nextflow prefix. Map
+# slots are numbered, so every output file carries its id and a downstream
+# step finds it as <upstream>/*/<name>.
+#
+# Chained variant of workflow.yaml: same commands and outputs. Maps that share
+# an item space set `chain: true` and iterate the upstream map's slots, so a
+# clone starts as soon as its upstream item is done, not when the whole map
+# is: fastp -> PhiX removal -> FastQC (per run); gunzip -> QUAST, Prodigal,
+# Bowtie2 index (per assembly); contig depths -> CONVERT_DEPTHS -> MaxBin2 and
+# contig depths -> MetaBAT2. After binning, bins and unbinned contigs share one
+# item space (one item per post-binning set): SeqKit or SPLIT_FASTA -> the bin
+# size filter -> BUSCO -> GTDB-Tk, QUAST, and the CAT bins and unbinned
+# chains, so each set streams on as Nextflow's channels do. The Groovy filters
+# drop an item with exit code 10 (drop_exit_codes). A chained body reads only
+# its own slot (${item}, or a slot of another map paired by `zip`), and takes
+# the assembly or set name from its meta.env or file names. Steps that join
+# items stay tasks: collecting the three binners' outputs into sets, and the
+# per-bin Prokka list, the depth groups and contig_to_bin_map (post-sets).
+# Needs a runtime with map chaining (horus_map chain, zip, drop_exit_codes).
+#
+# capacity: memory-based admission like Nextflow's local executor. The key is
+# the target's location_id (local://<hostname>); set it to the host that runs
+# the tasks, or the gate does not apply.
+
+capacity:
+  local://ubuntu-awow:
+    cpus: 16
+    memory_gb: 30
+max_concurrency: 16
+
+_target: &target
+  kind: local
+
+# Run on a remote node instead: point every task at this anchor.
+# _target: &target
+#   kind: ssh
+#   host: bench-node.example.org
+#   username: ubuntu
+#   working_directory: /home/ubuntu/horus
+
+# nextflow.config `env` block.
+_env: &nfenv
+  PYTHONNOUSERSITE: "1"
+  R_PROFILE_USER: /.Rprofile
+  R_ENVIRON_USER: /.Renviron
+  JULIA_DEPOT_PATH: /usr/local/share/julia
+
+# Containers (.command.run docker lines); `user: host` runs them as the
+# calling user, as nf-core's `-u $(id -u):$(id -g)` does.
+_img:
+  coreutils: &coreutils {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/coreutils_grep_gzip_lbzip2_pruned:838ba80435a629f8"}
+  fastqc: &fastqc {kind: docker, user: host, env: *nfenv, image: "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0"}
+  fastp: &fastp {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/fastp:1.0.1--c8b87fe62dcc103c"}
+  bowtie2: &bowtie2 {kind: docker, user: host, env: *nfenv, image: "quay.io/biocontainers/bowtie2:2.4.2--py38h1c8e9b9_1"}
+  bowtie2_samtools: &bowtie2_samtools {kind: docker, user: host, env: *nfenv, image: "quay.io/biocontainers/mulled-v2-ac74a7f02cebcfcc07d8e8d1d750af9c83b4d45a:577a697be67b5ae9b16f637fd723b8263a3898b3-0"}
+  megahit: &megahit {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/megahit_pigz:87a590163e594224"}
+  spades: &spades {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/spades:4.1.0--77799c52e1d1054a"}
+  quast: &quast {kind: docker, user: host, env: *nfenv, image: "quay.io/biocontainers/quast:5.0.2--py37pl526hb5aa323_2"}
+  prodigal: &prodigal {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/prodigal_pigz:27b5cdb2d516f347"}
+  metabat2_215: &metabat2_215 {kind: docker, user: host, env: *nfenv, image: "quay.io/biocontainers/metabat2:2.15--h986a166_1"}
+  metabat2_217: &metabat2_217 {kind: docker, user: host, env: *nfenv, image: "quay.io/biocontainers/metabat2:2.17--hd498684_0"}
+  bioawk: &bioawk {kind: docker, user: host, env: *nfenv, image: "quay.io/biocontainers/bioawk:1.0--hed695b0_5"}
+  maxbin2: &maxbin2 {kind: docker, user: host, env: *nfenv, image: "quay.io/biocontainers/maxbin2:2.2.7--he1b5a44_2"}
+  semibin: &semibin {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/semibin_igraph:fcb667d6c87bf3fd"}
+  seqkit: &seqkit {kind: docker, user: host, env: *nfenv, image: "quay.io/biocontainers/seqkit:2.9.0--h9ee0642_0"}
+  pybio: &pybio {kind: docker, user: host, env: *nfenv, image: "quay.io/biocontainers/mulled-v2-e25d1fa2bb6cbacd47a4f8b2308bd01ba38c5dd7:75310f02364a762e6ba5206fcd11d7529534ed6e-0"}
+  busco: &busco {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/busco:6.1.0--6d1f7006d91892b3"}
+  qsv: &qsv {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/qsv:5.1.0--9a6a0c23d3b279b5"}
+  gtdbtk: &gtdbtk {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/gtdbtk:2.7.2--64b0fd171db01270"}
+  pandas: &pandas {kind: docker, user: host, env: *nfenv, image: "quay.io/biocontainers/pandas:1.4.3"}
+  catpack: &catpack {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/cat_gzip:0ab95a62b35744c9"}
+  cat: &cat {kind: docker, user: host, env: *nfenv, image: "quay.io/biocontainers/cat:6.0.1--hdfd78af_1"}
+  pigz: &pigz {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/findutils_pigz:c4dd5edc44402661"}
+  prokka: &prokka {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/prokka_openjdk_parallel:f21b98bcef4c3579"}
+  multiqc: &multiqc {kind: docker, user: host, env: *nfenv, image: "community.wave.seqera.io/library/multiqc:1.34--db7c73dae76bc9e6"}
+
+# trace.txt cpus / memory per process (base.config labels under the test
+# profile's resourceLimits).
+_res:
+  c1m1: &c1m1 {cpus: 1, memory_gb: 1, walltime: "01:00:00"}
+  c1m2: &c1m2 {cpus: 1, memory_gb: 2, walltime: "01:00:00"}
+  c1m4: &c1m4 {cpus: 1, memory_gb: 4, walltime: "01:00:00"}
+  c1m6: &c1m6 {cpus: 1, memory_gb: 6, walltime: "01:00:00"}
+  c1m7: &c1m7 {cpus: 1, memory_gb: 7, walltime: "01:00:00"}
+  c1m15: &c1m15 {cpus: 1, memory_gb: 15, walltime: "01:00:00"}
+  c2m4: &c2m4 {cpus: 2, memory_gb: 4, walltime: "01:00:00"}
+  c2m12: &c2m12 {cpus: 2, memory_gb: 12, walltime: "01:00:00"}
+  c2m15: &c2m15 {cpus: 2, memory_gb: 15, walltime: "01:00:00"}
+  c4m2: &c4m2 {cpus: 4, memory_gb: 2, walltime: "01:00:00"}
+  c4m8: &c4m8 {cpus: 4, memory_gb: 8, walltime: "01:00:00"}
+  c4m12: &c4m12 {cpus: 4, memory_gb: 12, walltime: "01:00:00"}
+  c4m15: &c4m15 {cpus: 4, memory_gb: 15, walltime: "01:00:00"}
+
+# Artifacts, shared by the producing task's outputs and every consumer's inputs.
+_art:
+  - &a_samplesheet {id: samplesheet, name: Samplesheet, kind: file, path: examples/samplesheet.csv}
+  - &a_nfcore {id: nfcore, name: nf-core/mag files, kind: folder, path: nfcore/}
+  - &a_mirror {id: input_mirror, name: Local input mirror, kind: string, path: params/input_mirror.txt}
+  - &a_busco_url {id: busco_db_url, name: BUSCO database, kind: string, path: params/busco_db_url.txt}
+  - &a_busco_lineage {id: busco_db_lineage, name: BUSCO lineage, kind: string, path: params/busco_db_lineage.txt}
+  - &a_cat_url {id: cat_db_url, name: CAT database, kind: string, path: params/cat_db_url.txt}
+  - &a_gtdb_url {id: gtdb_db_url, name: GTDB-Tk database, kind: string, path: params/gtdb_db_url.txt}
+  - &a_min_len_unbinned {id: min_length_unbinned_contigs, name: Min length of unbinned contigs, kind: number, path: params/min_length_unbinned_contigs.json}
+  - &a_max_unbinned {id: max_unbinned_contigs, name: Max unbinned contigs, kind: number, path: params/max_unbinned_contigs.json}
+  - &a_bin_min {id: bin_min_size, name: Min bin size, kind: number, path: params/bin_min_size.json}
+  - &a_bin_max {id: bin_max_size, name: Max bin size, kind: number, path: params/bin_max_size.json}
+  - &a_gtdb_comp {id: gtdbtk_min_completeness, name: GTDB-Tk min completeness, kind: number, path: params/gtdbtk_min_completeness.json}
+  - &a_gtdb_cont {id: gtdbtk_max_contamination, name: GTDB-Tk max contamination, kind: number, path: params/gtdbtk_max_contamination.json}
+  - &a_reads {id: reads, name: Reads, kind: folder, path: work/reads/}
+  - &a_runs {id: runs, name: Runs, kind: folder, path: work/lists/runs/}
+  - &a_samples {id: samples, name: Samples, kind: folder, path: work/lists/samples/}
+  - &a_multi_run {id: multi_run, name: Multi-run samples, kind: folder, path: work/lists/multi_run/}
+  - &a_assemblies {id: assemblies, name: Assemblies, kind: folder, path: work/lists/assemblies/}
+  - &a_aligns {id: aligns, name: Assembly-sample pairs, kind: folder, path: work/lists/aligns/}
+  - &a_dbs {id: dbs, name: Database archives, kind: folder, path: work/databases/}
+  - &a_busco_db {id: busco_db, name: BUSCO lineage, kind: folder, path: work/busco_db/}
+  - &a_cat_db {id: cat_db, name: CAT database, kind: folder, path: work/cat_db/}
+  - &a_gtdb_db {id: gtdb_db, name: GTDB-Tk database, kind: folder, path: work/gtdb_db/}
+  - &a_fastqc_raw {id: fastqc_raw, name: FastQC raw, kind: folder, path: results/QC_shortreads/fastqc_raw/}
+  - &a_fastp {id: fastp, name: fastp, kind: folder, path: results/QC_shortreads/fastp/}
+  - &a_phix_index {id: phix_index, name: PhiX index, kind: folder, path: work/phix_index/}
+  - &a_phix {id: phix, name: PhiX removal, kind: folder, path: results/QC_shortreads/remove_phix/}
+  - &a_fastqc_trimmed {id: fastqc_trimmed, name: FastQC trimmed, kind: folder, path: results/QC_shortreads/fastqc_trimmed/}
+  - &a_cat_fastq {id: cat_fastq, name: Merged runs, kind: folder, path: work/cat_fastq/}
+  - &a_megahit {id: megahit, name: MEGAHIT, kind: folder, path: results/Assembly/MEGAHIT/}
+  - &a_spades {id: spades, name: metaSPAdes, kind: folder, path: results/Assembly/SPAdes/}
+  - &a_gunzip {id: gunzip, name: Assemblies (plain fasta), kind: folder, path: work/assemblies/}
+  - &a_quast {id: quast, name: QUAST assemblies, kind: folder, path: results/Assembly/QC/}
+  - &a_prodigal {id: prodigal, name: Prodigal, kind: folder, path: results/Annotation/Prodigal/}
+  - &a_bt2_build {id: bt2_build, name: Assembly Bowtie2 indexes, kind: folder, path: work/bt2_index/}
+  - &a_bt2_align {id: bt2_align, name: Assembly mappings, kind: folder, path: work/bt2_align/}
+  - &a_depths {id: depths, name: Contig depths, kind: folder, path: results/GenomeBinning/depths/contigs/}
+  - &a_convert_depths {id: convert_depths, name: MaxBin2 abundances, kind: folder, path: work/convert_depths/}
+  - &a_metabat2 {id: metabat2, name: MetaBAT2, kind: folder, path: results/GenomeBinning/MetaBAT2/}
+  - &a_maxbin2 {id: maxbin2, name: MaxBin2, kind: folder, path: results/GenomeBinning/MaxBin2/}
+  - &a_semibin {id: semibin, name: SemiBin2, kind: folder, path: results/GenomeBinning/SemiBin2/}
+  - &a_sets {id: sets, name: Bin and unbinned contig sets, kind: folder, path: work/lists/sets/}
+  - &a_seqkit {id: seqkit, name: SeqKit stats, kind: folder, path: work/seqkit/}
+  - &a_split_fasta {id: split_fasta, name: Split unbinned contigs, kind: folder, path: results/GenomeBinning/unbinned/}
+  - &a_post {id: post, name: Post-binning sets, kind: folder, path: work/lists/post/}
+  - &a_bins {id: bins, name: Bins, kind: folder, path: work/lists/bins/}
+  - &a_depthsets {id: depthsets, name: Bin depth groups, kind: folder, path: work/lists/depthsets/}
+  - &a_contig_map {id: contig_map, name: Contig to bin map, kind: file, path: results/GenomeBinning/contig_to_bin/contig_to_bin_map.tsv}
+  - &a_busco {id: busco, name: BUSCO, kind: folder, path: results/GenomeBinning/QC/BUSCO/}
+  - &a_quast_bins {id: quast_bins, name: QUAST bins, kind: folder, path: results/GenomeBinning/QC/QUAST/}
+  - &a_concat_quast {id: concat_quast, name: QUAST bin summary, kind: folder, path: results/GenomeBinning/QC/quast_summary/}
+  - &a_concat_busco {id: concat_busco, name: BUSCO summary, kind: folder, path: results/GenomeBinning/QC/busco_summary/}
+  - &a_gtdb_sets {id: gtdb_sets, name: Bin sets for GTDB-Tk, kind: folder, path: work/lists/gtdb_sets/}
+  - &a_discarded {id: discarded, name: Bins discarded by BUSCO QC, kind: file, path: work/gtdb/discarded.txt}
+  - &a_gtdbtk {id: gtdbtk, name: GTDB-Tk, kind: folder, path: results/Taxonomy/GTDB-Tk/}
+  - &a_gtdbtk_summary {id: gtdbtk_summary, name: GTDB-Tk summary, kind: folder, path: results/Taxonomy/GTDB-Tk_summary/}
+  - &a_mag_depths {id: mag_depths, name: Bin depths, kind: folder, path: results/GenomeBinning/depths/bins/}
+  - &a_mag_depths_summary {id: mag_depths_summary, name: Bin depths summary, kind: folder, path: results/GenomeBinning/depths/summary/}
+  - &a_catpack_bins {id: catpack_bins, name: CAT bins, kind: folder, path: results/Taxonomy/CAT/bins/}
+  - &a_catpack_names_bins {id: catpack_names_bins, name: CAT bin names, kind: folder, path: results/Taxonomy/CAT/bins_names/}
+  - &a_catpack_summary_bins {id: catpack_summary_bins, name: CAT bin summaries, kind: folder, path: results/Taxonomy/CAT/bins_summary/}
+  - &a_concat_unbins {id: concat_unbins, name: Concatenated unbinned contigs, kind: folder, path: work/concat_unbins/}
+  - &a_catpack_unbins {id: catpack_unbins, name: CAT unbinned, kind: folder, path: results/Taxonomy/CAT/unbins/}
+  - &a_catpack_names_unbins {id: catpack_names_unbins, name: CAT unbinned names, kind: folder, path: results/Taxonomy/CAT/unbins_names/}
+  - &a_catpack_summary_unbins {id: catpack_summary_unbins, name: CAT unbinned summaries, kind: folder, path: results/Taxonomy/CAT/unbins_summary/}
+  - &a_prokka {id: prokka, name: Prokka, kind: folder, path: results/Annotation/Prokka/}
+  - &a_bin_summary {id: bin_summary, name: Bin summary, kind: folder, path: results/GenomeBinning/summary/}
+  - &a_multiqc {id: multiqc, name: MultiQC report, kind: folder, path: results/multiqc/}
+
+artifacts:
+  - <<: *a_samplesheet
+    description: >-
+      nf-core/mag samplesheet (sample,run,group,short_reads_platform,short_reads_1,
+      short_reads_2,long_reads), paired short reads only. Reads may be URLs or paths
+      relative to the samplesheet; rows sharing a sample are runs of one sample.
+      Default: the test profile samplesheet (3 runs, 2 samples).
+  - <<: *a_nfcore
+    description: nf-core/mag 5.5.0 bin/ scripts, assets/multiqc_config.yml and the PhiX reference (MIT).
+  - <<: *a_mirror
+    description: >-
+      Folder searched for each input file by name before downloading it (e.g. a
+      local copy of the test data). Empty downloads everything.
+    value: ""
+    pattern: '[^"`$\\]*'
+  - {<<: *a_busco_url, pattern: '[^"`$\\]*', description: "--busco_db (.tar.gz)", value: "https://raw.githubusercontent.com/nf-core/test-datasets/mag/databases/busco/bacteria_odb10.2024-01-08.tar.gz"}
+  - {<<: *a_busco_lineage, pattern: '[A-Za-z0-9_.-]+', description: "--busco_db_lineage", value: "bacteria_odb10"}
+  - {<<: *a_cat_url, pattern: '[^"`$\\]*', description: "--cat_db (.tar.gz with db/ and tax/)", value: "https://raw.githubusercontent.com/nf-core/test-datasets/mag/databases/cat/minigut_cat.tar.gz"}
+  - {<<: *a_gtdb_url, pattern: '[^"`$\\]*', description: "--gtdb_db (.tar.gz)", value: "https://raw.githubusercontent.com/nf-core/test-datasets/mag/databases/gtdbtk/gtdbtk_mockup_r232_20260507.tar.gz"}
+  - {<<: *a_min_len_unbinned, value: 1, min: 1, description: "--min_length_unbinned_contigs"}
+  - {<<: *a_max_unbinned, value: 2, min: 1, description: "--max_unbinned_contigs"}
+  - {<<: *a_bin_min, value: 0, min: 0, description: "--bin_min_size (bp)"}
+  - {<<: *a_bin_max, value: 0, min: 0, description: "--bin_max_size (bp); 0 for no maximum"}
+  - {<<: *a_gtdb_comp, value: 0.01, min: 0, max: 100, description: "--gtdbtk_min_completeness (BUSCO % complete)"}
+  - {<<: *a_gtdb_cont, value: 10.0, min: 0, max: 100, description: "--gtdbtk_max_contamination (BUSCO % duplicated)"}
+
+tasks:
+  # ---------------------------------------------------------------- inputs
+  - kind: horus_task
+    id: stage_samples
+    name: Split the samplesheet
+    description: Downloads the reads per run and writes the run, sample, assembly and mapping lists.
+    inputs: [*a_samplesheet, *a_mirror]
+    outputs: [*a_reads, *a_runs, *a_samples, *a_multi_run, *a_assemblies, *a_aligns]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: >-
+        samples --samplesheet ${samplesheet} --mirror ${input_mirror} --reads ${reads} --runs ${runs}
+        --samples ${samples} --multi-run ${multi_run} --assemblies ${assemblies} --aligns ${aligns}
+    target: *target
+
+  - kind: horus_task
+    id: fetch_databases
+    name: Fetch databases
+    description: Downloads the BUSCO, CAT and GTDB-Tk database archives.
+    inputs: [*a_busco_url, *a_cat_url, *a_gtdb_url, *a_mirror]
+    outputs: [*a_dbs]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: databases --out ${dbs} --mirror ${input_mirror} ${busco_db_url} ${cat_db_url} ${gtdb_db_url}
+    target: *target
+
+  - kind: horus_task
+    id: busco_untar
+    name: BUSCO_UNTAR
+    inputs: [*a_dbs, *a_busco_url, *a_busco_lineage]
+    outputs: [*a_busco_db]
+    resources: *c1m6
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        f=$$(basename ${busco_db_url}); lineage=${busco_db_lineage}
+        rm -rf ${busco_db} && mkdir -p ${busco_db} && cd ${busco_db}
+        ln -s ${dbs}/$$f $$f
+        mkdir -p busco_db/lineages/$$lineage
+
+        ## Ensures --strip-components only applied when top level of tar contents is a directory
+        ## If just files or multiple directories, place all in prefix
+        if [[ $$(tar -taf $$f | grep -o -P "^.*?\/" | uniq | wc -l) -eq 1 ]]; then
+            tar \
+                -C busco_db/lineages/$$lineage --strip-components 1 \
+                -xavf \
+                 \
+                $$f \
+
+        else
+            tar \
+                -C busco_db/lineages/$$lineage \
+                -xavf \
+                 \
+                $$f \
+
+        fi
+        rm $$f
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: cat_untar
+    name: CATPACK_DB_UNTAR
+    inputs: [*a_dbs, *a_cat_url]
+    outputs: [*a_cat_db]
+    resources: *c1m6
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        f=$$(basename ${cat_db_url})
+        rm -rf ${cat_db} && mkdir -p ${cat_db} && cd ${cat_db}
+        ln -s ${dbs}/$$f $$f
+        mkdir -p ./cat_db
+
+        ## Ensures --strip-components only applied when top level of tar contents is a directory
+        ## If just files or multiple directories, place all in prefix
+        if [[ $$(tar -taf $$f | grep -o -P "^.*?\/" | uniq | wc -l) -eq 1 ]]; then
+            tar \
+                -C ./cat_db --strip-components 1 \
+                -xavf \
+                 \
+                $$f \
+
+        else
+            tar \
+                -C ./cat_db \
+                -xavf \
+                 \
+                $$f \
+
+        fi
+        rm $$f
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: gtdb_prep
+    name: GTDBTK_DB_PREPARATION
+    inputs: [*a_dbs, *a_gtdb_url]
+    outputs: [*a_gtdb_db]
+    resources: *c1m7
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        f=$$(basename ${gtdb_db_url})
+        rm -rf ${gtdb_db} && mkdir -p ${gtdb_db} && cd ${gtdb_db}
+        ln -s ${dbs}/$$f $$f
+        mkdir database
+        tar -xzf $$f -C database --strip 1
+        rm $$f
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # -------------------------------------------------- short read QC per run
+  # FASTQC_RAW: reads are linked as <id>_run<run>_raw_<n>.gz, as the module does.
+  - kind: horus_map
+    id: fastqc_raw
+    name: FASTQC_RAW
+    over: {input_id: runs, as: item}
+    max_concurrency: 16
+    inputs: [*a_runs, *a_reads]
+    outputs: [*a_fastqc_raw]
+    resources: *c2m12
+    executor: *fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}; rid=$$(basename ${item})
+        mem=$$(( ${task.resources.memory_gb} * 1024 / ${task.resources.cpus} ))
+        [ $$mem -gt 10000 ] && mem=10000
+        [ $$mem -lt 100 ] && mem=100
+        rm -rf ${fastqc_raw} && mkdir -p ${fastqc_raw}/1 ${fastqc_raw}/2 && cd ${fastqc_raw}
+        ln -s ${reads}/$$rid/$$r1 1/$$r1; ln -s ${reads}/$$rid/$$r2 2/$$r2
+        printf "%s %s\n" 1/$$r1 $${rid}_raw_1.gz 2/$$r2 $${rid}_raw_2.gz | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            --memory $$mem \
+            $${rid}_raw_1.gz $${rid}_raw_2.gz
+        rm -r 1 2 $${rid}_raw_1.gz $${rid}_raw_2.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: fastp
+    name: FASTP
+    over: {input_id: runs, as: item}
+    max_concurrency: 16
+    inputs: [*a_runs, *a_reads]
+    outputs: [*a_fastp]
+    resources: *c4m8
+    executor: *fastp
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}; p=$$(basename ${item})_fastp
+        rm -rf ${fastp} && mkdir -p ${fastp} && cd ${fastp}
+        ln -s ${reads}/$$(basename ${item})/$$r1 $$r1; ln -s ${reads}/$$(basename ${item})/$$r2 $$r2
+        [ ! -f  $${p}_1.fastq.gz ] && ln -sf $$r1 $${p}_1.fastq.gz
+        [ ! -f  $${p}_2.fastq.gz ] && ln -sf $$r2 $${p}_2.fastq.gz
+        fastp \
+            --in1 $${p}_1.fastq.gz \
+            --in2 $${p}_2.fastq.gz \
+            --out1 $${p}_1.fastp.fastq.gz \
+            --out2 $${p}_2.fastp.fastq.gz \
+            --json $${p}.fastp.json \
+            --html $${p}.fastp.html \
+             \
+             \
+             \
+            --thread ${task.resources.cpus} \
+            --detect_adapter_for_pe \
+            -q 15 --cut_front --cut_tail --cut_mean_quality 15 --length_required 15 \
+            2>| >(tee $${p}.fastp.log >&2)
+        wait
+        rm $$r1 $$r2 $${p}_1.fastq.gz $${p}_2.fastq.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: phix_build
+    name: BOWTIE2_PHIX_REMOVAL_BUILD
+    inputs: [*a_nfcore]
+    outputs: [*a_phix_index]
+    resources: *c1m7
+    executor: *bowtie2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${phix_index} && mkdir -p ${phix_index} && cd ${phix_index}
+        ln -s ${nfcore}/assets/data/GCA_002596845.1_ASM259684v1_genomic.fna.gz .
+        mkdir bowtie
+        bowtie2-build --threads ${task.resources.cpus} GCA_002596845.1_ASM259684v1_genomic.fna.gz GCA_002596845
+        rm GCA_002596845.1_ASM259684v1_genomic.fna.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: phix_align
+    name: BOWTIE2_PHIX_REMOVAL_ALIGN
+    over: {input_id: fastp, as: item}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_runs, *a_fastp, *a_phix_index]
+    outputs: [*a_phix]
+    resources: *c4m2
+    executor: *bowtie2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rid=$$(basename ${item}/*.fastp.json .fastp.json); rid=$${rid%_fastp}; p=$${rid}_phix_removed
+        rm -rf ${phix} && mkdir -p ${phix} && cd ${phix}
+        for f in ${phix_index}/*.bt2 ${item}/$${rid}_fastp_[12].fastp.fastq.gz; do ln -s $$f $$(basename $$f); done
+        INDEX=`find -L ./ -name "*.rev.1.bt2" | sed "s/\.rev.1.bt2$$//"`
+        [ -z "$$INDEX" ] && INDEX=`find -L ./ -name "*.rev.1.bt2l" | sed "s/\.rev.1.bt2l$$//"`
+        [ -z "$$INDEX" ] && echo "Bowtie2 index files not found" 1>&2 && exit 1
+
+        bowtie2 -p ${task.resources.cpus}                 -x $$INDEX                 -1 "$${rid}_fastp_1.fastp.fastq.gz" -2 "$${rid}_fastp_2.fastp.fastq.gz"                                  --un-conc-gz $${p}.unmapped_%.fastq.gz                 --al-conc-gz $${p}.mapped_%.fastq.gz                 1> /dev/null                 2> $${p}.bowtie2.log
+        if [ N = "Y" ] ; then
+            gunzip -c $${p}.mapped_1.fastq.gz | awk '{if(NR%4==1) print substr($$0, 2)}' | LC_ALL=C sort > $${p}.mapped_1.read_ids.txt
+            gunzip -c $${p}.mapped_2.fastq.gz | awk '{if(NR%4==1) print substr($$0, 2)}' | LC_ALL=C sort > $${p}.mapped_2.read_ids.txt
+        fi
+        rm -f $${p}.mapped_*.fastq.gz
+        rm *.bt2 $${rid}_fastp_[12].fastp.fastq.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: fastqc_trimmed
+    name: FASTQC_TRIMMED
+    over: {input_id: phix, as: item}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_runs, *a_phix]
+    outputs: [*a_fastqc_trimmed]
+    resources: *c2m12
+    executor: *fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rid=$$(basename ${item}/*_phix_removed.bowtie2.log _phix_removed.bowtie2.log); p=$${rid}_phix_removed.unmapped
+        mem=$$(( ${task.resources.memory_gb} * 1024 / ${task.resources.cpus} ))
+        [ $$mem -gt 10000 ] && mem=10000
+        [ $$mem -lt 100 ] && mem=100
+        rm -rf ${fastqc_trimmed} && mkdir -p ${fastqc_trimmed}/1 ${fastqc_trimmed}/2 && cd ${fastqc_trimmed}
+        ln -s ${item}/$${p}_1.fastq.gz 1/; ln -s ${item}/$${p}_2.fastq.gz 2/
+        printf "%s %s\n" 1/$${p}_1.fastq.gz $${rid}_trimmed_1.gz 2/$${p}_2.fastq.gz $${rid}_trimmed_2.gz | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            --memory $$mem \
+            $${rid}_trimmed_1.gz $${rid}_trimmed_2.gz
+        rm -r 1 2 $${rid}_trimmed_1.gz $${rid}_trimmed_2.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # CAT_FASTQ: runs in samplesheet row order (Nextflow: arrival order).
+  - kind: horus_map
+    id: cat_fastq
+    name: CAT_FASTQ
+    over: {input_id: multi_run, as: item}
+    max_concurrency: 16
+    inputs: [*a_multi_run, *a_phix]
+    outputs: [*a_cat_fastq]
+    resources: *c1m6
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}
+        rm -rf ${cat_fastq} && mkdir -p ${cat_fastq} && cd ${cat_fastq}
+        n=0; r1=""; r2=""
+        for rid in $$runs; do
+            mkdir input$$((n + 1)) input$$((n + 2))
+            ln -s ${phix}/*/$${rid}_phix_removed.unmapped_1.fastq.gz input$$((n + 1))/
+            ln -s ${phix}/*/$${rid}_phix_removed.unmapped_2.fastq.gz input$$((n + 2))/
+            r1="$$r1 input$$((n + 1))/$${rid}_phix_removed.unmapped_1.fastq.gz"
+            r2="$$r2 input$$((n + 2))/$${rid}_phix_removed.unmapped_2.fastq.gz"
+            n=$$((n + 2))
+        done
+        cat $$r1 > $${id}_1.merged.fastq.gz
+        cat $$r2 > $${id}_2.merged.fastq.gz
+        rm -r input*
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------- assembly per sample
+  # Reads per sample: CAT_FASTQ output for multi-run samples, else the run's
+  # PhiX-removed reads (SHORTREAD_PREPROCESSING skip_cat branch).
+  - kind: horus_map
+    id: megahit
+    name: MEGAHIT
+    over: {input_id: samples, as: item}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_phix, *a_cat_fastq]
+    outputs: [*a_megahit]
+    resources: *c1m15
+    executor: *megahit
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}
+        rm -rf ${megahit} && mkdir -p ${megahit} && cd ${megahit}
+        if [ $$merged = true ]; then set -- ${cat_fastq}/*/$${id}_[12].merged.fastq.gz
+        else set -- ${phix}/*/$${runs}_phix_removed.unmapped_[12].fastq.gz; fi
+        for f in "$$@"; do ln -s $$f $$(basename $$f); done
+        megahit \
+            -m $$(( ${task.resources.memory_gb} * 1073741824 )) \
+            -t ${task.resources.cpus} \
+            -1 $$(basename $$1) -2 $$(basename $$2) \
+            --out-prefix MEGAHIT-$$id
+
+        pigz \
+            --no-name \
+            -p ${task.resources.cpus} \
+             \
+            megahit_out/*.fa \
+            megahit_out/intermediate_contigs/*.fa
+
+        mv megahit_out/* .
+        rmdir megahit_out
+        for f in "$$@"; do rm $$(basename $$f); done
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: spades
+    name: METASPADES
+    over: {input_id: samples, as: item}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_phix, *a_cat_fastq]
+    outputs: [*a_spades]
+    resources: *c1m15
+    executor: *spades
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}; prefix=SPAdes-$$id
+        rm -rf ${spades} && mkdir -p ${spades} && cd ${spades}
+        if [ $$merged = true ]; then set -- ${cat_fastq}/*/$${id}_[12].merged.fastq.gz
+        else set -- ${phix}/*/$${runs}_phix_removed.unmapped_[12].fastq.gz; fi
+        for f in "$$@"; do ln -s $$f $$(basename $$f); done
+        spades.py \
+            --meta \
+            --threads ${task.resources.cpus} \
+            --memory ${task.resources.memory_gb} \
+             \
+            -1 $$(basename $$1) -2 $$(basename $$2)   \
+            -o ./
+        mv spades.log $$prefix.spades.log
+
+        if [ -f scaffolds.fasta ]; then
+            mv scaffolds.fasta $$prefix.scaffolds.fa
+            gzip -n $$prefix.scaffolds.fa
+        fi
+        if [ -f contigs.fasta ]; then
+            mv contigs.fasta $$prefix.contigs.fa
+            gzip -n $$prefix.contigs.fa
+        fi
+        if [ -f transcripts.fasta ]; then
+            mv transcripts.fasta $$prefix.transcripts.fa
+            gzip -n $$prefix.transcripts.fa
+        fi
+        if [ -f assembly_graph_with_scaffolds.gfa ]; then
+            mv assembly_graph_with_scaffolds.gfa $$prefix.assembly.gfa
+            gzip -n $$prefix.assembly.gfa
+        fi
+
+        if [ -f gene_clusters.fasta ]; then
+            mv gene_clusters.fasta $$prefix.gene_clusters.fa
+            gzip -n $$prefix.gene_clusters.fa
+        fi
+
+        if [ -f warnings.log ]; then
+            mv warnings.log $$prefix.warnings.log
+        fi
+        for f in "$$@"; do rm $$(basename $$f); done
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ------------------------------------------------------ per assembly
+  - kind: horus_map
+    id: gunzip
+    name: GUNZIP_SHORTREAD_ASSEMBLIES
+    over: {input_id: assemblies, as: item}
+    max_concurrency: 16
+    inputs: [*a_assemblies, *a_megahit, *a_spades]
+    outputs: [*a_gunzip]
+    resources: *c1m6
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}; f=$$assembler-$$id.$$ext.fa
+        rm -rf ${gunzip} && mkdir -p ${gunzip} && cd ${gunzip}
+        if [ $$assembler = MEGAHIT ]; then ln -s ${megahit}/*/$$f.gz .; else ln -s ${spades}/*/$$f.gz .; fi
+        # Not calling gunzip itself because it creates files
+        # with the original group ownership rather than the
+        # default one for that user / the work directory
+        gzip \
+            -cd \
+             \
+            $$f.gz \
+            > $$f
+        rm $$f.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: quast
+    name: QUAST
+    over: {input_id: gunzip, as: item}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_assemblies, *a_gunzip]
+    outputs: [*a_quast]
+    resources: *c1m7
+    executor: *quast
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        f=$$(basename ${item}/*.fa .fa); ext=$${f##*.}; aid=$${f%.*}; assembler=$${aid%%-*}; id=$${aid#*-}
+        rm -rf ${quast} && mkdir -p ${quast} && cd ${quast}
+        ln -s ${item}/$$aid.$$ext.fa .
+        metaquast.py --threads "${task.resources.cpus}" --rna-finding --max-ref-number 0 -l "$$aid" "$$aid.$$ext.fa" -o "QUAST"
+        cp QUAST/report.tsv QUAST/report_rawassemblies.tsv
+        rm $$aid.$$ext.fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: prodigal
+    name: PRODIGAL
+    over: {input_id: gunzip, as: item}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_assemblies, *a_gunzip]
+    outputs: [*a_prodigal]
+    resources: *c1m4
+    executor: *prodigal
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        f=$$(basename ${item}/*.fa .fa); ext=$${f##*.}; aid=$${f%.*}; assembler=$${aid%%-*}; id=$${aid#*-}; p=$${aid}_prodigal
+        rm -rf ${prodigal} && mkdir -p ${prodigal} && cd ${prodigal}
+        ln -s ${item}/$$aid.$$ext.fa .
+        pigz -cdf $$aid.$$ext.fa | prodigal \
+            -p meta \
+            -f gff \
+            -d "$$p.fna" \
+            -o "$$p.gff" \
+            -a "$$p.faa" \
+            -s "$${p}_all.txt"
+
+        pigz -nm $$p.fna
+        pigz -nm $$p.gff
+        pigz -nm $$p.faa
+        pigz -nm $${p}_all.txt
+        rm $$aid.$$ext.fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # Index files are named bt2_index_base.* for every assembly, so each slot
+  # keeps them under <assembly id>/.
+  - kind: horus_map
+    id: bt2_build
+    name: BOWTIE2_ASSEMBLY_BUILD
+    over: {input_id: gunzip, as: item}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_assemblies, *a_gunzip]
+    outputs: [*a_bt2_build]
+    resources: *c1m7
+    executor: *bowtie2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        f=$$(basename ${item}/*.fa .fa); ext=$${f##*.}; aid=$${f%.*}; assembler=$${aid%%-*}; id=$${aid#*-}
+        rm -rf ${bt2_build} && mkdir -p ${bt2_build}/$$aid && cd ${bt2_build}/$$aid
+        ln -s ${item}/$$aid.$$ext.fa .
+        mkdir bowtie
+        bowtie2-build --threads ${task.resources.cpus} $$aid.$$ext.fa "bt2_index_base"
+        rm $$aid.$$ext.fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: bt2_align
+    name: BOWTIE2_ASSEMBLY_ALIGN
+    over: {input_id: aligns, as: item}
+    max_concurrency: 16
+    inputs: [*a_aligns, *a_samples, *a_gunzip, *a_bt2_build, *a_phix, *a_cat_fastq]
+    outputs: [*a_bt2_align]
+    resources: *c4m12
+    executor: *bowtie2_samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}; aid=$$assembler-$$id; p=$$(basename ${item})
+        merged=$$(. ${samples}/$$reads_id; echo $$merged); runs=$$(. ${samples}/$$reads_id; echo $$runs)
+        rm -rf ${bt2_align} && mkdir -p ${bt2_align} && cd ${bt2_align}
+        if [ $$merged = true ]; then set -- ${cat_fastq}/*/$${reads_id}_[12].merged.fastq.gz
+        else set -- ${phix}/*/$${runs}_phix_removed.unmapped_[12].fastq.gz; fi
+        for f in "$$@" ${gunzip}/*/$$aid.$$ext.fa ${bt2_build}/*/$$aid/bt2_index_base.*; do ln -s $$f $$(basename $$f); done
+        INDEX=`find -L ./ -name "*.rev.1.bt2l" -o -name "*.rev.1.bt2" | sed 's/.rev.1.bt2l//' | sed 's/.rev.1.bt2//'`
+        bowtie2 \
+            -p "${task.resources.cpus}" \
+            -x $$INDEX \
+             \
+            -1 "$$(basename $$1)" -2 "$$(basename $$2)" \
+            2> "$$p.bowtie2.log" |         samtools view -@ "${task.resources.cpus}" -bS |         samtools sort -@ "${task.resources.cpus}" -o "$$p.bam"
+        samtools index "$$p.bam"
+
+        if [ $$p = "$$aid-$$id" ] ; then
+            mv "$$p.bowtie2.log" "$$aid.bowtie2.log"
+        fi
+        for f in "$$@" $$aid.$$ext.fa bt2_index_base.*; do rm $$(basename $$f); done
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # BAM order: Nextflow passes an assembly's BAMs in mapping finish order; this
+  # port uses reverse name order, which is that order for the test data.
+  - kind: horus_map
+    id: depths
+    name: METABAT2_JGISUMMARIZEBAMCONTIGDEPTHS_SHORTREAD
+    over: {input_id: assemblies, as: item}
+    max_concurrency: 16
+    inputs: [*a_assemblies, *a_aligns, *a_bt2_align]
+    outputs: [*a_depths]
+    resources: *c4m15
+    executor: *metabat2_215
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}; aid=$$assembler-$$id
+        rm -rf ${depths} && mkdir -p ${depths} && cd ${depths}
+        bams=$$(for a in $$(ls ${aligns} | sort -r); do (. ${aligns}/$$a; [ "$$assembler-$$id" = "$$aid" ] && echo $$a.bam || true); done)
+        for b in $$bams; do ln -s ${bt2_align}/*/$$b ${bt2_align}/*/$$b.bai .; done
+        export OMP_NUM_THREADS=${task.resources.cpus}
+
+        jgi_summarize_bam_contig_depths \
+            --outputDepth $$aid-depth.txt \
+             \
+            $$bams
+
+        bgzip --threads ${task.resources.cpus} $$aid-depth.txt
+        for b in $$bams; do rm $$b $$b.bai; done
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: convert_depths
+    name: CONVERT_DEPTHS
+    over: {input_id: depths, as: item}
+    chain: true
+    zip: [{input_id: gunzip, as: asm}]
+    max_concurrency: 16
+    inputs: [*a_assemblies, *a_gunzip, *a_depths]
+    outputs: [*a_convert_depths]
+    resources: *c1m7
+    executor: *bioawk
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        f=$$(basename ${asm}/*.fa .fa); ext=$${f##*.}; aid=$${f%.*}; assembler=$${aid%%-*}; id=$${aid#*-}
+        rm -rf ${convert_depths} && mkdir -p ${convert_depths} && cd ${convert_depths}
+        ln -s ${asm}/$$aid.$$ext.fa ${item}/$$aid-depth.txt.gz .
+        # Write one abundance file per read set in a single streaming pass. The depth
+        # file is never decompressed to disk: on shared/object-backed work dirs the
+        # plaintext copy and one full read per column are prohibitively slow.
+        gzip -cd $$aid-depth.txt.gz | bioawk -t '
+            NR == 1 {
+                n_abund = int((NF - 3) / 2)
+                for (i = 1; i <= n_abund; i++) {
+                    name = $$(i * 2 + 2)
+                    sub(/\.bam$$/, "", name)
+                    abund[i] = name ".abund"
+                }
+                next
+            }
+            {
+                for (i = 1; i <= n_abund; i++) {
+                    print $$1, $$(i * 2 + 2) > (abund[i])
+                }
+            }
+        '
+        rm $$aid.$$ext.fa $$aid-depth.txt.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: metabat2
+    name: METABAT2_METABAT2
+    over: {input_id: depths, as: item}
+    chain: true
+    zip: [{input_id: gunzip, as: asm}]
+    max_concurrency: 16
+    inputs: [*a_assemblies, *a_gunzip, *a_depths]
+    outputs: [*a_metabat2]
+    resources: *c4m15
+    executor: *metabat2_217
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        f=$$(basename ${asm}/*.fa .fa); ext=$${f##*.}; aid=$${f%.*}; assembler=$${aid%%-*}; id=$${aid#*-}; prefix=$$assembler-MetaBAT2-$$id
+        rm -rf ${metabat2} && mkdir -p ${metabat2}/input_bins && cd ${metabat2}
+        ln -s ${asm}/$$aid.$$ext.fa input_bins/; ln -s ${item}/$$aid-depth.txt.gz .
+        gzip -d -f $$aid-depth.txt.gz
+
+        metabat2 \
+            -m 1500 --unbinned --seed 1 \
+            -i input_bins/$$aid.$$ext.fa \
+            -a $$aid-depth.txt \
+            -t ${task.resources.cpus} \
+            --saveCls \
+            -o $$prefix
+
+        gzip -cn $$prefix > $$prefix.tsv.gz
+        find . -maxdepth 1 -name "*.fa" -type f | xargs -t -n 1 bgzip -@ ${task.resources.cpus}
+        rm -r input_bins $$aid-depth.txt
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # base.config: MAXBIN2 errorStrategy ignores exit 1 and 255 (no bins).
+  - kind: horus_map
+    id: maxbin2
+    name: MAXBIN2
+    over: {input_id: convert_depths, as: item}
+    chain: true
+    zip: [{input_id: gunzip, as: asm}]
+    max_concurrency: 16
+    drop_exit_codes: [1, 255]
+    inputs: [*a_assemblies, *a_aligns, *a_gunzip, *a_convert_depths]
+    outputs: [*a_maxbin2]
+    resources: *c4m15
+    executor: *maxbin2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        f=$$(basename ${asm}/*.fa .fa); ext=$${f##*.}; aid=$${f%.*}; assembler=$${aid%%-*}; id=$${aid#*-}; prefix=$$assembler-MaxBin2-$$id; f=$$aid.$$ext.fa
+        rm -rf ${maxbin2} && mkdir -p ${maxbin2} && cd ${maxbin2}
+        abunds=$$(for a in $$(ls ${aligns} | sort); do (. ${aligns}/$$a; [ "$$assembler-$$id" = "$$aid" ] && echo $$a.abund || true); done)
+        n=0; args=""
+        for a in $$abunds; do
+            ln -s ${item}/$$a .
+            n=$$((n + 1)); [ $$n = 1 ] && args="-abund $$a" || args="$$args -abund$$n $$a"
+        done
+        ln -s ${asm}/$$f .
+        mkdir input/ && mv $$f input/
+        run_MaxBin.pl \
+            -contig input/$$f \
+            $$args \
+            -thread ${task.resources.cpus} \
+             \
+            -out $$prefix
+
+        gzip *.fasta *.noclass *.tooshort *log *.marker
+
+        # use the .fa extension for the bins
+        for file in *.fasta.gz; do
+            mv $${file} $${file%.fasta.gz}.fa.gz
+        done
+        rm -r input $$abunds
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: semibin
+    name: SEMIBIN_SINGLEEASYBIN
+    over: {input_id: assemblies, as: item}
+    max_concurrency: 16
+    inputs: [*a_assemblies, *a_aligns, *a_gunzip, *a_bt2_align]
+    outputs: [*a_semibin]
+    resources: *c4m15
+    executor: *semibin
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}; aid=$$assembler-$$id; prefix=$$assembler-SemiBin2-$$id
+        rm -rf ${semibin} && mkdir -p ${semibin} && cd ${semibin}
+        bams=$$(for a in $$(ls ${aligns} | sort -r); do (. ${aligns}/$$a; [ "$$assembler-$$id" = "$$aid" ] && echo $$a.bam || true); done)
+        for b in $$bams; do ln -s ${bt2_align}/*/$$b .; done
+        ln -s ${gunzip}/*/$$aid.$$ext.fa .
+        SemiBin2 \
+             \
+            single_easy_bin \
+            --input-fasta $$aid.$$ext.fa \
+            --input-bam $$bams \
+            --tag-output $$prefix \
+            --output $$prefix \
+            -t ${task.resources.cpus} \
+            --random-seed 1 --min-len 1500 --compression gz --engine cpu --sequencing-type short_reads
+
+        # move final bins to "bins" folder
+        mv ./$$prefix/output_bins/ bins/
+        # rename log with prefix
+        mv ./$$prefix/SemiBinRun.log $$prefix.SemiBinRun.log
+        rm $$bams $$aid.$$ext.fa
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------- binning results
+  - kind: horus_task
+    id: binsets
+    name: Collect bins and unbinned contigs
+    description: >-
+      BINNING's bins and unbinned contigs per binner and assembly, one item folder
+      per post-binning set (joins the three binner maps, so it is a task).
+    inputs: [*a_assemblies, *a_metabat2, *a_maxbin2, *a_semibin]
+    outputs: [*a_sets]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: >-
+        sets --assemblies ${assemblies} --metabat2 ${metabat2} --maxbin2 ${maxbin2} --semibin ${semibin}
+        --sets ${sets}
+    target: *target
+
+  - kind: horus_map
+    id: seqkit
+    name: SEQKIT_STATS
+    over: {input_id: sets, as: item}
+    max_concurrency: 16
+    inputs: [*a_sets]
+    outputs: [*a_seqkit]
+    resources: *c1m1
+    executor: *seqkit
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}/meta.env; prefix=$$assembler-$$binner-$$id
+        rm -rf ${seqkit} && mkdir -p ${seqkit} && cd ${seqkit} && cp ${item}/meta.env .
+        [ $$refinement = unrefined ] || exit 0  # unbinned contigs: SPLIT_FASTA's item
+        bins=$$(cd ${item} && ls *.fa.gz)
+        for b in $$bins; do ln -s ${item}/$$b .; done
+        seqkit stats \
+            --tabular \
+            --threads ${task.resources.cpus} \
+            --all \
+            $$bins > "$$prefix.tsv"
+        rm $$bins
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: split_fasta
+    name: SPLIT_FASTA
+    over: {input_id: sets, as: item}
+    max_concurrency: 16
+    inputs: [*a_sets, *a_nfcore, *a_min_len_unbinned, *a_max_unbinned]
+    outputs: [*a_split_fasta]
+    resources: *c2m12
+    executor: *pybio
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH=${nfcore}/bin:$$PATH
+        . ${item}/meta.env
+        rm -rf ${split_fasta} && mkdir -p ${split_fasta} && cd ${split_fasta}
+        [ $$refinement = unrefined_unbinned ] || exit 0  # bins: SEQKIT_STATS's item
+        f=$$(cd ${item} && ls | grep -v '^meta.env$$')
+        ln -s ${item}/$$f .
+        # save unbinned contigs above thresholds into individual files, dump others in one file
+        split_fasta.py $$f ${min_length_unbinned_contigs} ${max_unbinned_contigs} 1500
+
+        gzip *.fa
+        rm $$f
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: post_filter
+    name: Post-binning set
+    description: >-
+      The set's bins that pass the bin size filter (SeqKit stats), or its
+      SPLIT_FASTA files; drops the set when none is left (exit 10).
+    over: {input_id: seqkit, as: item}
+    chain: true
+    zip: [{input_id: split_fasta, as: split}]
+    drop_exit_codes: [10]
+    max_concurrency: 16
+    inputs: [*a_sets, *a_seqkit, *a_split_fasta, *a_bin_min, *a_bin_max]
+    outputs: [*a_post]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: >-
+        post-item --slot ${item} --split ${split} --sets ${sets}
+        --bin-min-size ${bin_min_size} --bin-max-size ${bin_max_size} --out ${post}
+    target: *target
+
+  # Joins the sets (one folder per bin, depth groups of bins and unbinned per
+  # binner), so Prokka and MAG_DEPTHS wait for every set.
+  - kind: horus_task
+    id: postbinning
+    name: Post-binning lists
+    description: >-
+      The bins Prokka runs on, the MAG_DEPTHS groups and the contig to bin map;
+      fails when bins exist and none passed the bin size filter.
+    inputs: [*a_post, *a_sets, *a_bin_min, *a_bin_max]
+    outputs: [*a_bins, *a_depthsets, *a_contig_map]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: >-
+        post-sets --post ${post} --sets ${sets} --bin-min-size ${bin_min_size} --bin-max-size ${bin_max_size}
+        --bins ${bins} --depthsets ${depthsets} --contig-map ${contig_map}
+    target: *target
+
+  # ---------------------------------------------------- bin QC
+  - kind: horus_map
+    id: busco
+    name: BUSCO_BUSCO
+    over: {input_id: post, as: item}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_post, *a_busco_db, *a_busco_lineage]
+    outputs: [*a_busco]
+    resources: *c4m15
+    executor: *busco
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}/meta.env; p=$$id-${busco_db_lineage}-busco
+        rm -rf ${busco} && mkdir -p ${busco}/tmp_input && cd ${busco}
+        ln -s ${busco_db}/busco_db busco_db
+        for b in $$(cd ${item} && ls *.gz); do ln -s ${item}/$$b tmp_input/; done
+        # the module's task.memory * 0.25 in whole GB: 15 GB -> 3g; change it with resources
+        export BUSCO_BBTOOLS_MEMORY=3g
+
+        # Fix Augustus for Apptainer
+        ENV_AUGUSTUS=/opt/conda/etc/conda/activate.d/augustus.sh
+        set +u
+        if [ -z "$${AUGUSTUS_CONFIG_PATH}" ] && [ -f "$${ENV_AUGUSTUS}" ]; then
+            source "$${ENV_AUGUSTUS}"
+        fi
+        set -u
+
+        # If the augustus config directory is not writable, then copy to writeable area
+        if [ ! -w "$${AUGUSTUS_CONFIG_PATH}" ]; then
+            # Create writable tmp directory for augustus
+            AUG_CONF_DIR=$$( mktemp -d -p $$PWD )
+            cp -r $$AUGUSTUS_CONFIG_PATH/* $$AUG_CONF_DIR
+            export AUGUSTUS_CONFIG_PATH=$$AUG_CONF_DIR
+            echo "New AUGUSTUS_CONFIG_PATH=$${AUGUSTUS_CONFIG_PATH}"
+        fi
+
+        # Ensure the input is uncompressed
+        INPUT_SEQS=input_seqs
+        mkdir "$$INPUT_SEQS"
+        cd "$$INPUT_SEQS"
+        for FASTA in ../tmp_input/*; do
+            if [ "$${FASTA##*.}" == 'gz' ]; then
+                gzip -cdf "$$FASTA" > $$( basename "$$FASTA" .gz )
+            else
+                ln -s "$$FASTA" .
+            fi
+        done
+        cd ..
+
+        busco \
+            --cpu ${task.resources.cpus} \
+            --in "$$INPUT_SEQS" \
+            --out $$p \
+            --mode genome \
+            --lineage_dataset ${busco_db_lineage} \
+            --download_path busco_db \
+             \
+            --offline
+
+        # clean up
+        rm -rf "$$INPUT_SEQS"
+        rm -fr ./*-busco/*/auto_lineage ./*-busco/*/**/{miniprot,hmmer,.bbtools}_output ./*-busco/*/prodigal_output/predicted_genes/tmp/ ./*-busco/*/tmp/
+        # find and remove broken symlinks from the cleanup
+        find . -xtype l -delete
+
+        # Move files to avoid staging/publishing issues
+        grep -v 'Run failed; check logs' $$p/batch_summary.txt > $$p.batch_summary.txt
+        mv $$p/*/short_summary.*.{json,txt} . || echo "Short summaries were not available: No genes were found."
+        mv $$p/logs/busco.log $$p.log
+
+        if grep -q 'Run failed; check logs' $$p/batch_summary.txt; then
+            grep 'Run failed; check logs' $$p/batch_summary.txt > $$p.batch_summary.failed.txt
+        fi
+        rm -r busco_db tmp_input
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: quast_bins
+    name: QUAST_BINS
+    over: {input_id: post, as: item}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_post]
+    outputs: [*a_quast_bins]
+    resources: *c1m2
+    executor: *quast
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}/meta.env; prefix=$$name
+        rm -rf ${quast_bins} && mkdir -p ${quast_bins} && cd ${quast_bins}
+        list=$$(cd ${item} && ls *.gz)
+        for b in $$list; do ln -s ${item}/$$b .; done
+        BINS=$$(echo "$$(echo $$list)" | sed 's/[][]//g')
+        IFS=', ' read -r -a bins <<< "$$BINS"
+        for bin in "$${bins[@]}"; do
+            metaquast.py --threads "${task.resources.cpus}" --max-ref-number 0 --rna-finding --gene-finding -l "$${bin}" "$${bin}" -o "QUAST/$${bin}"
+            if ! [ -f "QUAST/$$prefix-quast_summary.tsv" ]; then
+                cp "QUAST/$${bin}/transposed_report.tsv" "QUAST/$$prefix-quast_summary.tsv"
+            else
+                tail -n +2 "QUAST/$${bin}/transposed_report.tsv" >> "QUAST/$$prefix-quast_summary.tsv"
+            fi
+        done
+        rm $$list
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # CONCAT_QUAST_SUMMARY: summaries sorted by file name, as the pipeline does.
+  - kind: horus_task
+    id: concat_quast
+    name: CONCAT_QUAST_SUMMARY
+    inputs: [*a_quast_bins]
+    outputs: [*a_concat_quast]
+    resources: *c1m6
+    executor: *qsv
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${concat_quast} && mkdir -p ${concat_quast} && cd ${concat_quast}
+        n=0; files=""
+        for f in $$(ls ${quast_bins}/*/QUAST/*-quast_summary.tsv | awk -F/ '{print $$NF "\t" $$0}' | sort | cut -f2); do
+            n=$$((n + 1)); mkdir -p inputs/in$$n; ln -s $$f inputs/in$$n/; files="$$files inputs/in$$n/$$(basename $$f)"
+        done
+        export QSV_SKIP_FORMAT_CHECK=1
+
+        qsv \
+            cat \
+            rowskey \
+             \
+            -o quast_bin_summary.tsv \
+            $$files
+        rm -r inputs
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # CONCAT_BUSCO_TSV: Nextflow concatenates in arrival order; this port uses
+  # the BUSCO map's slot order.
+  - kind: horus_task
+    id: concat_busco
+    name: CONCAT_BUSCO_TSV
+    inputs: [*a_busco]
+    outputs: [*a_concat_busco]
+    resources: *c1m1
+    executor: *qsv
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${concat_busco} && mkdir -p ${concat_busco} && cd ${concat_busco}
+        n=0; files=""
+        for f in $$(ls -d ${busco}/*/ | sort -V); do
+            for s in $$f*-busco.batch_summary.txt; do
+                n=$$((n + 1)); mkdir -p inputs/in$$n; ln -s $$s inputs/in$$n/; files="$$files inputs/in$$n/$$(basename $$s)"
+            done
+        done
+        export QSV_SKIP_FORMAT_CHECK=1
+
+        qsv \
+            cat \
+            rowskey \
+            --delimiter $$'\t' \
+            -o busco_summary.tsv \
+            $$files
+        rm -r inputs
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------- GTDB-Tk
+  - kind: horus_map
+    id: gtdb_filter
+    name: Bins for GTDB-Tk
+    description: >-
+      The set's bins whose BUSCO completeness and duplication pass the GTDB-Tk
+      thresholds; drops the set when none passes (exit 10).
+    over: {input_id: busco, as: item}
+    chain: true
+    zip: [{input_id: post, as: set}]
+    drop_exit_codes: [10]
+    max_concurrency: 16
+    inputs: [*a_busco, *a_post, *a_gtdb_comp, *a_gtdb_cont]
+    outputs: [*a_gtdb_sets]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: >-
+        gtdb-item --busco ${item} --set ${set} --min-completeness ${gtdbtk_min_completeness}
+        --max-contamination ${gtdbtk_max_contamination} --out ${gtdb_sets}
+    target: *target
+
+  - kind: horus_task
+    id: gtdb_discarded
+    name: Bins discarded for GTDB-Tk
+    description: The bins with a BUSCO result that fails the GTDB-Tk thresholds (GTDBTK_SUMMARY's --qc_discarded_bins).
+    inputs: [*a_busco, *a_post, *a_gtdb_comp, *a_gtdb_cont]
+    outputs: [*a_discarded]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: >-
+        gtdb --busco ${busco} --post ${post} --min-completeness ${gtdbtk_min_completeness}
+        --max-contamination ${gtdbtk_max_contamination} --discarded ${discarded}
+    target: *target
+
+  - kind: horus_map
+    id: gtdbtk
+    name: GTDBTK_CLASSIFYWF
+    over: {input_id: gtdb_sets, as: item}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_gtdb_sets, *a_gtdb_db]
+    outputs: [*a_gtdbtk]
+    resources: *c2m15
+    executor: *gtdbtk
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}/meta.env; prefix=$$name
+        rm -rf ${gtdbtk} && mkdir -p ${gtdbtk}/bins && cd ${gtdbtk}
+        dbs=$$(ls ${gtdb_db}/database)
+        for d in $$dbs; do ln -s ${gtdb_db}/database/$$d .; done
+        for b in $$(cd ${item} && ls *.gz); do ln -s ${item}/$$b bins/; done
+        export GTDBTK_DATA_PATH="$$(find -L markers masks metadata mrca_red msa pplacer radii skani split taxonomy -name 'metadata' -type d -exec dirname {} \;)"
+
+        if [ "--scratch_dir pplacer_tmp" != "" ] ; then
+            mkdir pplacer_tmp
+        fi
+
+        gtdbtk classify_wf \
+            --extension gz --min_perc_aa 10 --min_af 0.65 --pplacer_cpus 1 -f --place_species \
+            --genome_dir bins \
+            --prefix "$$prefix" \
+            --out_dir $$prefix \
+            --cpus ${task.resources.cpus} \
+            --scratch_dir pplacer_tmp
+
+        mv $$prefix/gtdbtk.log "$$prefix/$$prefix.log"
+        mv $$prefix/gtdbtk.warnings.log "$$prefix/$$prefix.warnings.log"
+        rm -r bins $$dbs
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: gtdbtk_summary
+    name: GTDBTK_SUMMARY
+    inputs: [*a_gtdbtk, *a_discarded, *a_nfcore]
+    outputs: [*a_gtdbtk_summary]
+    resources: *c1m7
+    executor: *pandas
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH=${nfcore}/bin:$$PATH
+        rm -rf ${gtdbtk_summary} && mkdir -p ${gtdbtk_summary} && cd ${gtdbtk_summary}
+        summaries=""
+        for f in ${gtdbtk}/*/*/classify/*.summary.tsv; do [ -e "$$f" ] || continue; ln -s $$f .; summaries="$$summaries $$(basename $$f)"; done
+        discarded=$$(cat ${discarded})
+        summary_gtdbtk.py --extension gz $${discarded:+--qc_discarded_bins $$discarded} $${summaries:+--summaries $$summaries}   --out gtdbtk_summary.tsv
+        [ -z "$$summaries" ] || rm $$summaries
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------- depths
+  - kind: horus_map
+    id: mag_depths
+    name: MAG_DEPTHS
+    over: {input_id: depthsets, as: item}
+    max_concurrency: 16
+    inputs: [*a_depthsets, *a_depths, *a_nfcore]
+    outputs: [*a_mag_depths]
+    resources: *c1m15
+    executor: *pybio
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH=${nfcore}/bin:$$PATH
+        . ${item}/meta.env
+        rm -rf ${mag_depths} && mkdir -p ${mag_depths} && cd ${mag_depths}
+        bins=$$(cd ${item} && ls *.gz)
+        for b in $$bins; do ln -s ${item}/$$b .; done
+        ln -s ${depths}/*/$$assembler-$$id-depth.txt.gz .
+        get_mag_depths.py --bins $$bins \
+                        --depths $$assembler-$$id-depth.txt.gz \
+                        --assembler $$assembler \
+                        --id $$id \
+                        --binner $$binner
+        rm $$bins $$assembler-$$id-depth.txt.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # DEPTHS collectFile: the bin depth tables of each sample's assemblies in
+  # one file per sample id, keeping one header.
+  - kind: horus_task
+    id: mag_depths_summary
+    name: MAG_DEPTHS_SUMMARY
+    inputs: [*a_depthsets, *a_mag_depths, *a_nfcore]
+    outputs: [*a_mag_depths_summary]
+    resources: *c1m7
+    executor: *pandas
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH=${nfcore}/bin:$$PATH
+        rm -rf ${mag_depths_summary} && mkdir -p ${mag_depths_summary}/collect && cd ${mag_depths_summary}/collect
+        for s in $$(ls ${depthsets}); do
+            (. ${depthsets}/$$s/meta.env
+             f=$$(ls ${mag_depths}/*/$$assembler-$$binner-$$id-binDepths.tsv)
+             if [ -e $$id ]; then tail -n +2 $$f >> $$id; else cat $$f > $$id; fi)
+        done
+        ids=$$(ls)
+        cd ..
+        for i in $$ids; do ln -s collect/$$i $$i; done
+        get_mag_depths_summary.py --depths $$ids                             --out "bin_depths_summary.tsv"
+        rm -r collect $$ids
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------- CAT
+  - kind: horus_map
+    id: catpack_bins
+    name: CATPACK_BINS
+    over: {input_id: post, as: item}
+    chain: true
+    drop_exit_codes: [10]
+    max_concurrency: 16
+    inputs: [*a_post, *a_cat_db]
+    outputs: [*a_catpack_bins]
+    resources: *c4m15
+    executor: *catpack
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}/meta.env; prefix=$$assembler-$$binner-$$id
+        [ $$refinement = unrefined ] || exit 10  # unbinned contigs: CONCAT_UNBINS's item
+        rm -rf ${catpack_bins} && mkdir -p ${catpack_bins}/bins && cd ${catpack_bins}
+        ln -s ${cat_db}/cat_db/db db; ln -s ${cat_db}/cat_db/tax tax
+        for b in $$(cd ${item} && ls *.gz); do ln -s ${item}/$$b bins/; done
+        if true; then
+            mkdir input_bins
+            for f in bins/*.fa.gz; do
+                gunzip -c "$$f" > "input_bins/$$(basename "$$f" .gz)"
+            done
+        fi
+
+        CAT_pack bins \
+            -n ${task.resources.cpus} \
+            -b input_bins/ \
+            -d db \
+            -t tax \
+            -s .fa \
+             \
+             \
+            -o $$prefix-bins \
+            --no_stars
+        rm -r bins input_bins db tax
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: catpack_names_bins
+    name: CATPACK_ADDNAMES_BINS
+    over: {input_id: catpack_bins, as: item}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_catpack_bins, *a_cat_db]
+    outputs: [*a_catpack_names_bins]
+    resources: *c1m6
+    executor: *cat
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        prefix=$$(basename ${item}/*-bins.bin2classification.txt -bins.bin2classification.txt)
+        rm -rf ${catpack_names_bins} && mkdir -p ${catpack_names_bins} && cd ${catpack_names_bins}
+        ln -s ${cat_db}/cat_db/tax tax; ln -s ${item}/$$prefix-bins.bin2classification.txt .
+        CAT_pack add_names \
+            --only_official \
+            -i $$prefix-bins.bin2classification.txt \
+            -t tax \
+            -o $$prefix-bins_bin2classification.names.txt
+        rm tax $$prefix-bins.bin2classification.txt
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: catpack_summary_bins
+    name: CATPACK_SUMMARISE_BINS
+    over: {input_id: catpack_names_bins, as: item}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_catpack_names_bins]
+    outputs: [*a_catpack_summary_bins]
+    resources: *c1m6
+    executor: *catpack
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        prefix=$$(basename ${item}/*-bins_bin2classification.names.txt -bins_bin2classification.names.txt)
+        rm -rf ${catpack_summary_bins} && mkdir -p ${catpack_summary_bins} && cd ${catpack_summary_bins}
+        ln -s ${item}/$$prefix-bins_bin2classification.names.txt .
+        CAT_pack summarise \
+             \
+            -i $$prefix-bins_bin2classification.names.txt \
+             \
+            -o $$prefix-bins_summary.txt
+        rm $$prefix-bins_bin2classification.names.txt
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: concat_unbins
+    name: CONCAT_UNBINS
+    over: {input_id: post, as: item}
+    chain: true
+    drop_exit_codes: [10]
+    max_concurrency: 16
+    inputs: [*a_post]
+    outputs: [*a_concat_unbins]
+    resources: *c2m12
+    executor: *pigz
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}/meta.env; prefix=$$assembler-$$binner-$$id
+        [ $$refinement = unrefined_unbinned ] || exit 10  # bins: CATPACK_BINS's item
+        rm -rf ${concat_unbins} && mkdir -p ${concat_unbins}/to_concatenate && cd ${concat_unbins}
+        for b in $$(cd ${item} && ls *.gz); do ln -s ${item}/$$b to_concatenate/; done
+        while IFS= read -r -d $$'\0' file; do
+                pigz -cd -p ${task.resources.cpus} $$file \
+                    >> $$prefix-unbins.fasta
+            done < <( find to_concatenate/ -mindepth 1 -print0 | sort -z )
+        rm -r to_concatenate
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: catpack_unbins
+    name: CATPACK_UNBINS
+    over: {input_id: concat_unbins, as: item}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_concat_unbins, *a_cat_db]
+    outputs: [*a_catpack_unbins]
+    resources: *c4m15
+    executor: *catpack
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        prefix=$$(basename ${item}/*-unbins.fasta -unbins.fasta)
+        rm -rf ${catpack_unbins} && mkdir -p ${catpack_unbins} && cd ${catpack_unbins}
+        ln -s ${cat_db}/cat_db/db db; ln -s ${cat_db}/cat_db/tax tax; ln -s ${item}/$$prefix-unbins.fasta .
+        # CAT_pack does not support gzipped input, so decompress any gzipped contigs.
+        contigs_fastas=""
+        for f in $$prefix-unbins.fasta; do
+            if [[ "$$f" == *.gz ]]; then
+                gunzip -c "$$f" > "$$(basename "$$f" .gz)"
+                contigs_fastas="$${contigs_fastas} $$(basename "$$f" .gz)"
+            else
+                contigs_fastas="$${contigs_fastas} $$f"
+            fi
+        done
+
+        CAT_pack contigs \
+            --nproc ${task.resources.cpus} \
+            --contigs_fasta $${contigs_fastas## } \
+            --database_folder db \
+            --taxonomy_folder tax \
+            --out_prefix $$prefix-unbins \
+             \
+             \
+            --no_stars
+        rm db tax $$prefix-unbins.fasta
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: catpack_names_unbins
+    name: CATPACK_ADDNAMES_UNBINS
+    over: {input_id: catpack_unbins, as: item}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_catpack_unbins, *a_cat_db]
+    outputs: [*a_catpack_names_unbins]
+    resources: *c1m6
+    executor: *cat
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        prefix=$$(basename ${item}/*-unbins.contig2classification.txt -unbins.contig2classification.txt)
+        rm -rf ${catpack_names_unbins} && mkdir -p ${catpack_names_unbins} && cd ${catpack_names_unbins}
+        ln -s ${cat_db}/cat_db/tax tax; ln -s ${item}/$$prefix-unbins.contig2classification.txt .
+        CAT_pack add_names \
+            --only_official \
+            -i $$prefix-unbins.contig2classification.txt \
+            -t tax \
+            -o $$prefix-unbins_contig2classification.names.txt
+        rm tax $$prefix-unbins.contig2classification.txt
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: catpack_summary_unbins
+    name: CATPACK_SUMMARISE_UNBINS
+    over: {input_id: catpack_names_unbins, as: item}
+    chain: true
+    zip: [{input_id: concat_unbins, as: cu}]
+    max_concurrency: 16
+    inputs: [*a_catpack_names_unbins, *a_concat_unbins]
+    outputs: [*a_catpack_summary_unbins]
+    resources: *c1m6
+    executor: *catpack
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        prefix=$$(basename ${item}/*-unbins_contig2classification.names.txt -unbins_contig2classification.names.txt)
+        rm -rf ${catpack_summary_unbins} && mkdir -p ${catpack_summary_unbins} && cd ${catpack_summary_unbins}
+        ln -s ${item}/$$prefix-unbins_contig2classification.names.txt ${cu}/$$prefix-unbins.fasta .
+        CAT_pack summarise \
+             \
+            -i $$prefix-unbins_contig2classification.names.txt \
+            -c $$prefix-unbins.fasta \
+            -o $$prefix-unbins_summary.txt
+        rm $$prefix-unbins_contig2classification.names.txt $$prefix-unbins.fasta
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------- annotation
+  - kind: horus_map
+    id: prokka
+    name: PROKKA
+    over: {input_id: bins, as: item}
+    max_concurrency: 16
+    inputs: [*a_bins]
+    outputs: [*a_prokka]
+    resources: *c2m4
+    executor: *prokka
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}/meta.env
+        rm -rf ${prokka} && mkdir -p ${prokka} && cd ${prokka}
+        ln -s ${item}/$$bin_id.fa.gz .
+        gunzip -c $$bin_id.fa.gz > $$bin_id.fa
+
+        prokka \
+            --metagenome --fast \
+            --cpus ${task.resources.cpus} \
+            --prefix $$bin_id \
+             \
+             \
+            $$bin_id.fa
+
+        rm $$bin_id.fa
+        rm $$bin_id.fa.gz
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------- summaries
+  # bat_summary.tsv is CATPACK's collectFile (keepHeader, sort: 'deep'), which
+  # Nextflow publishes as Taxonomy/CAT/bat_summary.tsv. 'deep' orders files by a
+  # hash of their content; this port sorts by the content itself, so the rows
+  # come in another (also fixed) order and the file sits in GenomeBinning/summary/.
+  - kind: horus_task
+    id: bin_summary
+    name: BIN_SUMMARY
+    inputs: [*a_mag_depths_summary, *a_concat_quast, *a_gtdbtk_summary, *a_catpack_names_bins, *a_concat_busco, *a_nfcore]
+    outputs: [*a_bin_summary]
+    resources: *c1m7
+    executor: *pandas
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH=${nfcore}/bin:$$PATH
+        rm -rf ${bin_summary} && mkdir -p ${bin_summary} && cd ${bin_summary}
+        first=1
+        for f in $$(for n in ${catpack_names_bins}/*/*-bins_bin2classification.names.txt; do printf '%s\t%s\n' "$$(cat $$n | tr '\n\t' '\1\2')" "$$n"; done | LC_ALL=C sort | cut -f2); do
+            if [ $$first = 1 ]; then cat $$f; first=0; else tail -n +2 $$f; fi
+        done > bat_summary.tsv
+        ln -s ${mag_depths_summary}/bin_depths_summary.tsv ${concat_quast}/quast_bin_summary.tsv ${gtdbtk_summary}/gtdbtk_summary.tsv ${concat_busco}/busco_summary.tsv .
+        combine_tables.py         --depths_summary bin_depths_summary.tsv         --quast_summary quast_bin_summary.tsv         --gtdbtk_summary gtdbtk_summary.tsv         --cat_summary bat_summary.tsv         --busco_summary busco_summary.tsv                                    --out bin_summary.tsv
+        rm bin_depths_summary.tsv quast_bin_summary.tsv gtdbtk_summary.tsv busco_summary.tsv
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # MULTIQC: the pipeline's MultiQC inputs, each in its own numbered folder as
+  # Nextflow stages them. The software versions, workflow summary and methods
+  # files come from Nextflow run metadata and are not part of the port.
+  - kind: horus_task
+    id: multiqc
+    name: MULTIQC
+    inputs: [*a_nfcore, *a_fastqc_raw, *a_fastp, *a_phix, *a_fastqc_trimmed, *a_quast, *a_bt2_align, *a_quast_bins, *a_prokka, *a_busco, *a_gtdbtk_summary]
+    outputs: [*a_multiqc]
+    resources: *c1m15
+    executor: *multiqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${multiqc} && mkdir -p ${multiqc}/1 && cd ${multiqc}
+        ln -s ${nfcore}/assets/multiqc_config.yml 1/
+        n=1
+        for f in ${fastqc_raw}/*/*_fastqc.zip ${fastp}/*/*.fastp.json ${phix}/*/*_phix_removed.bowtie2.log \
+                 ${fastqc_trimmed}/*/*_fastqc.zip ${quast}/*/QUAST/report_rawassemblies.tsv ${bt2_align}/*/*.bowtie2.log \
+                 ${quast_bins}/*/QUAST/*.gz ${prokka}/*/*/*.txt ${busco}/*/short_summary.*.txt ${gtdbtk_summary}/gtdbtk_summary.tsv; do
+            [ -e "$$f" ] || continue
+            n=$$((n + 1)); mkdir $$n; ln -s $$f $$n/
+        done
+        multiqc \
+            --force \
+             \
+            --config 1/multiqc_config.yml \
+             \
+             \
+             \
+             \
+            .
+        rm -r [0-9]*
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+edges:
+  - {source: artifact-samplesheet, source_output: samplesheet, target: stage_samples, target_input: samplesheet}
+  - {source: artifact-input_mirror, source_output: input_mirror, target: stage_samples, target_input: input_mirror}
+  - {source: artifact-busco_db_url, source_output: busco_db_url, target: fetch_databases, target_input: busco_db_url}
+  - {source: artifact-cat_db_url, source_output: cat_db_url, target: fetch_databases, target_input: cat_db_url}
+  - {source: artifact-gtdb_db_url, source_output: gtdb_db_url, target: fetch_databases, target_input: gtdb_db_url}
+  - {source: artifact-input_mirror, source_output: input_mirror, target: fetch_databases, target_input: input_mirror}
+  - {source: fetch_databases, source_output: dbs, target: busco_untar, target_input: dbs}
+  - {source: artifact-busco_db_url, source_output: busco_db_url, target: busco_untar, target_input: busco_db_url}
+  - {source: artifact-busco_db_lineage, source_output: busco_db_lineage, target: busco_untar, target_input: busco_db_lineage}
+  - {source: fetch_databases, source_output: dbs, target: cat_untar, target_input: dbs}
+  - {source: artifact-cat_db_url, source_output: cat_db_url, target: cat_untar, target_input: cat_db_url}
+  - {source: fetch_databases, source_output: dbs, target: gtdb_prep, target_input: dbs}
+  - {source: artifact-gtdb_db_url, source_output: gtdb_db_url, target: gtdb_prep, target_input: gtdb_db_url}
+  - {source: stage_samples, source_output: runs, target: fastqc_raw, target_input: runs}
+  - {source: stage_samples, source_output: reads, target: fastqc_raw, target_input: reads}
+  - {source: stage_samples, source_output: runs, target: fastp, target_input: runs}
+  - {source: stage_samples, source_output: reads, target: fastp, target_input: reads}
+  - {source: artifact-nfcore, source_output: nfcore, target: phix_build, target_input: nfcore}
+  - {source: stage_samples, source_output: runs, target: phix_align, target_input: runs}
+  - {source: fastp, source_output: fastp, target: phix_align, target_input: fastp}
+  - {source: phix_build, source_output: phix_index, target: phix_align, target_input: phix_index}
+  - {source: stage_samples, source_output: runs, target: fastqc_trimmed, target_input: runs}
+  - {source: phix_align, source_output: phix, target: fastqc_trimmed, target_input: phix}
+  - {source: stage_samples, source_output: multi_run, target: cat_fastq, target_input: multi_run}
+  - {source: phix_align, source_output: phix, target: cat_fastq, target_input: phix}
+  - {source: stage_samples, source_output: samples, target: megahit, target_input: samples}
+  - {source: phix_align, source_output: phix, target: megahit, target_input: phix}
+  - {source: cat_fastq, source_output: cat_fastq, target: megahit, target_input: cat_fastq}
+  - {source: stage_samples, source_output: samples, target: spades, target_input: samples}
+  - {source: phix_align, source_output: phix, target: spades, target_input: phix}
+  - {source: cat_fastq, source_output: cat_fastq, target: spades, target_input: cat_fastq}
+  - {source: stage_samples, source_output: assemblies, target: gunzip, target_input: assemblies}
+  - {source: megahit, source_output: megahit, target: gunzip, target_input: megahit}
+  - {source: spades, source_output: spades, target: gunzip, target_input: spades}
+  - {source: stage_samples, source_output: assemblies, target: quast, target_input: assemblies}
+  - {source: gunzip, source_output: gunzip, target: quast, target_input: gunzip}
+  - {source: stage_samples, source_output: assemblies, target: prodigal, target_input: assemblies}
+  - {source: gunzip, source_output: gunzip, target: prodigal, target_input: gunzip}
+  - {source: stage_samples, source_output: assemblies, target: bt2_build, target_input: assemblies}
+  - {source: gunzip, source_output: gunzip, target: bt2_build, target_input: gunzip}
+  - {source: stage_samples, source_output: aligns, target: bt2_align, target_input: aligns}
+  - {source: stage_samples, source_output: samples, target: bt2_align, target_input: samples}
+  - {source: gunzip, source_output: gunzip, target: bt2_align, target_input: gunzip}
+  - {source: bt2_build, source_output: bt2_build, target: bt2_align, target_input: bt2_build}
+  - {source: phix_align, source_output: phix, target: bt2_align, target_input: phix}
+  - {source: cat_fastq, source_output: cat_fastq, target: bt2_align, target_input: cat_fastq}
+  - {source: stage_samples, source_output: assemblies, target: depths, target_input: assemblies}
+  - {source: stage_samples, source_output: aligns, target: depths, target_input: aligns}
+  - {source: bt2_align, source_output: bt2_align, target: depths, target_input: bt2_align}
+  - {source: stage_samples, source_output: assemblies, target: convert_depths, target_input: assemblies}
+  - {source: gunzip, source_output: gunzip, target: convert_depths, target_input: gunzip}
+  - {source: depths, source_output: depths, target: convert_depths, target_input: depths}
+  - {source: stage_samples, source_output: assemblies, target: metabat2, target_input: assemblies}
+  - {source: gunzip, source_output: gunzip, target: metabat2, target_input: gunzip}
+  - {source: depths, source_output: depths, target: metabat2, target_input: depths}
+  - {source: stage_samples, source_output: assemblies, target: maxbin2, target_input: assemblies}
+  - {source: stage_samples, source_output: aligns, target: maxbin2, target_input: aligns}
+  - {source: gunzip, source_output: gunzip, target: maxbin2, target_input: gunzip}
+  - {source: convert_depths, source_output: convert_depths, target: maxbin2, target_input: convert_depths}
+  - {source: stage_samples, source_output: assemblies, target: semibin, target_input: assemblies}
+  - {source: stage_samples, source_output: aligns, target: semibin, target_input: aligns}
+  - {source: gunzip, source_output: gunzip, target: semibin, target_input: gunzip}
+  - {source: bt2_align, source_output: bt2_align, target: semibin, target_input: bt2_align}
+  - {source: stage_samples, source_output: assemblies, target: binsets, target_input: assemblies}
+  - {source: metabat2, source_output: metabat2, target: binsets, target_input: metabat2}
+  - {source: maxbin2, source_output: maxbin2, target: binsets, target_input: maxbin2}
+  - {source: semibin, source_output: semibin, target: binsets, target_input: semibin}
+  - {source: binsets, source_output: sets, target: seqkit, target_input: sets}
+  - {source: binsets, source_output: sets, target: split_fasta, target_input: sets}
+  - {source: artifact-nfcore, source_output: nfcore, target: split_fasta, target_input: nfcore}
+  - {source: artifact-min_length_unbinned_contigs, source_output: min_length_unbinned_contigs, target: split_fasta, target_input: min_length_unbinned_contigs}
+  - {source: artifact-max_unbinned_contigs, source_output: max_unbinned_contigs, target: split_fasta, target_input: max_unbinned_contigs}
+  - {source: binsets, source_output: sets, target: post_filter, target_input: sets}
+  - {source: seqkit, source_output: seqkit, target: post_filter, target_input: seqkit}
+  - {source: split_fasta, source_output: split_fasta, target: post_filter, target_input: split_fasta}
+  - {source: artifact-bin_min_size, source_output: bin_min_size, target: post_filter, target_input: bin_min_size}
+  - {source: artifact-bin_max_size, source_output: bin_max_size, target: post_filter, target_input: bin_max_size}
+  - {source: post_filter, source_output: post, target: postbinning, target_input: post}
+  - {source: binsets, source_output: sets, target: postbinning, target_input: sets}
+  - {source: artifact-bin_min_size, source_output: bin_min_size, target: postbinning, target_input: bin_min_size}
+  - {source: artifact-bin_max_size, source_output: bin_max_size, target: postbinning, target_input: bin_max_size}
+  - {source: post_filter, source_output: post, target: busco, target_input: post}
+  - {source: busco_untar, source_output: busco_db, target: busco, target_input: busco_db}
+  - {source: artifact-busco_db_lineage, source_output: busco_db_lineage, target: busco, target_input: busco_db_lineage}
+  - {source: post_filter, source_output: post, target: quast_bins, target_input: post}
+  - {source: quast_bins, source_output: quast_bins, target: concat_quast, target_input: quast_bins}
+  - {source: busco, source_output: busco, target: concat_busco, target_input: busco}
+  - {source: busco, source_output: busco, target: gtdb_filter, target_input: busco}
+  - {source: post_filter, source_output: post, target: gtdb_filter, target_input: post}
+  - {source: artifact-gtdbtk_min_completeness, source_output: gtdbtk_min_completeness, target: gtdb_filter, target_input: gtdbtk_min_completeness}
+  - {source: artifact-gtdbtk_max_contamination, source_output: gtdbtk_max_contamination, target: gtdb_filter, target_input: gtdbtk_max_contamination}
+  - {source: busco, source_output: busco, target: gtdb_discarded, target_input: busco}
+  - {source: post_filter, source_output: post, target: gtdb_discarded, target_input: post}
+  - {source: artifact-gtdbtk_min_completeness, source_output: gtdbtk_min_completeness, target: gtdb_discarded, target_input: gtdbtk_min_completeness}
+  - {source: artifact-gtdbtk_max_contamination, source_output: gtdbtk_max_contamination, target: gtdb_discarded, target_input: gtdbtk_max_contamination}
+  - {source: gtdb_filter, source_output: gtdb_sets, target: gtdbtk, target_input: gtdb_sets}
+  - {source: gtdb_prep, source_output: gtdb_db, target: gtdbtk, target_input: gtdb_db}
+  - {source: gtdbtk, source_output: gtdbtk, target: gtdbtk_summary, target_input: gtdbtk}
+  - {source: gtdb_discarded, source_output: discarded, target: gtdbtk_summary, target_input: discarded}
+  - {source: artifact-nfcore, source_output: nfcore, target: gtdbtk_summary, target_input: nfcore}
+  - {source: postbinning, source_output: depthsets, target: mag_depths, target_input: depthsets}
+  - {source: depths, source_output: depths, target: mag_depths, target_input: depths}
+  - {source: artifact-nfcore, source_output: nfcore, target: mag_depths, target_input: nfcore}
+  - {source: postbinning, source_output: depthsets, target: mag_depths_summary, target_input: depthsets}
+  - {source: mag_depths, source_output: mag_depths, target: mag_depths_summary, target_input: mag_depths}
+  - {source: artifact-nfcore, source_output: nfcore, target: mag_depths_summary, target_input: nfcore}
+  - {source: post_filter, source_output: post, target: catpack_bins, target_input: post}
+  - {source: cat_untar, source_output: cat_db, target: catpack_bins, target_input: cat_db}
+  - {source: catpack_bins, source_output: catpack_bins, target: catpack_names_bins, target_input: catpack_bins}
+  - {source: cat_untar, source_output: cat_db, target: catpack_names_bins, target_input: cat_db}
+  - {source: catpack_names_bins, source_output: catpack_names_bins, target: catpack_summary_bins, target_input: catpack_names_bins}
+  - {source: post_filter, source_output: post, target: concat_unbins, target_input: post}
+  - {source: concat_unbins, source_output: concat_unbins, target: catpack_unbins, target_input: concat_unbins}
+  - {source: cat_untar, source_output: cat_db, target: catpack_unbins, target_input: cat_db}
+  - {source: catpack_unbins, source_output: catpack_unbins, target: catpack_names_unbins, target_input: catpack_unbins}
+  - {source: cat_untar, source_output: cat_db, target: catpack_names_unbins, target_input: cat_db}
+  - {source: catpack_names_unbins, source_output: catpack_names_unbins, target: catpack_summary_unbins, target_input: catpack_names_unbins}
+  - {source: concat_unbins, source_output: concat_unbins, target: catpack_summary_unbins, target_input: concat_unbins}
+  - {source: postbinning, source_output: bins, target: prokka, target_input: bins}
+  - {source: mag_depths_summary, source_output: mag_depths_summary, target: bin_summary, target_input: mag_depths_summary}
+  - {source: concat_quast, source_output: concat_quast, target: bin_summary, target_input: concat_quast}
+  - {source: gtdbtk_summary, source_output: gtdbtk_summary, target: bin_summary, target_input: gtdbtk_summary}
+  - {source: catpack_names_bins, source_output: catpack_names_bins, target: bin_summary, target_input: catpack_names_bins}
+  - {source: concat_busco, source_output: concat_busco, target: bin_summary, target_input: concat_busco}
+  - {source: artifact-nfcore, source_output: nfcore, target: bin_summary, target_input: nfcore}
+  - {source: artifact-nfcore, source_output: nfcore, target: multiqc, target_input: nfcore}
+  - {source: fastqc_raw, source_output: fastqc_raw, target: multiqc, target_input: fastqc_raw}
+  - {source: fastp, source_output: fastp, target: multiqc, target_input: fastp}
+  - {source: phix_align, source_output: phix, target: multiqc, target_input: phix}
+  - {source: fastqc_trimmed, source_output: fastqc_trimmed, target: multiqc, target_input: fastqc_trimmed}
+  - {source: quast, source_output: quast, target: multiqc, target_input: quast}
+  - {source: bt2_align, source_output: bt2_align, target: multiqc, target_input: bt2_align}
+  - {source: quast_bins, source_output: quast_bins, target: multiqc, target_input: quast_bins}
+  - {source: prokka, source_output: prokka, target: multiqc, target_input: prokka}
+  - {source: busco, source_output: busco, target: multiqc, target_input: busco}
+  - {source: gtdbtk_summary, source_output: gtdbtk_summary, target: multiqc, target_input: gtdbtk_summary}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
