@@ -545,7 +545,7 @@ def tasks_full() -> list[Task]:
         T("dada2_tax", None, name="Merge the DADA2 taxonomy chunks", outputs=["dada2_tax"], inputs=["dada2_taxonomy"],
           runtime=GLUE + "collect-tsv --out ${dada2_tax}/ASV_tax.sbdi-gtdb.tsv --pattern 'ASV_seqs[.][0-9]+[.]ASV_tax[.]sbdi-gtdb[.]tsv' ${dada2_taxonomy}"),
         T("dada2_species", None, name="Merge the DADA2 species chunks", outputs=["dada2_species"], inputs=["dada2_addspecies"],
-          runtime=GLUE + "collect-tsv --out ${dada2_species}/ASV_tax_species.sbdi-gtdb.tsv --pattern 'ASV_seqs[.][0-9]+[.]ASV_tax_species[.]sbdi-gtdb[.]tsv' ${dada2_addspecies}"),
+          runtime=GLUE + "collect-tsv --out ${dada2_species}/ASV_tax_species.sbdi-gtdb.tsv --pattern 'ASV_seqs[.][0-9]+[.]ASV_tax[.]sbdi-gtdb[.]species[.]tsv' ${dada2_addspecies}"),
         # ------------------------------------------------------------ phylogenetic placement, per target
         T("hmmer_hmmextract", "HMMER_HMMEXTRACT", tag="arc16s", chain=dict(post="cp ${tgt} meta.env"), **target),
         T("hmmer_hmmsearch", "HMMER_HMMSEARCH", tag="arc16s", chain=dict(over=("hmmer_hmmextract", "tgt"), pre=". ${tgt}/meta.env"), **target),
