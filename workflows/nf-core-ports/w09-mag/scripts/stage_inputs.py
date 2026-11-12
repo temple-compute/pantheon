@@ -43,6 +43,8 @@ import tempfile
 from pathlib import Path
 
 ID_RE = re.compile(r"[A-Za-z0-9._-]+")
+# the schema's short_reads_1/2 pattern; no quote, as names end up in single-quoted meta lines
+READS_RE = re.compile(r"[^\s']+\.f(ast)?q\.gz")
 # MEGAHIT keeps contigs, SPAdes scaffolds (--spades_downstreaminput scaffolds).
 ASSEMBLERS = (("MEGAHIT", "contigs"), ("SPAdes", "scaffolds"))
 
@@ -67,6 +69,13 @@ def fetch(src: str, base: Path, dest: Path, mirror: str) -> None:
     os.replace(part, dest)
 
 
+def fresh(folder: Path) -> Path:
+    """An empty output folder: a forced rerun must not keep the last run's items."""
+    shutil.rmtree(folder, ignore_errors=True)
+    folder.mkdir(parents=True)
+    return folder
+
+
 def write_meta(path: Path, meta: dict[str, str]) -> None:
     path.parent.mkdir(parents=True, exist_ok=True)
     path.write_text("".join(f"{k}='{v}'\n" for k, v in meta.items()))
@@ -89,6 +98,9 @@ def parse_rows(rows: list[dict[str, str]]) -> dict[str, dict]:
         r1, r2 = get("short_reads_1"), get("short_reads_2")
         if not r1 or not r2:
             raise ValueError(f"{sid}: this port runs paired short reads only (short_reads_1 and short_reads_2)")
+        for r in (r1, r2):
+            if not READS_RE.fullmatch(r):
+                raise ValueError(f"{sid}: {r!r} must be a .fastq.gz or .fq.gz path or URL without spaces or quotes")
         if get("long_reads"):
             raise ValueError(f"{sid}: long reads are not part of this port")
         s = samples.setdefault(sid, {"group": group, "runs": []})
@@ -106,7 +118,7 @@ def stage_samples(args: argparse.Namespace) -> None:
         raise ValueError("the samplesheet has no rows")
     out = {k: Path(getattr(args, k)) for k in ("reads", "runs", "samples", "multi_run", "assemblies", "aligns")}
     for d in out.values():
-        d.mkdir(parents=True, exist_ok=True)
+        fresh(d)
     for sid, s in samples.items():
         run_ids = []
         for r in s["runs"]:
@@ -162,7 +174,17 @@ def selftest() -> None:
         assert sorted(os.listdir(t / "assemblies")) == ["MEGAHIT-a", "MEGAHIT-b", "SPAdes-a", "SPAdes-b"]
         # group mapping: a and b are in different groups
         assert sorted(os.listdir(t / "aligns")) == ["MEGAHIT-a-a", "MEGAHIT-b-b", "SPAdes-a-a", "SPAdes-b-b"]
-        for bad in ("a,1,0,ILLUMINA,a_R1.fq.gz,,\n", "a,1,0,ILLUMINA,a_R1.fq.gz,a_R2.fq.gz,l.fq.gz\n", "a b,1,0,ILLUMINA,x,y,\n"):
+        # forced rerun with sample b removed: none of b's items may stay
+        (t / "s.csv").write_text("".join((t / "s.csv").read_text().splitlines(True)[:3]))
+        stage_samples(ns)
+        assert sorted(os.listdir(t / "runs")) == ["a_run1", "a_run2"]
+        assert sorted(os.listdir(t / "reads")) == ["a_run1", "a_run2"]
+        assert sorted(os.listdir(t / "samples")) == ["a"]
+        assert sorted(os.listdir(t / "assemblies")) == ["MEGAHIT-a", "SPAdes-a"]
+        assert sorted(os.listdir(t / "aligns")) == ["MEGAHIT-a-a", "SPAdes-a-a"]
+        bads = ("a,1,0,ILLUMINA,a_R1.fq.gz,,\n", "a,1,0,ILLUMINA,a_R1.fq.gz,a_R2.fq.gz,l.fq.gz\n", "a b,1,0,ILLUMINA,x,y,\n",
+                "a,1,0,ILLUMINA,a'_R1.fq.gz,a_R2.fq.gz,\n", "a,1,0,ILLUMINA,a_R1.fq,a_R2.fq.gz,\n", "a,1,0,ILLUMINA,a R1.fq.gz,a_R2.fq.gz,\n")
+        for bad in bads:
             try:
                 parse_rows(list(csv.DictReader(["sample,run,group,short_reads_platform,short_reads_1,short_reads_2,long_reads\n", bad])))
             except ValueError:

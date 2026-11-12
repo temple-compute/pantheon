@@ -12,7 +12,7 @@ Route left out (not run by the test profile): long reads (Nanopore/PacBio prepro
 
 ## Variants
 
-- `workflow.chained.yaml`: maps that share an item space set `chain: true` (fastp, PhiX removal and FastQC per run; gunzip, QUAST, Prodigal and the Bowtie2 index per assembly; contig depths, CONVERT_DEPTHS, MetaBAT2 and MaxBin2; the CAT chains), so an item moves to its next step without waiting for the others, with the same outputs. It needs horus-runtime 0.9.0 or later.
+- `workflow.chained.yaml`: maps that share an item space set `chain: true` (fastp, PhiX removal and FastQC per run; gunzip, QUAST, Prodigal and the Bowtie2 index per assembly; contig depths, CONVERT_DEPTHS, MetaBAT2 and MaxBin2; per post-binning set: SeqKit or SPLIT_FASTA, the bin size filter, BUSCO, QUAST, the BUSCO filter and GTDB-Tk, and the CAT chains), so an item moves to its next step without waiting for the others, with the same outputs. The Groovy filters drop an item with exit code 10. Three joins stay tasks: collecting the three binners' outputs into sets (a map iterates one upstream map), and the per-bin Prokka list, the bin depth groups and contig_to_bin_map (each joins several sets). It needs horus-runtime 0.9.0 or later.
 
 ## Pipeline
 
@@ -43,7 +43,7 @@ bin_summary, multiqc              ──► results/GenomeBinning/summary/bin_su
 - `results/Assembly/`, `results/Annotation/`, `results/Taxonomy/`, `results/QC_shortreads/`: assemblies, Prodigal and Prokka, CAT and GTDB-Tk, read QC.
 - `results/multiqc/`: the MultiQC report and its data tables.
 
-Assemblies, bins, depth tables, every summary table and the MultiQC tables match the Nextflow run (`scripts/bench/nfcore/mag/compare.py` in tc-os). The MultiQC report has no software versions, workflow summary or methods sections, which nf-core builds from Nextflow run metadata. Where Nextflow orders inputs by task finish time, the port uses a fixed order: runs of a sample are merged in samplesheet order, an assembly's BAMs go to jgi_summarize_bam_contig_depths and SemiBin2 in reverse name order (the finish order of the test run), and CONCAT_BUSCO_TSV concatenates in BUSCO slot order. SemiBin2 and the depth column order depend on the BAM order, so another dataset can bin differently from a Nextflow run that happened to finish in another order. MaxBin2 assemblies it cannot bin (exit 1 or 255) are dropped, as the pipeline's `errorStrategy` ignores them.
+Assemblies, bins, depth tables, every summary table and the MultiQC tables match the Nextflow run (`scripts/bench/nfcore/mag/compare.py` in tc-os). The MultiQC report has no software versions, workflow summary or methods sections, which nf-core builds from Nextflow run metadata. Where Nextflow orders inputs by task finish time, the port uses a fixed order: runs of a sample are merged in samplesheet order, an assembly's BAMs go to jgi_summarize_bam_contig_depths and SemiBin2 in reverse name order (the finish order of the test run), and CONCAT_BUSCO_TSV concatenates in BUSCO slot order. `bat_summary.tsv` (CAT per bin) has the same rows in another fixed order: Nextflow's `collectFile(sort: 'deep')` orders the files by a hash of their content, the port by their content; the port writes it to `results/GenomeBinning/summary/`, Nextflow to `Taxonomy/CAT/`. SemiBin2 and the depth column order depend on the BAM order, so another dataset can bin differently from a Nextflow run that happened to finish in another order. MaxBin2 assemblies it cannot bin (exit 1 or 255) are dropped, as the pipeline's `errorStrategy` ignores them.
 
 ## Parameters
 

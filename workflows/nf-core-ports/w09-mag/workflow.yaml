@@ -1038,6 +1038,8 @@ tasks:
     target: *target
 
   # ---------------------------------------------------- bin QC
+  # BUSCO_BBTOOLS_MEMORY=3g is the module's task.memory * 0.25 in whole GB
+  # (15 GB -> 3g): change it with resources.
   - kind: horus_map
     id: busco
     name: BUSCO_BUSCO
@@ -1592,7 +1594,10 @@ tasks:
     target: *target
 
   # ---------------------------------------------------- summaries
-  # bat_summary.tsv is CATPACK's collectFile (keepHeader, sort: 'deep').
+  # bat_summary.tsv is CATPACK's collectFile (keepHeader, sort: 'deep'), which
+  # Nextflow publishes as Taxonomy/CAT/bat_summary.tsv. 'deep' orders files by a
+  # hash of their content; this port sorts by the content itself, so the rows
+  # come in another (also fixed) order and the file sits in GenomeBinning/summary/.
   - kind: horus_task
     id: bin_summary
     name: BIN_SUMMARY

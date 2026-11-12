@@ -31,10 +31,15 @@ name: nf-core mag chained
 # clone starts as soon as its upstream item is done, not when the whole map
 # is: fastp -> PhiX removal -> FastQC (per run); gunzip -> QUAST, Prodigal,
 # Bowtie2 index (per assembly); contig depths -> CONVERT_DEPTHS -> MaxBin2 and
-# contig depths -> MetaBAT2; the CAT bins and unbinned chains. A chained body
-# reads only its own slot (${item}, or a slot of another map paired by `zip`),
-# and takes the assembly or set name from the file names in it. The channel
-# logic after binning stays in decision tasks (it joins items across maps).
+# contig depths -> MetaBAT2. After binning, bins and unbinned contigs share one
+# item space (one item per post-binning set): SeqKit or SPLIT_FASTA -> the bin
+# size filter -> BUSCO -> GTDB-Tk, QUAST, and the CAT bins and unbinned
+# chains, so each set streams on as Nextflow's channels do. The Groovy filters
+# drop an item with exit code 10 (drop_exit_codes). A chained body reads only
+# its own slot (${item}, or a slot of another map paired by `zip`), and takes
+# the assembly or set name from its meta.env or file names. Steps that join
+# items stay tasks: collecting the three binners' outputs into sets, and the
+# per-bin Prokka list, the depth groups and contig_to_bin_map (post-sets).
 # Needs a runtime with map chaining (horus_map chain, zip, drop_exit_codes).
 #
 # capacity: memory-based admission like Nextflow's local executor. The key is
@@ -153,13 +158,10 @@ _art:
   - &a_metabat2 {id: metabat2, name: MetaBAT2, kind: folder, path: results/GenomeBinning/MetaBAT2/}
   - &a_maxbin2 {id: maxbin2, name: MaxBin2, kind: folder, path: results/GenomeBinning/MaxBin2/}
   - &a_semibin {id: semibin, name: SemiBin2, kind: folder, path: results/GenomeBinning/SemiBin2/}
-  - &a_binsets {id: binsets, name: Bin sets, kind: folder, path: work/lists/binsets/}
-  - &a_unbinsets {id: unbinsets, name: Unbinned contig sets, kind: folder, path: work/lists/unbinsets/}
+  - &a_sets {id: sets, name: Bin and unbinned contig sets, kind: folder, path: work/lists/sets/}
   - &a_seqkit {id: seqkit, name: SeqKit stats, kind: folder, path: work/seqkit/}
   - &a_split_fasta {id: split_fasta, name: Split unbinned contigs, kind: folder, path: results/GenomeBinning/unbinned/}
   - &a_post {id: post, name: Post-binning sets, kind: folder, path: work/lists/post/}
-  - &a_post_bins {id: post_bins, name: Post-binning bin sets, kind: folder, path: work/lists/post_bins/}
-  - &a_post_unbins {id: post_unbins, name: Post-binning unbinned sets, kind: folder, path: work/lists/post_unbins/}
   - &a_bins {id: bins, name: Bins, kind: folder, path: work/lists/bins/}
   - &a_depthsets {id: depthsets, name: Bin depth groups, kind: folder, path: work/lists/depthsets/}
   - &a_contig_map {id: contig_map, name: Contig to bin map, kind: file, path: results/GenomeBinning/contig_to_bin/contig_to_bin_map.tsv}
@@ -973,25 +975,27 @@ tasks:
   - kind: horus_task
     id: binsets
     name: Collect bins and unbinned contigs
-    description: BINNING's bins (per binner and assembly) and unbinned contigs, as item folders.
+    description: >-
+      BINNING's bins and unbinned contigs per binner and assembly, one item folder
+      per post-binning set (joins the three binner maps, so it is a task).
     inputs: [*a_assemblies, *a_metabat2, *a_maxbin2, *a_semibin]
-    outputs: [*a_binsets, *a_unbinsets]
+    outputs: [*a_sets]
     executor: {kind: shell}
     runtime:
       kind: python_script
       script: scripts/decide.py
       python: python3 # stdlib only
       args: >-
-        binsets --assemblies ${assemblies} --metabat2 ${metabat2} --maxbin2 ${maxbin2} --semibin ${semibin}
-        --binsets ${binsets} --unbinsets ${unbinsets}
+        sets --assemblies ${assemblies} --metabat2 ${metabat2} --maxbin2 ${maxbin2} --semibin ${semibin}
+        --sets ${sets}
     target: *target
 
   - kind: horus_map
     id: seqkit
     name: SEQKIT_STATS
-    over: {input_id: binsets, as: item}
+    over: {input_id: sets, as: item}
     max_concurrency: 16
-    inputs: [*a_binsets]
+    inputs: [*a_sets]
     outputs: [*a_seqkit]
     resources: *c1m1
     executor: *seqkit
@@ -999,8 +1003,9 @@ tasks:
       kind: command
       command: |
         cat > /tmp/.command.sh <<'NF'
-        prefix=$$(basename ${item})
-        rm -rf ${seqkit} && mkdir -p ${seqkit} && cd ${seqkit}
+        . ${item}/meta.env; prefix=$$assembler-$$binner-$$id
+        rm -rf ${seqkit} && mkdir -p ${seqkit} && cd ${seqkit} && cp ${item}/meta.env .
+        [ $$refinement = unrefined ] || exit 0  # unbinned contigs: SPLIT_FASTA's item
         bins=$$(cd ${item} && ls *.fa.gz)
         for b in $$bins; do ln -s ${item}/$$b .; done
         seqkit stats \
@@ -1016,9 +1021,9 @@ tasks:
   - kind: horus_map
     id: split_fasta
     name: SPLIT_FASTA
-    over: {input_id: unbinsets, as: item}
+    over: {input_id: sets, as: item}
     max_concurrency: 16
-    inputs: [*a_unbinsets, *a_nfcore, *a_min_len_unbinned, *a_max_unbinned]
+    inputs: [*a_sets, *a_nfcore, *a_min_len_unbinned, *a_max_unbinned]
     outputs: [*a_split_fasta]
     resources: *c2m12
     executor: *pybio
@@ -1027,7 +1032,9 @@ tasks:
       command: |
         cat > /tmp/.command.sh <<'NF'
         export PATH=${nfcore}/bin:$$PATH
+        . ${item}/meta.env
         rm -rf ${split_fasta} && mkdir -p ${split_fasta} && cd ${split_fasta}
+        [ $$refinement = unrefined_unbinned ] || exit 0  # bins: SEQKIT_STATS's item
         f=$$(cd ${item} && ls | grep -v '^meta.env$$')
         ln -s ${item}/$$f .
         # save unbinned contigs above thresholds into individual files, dump others in one file
@@ -1039,24 +1046,47 @@ tasks:
         exec bash -C -e -u -o pipefail /tmp/.command.sh
     target: *target
 
-  - kind: horus_task
-    id: postbinning
-    name: Post-binning sets
+  - kind: horus_map
+    id: post_filter
+    name: Post-binning set
     description: >-
-      Bin size filter on the SeqKit stats, then the bins and split unbinned
-      contigs that BUSCO, QUAST, CAT, GTDB-Tk, Prokka and the depth tables run on,
-      and the contig to bin map.
-    inputs: [*a_binsets, *a_unbinsets, *a_seqkit, *a_split_fasta, *a_bin_min, *a_bin_max]
-    outputs: [*a_post, *a_post_bins, *a_post_unbins, *a_bins, *a_depthsets, *a_contig_map]
+      The set's bins that pass the bin size filter (SeqKit stats), or its
+      SPLIT_FASTA files; drops the set when none is left (exit 10).
+    over: {input_id: seqkit, as: item}
+    chain: true
+    zip: [{input_id: split_fasta, as: split}]
+    drop_exit_codes: [10]
+    max_concurrency: 16
+    inputs: [*a_sets, *a_seqkit, *a_split_fasta, *a_bin_min, *a_bin_max]
+    outputs: [*a_post]
     executor: {kind: shell}
     runtime:
       kind: python_script
       script: scripts/decide.py
       python: python3 # stdlib only
       args: >-
-        postbinning --binsets ${binsets} --unbinsets ${unbinsets} --seqkit ${seqkit} --split-fasta ${split_fasta}
-        --bin-min-size ${bin_min_size} --bin-max-size ${bin_max_size} --post ${post} --post-bins ${post_bins}
-        --post-unbins ${post_unbins} --bins ${bins} --depthsets ${depthsets} --contig-map ${contig_map}
+        post-item --slot ${item} --split ${split} --sets ${sets}
+        --bin-min-size ${bin_min_size} --bin-max-size ${bin_max_size} --out ${post}
+    target: *target
+
+  # Joins the sets (one folder per bin, depth groups of bins and unbinned per
+  # binner), so Prokka and MAG_DEPTHS wait for every set.
+  - kind: horus_task
+    id: postbinning
+    name: Post-binning lists
+    description: >-
+      The bins Prokka runs on, the MAG_DEPTHS groups and the contig to bin map;
+      fails when bins exist and none passed the bin size filter.
+    inputs: [*a_post, *a_sets, *a_bin_min, *a_bin_max]
+    outputs: [*a_bins, *a_depthsets, *a_contig_map]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: >-
+        post-sets --post ${post} --sets ${sets} --bin-min-size ${bin_min_size} --bin-max-size ${bin_max_size}
+        --bins ${bins} --depthsets ${depthsets} --contig-map ${contig_map}
     target: *target
 
   # ---------------------------------------------------- bin QC
@@ -1064,6 +1094,7 @@ tasks:
     id: busco
     name: BUSCO_BUSCO
     over: {input_id: post, as: item}
+    chain: true
     max_concurrency: 16
     inputs: [*a_post, *a_busco_db, *a_busco_lineage]
     outputs: [*a_busco]
@@ -1077,6 +1108,7 @@ tasks:
         rm -rf ${busco} && mkdir -p ${busco}/tmp_input && cd ${busco}
         ln -s ${busco_db}/busco_db busco_db
         for b in $$(cd ${item} && ls *.gz); do ln -s ${item}/$$b tmp_input/; done
+        # the module's task.memory * 0.25 in whole GB: 15 GB -> 3g; change it with resources
         export BUSCO_BBTOOLS_MEMORY=3g
 
         # Fix Augustus for Apptainer
@@ -1142,6 +1174,7 @@ tasks:
     id: quast_bins
     name: QUAST_BINS
     over: {input_id: post, as: item}
+    chain: true
     max_concurrency: 16
     inputs: [*a_post]
     outputs: [*a_quast_bins]
@@ -1151,7 +1184,7 @@ tasks:
       kind: command
       command: |
         cat > /tmp/.command.sh <<'NF'
-        prefix=$$(basename ${item})
+        . ${item}/meta.env; prefix=$$name
         rm -rf ${quast_bins} && mkdir -p ${quast_bins} && cd ${quast_bins}
         list=$$(cd ${item} && ls *.gz)
         for b in $$list; do ln -s ${item}/$$b .; done
@@ -1234,12 +1267,35 @@ tasks:
     target: *target
 
   # ---------------------------------------------------- GTDB-Tk
-  - kind: horus_task
+  - kind: horus_map
     id: gtdb_filter
     name: Bins for GTDB-Tk
-    description: Keeps the bins whose BUSCO completeness and duplication pass the GTDB-Tk thresholds.
+    description: >-
+      The set's bins whose BUSCO completeness and duplication pass the GTDB-Tk
+      thresholds; drops the set when none passes (exit 10).
+    over: {input_id: busco, as: item}
+    chain: true
+    zip: [{input_id: post, as: set}]
+    drop_exit_codes: [10]
+    max_concurrency: 16
     inputs: [*a_busco, *a_post, *a_gtdb_comp, *a_gtdb_cont]
-    outputs: [*a_gtdb_sets, *a_discarded]
+    outputs: [*a_gtdb_sets]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: >-
+        gtdb-item --busco ${item} --set ${set} --min-completeness ${gtdbtk_min_completeness}
+        --max-contamination ${gtdbtk_max_contamination} --out ${gtdb_sets}
+    target: *target
+
+  - kind: horus_task
+    id: gtdb_discarded
+    name: Bins discarded for GTDB-Tk
+    description: The bins with a BUSCO result that fails the GTDB-Tk thresholds (GTDBTK_SUMMARY's --qc_discarded_bins).
+    inputs: [*a_busco, *a_post, *a_gtdb_comp, *a_gtdb_cont]
+    outputs: [*a_discarded]
     executor: {kind: shell}
     runtime:
       kind: python_script
@@ -1247,13 +1303,14 @@ tasks:
       python: python3 # stdlib only
       args: >-
         gtdb --busco ${busco} --post ${post} --min-completeness ${gtdbtk_min_completeness}
-        --max-contamination ${gtdbtk_max_contamination} --out ${gtdb_sets} --discarded ${discarded}
+        --max-contamination ${gtdbtk_max_contamination} --discarded ${discarded}
     target: *target
 
   - kind: horus_map
     id: gtdbtk
     name: GTDBTK_CLASSIFYWF
     over: {input_id: gtdb_sets, as: item}
+    chain: true
     max_concurrency: 16
     inputs: [*a_gtdb_sets, *a_gtdb_db]
     outputs: [*a_gtdbtk]
@@ -1263,7 +1320,7 @@ tasks:
       kind: command
       command: |
         cat > /tmp/.command.sh <<'NF'
-        prefix=$$(basename ${item})
+        . ${item}/meta.env; prefix=$$name
         rm -rf ${gtdbtk} && mkdir -p ${gtdbtk}/bins && cd ${gtdbtk}
         dbs=$$(ls ${gtdb_db}/database)
         for d in $$dbs; do ln -s ${gtdb_db}/database/$$d .; done
@@ -1374,9 +1431,11 @@ tasks:
   - kind: horus_map
     id: catpack_bins
     name: CATPACK_BINS
-    over: {input_id: post_bins, as: item}
+    over: {input_id: post, as: item}
+    chain: true
+    drop_exit_codes: [10]
     max_concurrency: 16
-    inputs: [*a_post_bins, *a_cat_db]
+    inputs: [*a_post, *a_cat_db]
     outputs: [*a_catpack_bins]
     resources: *c4m15
     executor: *catpack
@@ -1385,6 +1444,7 @@ tasks:
       command: |
         cat > /tmp/.command.sh <<'NF'
         . ${item}/meta.env; prefix=$$assembler-$$binner-$$id
+        [ $$refinement = unrefined ] || exit 10  # unbinned contigs: CONCAT_UNBINS's item
         rm -rf ${catpack_bins} && mkdir -p ${catpack_bins}/bins && cd ${catpack_bins}
         ln -s ${cat_db}/cat_db/db db; ln -s ${cat_db}/cat_db/tax tax
         for b in $$(cd ${item} && ls *.gz); do ln -s ${item}/$$b bins/; done
@@ -1416,7 +1476,7 @@ tasks:
     over: {input_id: catpack_bins, as: item}
     chain: true
     max_concurrency: 16
-    inputs: [*a_post_bins, *a_catpack_bins, *a_cat_db]
+    inputs: [*a_catpack_bins, *a_cat_db]
     outputs: [*a_catpack_names_bins]
     resources: *c1m6
     executor: *cat
@@ -1443,7 +1503,7 @@ tasks:
     over: {input_id: catpack_names_bins, as: item}
     chain: true
     max_concurrency: 16
-    inputs: [*a_post_bins, *a_catpack_names_bins]
+    inputs: [*a_catpack_names_bins]
     outputs: [*a_catpack_summary_bins]
     resources: *c1m6
     executor: *catpack
@@ -1467,9 +1527,11 @@ tasks:
   - kind: horus_map
     id: concat_unbins
     name: CONCAT_UNBINS
-    over: {input_id: post_unbins, as: item}
+    over: {input_id: post, as: item}
+    chain: true
+    drop_exit_codes: [10]
     max_concurrency: 16
-    inputs: [*a_post_unbins]
+    inputs: [*a_post]
     outputs: [*a_concat_unbins]
     resources: *c2m12
     executor: *pigz
@@ -1478,6 +1540,7 @@ tasks:
       command: |
         cat > /tmp/.command.sh <<'NF'
         . ${item}/meta.env; prefix=$$assembler-$$binner-$$id
+        [ $$refinement = unrefined_unbinned ] || exit 10  # bins: CATPACK_BINS's item
         rm -rf ${concat_unbins} && mkdir -p ${concat_unbins}/to_concatenate && cd ${concat_unbins}
         for b in $$(cd ${item} && ls *.gz); do ln -s ${item}/$$b to_concatenate/; done
         while IFS= read -r -d $$'\0' file; do
@@ -1495,7 +1558,7 @@ tasks:
     over: {input_id: concat_unbins, as: item}
     chain: true
     max_concurrency: 16
-    inputs: [*a_post_unbins, *a_concat_unbins, *a_cat_db]
+    inputs: [*a_concat_unbins, *a_cat_db]
     outputs: [*a_catpack_unbins]
     resources: *c4m15
     executor: *catpack
@@ -1537,7 +1600,7 @@ tasks:
     over: {input_id: catpack_unbins, as: item}
     chain: true
     max_concurrency: 16
-    inputs: [*a_post_unbins, *a_catpack_unbins, *a_cat_db]
+    inputs: [*a_catpack_unbins, *a_cat_db]
     outputs: [*a_catpack_names_unbins]
     resources: *c1m6
     executor: *cat
@@ -1565,7 +1628,7 @@ tasks:
     chain: true
     zip: [{input_id: concat_unbins, as: cu}]
     max_concurrency: 16
-    inputs: [*a_post_unbins, *a_catpack_names_unbins, *a_concat_unbins]
+    inputs: [*a_catpack_names_unbins, *a_concat_unbins]
     outputs: [*a_catpack_summary_unbins]
     resources: *c1m6
     executor: *catpack
@@ -1620,7 +1683,10 @@ tasks:
     target: *target
 
   # ---------------------------------------------------- summaries
-  # bat_summary.tsv is CATPACK's collectFile (keepHeader, sort: 'deep').
+  # bat_summary.tsv is CATPACK's collectFile (keepHeader, sort: 'deep'), which
+  # Nextflow publishes as Taxonomy/CAT/bat_summary.tsv. 'deep' orders files by a
+  # hash of their content; this port sorts by the content itself, so the rows
+  # come in another (also fixed) order and the file sits in GenomeBinning/summary/.
   - kind: horus_task
     id: bin_summary
     name: BIN_SUMMARY
@@ -1750,31 +1816,38 @@ edges:
   - {source: metabat2, source_output: metabat2, target: binsets, target_input: metabat2}
   - {source: maxbin2, source_output: maxbin2, target: binsets, target_input: maxbin2}
   - {source: semibin, source_output: semibin, target: binsets, target_input: semibin}
-  - {source: binsets, source_output: binsets, target: seqkit, target_input: binsets}
-  - {source: binsets, source_output: unbinsets, target: split_fasta, target_input: unbinsets}
+  - {source: binsets, source_output: sets, target: seqkit, target_input: sets}
+  - {source: binsets, source_output: sets, target: split_fasta, target_input: sets}
   - {source: artifact-nfcore, source_output: nfcore, target: split_fasta, target_input: nfcore}
   - {source: artifact-min_length_unbinned_contigs, source_output: min_length_unbinned_contigs, target: split_fasta, target_input: min_length_unbinned_contigs}
   - {source: artifact-max_unbinned_contigs, source_output: max_unbinned_contigs, target: split_fasta, target_input: max_unbinned_contigs}
-  - {source: binsets, source_output: binsets, target: postbinning, target_input: binsets}
-  - {source: binsets, source_output: unbinsets, target: postbinning, target_input: unbinsets}
-  - {source: seqkit, source_output: seqkit, target: postbinning, target_input: seqkit}
-  - {source: split_fasta, source_output: split_fasta, target: postbinning, target_input: split_fasta}
+  - {source: binsets, source_output: sets, target: post_filter, target_input: sets}
+  - {source: seqkit, source_output: seqkit, target: post_filter, target_input: seqkit}
+  - {source: split_fasta, source_output: split_fasta, target: post_filter, target_input: split_fasta}
+  - {source: artifact-bin_min_size, source_output: bin_min_size, target: post_filter, target_input: bin_min_size}
+  - {source: artifact-bin_max_size, source_output: bin_max_size, target: post_filter, target_input: bin_max_size}
+  - {source: post_filter, source_output: post, target: postbinning, target_input: post}
+  - {source: binsets, source_output: sets, target: postbinning, target_input: sets}
   - {source: artifact-bin_min_size, source_output: bin_min_size, target: postbinning, target_input: bin_min_size}
   - {source: artifact-bin_max_size, source_output: bin_max_size, target: postbinning, target_input: bin_max_size}
-  - {source: postbinning, source_output: post, target: busco, target_input: post}
+  - {source: post_filter, source_output: post, target: busco, target_input: post}
   - {source: busco_untar, source_output: busco_db, target: busco, target_input: busco_db}
   - {source: artifact-busco_db_lineage, source_output: busco_db_lineage, target: busco, target_input: busco_db_lineage}
-  - {source: postbinning, source_output: post, target: quast_bins, target_input: post}
+  - {source: post_filter, source_output: post, target: quast_bins, target_input: post}
   - {source: quast_bins, source_output: quast_bins, target: concat_quast, target_input: quast_bins}
   - {source: busco, source_output: busco, target: concat_busco, target_input: busco}
   - {source: busco, source_output: busco, target: gtdb_filter, target_input: busco}
-  - {source: postbinning, source_output: post, target: gtdb_filter, target_input: post}
+  - {source: post_filter, source_output: post, target: gtdb_filter, target_input: post}
   - {source: artifact-gtdbtk_min_completeness, source_output: gtdbtk_min_completeness, target: gtdb_filter, target_input: gtdbtk_min_completeness}
   - {source: artifact-gtdbtk_max_contamination, source_output: gtdbtk_max_contamination, target: gtdb_filter, target_input: gtdbtk_max_contamination}
+  - {source: busco, source_output: busco, target: gtdb_discarded, target_input: busco}
+  - {source: post_filter, source_output: post, target: gtdb_discarded, target_input: post}
+  - {source: artifact-gtdbtk_min_completeness, source_output: gtdbtk_min_completeness, target: gtdb_discarded, target_input: gtdbtk_min_completeness}
+  - {source: artifact-gtdbtk_max_contamination, source_output: gtdbtk_max_contamination, target: gtdb_discarded, target_input: gtdbtk_max_contamination}
   - {source: gtdb_filter, source_output: gtdb_sets, target: gtdbtk, target_input: gtdb_sets}
   - {source: gtdb_prep, source_output: gtdb_db, target: gtdbtk, target_input: gtdb_db}
   - {source: gtdbtk, source_output: gtdbtk, target: gtdbtk_summary, target_input: gtdbtk}
-  - {source: gtdb_filter, source_output: discarded, target: gtdbtk_summary, target_input: discarded}
+  - {source: gtdb_discarded, source_output: discarded, target: gtdbtk_summary, target_input: discarded}
   - {source: artifact-nfcore, source_output: nfcore, target: gtdbtk_summary, target_input: nfcore}
   - {source: postbinning, source_output: depthsets, target: mag_depths, target_input: depthsets}
   - {source: depths, source_output: depths, target: mag_depths, target_input: depths}
@@ -1782,21 +1855,16 @@ edges:
   - {source: postbinning, source_output: depthsets, target: mag_depths_summary, target_input: depthsets}
   - {source: mag_depths, source_output: mag_depths, target: mag_depths_summary, target_input: mag_depths}
   - {source: artifact-nfcore, source_output: nfcore, target: mag_depths_summary, target_input: nfcore}
-  - {source: postbinning, source_output: post_bins, target: catpack_bins, target_input: post_bins}
+  - {source: post_filter, source_output: post, target: catpack_bins, target_input: post}
   - {source: cat_untar, source_output: cat_db, target: catpack_bins, target_input: cat_db}
-  - {source: postbinning, source_output: post_bins, target: catpack_names_bins, target_input: post_bins}
   - {source: catpack_bins, source_output: catpack_bins, target: catpack_names_bins, target_input: catpack_bins}
   - {source: cat_untar, source_output: cat_db, target: catpack_names_bins, target_input: cat_db}
-  - {source: postbinning, source_output: post_bins, target: catpack_summary_bins, target_input: post_bins}
   - {source: catpack_names_bins, source_output: catpack_names_bins, target: catpack_summary_bins, target_input: catpack_names_bins}
-  - {source: postbinning, source_output: post_unbins, target: concat_unbins, target_input: post_unbins}
-  - {source: postbinning, source_output: post_unbins, target: catpack_unbins, target_input: post_unbins}
+  - {source: post_filter, source_output: post, target: concat_unbins, target_input: post}
   - {source: concat_unbins, source_output: concat_unbins, target: catpack_unbins, target_input: concat_unbins}
   - {source: cat_untar, source_output: cat_db, target: catpack_unbins, target_input: cat_db}
-  - {source: postbinning, source_output: post_unbins, target: catpack_names_unbins, target_input: post_unbins}
   - {source: catpack_unbins, source_output: catpack_unbins, target: catpack_names_unbins, target_input: catpack_unbins}
   - {source: cat_untar, source_output: cat_db, target: catpack_names_unbins, target_input: cat_db}
-  - {source: postbinning, source_output: post_unbins, target: catpack_summary_unbins, target_input: post_unbins}
   - {source: catpack_names_unbins, source_output: catpack_names_unbins, target: catpack_summary_unbins, target_input: catpack_names_unbins}
   - {source: concat_unbins, source_output: concat_unbins, target: catpack_summary_unbins, target_input: concat_unbins}
   - {source: postbinning, source_output: bins, target: prokka, target_input: bins}
