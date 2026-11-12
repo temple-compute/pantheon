@@ -10,6 +10,10 @@ Runs the route `nextflow run nf-core/mag -r 5.5.0 -profile test,docker` takes, a
 
 Route left out (not run by the test profile): long reads (Nanopore/PacBio preprocessing, Flye, metaMDBG, hybrid SPAdes, PyPolCA), host removal, adapterremoval/Trimmomatic, BBNorm, group co-assembly, Kraken2/Centrifuge read taxonomy, ALE, CONCOCT, COMEBin, MetaBinner, DAS Tool refinement, Tiara domain classification, CheckM/CheckM2/GUNC, geNomad, MetaEuk, ancient DNA validation and given assemblies (`--assembly_input`).
 
+## Variants
+
+- `workflow.chained.yaml`: maps that share an item space set `chain: true` (fastp, PhiX removal and FastQC per run; gunzip, QUAST, Prodigal and the Bowtie2 index per assembly; contig depths, CONVERT_DEPTHS, MetaBAT2 and MaxBin2; the CAT chains), so an item moves to its next step without waiting for the others, with the same outputs. It needs horus-runtime 0.9.0 or later.
+
 ## Pipeline
 
 ```

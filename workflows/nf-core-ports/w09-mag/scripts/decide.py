@@ -40,6 +40,13 @@ def read_meta(path: Path) -> dict[str, str]:
     return dict(re.findall(r"^(\w+)='([^']*)'$", path.read_text(), re.M))
 
 
+def fresh(folder: Path) -> Path:
+    """An empty output folder: a forced rerun must not find the last run's sets."""
+    shutil.rmtree(folder, ignore_errors=True)
+    folder.mkdir(parents=True)
+    return folder
+
+
 def write_set(folder: Path, files: list[Path], meta: dict[str, str]) -> None:
     folder.mkdir(parents=True)
     for f in files:
@@ -61,8 +68,7 @@ def find(root: Path, pattern: str) -> list[Path]:
 
 def binsets(args: argparse.Namespace) -> None:
     out_bins, out_unbins = Path(args.binsets), Path(args.unbinsets)
-    out_bins.mkdir(parents=True, exist_ok=True)
-    out_unbins.mkdir(parents=True, exist_ok=True)
+    fresh(out_bins), fresh(out_unbins)
     for a in sorted(Path(args.assemblies).iterdir()):
         m = read_meta(a)
         asm, sid = m["assembler"], m["id"]
@@ -127,7 +133,7 @@ def postbinning(args: argparse.Namespace) -> None:
 
     out = {k: Path(getattr(args, k)) for k in ("post", "post_bins", "post_unbins", "bins", "depthsets")}
     for d in out.values():
-        d.mkdir(parents=True, exist_ok=True)
+        fresh(d)
     groups: dict[str, tuple[list[Path], dict[str, str]]] = {}
     rows = []
     for name, files, meta in sets:
@@ -161,8 +167,7 @@ def gtdb(args: argparse.Namespace) -> None:
                 comp, cont = float(row["Complete"]), float(row["Duplicated"])
                 if comp >= 0 and cont >= 0:
                     readings.append((comp, cont))
-    out = Path(args.out)
-    out.mkdir(parents=True, exist_ok=True)
+    out = fresh(Path(args.out))
     discarded = []
     for d in sorted(Path(args.post).iterdir()):
         passed = []
@@ -202,6 +207,7 @@ def selftest() -> None:
         (t / "sb/0/bins").mkdir(parents=True)
         ns = argparse.Namespace(assemblies=t / "asm", metabat2=t / "mb", maxbin2=t / "mx", semibin=t / "sb", binsets=t / "bs", unbinsets=t / "us")
         binsets(ns)
+        binsets(ns)  # a forced rerun writes into the last run's folder
         assert sorted(p.name for p in (t / "bs").iterdir()) == ["MEGAHIT-MaxBin2-a", "MEGAHIT-MetaBAT2-a"]
         assert [p.name for p in bin_files(t / "bs/MEGAHIT-MetaBAT2-a")] == ["MEGAHIT-MetaBAT2-a.1.fa.gz"]
         assert [p.name for p in (t / "us").iterdir()] == ["MEGAHIT-MetaBAT2-a"]
