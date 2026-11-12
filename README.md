@@ -110,6 +110,7 @@ Native Horus ports of nf-core pipelines, with the same containers, command lines
 | W-55 | [nf-core/ampliseq](workflows/nf-core-ports/w08-ampliseq/README.md) | nf-core/ampliseq 3.1.0 test route as native tasks: Cutadapt and DADA2 per sample and run, VSEARCH, decontam and Barrnap filters, DADA2 and QIIME2 taxonomy, QIIME2 diversity and ANCOM-BC fan-outs, MultiQC and the summary report |
 | W-56 | [nf-core/mag](workflows/nf-core-ports/w09-mag/README.md) | nf-core/mag 5.5.0 test route as native tasks: read QC, MEGAHIT and metaSPAdes, MetaBAT2, MaxBin2 and SemiBin2 binning, then BUSCO, CAT, GTDB-Tk and Prokka per bin, the bin summary and MultiQC |
 | W-57 | [nf-core/viralrecon](workflows/nf-core-ports/w10-viralrecon/README.md) | nf-core/viralrecon 3.0.0 test route as native tasks: fastp, Kraken2, Bowtie2, iVar variants, SnpEff, Freyja, a BCFtools consensus with Nextclade and Pangolin, SPAdes and Unicycler assemblies per sample, then QUAST and MultiQC |
+| W-58 | [nf-core/taxprofiler](workflows/nf-core-ports/w11-taxprofiler/README.md) | nf-core/taxprofiler 2.0.1 test route as native tasks: read QC, host removal and run merging, then eleven profilers per sample and database, Krona, taxpasta and MultiQC |
 
 ### Chemistry
 
