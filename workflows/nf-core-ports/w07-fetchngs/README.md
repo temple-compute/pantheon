@@ -8,6 +8,10 @@ Public sequencing reads and their metadata from SRA, ENA, DDBJ and GEO ids: a na
 
 Runs the nf-core/fetchngs pipeline as a Horus workflow, with the same containers, command lines and per-process cpus/memory as `nextflow run nf-core/fetchngs -r 1.13.0 -profile test,docker`. Each id is resolved to its runs through the ENA and NCBI APIs. Runs with ENA FTP links are downloaded with wget and checked against their md5. Runs without them go through sra-tools (prefetch, then fasterq-dump). The workflow then writes a samplesheet for downstream nf-core pipelines and a MultiQC sample-name mapping. Per-id and per-run steps are `horus_map` stages; the pipeline's Groovy steps are `scripts/fetchngs.py`. The workflow has 10 tasks.
 
+## Variants
+
+- `workflow.chained.yaml`: SRA_RUNINFO_TO_FTP and SRATOOLS_FASTERQDUMP set `chain: true`, so an id or run moves to its next step without waiting for the others, with the same outputs. Needs horus-runtime 0.9.0 or later.
+
 ## Pipeline
 
 ```
