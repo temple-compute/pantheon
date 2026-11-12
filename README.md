@@ -107,6 +107,7 @@ Native Horus ports of nf-core pipelines, with the same containers, command lines
 | W-52 | [nf-core/atacseq](workflows/nf-core-ports/w05-atacseq/README.md) | nf-core/atacseq 2.1.2 test route as native tasks: TrimGalore and BWA per run, library and replicate merging, BAM filtering, deepTools, MACS2 broad peaks, HOMER, consensus peaks with featureCounts and DESeq2 QC, ataqv, then MultiQC |
 | W-53 | [nf-core/chipseq](workflows/nf-core-ports/w06-chipseq/README.md) | nf-core/chipseq 2.1.0 test route as native tasks: BWA, Picard and BAMTools filtering, MACS3 broad peaks with HOMER annotation, consensus peaks with featureCounts and DESeq2 QC, then MultiQC |
 | W-54 | [nf-core/fetchngs](workflows/nf-core-ports/w07-fetchngs/README.md) | nf-core/fetchngs 1.13.0 test route as native tasks: run metadata from ENA and NCBI per id, reads over FTP or through sra-tools per run, then an nf-core samplesheet |
+| W-55 | [nf-core/ampliseq](workflows/nf-core-ports/w08-ampliseq/README.md) | nf-core/ampliseq 3.1.0 test route as native tasks: Cutadapt and DADA2 per sample and run, VSEARCH, decontam and Barrnap filters, DADA2 and QIIME2 taxonomy, QIIME2 diversity and ANCOM-BC fan-outs, MultiQC and the summary report |
 
 ### Chemistry
 
