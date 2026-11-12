@@ -203,6 +203,8 @@ tasks:
         . ${reference}/refs.env
         rm -rf ${intervals_split} && mkdir -p ${intervals_split} && cd ${intervals_split}
         f=$$ref_intervals
+        # sarek also takes .bed and chr:start-end intervals (other awk); only interval_list is ported
+        case $$f in *.interval_list) ;; *) echo "only GATK interval_list intervals are ported" >&2; exit 1;; esac
         ln -s ${reference}/$$f $$f
         grep -v '^@' $$f | awk -vFS="\t" '{
             name = sprintf("%s_%d-%d", $$1, $$2, $$3);

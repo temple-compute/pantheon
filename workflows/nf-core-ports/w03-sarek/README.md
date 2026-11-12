@@ -39,7 +39,7 @@ MarkDuplicates gets a sample's lanes in samplesheet order. Nextflow passes them 
 
 ## Left out
 
-The port covers the test profile's route. Not ported: other aligners (bwa-mem2, DragMap, Sentieon, Parabricks), FASTQ splitting and trimming (fastp), UMI handling, input from BAM, CRAM or spring files, tumor samples and somatic calling, variant callers other than Strelka, annotation, joint germline calling, `--wes`, per-interval scatter of BQSR and Strelka (the workflow stops with an error when the interval_list has more than one interval), building missing reference indexes (`.fai`, `.dict`, known-sites `.tbi`), the `csv/` restart samplesheets and the `--skip_tools` switches. The stage task stops with an error on rows it cannot handle.
+The port covers the test profile's route. Not ported: other aligners (bwa-mem2, DragMap, Sentieon, Parabricks), FASTQ splitting and trimming (fastp), UMI handling, input from BAM, CRAM or spring files, tumor samples and somatic calling, variant callers other than Strelka, annotation, joint germline calling, `--wes`, per-interval scatter of BQSR and Strelka (the workflow stops with an error when the interval_list has more than one interval), intervals given as BED or `chr:start-end` (only a GATK interval_list is accepted), building missing reference indexes (`.fai`, `.dict`, known-sites `.tbi`), the `csv/` restart samplesheets and the `--skip_tools` switches. The stage task stops with an error on rows it cannot handle.
 
 ## Parameters
 
