@@ -33,7 +33,7 @@ multiqc                            ──► results/multiqc/multiqc_report.html
 - `results/reports/`: FastQC, samtools stats, mosdepth, bcftools stats and vcftools tables.
 - `results/multiqc/`: the MultiQC report and its data tables.
 
-The VCF records, samtools stats (including the read checksums of both CRAMs), mosdepth, bcftools and vcftools outputs, FastQC data and the MultiQC tables match the Nextflow run. The MultiQC report has no software versions, workflow summary or methods sections, which nf-core builds from Nextflow run metadata.
+The VCF records, samtools stats (including the read checksums of both CRAMs), mosdepth, bcftools and vcftools outputs, FastQC data and the MultiQC tables match the Nextflow run. VCF headers differ only in `##fileDate`, `##startTime` (run date) and `##reference` (absolute path). The MultiQC report has no software versions, workflow summary or methods sections, which nf-core builds from Nextflow run metadata.
 
 MarkDuplicates gets a sample's lanes in samplesheet order. Nextflow passes them in the order bwa mem finishes, which changes from run to run. When two lanes hold the same reads, as in the test data, MarkDuplicates marks one lane's copy as duplicate, so the per-lane duplicate and BQSR tables can swap lane labels between runs of either engine. The CRAM content and the variant calls are the same either way.
 
