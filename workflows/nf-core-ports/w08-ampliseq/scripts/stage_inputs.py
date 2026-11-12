@@ -45,7 +45,9 @@ import sys
 import tempfile
 from pathlib import Path
 
-ID_RE = re.compile(r"[A-Za-z0-9._-]+")
+# assets/schema_input.json; a run also names a file and is sourced in single quotes
+ID_RE = re.compile(r"[a-zA-Z][a-zA-Z0-9_]+")
+RUN_RE = re.compile(r"[^\s/']+")
 
 
 def find_in_mirror(mirror: str, name: str) -> Path | None:
@@ -98,6 +100,9 @@ def decontam_metadata(rows: list[dict[str, str]]) -> str:
             entries.append(("sample\tquant_reading\trun", f"{r['sample']}\t{r['quant_reading']}\t{run}"))
         else:
             entries.append(("empty", ""))
+    if all(h == "empty" for h, _line in entries):
+        # nf-core drops this file (countLines() > 1), DECONTAM gets nothing and --decontam decontaminate stops
+        raise SystemExit("Decontamination removed all features, please adjust settings. (No samplesheet row has control or quant_reading.)")
     header = entries[0][0]
     body = sorted(line + "\n" for _h, line in entries if line)
     return header + "\n" + "".join(body)
@@ -113,7 +118,7 @@ def stage(a: argparse.Namespace) -> None:
     for r in rows:
         sid = r.get("sample", "")
         if not ID_RE.fullmatch(sid) or sid in seen:
-            raise SystemExit(f"invalid or repeated sample name {sid!r}")
+            raise SystemExit(f"invalid or repeated sample name {sid!r}: must start with a letter, and can only contain letters, numbers or underscores")
         seen.add(sid)
         if not r.get("fastq_1") or not r.get("fastq_2"):
             raise SystemExit(f"{sid}: fastq_1 and fastq_2 are required (paired-end Illumina)")
@@ -126,10 +131,12 @@ def stage(a: argparse.Namespace) -> None:
             if count_fastq(dest) < a.min_read_counts:
                 raise SystemExit(f"{sid}: {dest.name} has fewer than {a.min_read_counts} reads")
         run = r.get("run") or "1"
-        (samples / sid).write_text(f"id={sid}\nrun={run}\n")
+        if not RUN_RE.fullmatch(run):
+            raise SystemExit(f"{sid}: invalid run name {run!r}: no spaces, '/' or quotes")
+        (samples / sid).write_text(f"id='{sid}'\nrun='{run}'\n")
         by_run.setdefault(run, []).append(sid)
     for run, ids in by_run.items():
-        (runs / run).write_text(f"run={run}\nsamples='{' '.join(ids)}'\n")
+        (runs / run).write_text(f"run='{run}'\nsamples='{' '.join(ids)}'\n")
     for d in ("FW", "RV"):
         (directions / d).write_text(f"direction={d}\n")
     fetch(a.metadata, ref / a.metadata.rsplit("/", 1)[-1], a.mirror)
@@ -144,7 +151,13 @@ def selftest() -> None:
         {"sample": "a", "quant_reading": "7", "run": "2"},
     ]
     assert decontam_metadata(rows) == "sample\tquant_reading\trun\na\t7\t2\nb\t5\t1\n"
-    assert decontam_metadata([{"sample": "a"}]) == "empty\n"
+    try:
+        decontam_metadata([{"sample": "a"}])
+        raise AssertionError("no decontam columns must stop")
+    except SystemExit:
+        pass
+    assert ID_RE.fullmatch("sampleID_1a") and not any(ID_RE.fullmatch(x) for x in ("1a", "a.b", "a-b", "a"))
+    assert RUN_RE.fullmatch("run_1") and not any(RUN_RE.fullmatch(x) for x in ("a b", "a/b", "a'b", ""))
     assert simple_name("https://x/1a_S103_L001_R1_001.fastq.gz") == "1a_S103_L001_R1_001"
     with tempfile.TemporaryDirectory() as t:
         fq = Path(t) / "r.fastq.gz"
@@ -161,7 +174,8 @@ def selftest() -> None:
         )
         stage(ns)
         assert (Path(t) / "reads/S1/S1_2.fastq.gz").exists()
-        assert (Path(t) / "runs/1").read_text() == "run=1\nsamples='S1'\n"
+        assert (Path(t) / "runs/1").read_text() == "run='1'\nsamples='S1'\n"
+        assert (Path(t) / "samples/S1").read_text() == "id='S1'\nrun='1'\n"
         assert (Path(t) / "ref/decontam_metadata.tsv").read_text() == "sample\tquant_reading\trun\nS1\t10\t1\n"
     print("selftest ok")
 
