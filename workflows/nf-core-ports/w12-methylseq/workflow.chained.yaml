@@ -1,0 +1,579 @@
+kind: horus_workflow
+name: nf-core methylseq chained
+
+# Native port of nf-core/methylseq 4.2.0, the route `-profile test,docker`
+# runs: the default Bismark aligner (bowtie2) with an index built from the
+# fasta, FastQC, TrimGalore, Bismark align, deduplicate, methylation
+# extractor, sample and summary reports, samtools sort/index and MultiQC.
+# Images, rendered command lines (ext.args from conf/modules/*.config) and
+# per-process cpus/memory are the executed ones; the test profile caps every
+# process at 4 cpus / 15 GB.
+#
+# Every command runs under `bash -C -e -u -o pipefail`, the pipeline's
+# process.shell: each command writes its script to /tmp/.command.sh and runs
+# that with bash, as .command.run does.
+#
+# Chained variant of workflow.yaml: same commands and outputs, one item
+# space. trimgalore maps over the sample meta files and writes meta.env (id,
+# single_end) into its slot; every later per-sample map sets `chain: true`
+# and iterates the previous map's output, so its clone for a sample starts as
+# soon as the upstream clone for that sample is done, not when the whole map
+# is. A body sources ${sample}/meta.env and reads the upstream slot
+# ${sample}/, or a slot of another map paired by item through `zip`. FastQC
+# reads only the raw reads and stays a plain map. Needs a runtime with map
+# chaining (horus-runtime >= 0.9.0).
+
+_target: &target
+  kind: local
+
+# Run on a remote node instead: point every task at this anchor.
+# _target: &target
+#   kind: ssh
+#   host: bench-node.example.org
+#   username: ubuntu
+#   working_directory: /home/ubuntu/horus
+
+# Containers (.command.run docker lines); `user: host` runs them as the
+# calling user, as nf-core's `-u $(id -u):$(id -g)` does.
+_img:
+  coreutils: &coreutils {kind: docker, user: host, image: "community.wave.seqera.io/library/coreutils_grep_gzip_lbzip2_pruned:838ba80435a629f8"}
+  bismark: &bismark {kind: docker, user: host, image: "community.wave.seqera.io/library/bismark:0.25.1--1f50935de5d79c47"}
+  fastqc: &fastqc {kind: docker, user: host, image: "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0"}
+  trimgalore: &trimgalore {kind: docker, user: host, image: "community.wave.seqera.io/library/cutadapt_trim-galore_pigz:a98edd405b34582d"}
+  samtools: &samtools {kind: docker, user: host, image: "quay.io/biocontainers/samtools:1.22.1--h96c455f_0"}
+  multiqc: &multiqc {kind: docker, user: host, image: "community.wave.seqera.io/library/multiqc:1.32--d58f60e4deb769bf"}
+
+# Labels after the test profile's resourceLimits (trace.txt cpus / memory).
+_res:
+  single: &single {cpus: 1, memory_gb: 6, walltime: "01:00:00"}
+  low: &low {cpus: 2, memory_gb: 12, walltime: "01:00:00"}
+  high: &high {cpus: 4, memory_gb: 15, walltime: "01:00:00"}
+
+# Artifacts, shared by the producing task's outputs and every consumer's inputs.
+_art:
+  - &a_samplesheet {id: samplesheet, name: Samplesheet, kind: file, path: examples/samplesheet.csv}
+  - &a_mqc_config {id: multiqc_config, name: MultiQC config, kind: file, path: nfcore/assets/multiqc_config.yml}
+  - &a_mirror {id: input_mirror, name: Local input mirror, kind: string, path: params/input_mirror.txt}
+  - &a_fasta_url {id: fasta_url, name: Genome fasta, kind: string, path: params/fasta_url.txt}
+  - &a_reference {id: reference, name: Reference files, kind: folder, path: work/reference/}
+  - &a_reads {id: reads, name: Reads, kind: folder, path: work/reads/}
+  - &a_samples {id: samples, name: Samples, kind: folder, path: work/samples/}
+  - &a_fasta {id: fasta, name: Genome fasta, kind: folder, path: work/genome/fasta/}
+  - &a_index {id: bismark_index, name: Bismark index, kind: folder, path: work/genome/bismark_index/}
+  - &a_fastqc {id: fastqc, name: FastQC, kind: folder, path: results/fastqc/}
+  - &a_trimgalore {id: trimgalore, name: TrimGalore, kind: folder, path: results/trimgalore/}
+  - &a_align {id: align, name: Bismark alignments, kind: folder, path: results/bismark/alignments/}
+  - &a_dedup {id: dedup, name: Bismark deduplicated, kind: folder, path: results/bismark/deduplicated/}
+  - &a_sort {id: sort, name: Sorted BAM, kind: folder, path: results/bismark/sorted/}
+  - &a_bai {id: bai, name: Sorted BAM index, kind: folder, path: results/bismark/sorted_index/}
+  - &a_meth {id: meth, name: Methylation calls, kind: folder, path: results/bismark/methylation_calls/}
+  - &a_report {id: bismark_report, name: Bismark sample reports, kind: folder, path: results/bismark/reports/}
+  - &a_summary {id: bismark_summary, name: Bismark summary, kind: folder, path: results/bismark/summary/}
+  - &a_multiqc {id: multiqc, name: MultiQC report, kind: folder, path: results/multiqc/bismark/}
+
+artifacts:
+  - <<: *a_samplesheet
+    description: >-
+      nf-core/methylseq samplesheet (sample,fastq_1,fastq_2,genome). Reads may be
+      URLs or paths relative to the samplesheet; rows sharing a sample are runs of
+      one sample. Default: the test profile samplesheet (3 single-end, 1 paired-end).
+  - <<: *a_mqc_config
+    description: The pipeline's assets/multiqc_config.yml (MIT).
+  - <<: *a_mirror
+    description: >-
+      Folder searched for each input file by name before downloading it (e.g. a
+      local copy of the test data). Empty downloads everything.
+    value: ""
+    pattern: '[^"`$\\]*'
+  - <<: *a_fasta_url
+    description: "--fasta (gzipped or plain)"
+    value: "https://raw.githubusercontent.com/nf-core/test-datasets/methylseq/reference/genome.fa.gz"
+    pattern: '[^"`$\\]*'
+
+tasks:
+  # ---------------------------------------------------------------- inputs
+  - kind: horus_task
+    id: fetch_reference
+    name: Fetch the genome fasta
+    description: Downloads the fasta (or copies it from the mirror).
+    inputs: [*a_mirror, *a_fasta_url]
+    outputs: [*a_reference]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: reference --fasta ${fasta_url} --mirror ${input_mirror} --out ${reference}
+    target: *target
+
+  - kind: horus_task
+    id: stage_samples
+    name: Split the samplesheet into samples
+    description: Fetches each sample's reads and writes one meta file per sample; runs of one sample are concatenated as CAT_FASTQ does.
+    inputs: [*a_samplesheet, *a_mirror]
+    outputs: [*a_reads, *a_samples]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: samples --samplesheet ${samplesheet} --mirror ${input_mirror} --reads ${reads} --samples ${samples}
+    target: *target
+
+  # ---------------------------------------------------------------- genome
+  # GUNZIP runs only for a gzipped fasta; a plain one is copied through.
+  - kind: horus_task
+    id: gunzip
+    name: GUNZIP
+    inputs: [*a_reference]
+    outputs: [*a_fasta]
+    resources: *single
+    executor: *coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${fasta} && mkdir -p ${fasta} && cd ${fasta}
+        f=$$ref_fasta
+        case $$f in
+        *.gz)
+        ln -s ${reference}/$$f $$f
+        # Not calling gunzip itself because it creates files
+        # with the original group ownership rather than the
+        # default one for that user / the work directory
+        gzip \
+            -cd \
+             \
+            $$f \
+            > $${f%.gz}
+        rm $$f
+        ;;
+        *) cp ${reference}/$$f $$f ;;
+        esac
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # The fasta is staged as BismarkIndex/<fasta>; copied, not linked, so the
+  # index folder is self-contained wherever it is transferred.
+  - kind: horus_task
+    id: genome_prep
+    name: BISMARK_GENOMEPREPARATION_BOWTIE
+    inputs: [*a_fasta]
+    outputs: [*a_index]
+    resources: *high
+    executor: *bismark
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${bismark_index} && mkdir -p ${bismark_index}/BismarkIndex && cd ${bismark_index}
+        cp ${fasta}/* BismarkIndex/
+        bismark_genome_preparation \
+            --bowtie2 \
+            BismarkIndex
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- reads
+  # FASTQC: reads are linked as <id>.gz (one file) or <id>_<n>.gz, as the
+  # module does, so report names match. --memory is task memory (MB) over
+  # threads, clamped to FastQC's 100-10000 range.
+  - kind: horus_map
+    id: fastqc
+    name: FASTQC
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_reads]
+    outputs: [*a_fastqc]
+    resources: *high
+    executor: *fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${fastqc} && mkdir -p ${fastqc} && cd ${fastqc}
+        set -- $$(sed "s#^#${reads}/$$id/#" ${reads}/$$id/reads.txt)
+        pairs=""; names=""; i=0
+        for f in "$$@"; do
+            i=$$((i + 1))
+            if [ $$# -eq 1 ]; then new=$${id}.$${f##*.}; else new=$${id}_$$i.$${f##*.}; fi
+            pairs="$$pairs $$f $$new"; names="$$names $$new"
+        done
+        mem=$$(( ${task.resources.memory_gb} * 1024 / ${task.resources.cpus} ))
+        [ $$mem -gt 10000 ] && mem=10000
+        [ $$mem -lt 100 ] && mem=100
+        printf "%s %s\n" $$pairs | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            --memory $$mem \
+            $${names# }
+        # Java's user.home is "?" for a uid without a passwd entry
+        rm -rf $$names '?'
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: trimgalore
+    name: TRIMGALORE
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_reads]
+    outputs: [*a_trimgalore]
+    resources: *high
+    executor: *trimgalore
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${trimgalore} && mkdir -p ${trimgalore} && cd ${trimgalore}
+        { echo id=$$id; cat ${sample}; } > meta.env
+        set -- $$(sed "s#^#${reads}/$$id/#" ${reads}/$$id/reads.txt)
+        # --cores: task.cpus - 4 (paired) or - 3 (single), clamped to 1..8
+        cores=$$(( ${task.resources.cpus} - 4 ))
+        [ $$single_end = true ] && cores=$$(( ${task.resources.cpus} - 3 ))
+        [ $$cores -lt 1 ] && cores=1
+        [ $$cores -gt 8 ] && cores=8
+        if [ $$single_end = true ]; then
+        [ ! -f  $${id}.fastq.gz ] && ln -s $$1 $${id}.fastq.gz
+        trim_galore \
+            --fastqc \
+            --cores $$cores \
+            --gzip \
+            $${id}.fastq.gz
+        rm $${id}.fastq.gz
+        else
+        [ ! -f  $${id}_1.fastq.gz ] && ln -s $$1 $${id}_1.fastq.gz
+        [ ! -f  $${id}_2.fastq.gz ] && ln -s $$2 $${id}_2.fastq.gz
+        trim_galore \
+            --fastqc \
+            --cores $$cores \
+            --paired \
+            --gzip \
+            $${id}_1.fastq.gz \
+            $${id}_2.fastq.gz
+        rm $${id}_1.fastq.gz $${id}_2.fastq.gz
+        fi
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- Bismark
+  # --multicore: cpus / 3 capped by memory / 13 GB is 1 at 4 cpus / 15 GB,
+  # so the module leaves it out.
+  - kind: horus_map
+    id: bismark_align
+    name: BISMARK_ALIGN
+    over: {input_id: trimgalore, as: sample}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_trimgalore, *a_index]
+    outputs: [*a_align]
+    resources: *high
+    executor: *bismark
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${sample}/meta.env
+        rm -rf ${align} && mkdir -p ${align} && cd ${align} && cp ${sample}/meta.env .
+        ln -s ${bismark_index}/BismarkIndex BismarkIndex
+        if [ $$single_end = true ]; then
+        r1=${sample}/$${id}_trimmed.fq.gz; ln -s $$r1 .
+        bismark \
+            $$(basename $$r1) \
+            --genome BismarkIndex \
+            --bam \
+            --bowtie2
+        rm $$(basename $$r1)
+        else
+        r1=${sample}/$${id}_1_val_1.fq.gz; r2=${sample}/$${id}_2_val_2.fq.gz
+        ln -s $$r1 $$r2 .
+        bismark \
+            -1 $$(basename $$r1) -2 $$(basename $$r2) \
+            --genome BismarkIndex \
+            --bam \
+            --bowtie2
+        rm $$(basename $$r1) $$(basename $$r2)
+        fi
+        rm BismarkIndex
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: dedup
+    name: BISMARK_DEDUPLICATE
+    over: {input_id: align, as: sample}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_align]
+    outputs: [*a_dedup]
+    resources: *high
+    executor: *bismark
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${sample}/meta.env
+        rm -rf ${dedup} && mkdir -p ${dedup} && cd ${dedup} && cp ${sample}/meta.env .
+        seqtype=-p; [ $$single_end = true ] && seqtype=-s
+        stem=$${id}_1_val_1_bismark_bt2_pe; [ $$single_end = true ] && stem=$${id}_trimmed_bismark_bt2
+        bam=${sample}/$$stem.bam; ln -s $$bam .
+        deduplicate_bismark \
+             \
+            $$seqtype \
+            --bam $$(basename $$bam)
+        rm $$(basename $$bam)
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: sort
+    name: SAMTOOLS_SORT
+    over: {input_id: dedup, as: sample}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_dedup]
+    outputs: [*a_sort]
+    resources: *high
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${sample}/meta.env
+        rm -rf ${sort} && mkdir -p ${sort} && cd ${sort} && cp ${sample}/meta.env .
+        stem=$${id}_1_val_1_bismark_bt2_pe; [ $$single_end = true ] && stem=$${id}_trimmed_bismark_bt2
+        bam=${sample}/$$stem.deduplicated.bam; ln -s $$bam .
+        samtools cat \
+            $$(basename $$bam) \
+        | \
+        samtools sort \
+             \
+            -T $${id}.deduplicated.sorted \
+            --threads ${task.resources.cpus} \
+             \
+            -o $${id}.deduplicated.sorted.bam \
+            -
+        rm $$(basename $$bam)
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: index
+    name: SAMTOOLS_INDEX
+    over: {input_id: sort, as: sample}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_sort]
+    outputs: [*a_bai]
+    resources: *low
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${sample}/meta.env
+        rm -rf ${bai} && mkdir -p ${bai} && cd ${bai} && cp ${sample}/meta.env .
+        ln -s ${sample}/$${id}.deduplicated.sorted.bam .
+        samtools \
+            index \
+            -@ ${task.resources.cpus} \
+             \
+            $${id}.deduplicated.sorted.bam
+        rm $${id}.deduplicated.sorted.bam
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # Reads the deduplicated (unsorted) BAM, as the subworkflow does.
+  # --buffer_size is task memory - 2 GB (memory > 6 GB); --multicore needs
+  # 6 or more cpus.
+  - kind: horus_map
+    id: extract
+    name: BISMARK_METHYLATIONEXTRACTOR
+    over: {input_id: dedup, as: sample}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_dedup, *a_index]
+    outputs: [*a_meth]
+    resources: *high
+    executor: *bismark
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${sample}/meta.env
+        rm -rf ${meth} && mkdir -p ${meth} && cd ${meth} && cp ${sample}/meta.env .
+        ln -s ${bismark_index}/BismarkIndex BismarkIndex
+        stem=$${id}_1_val_1_bismark_bt2_pe; [ $$single_end = true ] && stem=$${id}_trimmed_bismark_bt2
+        bam=${sample}/$$stem.deduplicated.bam; ln -s $$bam .
+        if [ $$single_end = true ]; then
+        bismark_methylation_extractor \
+            $$(basename $$bam) \
+            --bedGraph \
+            --counts \
+            --gzip \
+            --report \
+            -s \
+             --buffer_size $$(( ${task.resources.memory_gb} - 2 ))G
+        else
+        bismark_methylation_extractor \
+            $$(basename $$bam) \
+            --bedGraph \
+            --counts \
+            --gzip \
+            --report \
+            -p \
+            --no_overlap --ignore_r2 2 --ignore_3prime_r2 2 --buffer_size $$(( ${task.resources.memory_gb} - 2 ))G
+        fi
+        rm BismarkIndex $$(basename $$bam)
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: report
+    name: BISMARK_REPORT
+    over: {input_id: meth, as: sample}
+    chain: true
+    zip: [{input_id: align, as: aln}, {input_id: dedup, as: dd}]
+    max_concurrency: 16
+    inputs: [*a_meth, *a_align, *a_dedup]
+    outputs: [*a_report]
+    resources: *low
+    executor: *bismark
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${sample}/meta.env
+        rm -rf ${bismark_report} && mkdir -p ${bismark_report} && cd ${bismark_report} && cp ${sample}/meta.env .
+        stem=$${id}_1_val_1_bismark_bt2_pe; [ $$single_end = true ] && stem=$${id}_trimmed_bismark_bt2
+        rep=$${id}_1_val_1_bismark_bt2_PE_report.txt; [ $$single_end = true ] && rep=$${id}_trimmed_bismark_bt2_SE_report.txt
+        set -- ${aln}/$$rep ${dd}/$$stem.deduplication_report.txt \
+            ${sample}/$$stem.deduplicated_splitting_report.txt ${sample}/$$stem.deduplicated.M-bias.txt
+        ln -s "$$@" .
+        bismark2report
+        for f in "$$@"; do rm $$(basename $$f); done
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # BAM names in sample order (Nextflow passes them in completion order).
+  - kind: horus_task
+    id: summary
+    name: BISMARK_SUMMARY
+    inputs: [*a_align, *a_dedup, *a_meth]
+    outputs: [*a_summary]
+    resources: *low
+    executor: *bismark
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${bismark_summary} && mkdir -p ${bismark_summary} && cd ${bismark_summary}
+        set -- ${align}/*/*_report.txt ${dedup}/*/*.deduplication_report.txt \
+            ${meth}/*/*_splitting_report.txt ${meth}/*/*.M-bias.txt
+        ln -s "$$@" .
+        bismark2summary $$(cd ${align} && ls */*.bam | xargs -n1 basename | sort)
+        for f in "$$@"; do rm $$(basename $$f); done
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- MultiQC
+  # The files the pipeline sends: Bismark summary, alignment, dedup and
+  # splitting reports, M-bias, sample reports, TrimGalore logs and FastQC
+  # zips. sort/bai are not read: MULTIQC waits for them through the versions
+  # channel in Nextflow.
+  - kind: horus_task
+    id: multiqc
+    name: MULTIQC
+    inputs: [*a_mqc_config, *a_fastqc, *a_trimgalore, *a_align, *a_dedup, *a_meth, *a_report, *a_summary, *a_bai]
+    outputs: [*a_multiqc]
+    resources: *single
+    executor: *multiqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${multiqc} && mkdir -p ${multiqc} && cd ${multiqc}
+        n=0
+        stage() { for f in "$$@"; do [ -e "$$f" ] || continue; n=$$((n + 1)); mkdir $$n; ln -s "$${f%/}" $$n/; echo "$$(basename "$${f%/}")" >> multiqc_inputs.txt; done; }
+        stage ${multiqc_config}
+        stage ${bismark_summary}/bismark_summary_report.txt ${bismark_summary}/bismark_summary_report.html
+        stage ${align}/*/*_report.txt ${dedup}/*/*.deduplication_report.txt
+        stage ${meth}/*/*_splitting_report.txt ${meth}/*/*.M-bias.txt
+        stage ${bismark_report}/*/*_report.html
+        stage ${trimgalore}/*/*_trimming_report.txt
+        stage ${fastqc}/*/*_fastqc.zip
+        multiqc \
+            --force \
+             \
+            --config 1/multiqc_config.yml \
+             \
+             \
+             \
+             \
+             \
+            .
+        rm -r $$(seq 1 $$n)
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+edges:
+  # inputs
+  - {source: artifact-input_mirror, source_output: input_mirror, target: fetch_reference, target_input: input_mirror}
+  - {source: artifact-fasta_url, source_output: fasta_url, target: fetch_reference, target_input: fasta_url}
+  - {source: artifact-samplesheet, source_output: samplesheet, target: stage_samples, target_input: samplesheet}
+  - {source: artifact-input_mirror, source_output: input_mirror, target: stage_samples, target_input: input_mirror}
+  # genome
+  - {source: fetch_reference, source_output: reference, target: gunzip, target_input: reference}
+  - {source: gunzip, source_output: fasta, target: genome_prep, target_input: fasta}
+  # reads
+  - {source: stage_samples, source_output: samples, target: fastqc, target_input: samples}
+  - {source: stage_samples, source_output: reads, target: fastqc, target_input: reads}
+  - {source: stage_samples, source_output: samples, target: trimgalore, target_input: samples}
+  - {source: stage_samples, source_output: reads, target: trimgalore, target_input: reads}
+  # bismark
+  - {source: trimgalore, source_output: trimgalore, target: bismark_align, target_input: trimgalore}
+  - {source: genome_prep, source_output: bismark_index, target: bismark_align, target_input: bismark_index}
+  - {source: bismark_align, source_output: align, target: dedup, target_input: align}
+  - {source: dedup, source_output: dedup, target: sort, target_input: dedup}
+  - {source: sort, source_output: sort, target: index, target_input: sort}
+  - {source: dedup, source_output: dedup, target: extract, target_input: dedup}
+  - {source: genome_prep, source_output: bismark_index, target: extract, target_input: bismark_index}
+  - {source: bismark_align, source_output: align, target: report, target_input: align}
+  - {source: dedup, source_output: dedup, target: report, target_input: dedup}
+  - {source: extract, source_output: meth, target: report, target_input: meth}
+  - {source: bismark_align, source_output: align, target: summary, target_input: align}
+  - {source: dedup, source_output: dedup, target: summary, target_input: dedup}
+  - {source: extract, source_output: meth, target: summary, target_input: meth}
+  # multiqc
+  - {source: artifact-multiqc_config, source_output: multiqc_config, target: multiqc, target_input: multiqc_config}
+  - {source: fastqc, source_output: fastqc, target: multiqc, target_input: fastqc}
+  - {source: trimgalore, source_output: trimgalore, target: multiqc, target_input: trimgalore}
+  - {source: bismark_align, source_output: align, target: multiqc, target_input: align}
+  - {source: dedup, source_output: dedup, target: multiqc, target_input: dedup}
+  - {source: extract, source_output: meth, target: multiqc, target_input: meth}
+  - {source: report, source_output: bismark_report, target: multiqc, target_input: bismark_report}
+  - {source: summary, source_output: bismark_summary, target: multiqc, target_input: bismark_summary}
+  - {source: index, source_output: bai, target: multiqc, target_input: bai}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
