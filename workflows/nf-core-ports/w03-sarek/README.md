@@ -24,6 +24,11 @@ bcftools_stats, vcftools (TsTv count, TsTv qual, FILTER summary)
 multiqc                            ──► results/multiqc/multiqc_report.html
 ```
 
+## Variants
+
+- `workflow.yaml`: the faithful port.
+- `workflow.chained.yaml`: per-sample maps after MarkDuplicates set `chain: true`, so a sample moves to its next step without waiting for the others, with the same outputs. It needs horus-runtime 0.9.0 or later.
+
 ## Inputs / Outputs
 
 - Input: `examples/samplesheet.csv`, the test profile samplesheet (`patient,sex,status,sample,lane,fastq_1,fastq_2`, one sample in two lanes, reads downloaded from nf-core/test-datasets). Rows sharing a sample are its lanes.
