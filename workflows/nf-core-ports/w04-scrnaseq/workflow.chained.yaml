@@ -1,0 +1,501 @@
+kind: horus_workflow
+name: nf-core scrnaseq chained
+
+# Native port of nf-core/scrnaseq 4.2.0, the route `-profile test,docker`
+# runs (aligner star, protocol 10XV2): FastQC, GTF_GENE_FILTER,
+# STAR_GENOMEGENERATE, STARsolo per sample, MTX_TO_H5AD, CONCAT_H5AD,
+# ANNDATAR_CONVERT and MultiQC. CellBender and QCatch are off, as in the test
+# profile. Images, rendered command lines (ext.args from conf/modules.config)
+# and per-process cpus/memory are the executed ones; the test profile caps
+# every process at 4 cpus / 15 GB.
+#
+# Every command runs under `bash -C -e -u -o pipefail`, the pipeline's
+# process.shell: wave images link /bin/sh to dash, so each command writes its
+# script to /tmp/.command.sh and runs that with bash, as .command.run does.
+#
+# Chained variant of workflow.yaml: same commands and outputs. Per-sample
+# maps set `chain: true`, so a sample's next step starts as soon as its
+# upstream clone is done, not when the whole map is. One item space per
+# sample: fastqc and star_align map over the sample folders, mtx over the
+# star_align slots and convert over the mtx slots. A clone runs the raw and
+# filtered matrix one after the other (Nextflow runs them as two processes).
+# CONCAT_H5AD stays a map over one item per input type, and convert_combined
+# converts its output per type. Needs a runtime with map chaining (horus_map
+# chain).
+#
+# capacity: memory-based admission like Nextflow's local executor. The key
+# is the target's location_id (local://<hostname>); set it to the host that
+# runs the tasks, or the gate does not apply.
+
+capacity:
+  local://ubuntu-awow:
+    cpus: 16
+    memory_gb: 31
+max_concurrency: 16
+
+_target: &target
+  kind: local
+
+# Run on a remote node instead: point every task at this anchor.
+# _target: &target
+#   kind: ssh
+#   host: bench-node.example.org
+#   username: ubuntu
+#   working_directory: /home/ubuntu/horus
+
+# Containers (.command.run docker lines); `user: host` runs them as the
+# calling user, as nf-core's `-u $(id -u):$(id -g)` does.
+_img:
+  python39: &python39 {kind: docker, user: host, image: "quay.io/biocontainers/python:3.9--1"}
+  fastqc: &fastqc {kind: docker, user: host, image: "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0"}
+  star_gawk: &star_gawk {kind: docker, user: host, image: "community.wave.seqera.io/library/htslib_samtools_star_gawk:ae438e9a604351a4"}
+  star: &star {kind: docker, user: host, image: "quay.io/biocontainers/star:2.7.10b--h9ee0642_0"}
+  scanpy: &scanpy {kind: docker, user: host, image: "community.wave.seqera.io/library/scanpy:1.10.2--e83da2205b92a538"}
+  anndatar: &anndatar {kind: docker, user: host, image: "community.wave.seqera.io/library/bioconductor-anndatar_bioconductor-rhdf5_bioconductor-singlecellexperiment_r-seurat:a0f51df063bb9b2a"}
+  multiqc: &multiqc {kind: docker, user: host, image: "community.wave.seqera.io/library/multiqc:1.34--db7c73dae76bc9e6"}
+
+# Labels after the test profile's resourceLimits (trace.txt cpus / memory).
+_res:
+  single: &single {cpus: 1, memory_gb: 6, walltime: "01:00:00"}
+  low: &low {cpus: 2, memory_gb: 12, walltime: "01:00:00"}
+  medium: &medium {cpus: 4, memory_gb: 15, walltime: "01:00:00"}
+  high: &high {cpus: 4, memory_gb: 15, walltime: "01:00:00"}
+
+# Artifacts, shared by the producing task's outputs and every consumer's inputs.
+_art:
+  - &a_samplesheet {id: samplesheet, name: Samplesheet, kind: file, path: examples/samplesheet.csv}
+  - &a_nfcore {id: nfcore, name: nf-core/scrnaseq files, kind: folder, path: nfcore/}
+  - &a_stage {id: stage_py, name: Stage script, kind: file, path: scripts/stage_samples.py}
+  - &a_fasta_url {id: fasta_url, name: Genome fasta, kind: string, path: params/fasta_url.txt}
+  - &a_gtf_url {id: gtf_url, name: GTF, kind: string, path: params/gtf_url.txt}
+  - &a_reference {id: reference, name: Reference files, kind: folder, path: work/reference/}
+  - &a_samples {id: samples, name: Samples, kind: folder, path: work/samples/}
+  - &a_gtf_filtered {id: gtf_filtered, name: Filtered GTF, kind: folder, path: work/gtf_filter/}
+  - &a_star_idx {id: star_idx, name: STAR index, kind: folder, path: work/star_index/}
+  - &a_fastqc {id: fastqc, name: FastQC, kind: folder, path: results/fastqc/}
+  - &a_star_align {id: star_align, name: STARsolo, kind: folder, path: results/star/}
+  - &a_concat_items {id: concat_items, name: Matrices per type, kind: folder, path: work/lists/concat/}
+  - &a_mtx {id: mtx, name: Per-sample h5ad, kind: folder, path: results/mtx_conversions/samples/}
+  - &a_concat {id: concat, name: Combined h5ad, kind: folder, path: results/mtx_conversions/combined/}
+  - &a_convert {id: convert, name: Seurat and SCE objects, kind: folder, path: results/mtx_conversions/rds/}
+  - &a_convert_combined {id: convert_combined, name: Combined Seurat and SCE objects, kind: folder, path: results/mtx_conversions/rds_combined/}
+  - &a_multiqc {id: multiqc, name: MultiQC report, kind: folder, path: results/multiqc/}
+
+artifacts:
+  - <<: *a_samplesheet
+    description: >-
+      nf-core/scrnaseq samplesheet (sample,fastq_1,fastq_2,expected_cells,seq_center).
+      Reads may be URLs or paths relative to the samplesheet; rows sharing a
+      sample are runs of one sample. Default: the test profile samplesheet.
+  - <<: *a_nfcore
+    description: nf-core/scrnaseq 4.2.0 assets, bin script and module templates (MIT).
+  - <<: *a_stage
+    description: Splits the samplesheet into sample folders.
+  - {<<: *a_fasta_url, pattern: '[^"`$\\]*', description: "--fasta (plain fasta; URL or file:// path)", value: "https://github.com/nf-core/test-datasets/raw/scrnaseq/reference/GRCm38.p6.genome.chr19.fa"}
+  - {<<: *a_gtf_url, pattern: '[^"`$\\]*', description: "--gtf (plain GTF; URL or file:// path)", value: "https://github.com/nf-core/test-datasets/raw/scrnaseq/reference/gencode.vM19.annotation.chr19.gtf"}
+
+tasks:
+  # ---------------------------------------------------------------- inputs
+  - kind: horus_task
+    id: fetch_reference
+    name: Fetch reference files
+    description: Downloads the genome fasta and GTF.
+    inputs: [*a_fasta_url, *a_gtf_url]
+    outputs: [*a_reference]
+    executor: {kind: shell}
+    runtime:
+      kind: command
+      command: |
+        set -eu
+        mkdir -p ${reference}
+        for u in ${fasta_url} ${gtf_url}; do
+          f=${reference}/$$(basename $$u)
+          curl -fsSL --retry 3 -o $$f.part $$u && mv $$f.part $$f
+        done
+    target: *target
+
+  - kind: horus_task
+    id: stage_samples
+    name: Split the samplesheet into samples
+    description: Fetches each sample's reads into samples/<id>/ with reads.txt and meta.env, merging runs of one sample.
+    inputs: [*a_samplesheet, *a_stage]
+    outputs: [*a_samples]
+    executor: {kind: shell}
+    runtime:
+      kind: command
+      command: python3 ${stage_py} --samplesheet ${samplesheet} --out ${samples}
+    target: *target
+
+  # ---------------------------------------------------------------- genome
+  - kind: horus_task
+    id: gtf_filter
+    name: GTF_GENE_FILTER
+    inputs: [*a_reference, *a_nfcore]
+    outputs: [*a_gtf_filtered]
+    resources: *low
+    executor: *python39
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${gtf_filtered} && mkdir -p ${gtf_filtered} && cd ${gtf_filtered}
+        fa=$$(cd ${reference} && ls *.fa *.fasta 2>/dev/null || true)
+        gtf=$$(cd ${reference} && ls *.gtf)
+        ln -s ${reference}/$$fa $$fa
+        ln -s ${reference}/$$gtf $$gtf
+        python ${nfcore}/bin/filter_gtf_for_genes_in_genome.py \
+            --gtf $$gtf \
+            --fasta $$fa \
+            -o $${fa%.*}_genes.gtf
+        rm $$fa $$gtf
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: star_idx
+    name: STAR_GENOMEGENERATE
+    inputs: [*a_reference, *a_gtf_filtered]
+    outputs: [*a_star_idx]
+    resources: *high
+    executor: *star_gawk
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${star_idx} && mkdir -p ${star_idx} && cd ${star_idx}
+        fa=$$(cd ${reference} && ls *.fa *.fasta 2>/dev/null || true)
+        gtf=$$(cd ${gtf_filtered} && ls *.gtf)
+        ln -s ${reference}/$$fa $$fa
+        ln -s ${gtf_filtered}/$$gtf $$gtf
+        samtools faidx $$fa
+        NUM_BASES=`gawk '{sum = sum + $$2}END{if ((log(sum)/log(2))/2 - 1 > 14) {printf "%.0f", 14} else {printf "%.0f", (log(sum)/log(2))/2 - 1}}' $$fa.fai`
+
+        mkdir star
+        STAR \
+            --runMode genomeGenerate \
+            --genomeDir star/ \
+            --genomeFastaFiles $$fa \
+            --sjdbGTFfile $$gtf \
+            --runThreadN ${task.resources.cpus} \
+            --genomeSAindexNbases $$NUM_BASES \
+            --limitGenomeGenerateRAM $$(( ${task.resources.memory_gb} * 1073741824 - 100000000 )) \
+
+        rm $$fa $$fa.fai $$gtf
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- per sample
+  - kind: horus_map
+    id: fastqc
+    name: FASTQC
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples]
+    outputs: [*a_fastqc]
+    resources: *low
+    executor: *fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${fastqc} && mkdir -p ${fastqc} && cd ${fastqc}
+        set -- $$(cat ${sample}/reads.txt)
+        pairs=""; names=""; i=0
+        for f in "$$@"; do
+            i=$$((i + 1))
+            mkdir -p $$i && ln -s ${sample}/$$f $$i/
+            if [ $$# -eq 1 ]; then new=$${id}.gz; else new=$${id}_$$i.gz; fi
+            pairs="$$pairs $$i/$$f $$new"; names="$$names $$new"
+        done
+        mem=$$(( ${task.resources.memory_gb} * 1024 / ${task.resources.cpus} ))
+        [ $$mem -gt 10000 ] && mem=10000
+        [ $$mem -lt 100 ] && mem=100
+        printf "%s %s\n" $$pairs | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            --memory $$mem \
+            $${names# }
+        rm $$names; rm -r $$(seq 1 $$#)
+        # Java's prefs dir: with no passwd entry for the user, user.home is "?".
+        rm -rf ./'?'
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: star_align
+    name: STAR_ALIGN
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_star_idx, *a_gtf_filtered, *a_nfcore]
+    outputs: [*a_star_align]
+    resources: *high
+    executor: *star
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        prefix=$$(basename ${sample})
+        expected_cells=; seq_center=; . ${sample}/meta.env
+        rm -rf ${star_align} && mkdir -p ${star_align} && cd ${star_align}
+        # reads.collate(2).transpose(): R1s are forward, R2s reverse.
+        forward=""; reverse=""; i=0
+        for f in $$(cat ${sample}/reads.txt); do
+            ln -s ${sample}/$$f $$f
+            i=$$((i + 1))
+            if [ $$((i % 2)) -eq 1 ]; then forward="$$forward,$$f"; else reverse="$$reverse,$$f"; fi
+        done
+        gtf=$$(cd ${gtf_filtered} && ls *.gtf)
+        ln -s ${gtf_filtered}/$$gtf $$gtf
+        ln -s ${star_idx}/star star
+        whitelist=10x_V2_barcode_whitelist.txt.gz
+        ln -s ${nfcore}/assets/whitelist/$$whitelist $$whitelist
+        if [ -n "$$seq_center" ]; then rg=(ID:$$prefix "CN:$$seq_center" "SM:$$prefix"); else rg=(ID:$$prefix "SM:$$prefix"); fi
+        cell_filter=(); [ -n "$$expected_cells" ] && cell_filter=(--soloCellFilter CellRanger2.2 $$expected_cells 0.99 10)
+
+        if [[ $$whitelist == *.gz ]]; then
+            gzip -cdf $$whitelist > whitelist.uncompressed.txt
+        else
+            cp $$whitelist whitelist.uncompressed.txt
+        fi
+
+        STAR \
+            --genomeDir star \
+            --readFilesIn $${reverse#,} $${forward#,} \
+            --runThreadN ${task.resources.cpus} \
+            --outFileNamePrefix $$prefix. \
+            --soloCBwhitelist whitelist.uncompressed.txt \
+            --soloType CB_UMI_Simple \
+            --soloFeatures Gene \
+            --soloUMIlen 10 \
+            --sjdbGTFfile $$gtf \
+            --outSAMattrRGline "$${rg[@]}" \
+            "$${cell_filter[@]}" \
+            --readFilesCommand zcat --runDirPerm All_RWX --outWigType bedGraph --twopassMode Basic --outSAMtype BAM SortedByCoordinate --limitBAMsortRAM $$(( ${task.resources.memory_gb} * 1073741824 )) \
+
+        if [ -f $$prefix.Unmapped.out.mate1 ]; then
+            mv $$prefix.Unmapped.out.mate1 $$prefix.unmapped_1.fastq
+            gzip $$prefix.unmapped_1.fastq
+        fi
+        if [ -f $$prefix.Unmapped.out.mate2 ]; then
+            mv $$prefix.Unmapped.out.mate2 $$prefix.unmapped_2.fastq
+            gzip $$prefix.unmapped_2.fastq
+        fi
+
+        if [ -d $$prefix.Solo.out ]; then
+            find $$prefix.Solo.out \( -name "*.tsv" -o -name "*.mtx" \) -exec gzip {} \;
+        fi
+
+        if [ -d $$prefix.Solo.out/Velocyto ]; then
+            mv $$prefix.Solo.out/Velocyto/raw $$prefix.Solo.out/Velocyto/velocyto_raw
+            mv $$prefix.Solo.out/Velocyto/filtered $$prefix.Solo.out/Velocyto/velocyto_filtered
+        fi
+        # Keep what publishDir keeps (the module's declared outputs).
+        rm -f $$(cat ${sample}/reads.txt) $$gtf star $$whitelist whitelist.uncompressed.txt $$prefix.Signal.*.bg
+        rm -rf $$prefix._STARgenome $$prefix._STARpass1
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- matrices
+  - kind: horus_task
+    id: list_matrices
+    name: Matrix types
+    description: One CONCAT_H5AD item per input type, raw then filtered.
+    inputs: [*a_star_align]
+    outputs: [*a_concat_items]
+    executor: {kind: shell}
+    runtime:
+      kind: command
+      command: |
+        set -eu
+        rm -rf ${concat_items} && mkdir -p ${concat_items}
+        for t in raw filtered; do
+          printf 'id=combined\ninput_type=%s\n' $$t > ${concat_items}/combined_$$t
+        done
+    target: *target
+
+  - kind: horus_map
+    id: mtx
+    name: MTX_TO_H5AD
+    over: {input_id: star_align, as: sample}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_star_align, *a_nfcore]
+    outputs: [*a_mtx]
+    resources: *medium
+    executor: *scanpy
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        solo=$$(cd ${sample} && ls -d *.Solo.out)
+        id=$${solo%.Solo.out}
+        rm -rf ${mtx} && mkdir -p ${mtx} && cd ${mtx}
+        for input_type in raw filtered; do
+        ln -s ${sample}/$$solo/Gene/$$input_type $$input_type
+        NF_ID=$$id NF_INPUT_TYPE=$$input_type NF_PROCESS=NFCORE_SCRNASEQ:SCRNASEQ:MTX_TO_H5AD \
+            python ${nfcore}/templates/mtx_to_h5ad_star.py
+        rm -rf $$input_type $$id versions.yml metrics_* preprocessing_* tmp
+        done
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: concat
+    name: CONCAT_H5AD
+    over: {input_id: concat_items, as: item}
+    max_concurrency: 16
+    inputs: [*a_concat_items, *a_mtx, *a_samplesheet, *a_nfcore]
+    outputs: [*a_concat]
+    resources: *medium
+    executor: *scanpy
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${item}
+        rm -rf ${concat} && mkdir -p ${concat} && cd ${concat}
+        links=$$(cd ${mtx} && ls */*_$${input_type}_matrix.h5ad)
+        for f in $$links; do ln -s ${mtx}/$$f .; done
+        sheet=$$(basename ${samplesheet})
+        ln -s ${samplesheet} $$sheet
+        NF_ID=$$id NF_INPUT_TYPE=$$input_type NF_SAMPLESHEET=$$sheet \
+        NF_PROCESS=NFCORE_SCRNASEQ:SCRNASEQ:H5AD_CONVERSION:CONCAT_H5AD \
+            python ${nfcore}/templates/concat_h5ad.py
+        for f in $$links; do rm $$(basename $$f); done
+        rm -rf $$sheet versions.yml metrics_* preprocessing_* tmp
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: convert
+    name: ANNDATAR_CONVERT
+    over: {input_id: mtx, as: sample}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mtx, *a_nfcore]
+    outputs: [*a_convert]
+    resources: *medium
+    executor: *anndatar
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${convert} && mkdir -p ${convert} && cd ${convert}
+        for src in ${sample}/*_matrix.h5ad; do
+        h5ad=$$(basename $$src)
+        input_type=$${h5ad%_matrix.h5ad}; input_type=$${input_type##*_}
+        id=$${h5ad%_$${input_type}_matrix.h5ad}
+        ln -s $$src $$h5ad
+        NF_H5AD=$$h5ad NF_ID=$$id NF_INPUT_TYPE=$$input_type \
+        NF_PROCESS=NFCORE_SCRNASEQ:SCRNASEQ:H5AD_CONVERSION:ANNDATAR_CONVERT \
+            Rscript ${nfcore}/templates/anndatar_convert.R
+        rm -rf $$h5ad $$id versions.yml
+        done
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: convert_combined
+    name: ANNDATAR_CONVERT (combined)
+    over: {input_id: concat, as: sample}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_concat, *a_nfcore]
+    outputs: [*a_convert_combined]
+    resources: *medium
+    executor: *anndatar
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${convert_combined} && mkdir -p ${convert_combined} && cd ${convert_combined}
+        for src in ${sample}/*_matrix.h5ad; do
+        h5ad=$$(basename $$src)
+        input_type=$${h5ad%_matrix.h5ad}; input_type=$${input_type##*_}
+        id=$${h5ad%_$${input_type}_matrix.h5ad}
+        ln -s $$src $$h5ad
+        NF_H5AD=$$h5ad NF_ID=$$id NF_INPUT_TYPE=$$input_type \
+        NF_PROCESS=NFCORE_SCRNASEQ:SCRNASEQ:H5AD_CONVERSION:ANNDATAR_CONVERT \
+            Rscript ${nfcore}/templates/anndatar_convert.R
+        rm -rf $$h5ad $$id versions.yml
+        done
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- report
+  # MULTIQC reads FastQC and the STAR logs. nf-core also waits for every
+  # process through the versions topic, so the h5ad outputs are unused inputs
+  # here to keep the same DAG.
+  - kind: horus_task
+    id: multiqc
+    name: MULTIQC
+    inputs: [*a_nfcore, *a_fastqc, *a_star_align, *a_convert, *a_convert_combined]
+    outputs: [*a_multiqc]
+    resources: *single
+    executor: *multiqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${multiqc} && mkdir -p ${multiqc} && cd ${multiqc}
+        n=0
+        stage() { for f in "$$@"; do [ -e "$$f" ] || continue; n=$$((n + 1)); mkdir $$n; ln -s "$$f" $$n/; echo "$$(basename "$$f")" >> multiqc_inputs.txt; done; }
+        stage ${nfcore}/assets/multiqc_config.yml
+        stage ${fastqc}/*/*_fastqc.html ${fastqc}/*/*_fastqc.zip
+        stage ${star_align}/*/*.Log.final.out
+        multiqc \
+            --force \
+            --config 1/multiqc_config.yml \
+            .
+        rm -r $$(seq 1 $$n)
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+edges:
+  - {source: artifact-fasta_url, source_output: fasta_url, target: fetch_reference, target_input: fasta_url}
+  - {source: artifact-gtf_url, source_output: gtf_url, target: fetch_reference, target_input: gtf_url}
+  - {source: artifact-samplesheet, source_output: samplesheet, target: stage_samples, target_input: samplesheet}
+  - {source: artifact-stage_py, source_output: stage_py, target: stage_samples, target_input: stage_py}
+  - {source: fetch_reference, source_output: reference, target: gtf_filter, target_input: reference}
+  - {source: artifact-nfcore, source_output: nfcore, target: gtf_filter, target_input: nfcore}
+  - {source: fetch_reference, source_output: reference, target: star_idx, target_input: reference}
+  - {source: gtf_filter, source_output: gtf_filtered, target: star_idx, target_input: gtf_filtered}
+  - {source: stage_samples, source_output: samples, target: fastqc, target_input: samples}
+  - {source: stage_samples, source_output: samples, target: star_align, target_input: samples}
+  - {source: star_idx, source_output: star_idx, target: star_align, target_input: star_idx}
+  - {source: gtf_filter, source_output: gtf_filtered, target: star_align, target_input: gtf_filtered}
+  - {source: artifact-nfcore, source_output: nfcore, target: star_align, target_input: nfcore}
+  - {source: star_align, source_output: star_align, target: list_matrices, target_input: star_align}
+  - {source: star_align, source_output: star_align, target: mtx, target_input: star_align}
+  - {source: artifact-nfcore, source_output: nfcore, target: mtx, target_input: nfcore}
+  - {source: list_matrices, source_output: concat_items, target: concat, target_input: concat_items}
+  - {source: mtx, source_output: mtx, target: concat, target_input: mtx}
+  - {source: artifact-samplesheet, source_output: samplesheet, target: concat, target_input: samplesheet}
+  - {source: artifact-nfcore, source_output: nfcore, target: concat, target_input: nfcore}
+  - {source: mtx, source_output: mtx, target: convert, target_input: mtx}
+  - {source: artifact-nfcore, source_output: nfcore, target: convert, target_input: nfcore}
+  - {source: concat, source_output: concat, target: convert_combined, target_input: concat}
+  - {source: artifact-nfcore, source_output: nfcore, target: convert_combined, target_input: nfcore}
+  - {source: artifact-nfcore, source_output: nfcore, target: multiqc, target_input: nfcore}
+  - {source: fastqc, source_output: fastqc, target: multiqc, target_input: fastqc}
+  - {source: star_align, source_output: star_align, target: multiqc, target_input: star_align}
+  - {source: convert, source_output: convert, target: multiqc, target_input: convert}
+  - {source: convert_combined, source_output: convert_combined, target: multiqc, target_input: convert_combined}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results

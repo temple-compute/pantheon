@@ -8,6 +8,10 @@ Single-cell RNA-seq with STARsolo, h5ad and Seurat/SCE conversion and a MultiQC 
 
 Runs the route `nextflow run nf-core/scrnaseq -r 4.2.0 -profile test,docker` takes (`--aligner star --protocol 10XV2`), as Horus tasks with the same containers, rendered command lines and per-process cpus/memory: FastQC, the GTF gene filter, the STAR index, STARsolo per sample, MTX to h5ad per sample and matrix type, the combined h5ad per type, Seurat and SingleCellExperiment objects for every h5ad, and MultiQC. Per-sample steps are `horus_map` stages; the h5ad steps map over one item per (sample, matrix type), as Nextflow runs them. The workflow has 11 tasks (5 maps). On the test data they run the same 19 process commands as Nextflow, plus three staging tasks.
 
+## Variants
+
+- `workflow.chained.yaml`: per-sample maps set `chain: true`, so a sample moves to its next step without waiting for the others, with the same outputs. MTX_TO_H5AD and ANNDATAR_CONVERT run once per sample for both matrix types, and the combined objects come from their own map (`results/mtx_conversions/rds_combined/`). Needs horus-runtime 0.9.0 or later.
+
 ## Pipeline
 
 ```
@@ -30,7 +34,7 @@ multiqc                           FastQC + STAR logs ──► results/multiqc/
 - `results/mtx_conversions/`: `<id>_{raw,filtered}_matrix.h5ad`, `combined_{raw,filtered}_matrix.h5ad`, and a `.seurat.rds` and `.sce.rds` for each.
 - `results/fastqc/`, `results/multiqc/`: read QC and the MultiQC report with its data tables.
 
-The STARsolo matrices and stats, STAR logs and splice junctions, FastQC data, h5ad contents and the MultiQC general, FastQC and STAR tables match the Nextflow run. The combined h5ad may list cells in another order: CONCAT_H5AD concatenates samples in directory-listing order, in both engines. BAM, h5ad and RDS bytes carry paths or run metadata, so they are compared by name (h5ad by content). The MultiQC report has no software versions, workflow summary or methods sections, which nf-core builds from Nextflow run metadata.
+The STARsolo matrices and stats, STAR logs and splice junctions, FastQC data, h5ad contents and the MultiQC general, FastQC and STAR tables match the Nextflow run. The combined h5ad may list cells in another order: CONCAT_H5AD concatenates samples in directory-listing order, in both engines. The STAR BAMs have the same records and header lines apart from `@PG`, which holds the command line with its work paths. h5ad and RDS bytes carry run metadata, so they are compared by name, and h5ad files also by content (X, layers, obs and var). The MultiQC report has no software versions, workflow summary or methods sections, which nf-core builds from Nextflow run metadata.
 
 ## Parameters
 

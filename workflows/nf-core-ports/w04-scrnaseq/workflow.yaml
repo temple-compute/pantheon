@@ -219,6 +219,8 @@ tasks:
             --memory $$mem \
             $${names# }
         rm $$names; rm -r $$(seq 1 $$#)
+        # Java's prefs dir: with no passwd entry for the user, user.home is "?".
+        rm -rf ./'?'
         NF
         exec bash -C -e -u -o pipefail /tmp/.command.sh
     target: *target
