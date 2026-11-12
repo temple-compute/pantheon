@@ -16,8 +16,16 @@ iterate over:
   ``libraries=<library ids>`` (the PICARD_MERGESAMFILES_REPLICATE groupTuple
   on ``id - ~/_REP\\d+$/`` and its ``bams.size() > 1`` filter).
 
+``trim-item`` and ``groups`` split the same step for workflow.chained.yaml:
+``trim-item`` filters one run of a chained map (its slot's ``meta.env``; a
+dropped run exits 10) and ``groups`` writes the library and replicate lists
+from the runs that passed.
+
 Usage: decide.py trimmed --runs DIR --trimgalore DIR --min-trimmed-reads N
-       --trim-pass DIR --libraries DIR --replicates DIR; decide.py --selftest
+       --trim-pass DIR --libraries DIR --replicates DIR
+       decide.py trim-item --slot DIR --min-trimmed-reads N --out DIR
+       decide.py groups --runs DIR --libraries DIR --replicates DIR
+       decide.py --selftest
 """
 
 from __future__ import annotations
@@ -65,20 +73,51 @@ def trim_log(trimgalore: Path, rid: str, single_end: bool) -> Path | None:
     return found[0] if found else None
 
 
+DROP = 10  # drop_exit_codes of the chained filter map
+
+
+def passes(trimgalore: Path, rid: str, meta: dict[str, str], minimum: float) -> bool:
+    log = trim_log(trimgalore, rid, meta["single_end"] == "true")
+    return (reads_after_filtering(log) if log else minimum + 1) >= minimum
+
+
 def trimmed(args: argparse.Namespace) -> None:
-    out_runs, out_libs, out_reps = (Path(p) for p in (args.trim_pass, args.libraries, args.replicates))
-    for d in (out_runs, out_libs, out_reps):
-        d.mkdir(parents=True, exist_ok=True)
+    out_runs = Path(args.trim_pass)
+    out_runs.mkdir(parents=True, exist_ok=True)
     minimum = f32(float(args.min_trimmed_reads))
-    libraries: dict[str, dict[str, str]] = {}
+    passed = []
     for meta_file in sorted(Path(args.runs).iterdir()):
         rid, meta = meta_file.name, read_meta(meta_file)
-        log = trim_log(Path(args.trimgalore), rid, meta["single_end"] == "true")
-        n = reads_after_filtering(log) if log else minimum + 1
-        if n < minimum:
-            continue
-        lib = re.sub(r"_T\d+$", "", rid)
-        write_meta(out_runs / rid, {**meta, "library": lib})
+        if passes(Path(args.trimgalore), rid, meta, minimum):
+            meta = {**meta, "library": re.sub(r"_T\d+$", "", rid)}
+            write_meta(out_runs / rid, meta)
+            passed.append((rid, meta))
+    group(passed, Path(args.libraries), Path(args.replicates))
+
+
+def trim_item(args: argparse.Namespace) -> None:
+    meta = read_meta(Path(args.slot) / "meta.env")
+    rid = meta["id"]
+    if not passes(Path(args.slot), rid, meta, f32(float(args.min_trimmed_reads))):
+        print(f"{rid}: fewer than {args.min_trimmed_reads} reads after trimming", file=sys.stderr)
+        sys.exit(DROP)
+    out = Path(args.out)
+    out.mkdir(parents=True, exist_ok=True)
+    write_meta(out / "meta.env", {**meta, "library": re.sub(r"_T\d+$", "", rid)})
+
+
+def groups(args: argparse.Namespace) -> None:
+    runs = (read_meta(f) for f in Path(args.runs).glob("*/meta.env"))
+    passed = sorted(((m.pop("id"), m) for m in runs), key=lambda r: r[0])
+    group(passed, Path(args.libraries), Path(args.replicates))
+
+
+def group(passed: list[tuple[str, dict[str, str]]], out_libs: Path, out_reps: Path) -> None:
+    for d in (out_libs, out_reps):
+        d.mkdir(parents=True, exist_ok=True)
+    libraries: dict[str, dict[str, str]] = {}
+    for rid, meta in passed:
+        lib = meta.pop("library")
         entry = libraries.setdefault(lib, {**meta, "runs": ""})
         entry["runs"] = f"{entry['runs']} {rid}".strip()
     replicates: dict[str, dict[str, str]] = {}
@@ -119,6 +158,23 @@ def selftest() -> None:
         assert "libraries='A_REP1 A_REP2'" in (t / "r/A").read_text()
         assert reads_after_filtering(tg / "0/C_REP1_T1.fastq.gz_trimming_report.txt") == 45.0
 
+        # Chained: the same decisions per slot, then groups from the passing slots.
+        for i, rid in enumerate(sorted(p.name for p in runs.iterdir())):
+            slot = t / "slots" / str(i)
+            slot.mkdir(parents=True)
+            (slot / "meta.env").write_text(f"id={rid}\n" + (runs / rid).read_text())
+            for rep in tg.glob(f"0/{rid}*_trimming_report.txt"):
+                (slot / rep.name).write_text(rep.read_text())
+            try:
+                trim_item(argparse.Namespace(slot=slot, min_trimmed_reads="100", out=t / "ft" / str(i)))
+            except SystemExit as e:
+                assert e.code == DROP and rid == "C_REP1_T1", (rid, e.code)
+        assert read_meta(t / "ft/1/meta.env") == {"id": "A_REP1_T2", **read_meta(t / "p/A_REP1_T2")}
+        groups(argparse.Namespace(runs=t / "ft", libraries=t / "l2", replicates=t / "r2"))
+        for d in ("l", "r"):
+            got = {p.name: p.read_text() for p in (t / f"{d}2").iterdir()}
+            assert got == {p.name: p.read_text() for p in (t / d).iterdir()}, d
+
 
 def main() -> int:
     ap = argparse.ArgumentParser(description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
@@ -131,14 +187,22 @@ def main() -> int:
     t.add_argument("--trim-pass", dest="trim_pass", required=True)
     t.add_argument("--libraries", required=True)
     t.add_argument("--replicates", required=True)
+    ti = sub.add_parser("trim-item")
+    ti.add_argument("--slot", required=True)
+    ti.add_argument("--min-trimmed-reads", dest="min_trimmed_reads", required=True)
+    ti.add_argument("--out", required=True)
+    g = sub.add_parser("groups")
+    g.add_argument("--runs", required=True)
+    g.add_argument("--libraries", required=True)
+    g.add_argument("--replicates", required=True)
     args = ap.parse_args()
     if args.selftest:
         selftest()
         return 0
-    if args.cmd == "trimmed":
-        trimmed(args)
-    else:
-        ap.error("pick trimmed or --selftest")
+    cmds = {"trimmed": trimmed, "trim-item": trim_item, "groups": groups}
+    if args.cmd not in cmds:
+        ap.error("pick trimmed, trim-item, groups or --selftest")
+    cmds[args.cmd](args)
     return 0
 
 

@@ -8,6 +8,10 @@ ATAC-seq alignment, peak calling and QC: a native port of nf-core/atacseq 2.1.2.
 
 Runs the route `nextflow run nf-core/atacseq -r 2.1.2 -profile test,docker` takes, as Horus tasks with the same containers, rendered command lines and per-process cpus/memory: FastQC and TrimGalore, BWA, Picard library and replicate merging and MarkDuplicates, BAM filtering, deepTools, MACS2 broad peaks, HOMER annotation, consensus peaks with featureCounts and DESeq2 QC, ataqv, an IGV session and MultiQC. Per-run, per-library and per-replicate steps are `horus_map` stages over lists of meta files. The pipeline's grouping of runs into libraries and libraries into replicate groups, and its minimum trimmed reads filter, run as a decision task, so other samplesheets work too. The workflow has 73 tasks (47 maps).
 
+## Variants
+
+- `workflow.chained.yaml`: the per-run, per-library and per-replicate maps set `chain: true`, so a run or library moves to its next step without waiting for the others, with the same outputs. Runs under `min_trimmed_reads` drop out with exit code 10. Generated from `workflow.yaml` by `scripts/gen_chained.py` (`--check` tells whether it is up to date). Needs horus-runtime 0.9.0 or later.
+
 ## Pipeline
 
 ```
