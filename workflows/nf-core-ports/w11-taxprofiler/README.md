@@ -10,7 +10,7 @@ Runs the route `nextflow run nf-core/taxprofiler -r 2.0.1 -profile test,docker` 
 
 ## Variants
 
-- `workflow.chained.yaml` (`scripts/chain.py` writes it from `workflow.yaml`): every map that follows another map over the same runs or (sample, database) pairs sets `chain: true`, so an item moves to its next step without waiting for the others, with the same outputs. Needs horus-runtime 0.9.0 or later.
+- `workflow.chained.yaml` (`scripts/chain.py` writes it from `workflow.yaml`): every map that follows another map over the same runs or (sample, database) pairs sets `chain: true`, so an item moves to its next step without waiting for the others, with the same outputs. A chained map holds a workflow concurrency slot while it waits for its items, so the variant sets `max_concurrency` to 36 (16 plus one per chained map). Needs horus-runtime 0.9.0 or later.
 
 ## Pipeline
 

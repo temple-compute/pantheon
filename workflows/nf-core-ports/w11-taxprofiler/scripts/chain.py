@@ -124,6 +124,9 @@ def main() -> None:
         text = text[:a] + chained(text[a:b], task, up, env, zips) + text[b:]
         if task != "bracken":  # the job folder is no longer an input
             text = sub1(text, f"  - {{source: plan, source_output: {jobs}, target: {task}, target_input: {jobs}}}\n", "", task)
+    # a chained map waiting for its items holds a workflow concurrency slot:
+    # allow one per chained map on top of workflow.yaml's 16
+    text = sub1(text, "\nmax_concurrency: 16\n", f"\nmax_concurrency: {16 + len(CHAINED)}\n", "workflow")
     # keep workflow.yaml's own header comment after the chained one
     body = text.split("\n", 2)[2]
     sys.stdout.write(HEADER + "\n" + body)

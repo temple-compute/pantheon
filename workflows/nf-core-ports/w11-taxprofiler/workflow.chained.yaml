@@ -43,7 +43,7 @@ capacity:
   local://ubuntu-awow:
     cpus: 16
     memory_gb: 31
-max_concurrency: 16
+max_concurrency: 36
 
 _target: &target
   kind: local
