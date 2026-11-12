@@ -1,0 +1,478 @@
+kind: horus_workflow
+name: nf-core fetchngs
+
+# Native port of nf-core/fetchngs 1.13.0, the route `-profile test,docker`
+# runs (--download_method ftp): SRA_IDS_TO_RUNINFO, SRA_RUNINFO_TO_FTP,
+# SRA_FASTQ_FTP for runs with ENA FTP links, CUSTOM_SRATOOLSNCBISETTINGS,
+# SRATOOLS_PREFETCH and SRATOOLS_FASTERQDUMP for runs without, the
+# samplesheet and id mappings, MULTIQC_MAPPINGS_CONFIG.
+# Images, rendered command lines (ext.args from modules/*/nextflow.config)
+# and per-process cpus/memory are the executed ones; the test profile caps
+# every process at 4 cpus / 15 GB / 1 h.
+#
+# Every command runs under `bash -C -e -u -o pipefail`, the pipeline's
+# process.shell: it writes its script to /tmp/.command.sh and runs that with
+# bash, as .command.run does. nfcore/bin is on PATH, as Nextflow puts bin/.
+#
+# The Groovy steps (id list check, splitCsv + branch, samplesheet and id
+# mappings) are scripts/fetchngs.py. Per-id and per-run processes are
+# horus_map stages over folders of files named by id.
+
+_target: &target
+  kind: local
+
+# Run on a remote node instead: point every task at this anchor.
+# _target: &target
+#   kind: ssh
+#   host: bench-node.example.org
+#   username: ubuntu
+#   working_directory: /home/ubuntu/horus
+
+# Containers (.command.run docker lines); `user: host` runs them as the
+# calling user, as nf-core's `-u $(id -u):$(id -g)` does.
+_img:
+  python: &python {kind: docker, user: host, image: "quay.io/biocontainers/python:3.9--1"}
+  wget: &wget {kind: docker, user: host, image: "community.wave.seqera.io/library/gzip_wget:041a8ba200c3fa3f"}
+  sratools: &sratools {kind: docker, user: host, image: "quay.io/biocontainers/sra-tools:3.2.1--h4304569_1"}
+  sratools_pigz: &sratools_pigz {kind: docker, user: host, image: "community.wave.seqera.io/library/sra-tools_pigz:4a694d823f6f7fcf"}
+
+# Labels after the test profile's resourceLimits (trace.txt cpus / memory).
+_res:
+  single: &single {cpus: 1, memory_gb: 6, walltime: "01:00:00"}
+  low: &low {cpus: 2, memory_gb: 12, walltime: "01:00:00"}
+  medium: &medium {cpus: 4, memory_gb: 15, walltime: "01:00:00"}
+
+_art:
+  - &a_input {id: input, name: Ids, kind: file, path: examples/sra_ids_test.csv}
+  - &a_nfcore {id: nfcore, name: nf-core/fetchngs files, kind: folder, path: nfcore/}
+  - &a_script {id: fetchngs_py, name: Groovy steps, kind: file, path: scripts/fetchngs.py}
+  - &a_ena_fields {id: ena_metadata_fields, name: ENA metadata fields, kind: string, path: params/ena_metadata_fields.txt}
+  - &a_method {id: download_method, name: Download method, kind: string, path: params/download_method.txt}
+  - &a_skip {id: skip_fastq_download, name: Skip FastQ download, kind: boolean, path: params/skip_fastq_download.json}
+  - &a_pipeline {id: nf_core_pipeline, name: nf-core pipeline, kind: string, path: params/nf_core_pipeline.txt}
+  - &a_strand {id: nf_core_rnaseq_strandedness, name: rnaseq strandedness, kind: string, path: params/nf_core_rnaseq_strandedness.txt}
+  - &a_mapping {id: sample_mapping_fields, name: Sample mapping fields, kind: string, path: params/sample_mapping_fields.txt}
+  - &a_ids {id: ids, name: Ids, kind: folder, path: work/ids/}
+  - &a_runinfo {id: runinfo, name: SRA run info, kind: folder, path: work/runinfo/}
+  - &a_metadata {id: metadata, name: Run info with FTP links, kind: folder, path: results/metadata/}
+  - &a_ftp_runs {id: ftp_runs, name: Runs to download over FTP, kind: folder, path: work/lists/ftp/}
+  - &a_sratools_runs {id: sratools_runs, name: Runs to download with sra-tools, kind: folder, path: work/lists/sratools/}
+  - &a_fastq {id: fastq, name: FastQ files, kind: folder, path: results/fastq/}
+  - &a_ncbi {id: ncbi_settings, name: NCBI settings, kind: folder, path: work/ncbi_settings/}
+  - &a_sra {id: sra, name: SRA files, kind: folder, path: work/sra/}
+  - &a_fastq_sra {id: fastq_sra, name: FastQ files from sra-tools, kind: folder, path: results/fastq_sratools/}
+  - &a_samplesheet {id: samplesheet, name: Samplesheet, kind: folder, path: results/samplesheet/}
+  - &a_mqc_config {id: mqc_config, name: MultiQC mappings config, kind: folder, path: results/multiqc_config/}
+
+artifacts:
+  - <<: *a_input
+    description: >-
+      One SRA, ENA, DDBJ or GEO id per line (--input). Default: the nf-core
+      test profile list (10 ids).
+  - <<: *a_nfcore
+    description: The pipeline's bin/ scripts and its MIT license.
+  - <<: *a_script
+    description: The pipeline's Groovy steps (id check, download branch, samplesheet).
+  - <<: *a_ena_fields
+    description: Comma-separated ENA fields to fetch (--ena_metadata_fields); empty keeps the default set.
+    value: ""
+    pattern: '[^"`$\\'']*'
+  - <<: *a_method
+    description: --download_method. Only ftp is ported (runs without FTP links go through sra-tools, as in the pipeline).
+    value: ftp
+    pattern: ftp
+  - <<: *a_skip
+    description: Only fetch metadata (--skip_fastq_download).
+    value: false
+  - <<: *a_pipeline
+    description: Write the samplesheet for this nf-core pipeline (--nf_core_pipeline); empty for a plain one.
+    value: ""
+    pattern: '(|ampliseq|atacseq|mag|rnaseq|sarek|taxprofiler|viralrecon)'
+  - <<: *a_strand
+    description: Strandedness column for --nf_core_pipeline rnaseq (--nf_core_rnaseq_strandedness).
+    value: auto
+    pattern: '[a-z]*'
+  - <<: *a_mapping
+    description: Columns of id_mappings.csv after sample (--sample_mapping_fields); empty skips it.
+    value: experiment_accession,run_accession,sample_accession,experiment_alias,run_alias,sample_alias,experiment_title,sample_title,sample_description
+    pattern: '[a-z_,]*'
+
+tasks:
+  - kind: horus_task
+    id: split_ids
+    name: Check and split the id list
+    description: Checks each id against the pipeline's input schema and writes one file per id.
+    inputs: [*a_input, *a_script]
+    outputs: [*a_ids]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/fetchngs.py
+      python: python3 # stdlib only
+      args: ids --input ${input} --out ${ids}
+    target: *target
+
+  - kind: horus_map
+    id: sra_ids_to_runinfo
+    name: SRA_IDS_TO_RUNINFO
+    over: {input_id: ids, as: item}
+    max_concurrency: 16
+    inputs: [*a_ids, *a_nfcore, *a_ena_fields]
+    outputs: [*a_runinfo]
+    resources: *single
+    executor: *python
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH=${nfcore}/bin:$$PATH PYTHONNOUSERSITE=1
+        id=$$(basename ${item})
+        fields=$$(printf %s ${ena_metadata_fields} | sed -E 's/[[:space:]]*,[[:space:]]*/,/g')
+        rm -rf ${runinfo} && mkdir -p ${runinfo} && cd ${runinfo}
+        echo $${id} > id.txt
+        sra_ids_to_runinfo.py \
+            id.txt \
+            $${id}.runinfo.tsv \
+            $${fields:+--ena_metadata_fields "$$fields"}
+        rm id.txt
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: sra_runinfo_to_ftp
+    name: SRA_RUNINFO_TO_FTP
+    over: {input_id: runinfo, as: slot}
+    max_concurrency: 16
+    inputs: [*a_runinfo, *a_nfcore]
+    outputs: [*a_metadata]
+    resources: *single
+    executor: *python
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH=${nfcore}/bin:$$PATH PYTHONNOUSERSITE=1
+        rm -rf ${metadata} && mkdir -p ${metadata} && cd ${metadata}
+        f=$$(cd ${slot} && ls *.runinfo.tsv)
+        ln -s ${slot}/$$f $$f
+        sra_runinfo_to_ftp.py \
+            $$f \
+            $${f%%.*}.runinfo_ftp.tsv
+        rm $$f
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: branch_downloads
+    name: Pick the runs to download
+    description: Reads the run tables and writes one file per run with FTP links (the ch_sra_reads branch).
+    inputs: [*a_metadata, *a_script, *a_skip, *a_method]
+    outputs: [*a_ftp_runs, *a_sratools_runs]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/fetchngs.py
+      python: python3 # stdlib only
+      args: >-
+        branch --metadata ${metadata} --skip-fastq-download ${skip_fastq_download}
+        --download-method ${download_method} --ftp ${ftp_runs} --sratools ${sratools_runs}
+    target: *target
+
+  - kind: horus_map
+    id: sra_fastq_ftp
+    name: SRA_FASTQ_FTP
+    over: {input_id: ftp_runs, as: run}
+    max_concurrency: 16
+    inputs: [*a_ftp_runs]
+    outputs: [*a_fastq]
+    resources: *low
+    executor: *wget
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${run}
+        rm -rf ${fastq} && mkdir -p ${fastq} && cd ${fastq}
+        if [ "$$single_end" = true ]; then
+        wget \
+            -t 5 -nv -w 5 --random-wait -c -T 60 \
+            -O $${id}.fastq.gz \
+            $${fastq_1}
+
+        echo "$${md5_1}  $${id}.fastq.gz" > $${id}.fastq.gz.md5
+        md5sum -c $${id}.fastq.gz.md5
+        else
+        wget \
+            -t 5 -nv -w 5 --random-wait -c -T 60 \
+            -O $${id}_1.fastq.gz \
+            $${fastq_1}
+
+        echo "$${md5_1}  $${id}_1.fastq.gz" > $${id}_1.fastq.gz.md5
+        md5sum -c $${id}_1.fastq.gz.md5
+
+        wget \
+            -t 5 -nv -w 5 --random-wait -c -T 60 \
+            -O $${id}_2.fastq.gz \
+            $${fastq_2}
+
+        echo "$${md5_2}  $${id}_2.fastq.gz" > $${id}_2.fastq.gz.md5
+        md5sum -c $${id}_2.fastq.gz.md5
+        fi
+        mkdir md5 && mv *.md5 md5/
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # FASTQ_DOWNLOAD_PREFETCH_FASTERQDUMP_SRATOOLS. The settings task runs
+  # only when some run needs sra-tools (collect() of an empty channel
+  # emits nothing); its config carries a fresh GUID, as in the module.
+  - kind: horus_task
+    id: custom_sratoolsncbisettings
+    name: CUSTOM_SRATOOLSNCBISETTINGS
+    inputs: [*a_sratools_runs]
+    outputs: [*a_ncbi]
+    resources: *low
+    executor: *sratools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${ncbi_settings} && mkdir -p ${ncbi_settings} && cd ${ncbi_settings}
+        [ -z "$$(ls ${sratools_runs})" ] && exit 0
+        config="/LIBS/GUID = \"$$(cat /proc/sys/kernel/random/uuid)\"\n/libs/cloud/report_instance_identity = \"true\"\n"
+        set -u
+
+        # Get the expected NCBI settings path and define the environment variable
+        # `NCBI_SETTINGS`.
+        eval "$$(vdb-config -o n NCBI_SETTINGS | sed 's/[" ]//g')"
+
+        # If the user settings do not exist yet, create a file suitable for `prefetch`
+        # and `fasterq-dump`. If an existing settings file does not contain the required
+        # values, error out with a helpful message.
+        if [[ ! -f "$${NCBI_SETTINGS}" ]]; then
+            printf "$$config" > 'user-settings.mkfg'
+        else
+            prefetch --help &> /dev/null
+            if [[ $$? = 78 ]]; then
+                echo "You have an existing vdb-config at '$${NCBI_SETTINGS}' but it is"\
+                "missing the required entries for /LIBS/GUID and"\
+                "/libs/cloud/report_instance_identity."\
+                "Feel free to add the following to your settings file:" >&2
+                echo "$$(printf "$$config")" >&2
+                exit 1
+            fi
+            fasterq-dump --help &> /dev/null
+            if [[ $$? = 78 ]]; then
+                echo "You have an existing vdb-config at '$${NCBI_SETTINGS}' but it is"\
+                "missing the required entries for /LIBS/GUID and"\
+                "/libs/cloud/report_instance_identity."\
+                "Feel free to add the following to your settings file:" >&2
+                echo "$$(printf "$$config")" >&2
+                exit 1
+            fi
+            if [[ "$${NCBI_SETTINGS}" != *.mkfg ]]; then
+                echo "The detected settings '$${NCBI_SETTINGS}' do not have the required"\
+                "file extension '.mkfg'." >&2
+                exit 1
+            fi
+            cp "$${NCBI_SETTINGS}" ./
+        fi
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: sratools_prefetch
+    name: SRATOOLS_PREFETCH
+    over: {input_id: sratools_runs, as: run}
+    max_concurrency: 16
+    inputs: [*a_sratools_runs, *a_ncbi]
+    outputs: [*a_sra]
+    resources: *low
+    executor: *sratools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${run}
+        rm -rf ${sra} && mkdir -p ${sra} && cd ${sra}
+        settings=$$(cd ${ncbi_settings} && ls *.mkfg)
+        ln -s ${ncbi_settings}/$$settings $$settings
+        set -u
+
+        retry_with_backoff() {
+            local max_attempts=$${1}
+            local delay=$${2}
+            local max_time=$${3}
+            local attempt=1
+            local output=
+            local status=
+
+            # Remove the first three arguments to this function in order to access
+            # the 'real' command with `$${@}`.
+            shift 3
+
+            while [ $${attempt} -le $${max_attempts} ]; do
+                output=$$("$${@}")
+                status=$${?}
+
+                if [ $${status} -eq 0 ]; then
+                    break
+                fi
+
+                if [ $${attempt} -lt $${max_attempts} ]; then
+                    echo "Failed attempt $${attempt} of $${max_attempts}. Retrying in $${delay} s." >&2
+                    sleep $${delay}
+                elif [ $${attempt} -eq $${max_attempts} ]; then
+                    echo "Failed after $${attempt} attempts." >&2
+                    return $${status}
+                fi
+
+                attempt=$$(( $${attempt} + 1 ))
+                delay=$$(( $${delay} * 2 ))
+                if [ $${delay} -ge $${max_time} ]; then
+                    delay=$${max_time}
+                fi
+            done
+
+            echo "$${output}"
+        }
+
+        export NCBI_SETTINGS="$$PWD/$$settings"
+
+        retry_with_backoff 5 1 100 \
+            prefetch \
+             \
+            $$run_accession
+
+        # check file integrity using vdb-validate or (when archive contains no checksums) md5sum
+        vdb-validate $$run_accession > vdb-validate_result.txt 2>&1 || exit 1
+        if grep -q "checksums missing" vdb-validate_result.txt; then
+            VALID_MD5SUMS=$$(curl --silent --fail --location --retry 3 --retry-delay 60 "https://locate.ncbi.nlm.nih.gov/sdl/2/retrieve?filetype=run&acc=$$run_accession")
+            LOCAL_MD5SUMS=$$(md5sum $$run_accession/* | cut -f1 -d' ')
+            if ! grep -q -F -f <(echo "$$LOCAL_MD5SUMS") <(echo "$$VALID_MD5SUMS"); then
+                echo "MD5 sum check failed" 1>&2
+                exit 1
+            fi
+        fi
+        rm $$settings
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: sratools_fasterqdump
+    name: SRATOOLS_FASTERQDUMP
+    over: {input_id: sratools_runs, as: run}
+    max_concurrency: 16
+    inputs: [*a_sratools_runs, *a_sra, *a_ncbi]
+    outputs: [*a_fastq_sra]
+    resources: *medium
+    executor: *sratools_pigz
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${run}
+        rm -rf ${fastq_sra} && mkdir -p ${fastq_sra} && cd ${fastq_sra}
+        settings=$$(cd ${ncbi_settings} && ls *.mkfg)
+        ln -s ${ncbi_settings}/$$settings $$settings
+        ln -s $$(ls -d ${sra}/*/$$run_accession) $$run_accession
+        export NCBI_SETTINGS="$$PWD/$$settings"
+
+        fasterq-dump \
+            --split-files --include-technical \
+            --threads ${task.resources.cpus} \
+            --outfile $$id.fastq \
+             \
+            $$run_accession
+
+        if [ "$$single_end" != true ]; then mv $$id.fastq $$id || echo 'No third file'; fi
+
+        pigz \
+             \
+            --no-name \
+            --processes ${task.resources.cpus} \
+            *.fastq
+        rm $$settings $$run_accession
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: create_samplesheet
+    name: Samplesheet and id mappings
+    description: Writes samplesheet.csv and id_mappings.csv from the run tables and the downloaded reads.
+    inputs: [*a_metadata, *a_fastq, *a_fastq_sra, *a_script, *a_skip, *a_pipeline, *a_strand, *a_mapping]
+    outputs: [*a_samplesheet]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/fetchngs.py
+      python: python3 # stdlib only
+      args: >-
+        samplesheet --metadata ${metadata} --fastq ${fastq} ${fastq_sra} --skip-fastq-download ${skip_fastq_download}
+        --nf-core-pipeline ${nf_core_pipeline} --strandedness ${nf_core_rnaseq_strandedness}
+        --mapping-fields ${sample_mapping_fields} --out ${samplesheet}
+    target: *target
+
+  - kind: horus_task
+    id: multiqc_mappings_config
+    name: MULTIQC_MAPPINGS_CONFIG
+    inputs: [*a_samplesheet, *a_nfcore, *a_mapping]
+    outputs: [*a_mqc_config]
+    resources: *single
+    executor: *python
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH=${nfcore}/bin:$$PATH PYTHONNOUSERSITE=1
+        rm -rf ${mqc_config} && mkdir -p ${mqc_config} && cd ${mqc_config}
+        if [ -n ${sample_mapping_fields} ]; then
+        ln -s ${samplesheet}/id_mappings.csv id_mappings.csv
+        multiqc_mappings_config.py \
+            id_mappings.csv \
+            multiqc_config.yml
+        rm id_mappings.csv
+        fi
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+edges:
+  - {source: artifact-input, source_output: input, target: split_ids, target_input: input}
+  - {source: artifact-fetchngs_py, source_output: fetchngs_py, target: split_ids, target_input: fetchngs_py}
+  - {source: split_ids, source_output: ids, target: sra_ids_to_runinfo, target_input: ids}
+  - {source: artifact-nfcore, source_output: nfcore, target: sra_ids_to_runinfo, target_input: nfcore}
+  - {source: artifact-ena_metadata_fields, source_output: ena_metadata_fields, target: sra_ids_to_runinfo, target_input: ena_metadata_fields}
+  - {source: sra_ids_to_runinfo, source_output: runinfo, target: sra_runinfo_to_ftp, target_input: runinfo}
+  - {source: artifact-nfcore, source_output: nfcore, target: sra_runinfo_to_ftp, target_input: nfcore}
+  - {source: sra_runinfo_to_ftp, source_output: metadata, target: branch_downloads, target_input: metadata}
+  - {source: artifact-fetchngs_py, source_output: fetchngs_py, target: branch_downloads, target_input: fetchngs_py}
+  - {source: artifact-skip_fastq_download, source_output: skip_fastq_download, target: branch_downloads, target_input: skip_fastq_download}
+  - {source: artifact-download_method, source_output: download_method, target: branch_downloads, target_input: download_method}
+  - {source: branch_downloads, source_output: ftp_runs, target: sra_fastq_ftp, target_input: ftp_runs}
+  - {source: branch_downloads, source_output: sratools_runs, target: custom_sratoolsncbisettings, target_input: sratools_runs}
+  - {source: branch_downloads, source_output: sratools_runs, target: sratools_prefetch, target_input: sratools_runs}
+  - {source: custom_sratoolsncbisettings, source_output: ncbi_settings, target: sratools_prefetch, target_input: ncbi_settings}
+  - {source: branch_downloads, source_output: sratools_runs, target: sratools_fasterqdump, target_input: sratools_runs}
+  - {source: sratools_prefetch, source_output: sra, target: sratools_fasterqdump, target_input: sra}
+  - {source: custom_sratoolsncbisettings, source_output: ncbi_settings, target: sratools_fasterqdump, target_input: ncbi_settings}
+  - {source: sra_runinfo_to_ftp, source_output: metadata, target: create_samplesheet, target_input: metadata}
+  - {source: sratools_fasterqdump, source_output: fastq_sra, target: create_samplesheet, target_input: fastq_sra}
+  - {source: sra_fastq_ftp, source_output: fastq, target: create_samplesheet, target_input: fastq}
+  - {source: artifact-fetchngs_py, source_output: fetchngs_py, target: create_samplesheet, target_input: fetchngs_py}
+  - {source: artifact-skip_fastq_download, source_output: skip_fastq_download, target: create_samplesheet, target_input: skip_fastq_download}
+  - {source: artifact-nf_core_pipeline, source_output: nf_core_pipeline, target: create_samplesheet, target_input: nf_core_pipeline}
+  - {source: artifact-nf_core_rnaseq_strandedness, source_output: nf_core_rnaseq_strandedness, target: create_samplesheet, target_input: nf_core_rnaseq_strandedness}
+  - {source: artifact-sample_mapping_fields, source_output: sample_mapping_fields, target: create_samplesheet, target_input: sample_mapping_fields}
+  - {source: create_samplesheet, source_output: samplesheet, target: multiqc_mappings_config, target_input: samplesheet}
+  - {source: artifact-nfcore, source_output: nfcore, target: multiqc_mappings_config, target_input: nfcore}
+  - {source: artifact-sample_mapping_fields, source_output: sample_mapping_fields, target: multiqc_mappings_config, target_input: sample_mapping_fields}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
