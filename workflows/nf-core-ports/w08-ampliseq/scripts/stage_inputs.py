@@ -14,7 +14,8 @@ writes
 - ``directions/FW``, ``directions/RV``: the read directions DADA2_QUALITY1
   and TRUNCLEN run over;
 - ``reference/``: the metadata file, ``decontam_metadata.tsv`` (built as the
-  pipeline's collectFile does) and the reference database files.
+  pipeline's collectFile does; not with ``--no-decontam``, for routes without
+  ``--decontam``) and the reference database files.
 
 The pipeline's input checks run here too: paired-end reads only, the sample
 name must differ from the read file names, and every read file needs at
@@ -142,7 +143,34 @@ def stage(a: argparse.Namespace) -> None:
     fetch(a.metadata, ref / a.metadata.rsplit("/", 1)[-1], a.mirror)
     for src in (u for refs in a.ref for u in refs.split(",") if u.strip()):
         fetch(src, ref / src.rsplit("/", 1)[-1], a.mirror)
-    (ref / "decontam_metadata.tsv").write_text(decontam_metadata(rows))
+    if a.decontam:
+        (ref / "decontam_metadata.tsv").write_text(decontam_metadata(rows))
+    targets = pplace_targets(a.pplace_targets)
+    if targets:
+        pp = Path(a.pplace)
+        pp.mkdir(parents=True, exist_ok=True)
+        for target, urls in targets.items():
+            names = {}
+            for key, src in urls.items():
+                names[key] = src.rsplit("/", 1)[-1]
+                if not (ref / names[key]).exists():
+                    fetch(src, ref / names[key], a.mirror)
+            (pp / target).write_text(f"target='{target}'\n" + "".join(f"{k}='{v}'\n" for k, v in names.items()))
+
+
+PPLACE_KEYS = ("hmm", "refseq", "tree", "taxonomy")
+
+
+def pplace_targets(spec: str) -> dict[str, dict[str, str]]:
+    """'arc16s=HMM,REFSEQ,TREE,TAXONOMY+bac16s=...' -> {target: {hmm, refseq, tree, taxonomy}}."""
+    out = {}
+    for entry in (e for e in (spec or "").split("+") if e.strip()):
+        target, _, files = entry.strip().partition("=")
+        urls = files.split(",")
+        if not ID_RE.fullmatch(target) or len(urls) != len(PPLACE_KEYS) or not all(urls):
+            raise SystemExit(f"bad pplace target {entry!r}: want <target>=<hmm>,<refseq>,<tree>,<taxonomy>")
+        out[target] = dict(zip(PPLACE_KEYS, urls))
+    return out
 
 
 def selftest() -> None:
@@ -169,7 +197,7 @@ def selftest() -> None:
         meta = Path(t) / "Metadata.tsv"
         meta.write_text("ID\tx\nS1\ta\n")
         ns = argparse.Namespace(
-            samplesheet=str(sheet), metadata=str(meta), ref=[], mirror="", min_read_counts=1,
+            samplesheet=str(sheet), metadata=str(meta), ref=[], mirror="", min_read_counts=1, decontam=True, pplace_targets="", pplace="",
             reads=f"{t}/reads", samples=f"{t}/samples", runs=f"{t}/runs", directions=f"{t}/dir", reference=f"{t}/ref",
         )
         stage(ns)
@@ -177,6 +205,20 @@ def selftest() -> None:
         assert (Path(t) / "runs/1").read_text() == "run='1'\nsamples='S1'\n"
         assert (Path(t) / "samples/S1").read_text() == "id='S1'\nrun='1'\n"
         assert (Path(t) / "ref/decontam_metadata.tsv").read_text() == "sample\tquant_reading\trun\nS1\t10\t1\n"
+        sheet.write_text(f"sample\tfastq_1\tfastq_2\nS1\t{fq}\t{fq}\n")  # no decontam columns: fine without --decontam
+        ns.decontam, ns.reference = False, f"{t}/ref2"
+        stage(ns)
+        assert not (Path(t) / "ref2/decontam_metadata.tsv").exists()
+        ns.pplace_targets, ns.pplace = f"arc16s={meta},{meta},{meta},{fq}", f"{t}/pplace"
+        stage(ns)
+        assert (Path(t) / "pplace/arc16s").read_text() == "target='arc16s'\nhmm='Metadata.tsv'\nrefseq='Metadata.tsv'\ntree='Metadata.tsv'\ntaxonomy='r.fastq.gz'\n"
+    assert list(pplace_targets("a1=h,r,t,x+b1=h2,r2,t2,x2")) == ["a1", "b1"]
+    for bad in ("a1=h,r,t", "1a=h,r,t,x", "a1=h,,t,x"):
+        try:
+            pplace_targets(bad)
+            raise AssertionError(bad)
+        except SystemExit:
+            pass
     print("selftest ok")
 
 
@@ -190,6 +232,9 @@ def main() -> None:
     ap.add_argument("--ref", action="append", default=[], help="reference database files (URLs or paths), comma separated, repeatable")
     ap.add_argument("--mirror", default="")
     ap.add_argument("--min-read-counts", type=int, default=1)
+    ap.add_argument("--no-decontam", dest="decontam", action="store_false", help="no decontam_metadata.tsv (no --decontam)")
+    ap.add_argument("--pplace-targets", default="", help="'<target>=<hmm>,<refseq>,<tree>,<taxonomy>' entries joined by '+'")
+    ap.add_argument("--pplace", default="", help="folder for the pplace/<target> meta files")
     for out in ("reads", "samples", "runs", "directions", "reference"):
         ap.add_argument(f"--{out}", required=True)
     stage(ap.parse_args())
