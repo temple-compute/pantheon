@@ -8,6 +8,10 @@ Metagenomic taxonomic profiling with many profilers at once: a native port of nf
 
 Runs the route `nextflow run nf-core/taxprofiler -r 2.0.1 -profile test,docker` takes, as Horus tasks with the same containers, rendered command lines and per-process cpus/memory: read QC, host removal and run merging, then Kraken2, Bracken, Centrifuge, MetaPhlAn, Kaiju, DIAMOND, ganon, KMCP, sylph, Melon and MetaCache against every database in the database sheet, Krona charts, taxpasta tables and MultiQC. The pipeline's Groovy channel logic depends only on the two sheets, so one planning task (`scripts/plan.py`) decides which runs get which preprocessing and which (sample, database) pairs each profiler gets, and writes one folder of job files per process. Every per-run, per-pair and per-group process is a `horus_map` over its folder. The workflow has 52 tasks (46 maps).
 
+## Variants
+
+- `workflow.chained.yaml` (`scripts/chain.py` writes it from `workflow.yaml`): every map that follows another map over the same runs or (sample, database) pairs sets `chain: true`, so an item moves to its next step without waiting for the others, with the same outputs. Needs horus-runtime 0.9.0 or later.
+
 ## Pipeline
 
 ```
@@ -39,9 +43,11 @@ multiqc                       ──► results/multiqc/multiqc_report.html
 - `results/krona/`: Krona HTML charts.
 - `results/multiqc/`: the MultiQC report and its data tables.
 
-Profiles, taxpasta tables, the tools' merged tables and the MultiQC general statistics match the Nextflow run. Some files match only up to order, in both engines: multithreaded tools (Kaiju, Centrifuge, MetaCache, bowtie2 unmapped reads) write reads in a different order, and Nextflow collects samples into the merged tables in completion order, so the columns come in a different order. DIAMOND reports a few more or fewer unclassified reads between runs (2 of 15,147 here). Nonpareil subsamples reads at random with no seed, so its curves and diversity values differ slightly on every run. The MultiQC report has no software versions, workflow summary or methods sections, which nf-core builds from Nextflow run metadata.
+Profiles, taxpasta tables, the tools' merged tables and the MultiQC general statistics match the Nextflow run. Some files match only up to order, in both engines: multithreaded tools (Kaiju, Centrifuge, MetaCache, bowtie2 unmapped reads) write reads in a different order, and Nextflow collects samples into the merged tables in completion order, so the columns come in a different order. DIAMOND aligns a few more or fewer reads between runs of the same input, which moves them to or from the unclassified count: Nextflow on a Horus node (blackbox run 85fa0f6c) aligned 1 more read of sample 2612 than the local Nextflow run, and the native run 0dc08bce 2 fewer of 2613 (7,813 vs 7,815). Nonpareil subsamples reads at random with no seed, so its curves and diversity values differ slightly on every run. The MultiQC report has no software versions, workflow summary or methods sections, which nf-core builds from Nextflow run metadata.
 
-Not ported (off in the test profile): MALT and MEGAN, mOTUs, KrakenUniq (no database in the test sheet), AdapterRemoval, Falco, PRINSEQ++, Filtlong, Porechop, PacBio FASTQ input, prebuilt host indexes and the other `--perform_*` / `--save_*` switches. Their params are fixed at the test profile's values.
+Not ported (off in the test profile): MALT and MEGAN, mOTUs, KrakenUniq (no database in the test sheet; `plan` stops on a KrakenUniq row), AdapterRemoval, Falco, PRINSEQ++, Filtlong, Porechop, PacBio FASTQ input, prebuilt host indexes and the other `--perform_*` / `--save_*` switches. Their params are fixed at the test profile's values.
+
+Bracken, the Centrifuge kreport and the merged Kraken-style tables keep the pipeline's `errorStrategy 'ignore'`: a failed tool leaves no output and the task succeeds. Nextflow then drops that file from the downstream groups; here the Krona, taxpasta and merge tasks that list it fail on the missing file and stop the run. The test profile does not take this path.
 
 ## Parameters
 

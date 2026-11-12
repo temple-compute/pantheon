@@ -170,6 +170,8 @@ def read_databases(path: Path) -> list[dict]:
         for row in csv.DictReader(fh):
             row = {k: (v or "").strip() for k, v in row.items()}
             row["db_type"] = row.get("db_type") or "short;long"
+            if row["tool"] == "krakenuniq":
+                sys.exit("KrakenUniq is not ported")
             dbs.append(row)
     return dbs
 
@@ -385,6 +387,12 @@ def selftest() -> None:
         assert not bad, bad
         merge = (jobs / "merge" / "2612").read_text()
         assert "ERR5766176.unmapped" in merge and merge.index("ERR5766176_B") < merge.index("ERR5766180")
+        (jobs / "ku.csv").write_text("tool,db_name,db_params,db_path\nkrakenuniq,db1,,x.tar.gz\n")
+        try:
+            read_databases(jobs / "ku.csv")
+            raise AssertionError("krakenuniq row accepted")
+        except SystemExit:
+            pass
     sys.stderr.write("selftest ok\n")
 
 
