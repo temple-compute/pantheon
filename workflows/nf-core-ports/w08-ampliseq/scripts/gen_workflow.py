@@ -18,8 +18,16 @@ column, ...) are ``@NAME@`` placeholders in the script, filled in with sed
 from the slot's meta file. Inputs are found by file name: a single task's
 output is ``${art}/<file>``, a map's is ``${art}/*/<file>``.
 
+With ``--chained`` it writes workflow.chained.yaml instead: maps that run
+over the same items in sequence (per sample, per run, per ANCOM column) set
+``chain: true`` and iterate the previous map's output, so each item moves on
+as soon as its own upstream slot is done. The first map of each chain copies
+the slot's meta file to ``meta.env``; later maps read their inputs from the
+slot (``${sample}/``) instead of the whole folder. Commands are unchanged.
+
 stdlib only. Usage:
     gen_workflow.py --spec <tc-os>/scripts/bench/nfcore/ampliseq/spec.json > workflow.yaml
+    gen_workflow.py --spec <tc-os>/scripts/bench/nfcore/ampliseq/spec.json --chained > workflow.chained.yaml
 """
 
 from __future__ import annotations
@@ -83,7 +91,7 @@ ART: dict[str, tuple[str, str]] = {}
 class Task:
     def __init__(self, id, proc, *, tag=None, full=None, name=None, over=None, inputs=(), outputs=None,
                  subs=(), path_subs=None, skip=(), stage=(), pre="", post="", stdout=None, image=None, runtime=None,
-                 executor=None, comment=None):
+                 executor=None, comment=None, chain=None):
         self.id, self.proc, self.tag, self.full = id, proc, tag, full
         self.name = name or proc
         self.over = over          # (artifact id, as)
@@ -95,6 +103,9 @@ class Task:
         self.stage = list(stage)  # hand-written stage lines
         self.pre, self.post, self.stdout = pre, post, stdout
         self.image, self.runtime, self.executor, self.comment = image, runtime, executor, comment
+        self.chain = chain or {}  # attribute overrides for --chained; an `over` here means chain: true
+        self.zip: list[tuple[str, str]] = []  # (map artifact id, as), paired by slot
+        self.chained = False
 
 
 def proc_spec(spec, t: Task):
@@ -183,7 +194,12 @@ def build_command(spec, t: Task, producers) -> tuple[str, set[str]]:
     used.add("nfcore")
     if t.over:
         used.discard(t.over[1])  # the map slot, not an artifact
-    return "\n".join(lines), used, p
+    cmd = "\n".join(lines)
+    if t.chained:  # read streamed inputs from this item's slot only
+        for art, as_ in [t.over, *t.zip]:
+            cmd = cmd.replace(f"${{{art}}}/*/", f"${{{as_}}}/")
+            assert f"${{{art}}}" not in cmd, (t.id, art)
+    return cmd, used, p
 
 
 def tasks() -> list[Task]:
@@ -216,7 +232,8 @@ def tasks() -> list[Task]:
           post="rm -f $${id}_1.gz $${id}_2.gz && rmdir 1 2"),
         T("cutadapt", "CUTADAPT_BASIC", over=("samples", "sample"), subs=S, skip=[r"."],
           pre=". ${sample}",
-          stage=["lnk . ${reads}/$${id}/$${id}_1.fastq.gz ${reads}/$${id}/$${id}_2.fastq.gz"]),
+          stage=["lnk . ${reads}/$${id}/$${id}_1.fastq.gz ${reads}/$${id}/$${id}_2.fastq.gz"],
+          chain=dict(post="cp ${sample} meta.env")),
         T("cutadapt_summary", "CUTADAPT_SUMMARY_STD", skip=[r"."], stage=["lnk . ${cutadapt}/*/*.cutadapt.log"]),
         T("cutadapt_summary_merge", "CUTADAPT_SUMMARY_MERGE"),
         # ------------------------------------------------------------ DADA2 preprocessing
@@ -227,7 +244,9 @@ def tasks() -> list[Task]:
           pre=". ${direction}", stdout="$${direction}.trunc.txt"),
         T("dada2_filtntrim", "DADA2_FILTNTRIM", over=("samples", "sample"),
           subs=S + [(r"230, 229", "trunc")], inputs=["trunclen"],
-          pre='. ${sample}; trunc="$$(cat ${trunclen}/*/FW.trunc.txt), $$(cat ${trunclen}/*/RV.trunc.txt)"'),
+          pre='. ${sample}; trunc="$$(cat ${trunclen}/*/FW.trunc.txt), $$(cat ${trunclen}/*/RV.trunc.txt)"',
+          chain=dict(over=("cutadapt", "sample"),
+                     pre='. ${sample}/meta.env; trunc="$$(cat ${trunclen}/*/FW.trunc.txt), $$(cat ${trunclen}/*/RV.trunc.txt)"')),
         T("dada2_quality2", "DADA2_QUALITY2", tag="FW", over=("directions", "direction"), subs=D, skip=[r"."],
           pre='. ${direction}; n=1; [ $$direction = RV ] && n=2',
           stage=["lnk . ${dada2_filtntrim}/*/*_$${n}.filt.fastq.gz"]),
@@ -235,18 +254,22 @@ def tasks() -> list[Task]:
         T("dada2_err", "DADA2_ERR", over=("runs", "run_item"), subs=RUN, skip=[r"."],
           pre=". ${run_item}",
           stage=["for s in $$samples; do lnk . ${dada2_filtntrim}/*/$${s}_1.filt.fastq.gz ${dada2_filtntrim}/*/$${s}_2.filt.fastq.gz; done"],
-          inputs=["dada2_filtntrim"]),
+          inputs=["dada2_filtntrim"], chain=dict(post="cp ${run_item} meta.env")),
         T("dada2_denoising", "DADA2_DENOISING", over=("runs", "run_item"), path_subs=RUNP, subs=RUN, skip=[r"^filtered/"],
           pre=". ${run_item}",
           stage=["for s in $$samples; do lnk filtered ${dada2_filtntrim}/*/$${s}_1.filt.fastq.gz ${dada2_filtntrim}/*/$${s}_2.filt.fastq.gz; done"],
-          inputs=["dada2_filtntrim"], post="rmdir filtered"),
+          inputs=["dada2_filtntrim"], post="rmdir filtered",
+          chain=dict(over=("dada2_err", "run_item"), pre=". ${run_item}/meta.env", post="rmdir filtered && cp ${run_item}/meta.env .")),
         T("dada2_rmchimera", "DADA2_RMCHIMERA", over=("runs", "run_item"), path_subs=RUNP,
           subs=RUN + [(r"(?<=if \( )4(?= == 1 \))", "nsamples"), (r"(?<=<- \")sampleID_1(?=\" \})", "first")],
-          pre='. ${run_item}; set -- $$samples; nsamples=$$#; first=$$1'),
+          pre='. ${run_item}; set -- $$samples; nsamples=$$#; first=$$1',
+          chain=dict(over=("dada2_denoising", "run_item"), pre='. ${run_item}/meta.env; set -- $$samples; nsamples=$$#; first=$$1',
+                     post="cp ${run_item}/meta.env .")),
         T("dada2_stats", "DADA2_STATS", over=("runs", "run_item"), path_subs=RUNP, subs=RUN, skip=[r"^filter_and_trim_files/"],
           pre=". ${run_item}",
           stage=["for s in $$samples; do lnk filter_and_trim_files ${dada2_filtntrim}/*/$${s}.filter_stats.tsv; done"],
-          inputs=["dada2_filtntrim"], post="rmdir filter_and_trim_files"),
+          inputs=["dada2_filtntrim"], post="rmdir filter_and_trim_files",
+          chain=dict(over=("dada2_rmchimera", "run_item"), zip=[("dada2_denoising", "den")], pre=". ${run_item}/meta.env")),
         T("dada2_merge", "DADA2_MERGE", skip=[r"."],
           stage=["lnk . ${dada2_stats}/*/*.stats.tsv ${dada2_rmchimera}/*/*.ASVtable.rds"]),
         T("merge_stats_dada", "MERGE_STATS_DADA"),
@@ -335,14 +358,16 @@ def tasks() -> list[Task]:
           subs=[(r"bray_curtis_distance_matrix", "matrix"), (r"treatment1", "formula")], pre=". ${item}"),
         # ------------------------------------------------------------ differential abundance
         T("filtersamples_ancom", "QIIME2_FILTERSAMPLES_ANCOM", tag="treatment1", over=("l_ancom", "item"),
-          subs=[(r"treatment1", "col")], pre=". ${item}"),
+          subs=[(r"treatment1", "col")], pre=". ${item}", chain=dict(post="cp ${item} meta.env")),
         T("ancombc_asv", "QIIME2_ANCOMBC_ASV", tag="treatment1-", over=("l_ancom", "item"),
-          subs=[(r"treatment1", "col")], pre=". ${item}"),
+          subs=[(r"treatment1", "col")], pre=". ${item}",
+          chain=dict(over=("filtersamples_ancom", "item"), pre=". ${item}/meta.env")),
         T("ancombc_tax", "QIIME2_ANCOMBC_TAX", tag="treatment1--2", over=("l_ancom_tax", "item"),
           subs=[(r"treatment1", "col"), (r"(?<=lvl)2|(?<=level )2|(?<=level-)2|(?<=--p-level )2|(?<=echo )2", "level")],
           pre=". ${item}"),
         T("ancombc2_asv", "QIIME2_ANCOMBC2_ASV", tag="treatment1-", over=("l_ancom", "item"),
-          subs=[(r"treatment1", "col")], pre=". ${item}"),
+          subs=[(r"treatment1", "col")], pre=". ${item}",
+          chain=dict(over=("filtersamples_ancom", "item"), pre=". ${item}/meta.env")),
         T("ancombc2_tax", "QIIME2_ANCOMBC2_TAX", tag="treatment1--2", over=("l_ancom_tax", "item"),
           subs=[(r"treatment1", "col"), (r"(?<=lvl)2|(?<=level )2|(?<=level-)2|(?<=--p-level )2|(?<=echo )2", "level")],
           pre=". ${item}"),
@@ -429,9 +454,15 @@ def image_anchor(image: str) -> str:
 def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--spec", required=True)
+    ap.add_argument("--chained", action="store_true", help="write workflow.chained.yaml")
     a = ap.parse_args()
     spec = json.load(open(a.spec))
     ts = tasks()
+    if a.chained:
+        for t in ts:
+            for k, v in t.chain.items():
+                setattr(t, k, v)
+            t.chained = "over" in t.chain
 
     producers: dict[tuple[str, str | None], tuple[str, bool]] = {}
     for t in ts:
@@ -460,12 +491,17 @@ def main() -> None:
             cmd, used, p = None, set(t.inputs), None
         else:
             cmd, used, p = build_command(spec, t, producers)
-        ins = list(dict.fromkeys(([t.over[0]] if t.over else []) + sorted(used | set(t.inputs))))
+        ins = list(dict.fromkeys(([t.over[0]] if t.over else []) + [z[0] for z in t.zip] + sorted(used | set(t.inputs))))
         for i in ins:
             assert i in root_ids or i in producer_of, (t.id, i)
         lines = [f"  - kind: {'horus_map' if t.over else 'horus_task'}", f"    id: {t.id}", f"    name: {t.name}"]
         if t.over:
-            lines += [f"    over: {{input_id: {t.over[0]}, as: {t.over[1]}}}", "    max_concurrency: 16"]
+            lines.append(f"    over: {{input_id: {t.over[0]}, as: {t.over[1]}}}")
+            if t.chained:
+                lines.append("    chain: true")
+            if t.zip:
+                lines.append("    zip: [" + ", ".join(f"{{input_id: {z}, as: {as_}}}" for z, as_ in t.zip) + "]")
+            lines.append("    max_concurrency: 16")
         lines.append("    inputs: [" + ", ".join(f"*a_{i}" for i in ins) + "]")
         lines.append("    outputs: [" + ", ".join(f"*a_{o}" for o in t.outputs) + "]")
         if p is None:
@@ -485,7 +521,7 @@ def main() -> None:
             edges.append(f"  - {{source: {src}, source_output: {i}, target: {t.id}, target_input: {i}}}")
 
     names = {o: o.replace("_", " ") for o in out_paths}
-    out = [HEADER.rstrip()]
+    out = [(HEADER.replace("name: nf-core ampliseq\n", "name: nf-core ampliseq chained\n" + CHAINED) if a.chained else HEADER).rstrip()]
     out.append("_img:")
     out += [f'  {k}: &{k} {{kind: docker, user: host, image: "{v}"}}' for k, v in sorted(images.items())]
     out.append("\n# Artifacts, shared by the producing task's outputs and every consumer's inputs.")
@@ -550,6 +586,17 @@ _target: &target
 # Containers (.command.run docker lines); `user: host` runs them as the
 # calling user, as nf-core's `-u $(id -u):$(id -g)` does.
 """
+
+CHAINED = """
+# Chained variant of workflow.yaml (gen_workflow.py --chained): the same
+# tasks and commands, but maps over the same items in sequence (per sample:
+# cutadapt, dada2_filtntrim; per run: dada2_err, dada2_denoising,
+# dada2_rmchimera, dada2_stats; per ANCOM column: filtersamples_ancom,
+# ancombc_asv, ancombc2_asv) set `chain: true`, so each item starts as soon
+# as its own upstream slot is done, as Nextflow channels do. Needs
+# horus-runtime >= 0.9.0.
+"""
+
 
 if __name__ == "__main__":
     main()
