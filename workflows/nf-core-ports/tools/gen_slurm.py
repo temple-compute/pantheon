@@ -96,7 +96,8 @@ def processes(nf: Path) -> tuple[dict[str, list[dict]], dict[str, set[str]]]:
                 if not lits:  # container "image"
                     lits = [c.group(1).strip("'\"")]
                 docker = docker_norm(lits[-1])
-                sif = lits[0] if len(lits) > 1 else f"docker://{docker}"
+                # the singularity URL; a GPU image ahead of it (ext.use_gpu ? 'x' : ...) has no scheme
+                sif = next((s for s in lits[:-1] if "://" in s), f"docker://{docker}")
             # the module's own cpus / memory / time directives (config selectors override them)
             head = re.split(r"^\s*(?:input|output|when|script|shell|exec|stub)\s*:", body, maxsplit=1, flags=re.MULTILINE)[0]
             own = dict(re.findall(r"^\s*(cpus|memory|time)\s+(\S.*?)\s*$", head, re.MULTILINE))
@@ -495,10 +496,13 @@ def selftest() -> None:
         (nf / "modules/a/main.nf").write_text(
             "process TOOL_A {\n    label 'process_high'\n    container \"${ workflow.containerEngine == 'singularity' ?\n"
             "        'https://depot.galaxyproject.org/singularity/a:1--0' :\n        'biocontainers/a:1--0' }\"\n}\n"
-            "process TOOL_B {\n    label 'process_medium'\n    container 'biocontainers/b:2'\n}\n")
+            "process TOOL_B {\n    label 'process_medium'\n    container 'biocontainers/b:2'\n}\n"
+            "process TOOL_G {\n    container \"${ task.ext.use_gpu ? 'us.gcr.io/g:1' :\n"
+            "        workflow.containerEngine in ['singularity', 'apptainer'] ? 'https://x.io/g/data' : 'c.io/g:1' }\"\n}\n")
         (nf / "main.nf").write_text("include { TOOL_A as TOOL_A_RAW } from './modules/a'\n")
         rv = Resolver(nf)
         assert rv.test_cap == (4, 15) and rv.env == {"PYTHONNOUSERSITE": "1"}
+        assert rv.procs["TOOL_G"][0]["sif"] == "https://x.io/g/data" and rv.procs["TOOL_G"][0]["docker"] == "c.io/g:1"
         sh = {"kind": "horus_task", "id": "stage", "inputs": [], "outputs": [{"id": "ref", "kind": "folder", "path": "w/ref/"}],
               "executor": {"kind": "shell"}, "runtime": {"kind": "command", "command": "true"}, "target": {"kind": "local"}}
         idx = {"kind": "horus_task", "id": "idx", "name": "BUILD", "inputs": sh["outputs"],
