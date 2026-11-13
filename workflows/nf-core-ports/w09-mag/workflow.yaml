@@ -137,6 +137,7 @@ _art:
   - &a_prodigal {id: prodigal, name: Prodigal, kind: folder, path: results/Annotation/Prodigal/}
   - &a_bt2_build {id: bt2_build, name: Assembly Bowtie2 indexes, kind: folder, path: work/bt2_index/}
   - &a_bt2_align {id: bt2_align, name: Assembly mappings, kind: folder, path: work/bt2_align/}
+  - &a_bt2_logs {id: bt2_logs, name: Assembly Bowtie2 logs, kind: folder, path: results/Assembly/bowtie2/}
   - &a_depths {id: depths, name: Contig depths, kind: folder, path: results/GenomeBinning/depths/contigs/}
   - &a_convert_depths {id: convert_depths, name: MaxBin2 abundances, kind: folder, path: work/convert_depths/}
   - &a_metabat2 {id: metabat2, name: MetaBAT2, kind: folder, path: results/GenomeBinning/MetaBAT2/}
@@ -760,6 +761,19 @@ tasks:
         for f in "$$@" $$aid.$$ext.fa bt2_index_base.*; do rm $$(basename $$f); done
         NF
         exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # Nextflow publishes the assembly mapping logs (Assembly/<assembler>/QC/<sample>/);
+  # the BAMs stay in work/ as in Nextflow.
+  - kind: horus_task
+    id: bt2_logs
+    name: Publish assembly Bowtie2 logs
+    inputs: [*a_bt2_align]
+    outputs: [*a_bt2_logs]
+    executor: {kind: shell}
+    runtime:
+      kind: command
+      command: rm -rf ${bt2_logs} && mkdir -p ${bt2_logs} && cp ${bt2_align}/*/*.bowtie2.log ${bt2_logs}/
     target: *target
 
   # BAM order: Nextflow passes an assembly's BAMs in mapping finish order; this
@@ -1706,6 +1720,7 @@ edges:
   - {source: bt2_build, source_output: bt2_build, target: bt2_align, target_input: bt2_build}
   - {source: phix_align, source_output: phix, target: bt2_align, target_input: phix}
   - {source: cat_fastq, source_output: cat_fastq, target: bt2_align, target_input: cat_fastq}
+  - {source: bt2_align, source_output: bt2_align, target: bt2_logs, target_input: bt2_align}
   - {source: stage_samples, source_output: assemblies, target: depths, target_input: assemblies}
   - {source: stage_samples, source_output: aligns, target: depths, target_input: aligns}
   - {source: bt2_align, source_output: bt2_align, target: depths, target_input: bt2_align}
