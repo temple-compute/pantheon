@@ -1,0 +1,1901 @@
+kind: horus_workflow
+name: nf-core chipseq
+
+# Native port of nf-core/chipseq 2.1.0, the route `-profile test,docker` runs:
+# BWA alignment, Picard merge and MarkDuplicates, BAMTools filtering, Picard
+# metrics, phantompeakqualtools, bigWigs and deepTools, MACS3 broad peaks with
+# FRiP and HOMER annotation, consensus peaks with featureCounts and DESeq2 QC,
+# an IGV session and MultiQC. Preseq is off, as in the test profile. Images,
+# rendered command lines (ext.args from conf/modules.config) and per-process
+# cpus/memory are the executed ones; the test profile caps every process at
+# 2 cpus / 6 GB.
+#
+# Every command runs under `bash -euo pipefail`, the pipeline's process.shell:
+# each command writes its script to /tmp/.command.sh and runs that with bash,
+# as .command.run does. Inputs are linked into the output folder under the
+# names Nextflow stages them with, the command runs there, and the links are
+# removed, so tool headers and MultiQC sample names match.
+#
+# Per-library, per-sample, per-IP and per-antibody processes are horus_map
+# stages over folders of meta files (bash-sourceable, named by id). Map slots
+# are numbered, so every output file carries the id and a downstream stage
+# finds its inputs as <upstream>/*/<id>.<suffix>. The empty-peaks filter and
+# the consensus grouping are a decision task (scripts/decide.py).
+
+max_concurrency: 16
+
+_target: &target
+  kind: local
+
+# Run on a remote node instead: point every task at this anchor.
+# _target: &target
+#   kind: ssh
+#   host: bench-node.example.org
+#   username: ubuntu
+#   working_directory: /home/ubuntu/horus
+
+# Containers (.command.run docker lines); `user: host` runs them as the
+# calling user, as nf-core's `-u $(id -u):$(id -g)` does.
+_img:
+  python: &python {kind: docker, user: host, image: "quay.io/biocontainers/python:3.8.3"}
+  perl: &perl {kind: docker, user: host, image: "quay.io/biocontainers/perl:5.26.2"}
+  samtools: &samtools {kind: docker, user: host, image: "quay.io/biocontainers/samtools:1.20--h50ea8bc_0"}
+  bedtools: &bedtools {kind: docker, user: host, image: "quay.io/biocontainers/bedtools:2.30.0--hc088bd4_0"}
+  bwa: &bwa {kind: docker, user: host, image: "quay.io/biocontainers/bwa:0.7.18--he4a0461_0"}
+  khmer: &khmer {kind: docker, user: host, image: "quay.io/biocontainers/khmer:3.0.0a3--py37haa7609a_2"}
+  fastqc: &fastqc {kind: docker, user: host, image: "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0"}
+  trimgalore: &trimgalore {kind: docker, user: host, image: "quay.io/biocontainers/trim-galore:0.6.7--hdfd78af_0"}
+  bwamem: &bwamem {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-fe8faa35dbf6dc65a0f7f5d4ea12e31a79f73e40:1bd8542a8a0b42e0981337910954371d0230828e-0"}
+  picard: &picard {kind: docker, user: host, image: "quay.io/biocontainers/picard:3.2.0--hdfd78af_0"}
+  bamtools: &bamtools {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-0560a8046fc82aa4338588eca29ff18edab2c5aa:5687a7da26983502d0a8a9a6b05ed727c740ddc4-0"}
+  orphans: &orphans {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-57736af1eb98c01010848572c9fec9fff6ffaafd:402e865b8f6af2f3e58c6fc8d57127ff0144b2c7-0"}
+  phantom: &phantom {kind: docker, user: host, image: "community.wave.seqera.io/library/phantompeakqualtools:1.2.2--f8026fe2526a5e18"}
+  rbase: &rbase {kind: docker, user: host, image: "community.wave.seqera.io/library/r-base:4.3.3--14bb33ac537aea22"}
+  ucsc: &ucsc {kind: docker, user: host, image: "quay.io/biocontainers/ucsc-bedgraphtobigwig:445--h954228d_0"}
+  deeptools: &deeptools {kind: docker, user: host, image: "quay.io/biocontainers/deeptools:3.5.5--pyhdfd78af_0"}
+  macs3: &macs3 {kind: docker, user: host, image: "quay.io/biocontainers/macs3:3.0.1--py311h0152c62_3"}
+  frip: &frip {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-8186960447c5cb2faa697666dc1e6d919ad23f3e:3127fcae6b6bdaf8181e21a26ae61231030a9fcb-0"}
+  nfubuntu: &nfubuntu {kind: docker, user: host, image: "quay.io/nf-core/ubuntu:20.04"}
+  homer: &homer {kind: docker, user: host, image: "quay.io/biocontainers/homer:4.11--pl526hc9558a2_3"}
+  plotr: &plotr {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-ad9dd5f398966bf899ae05f8e7c54d0fb10cdfa7:05678da05b8e5a7a5130e90a9f9a6c585b965afa-0"}
+  consensus: &consensus {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-2f48cc59b03027e31ead6d383fe1b8057785dd24:5d182f583f4696f4c4d9f3be93052811b383341f-0"}
+  subread: &subread {kind: docker, user: host, image: "quay.io/biocontainers/subread:2.0.1--hed695b0_0"}
+  ubuntu: &ubuntu {kind: docker, user: host, image: "docker.io/library/ubuntu:20.04"}
+  deseq2: &deseq2 {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-8849acf39a43cdd6c839a369a74c0adc823e2f91:ab110436faf952a33575c64dd74615a84011450b-0"}
+  multiqc: &multiqc {kind: docker, user: host, image: "quay.io/biocontainers/multiqc:1.23--pyhdfd78af_0"}
+
+# Labels after the test profile's max_cpus / max_memory (trace.txt cpus / memory).
+_res:
+  single: &single {cpus: 1, memory_gb: 6, walltime: "04:00:00"}
+  multi: &multi {cpus: 2, memory_gb: 6, walltime: "04:00:00"}
+  long: &long {cpus: 1, memory_gb: 6, walltime: "06:00:00"}
+
+# Artifacts, shared by the producing task's outputs and every consumer's inputs.
+_art:
+  - &a_samplesheet {id: samplesheet, name: Samplesheet, kind: file, path: examples/samplesheet.csv}
+  - &a_nfcore {id: nfcore, name: nf-core/chipseq files, kind: folder, path: nfcore/}
+  - &a_stage_py {id: stage_py, name: Staging script, kind: file, path: scripts/stage_inputs.py}
+  - &a_decide_py {id: decide_py, name: Decision script, kind: file, path: scripts/decide.py}
+  - &a_mirror {id: input_mirror, name: Local input mirror, kind: string, path: params/input_mirror.txt}
+  - &a_fasta_url {id: fasta_url, name: Genome fasta, kind: string, path: params/fasta_url.txt}
+  - &a_gtf_url {id: gtf_url, name: GTF, kind: string, path: params/gtf_url.txt}
+  - &a_read_length {id: read_length, name: Read length, kind: number, path: params/read_length.json}
+  - &a_fingerprint_bins {id: fingerprint_bins, name: Fingerprint bins, kind: number, path: params/fingerprint_bins.json}
+  - &a_min_reps {id: min_reps_consensus, name: Min replicates for consensus, kind: number, path: params/min_reps_consensus.json}
+  - &a_reference {id: reference, name: Reference files, kind: folder, path: work/reference/}
+  - &a_pipeline_info {id: pipeline_info, name: Checked samplesheet, kind: folder, path: results/pipeline_info/}
+  - &a_reads {id: reads, name: Reads, kind: folder, path: work/reads/}
+  - &a_libs {id: libs, name: Libraries, kind: folder, path: work/lists/libs/}
+  - &a_samples {id: samples, name: Samples, kind: folder, path: work/lists/samples/}
+  - &a_ips {id: ips, name: IP samples, kind: folder, path: work/lists/ips/}
+  - &a_gene_bed {id: gene_bed, name: Gene BED, kind: folder, path: work/genome/gene_bed/}
+  - &a_chromsizes {id: chromsizes, name: Fasta index and chrom sizes, kind: folder, path: results/genome/}
+  - &a_include_bed {id: include_bed, name: Include regions, kind: folder, path: work/genome/include_regions/}
+  - &a_bwa_index {id: bwa_index, name: BWA index, kind: folder, path: work/genome/bwa_index/}
+  - &a_kmers {id: kmers, name: Unique k-mers, kind: folder, path: work/genome/khmer/}
+  - &a_fastqc {id: fastqc, name: FastQC, kind: folder, path: results/fastqc/}
+  - &a_trimgalore {id: trimgalore, name: TrimGalore, kind: folder, path: results/trimgalore/}
+  - &a_bwa_mem {id: bwa_mem, name: BWA alignments, kind: folder, path: work/bwa/library/mem/}
+  - &a_lib_sort {id: lib_sort, name: Library sorted BAM, kind: folder, path: work/bwa/library/sort/}
+  - &a_lib_index {id: lib_index, name: Library BAM index, kind: folder, path: work/bwa/library/index/}
+  - &a_lib_stats {id: lib_stats, name: Library stats, kind: folder, path: work/bwa/library/samtools_stats/stats/}
+  - &a_lib_flagstat {id: lib_flagstat, name: Library flagstat, kind: folder, path: work/bwa/library/samtools_stats/flagstat/}
+  - &a_lib_idxstats {id: lib_idxstats, name: Library idxstats, kind: folder, path: work/bwa/library/samtools_stats/idxstats/}
+  - &a_merge {id: merge, name: Merged libraries, kind: folder, path: work/bwa/merged_library/merge/}
+  - &a_markdup {id: markdup, name: MarkDuplicates, kind: folder, path: results/bwa/merged_library/picard_metrics/markdup/}
+  - &a_md_index {id: md_index, name: MarkDuplicates BAM index, kind: folder, path: work/bwa/merged_library/markdup_index/}
+  - &a_md_stats {id: md_stats, name: MarkDuplicates stats, kind: folder, path: work/bwa/merged_library/samtools_stats/md_stats/}
+  - &a_md_flagstat {id: md_flagstat, name: MarkDuplicates flagstat, kind: folder, path: work/bwa/merged_library/samtools_stats/md_flagstat/}
+  - &a_md_idxstats {id: md_idxstats, name: MarkDuplicates idxstats, kind: folder, path: work/bwa/merged_library/samtools_stats/md_idxstats/}
+  - &a_filter {id: filter, name: BAMTools filtered BAM, kind: folder, path: work/bwa/merged_library/filter/}
+  - &a_name_sort {id: name_sort, name: Name-sorted filtered BAM, kind: folder, path: work/bwa/merged_library/name_sort/}
+  - &a_orphans {id: orphans, name: BAM without orphans, kind: folder, path: work/bwa/merged_library/orphans/}
+  - &a_clean {id: clean, name: Filtered BAM, kind: folder, path: results/bwa/merged_library/bam/}
+  - &a_clean_index {id: clean_index, name: Filtered BAM index, kind: folder, path: results/bwa/merged_library/bai/}
+  - &a_clean_stats {id: clean_stats, name: Filtered stats, kind: folder, path: results/bwa/merged_library/samtools_stats/stats/}
+  - &a_clean_flagstat {id: clean_flagstat, name: Filtered flagstat, kind: folder, path: results/bwa/merged_library/samtools_stats/flagstat/}
+  - &a_clean_idxstats {id: clean_idxstats, name: Filtered idxstats, kind: folder, path: results/bwa/merged_library/samtools_stats/idxstats/}
+  - &a_picard_metrics {id: picard_metrics, name: Picard CollectMultipleMetrics, kind: folder, path: results/bwa/merged_library/picard_metrics/collect/}
+  - &a_phantom {id: phantom, name: phantompeakqualtools, kind: folder, path: results/bwa/merged_library/phantompeakqualtools/spp/}
+  - &a_phantom_mqc {id: phantom_mqc, name: phantompeakqualtools MultiQC tables, kind: folder, path: results/bwa/merged_library/phantompeakqualtools/mqc/}
+  - &a_genomecov {id: genomecov, name: bedGraph, kind: folder, path: results/bwa/merged_library/bigwig/scale/}
+  - &a_bigwig {id: bigwig, name: bigWig, kind: folder, path: results/bwa/merged_library/bigwig/tracks/}
+  - &a_matrix {id: matrix, name: deepTools matrix, kind: folder, path: results/bwa/merged_library/deepTools/plotProfile/matrix/}
+  - &a_plotprofile {id: plotprofile, name: deepTools plotProfile, kind: folder, path: results/bwa/merged_library/deepTools/plotProfile/profile/}
+  - &a_plotheatmap {id: plotheatmap, name: deepTools plotHeatmap, kind: folder, path: results/bwa/merged_library/deepTools/plotProfile/heatmap/}
+  - &a_fingerprint {id: fingerprint, name: deepTools plotFingerprint, kind: folder, path: results/bwa/merged_library/deepTools/plotFingerprint/}
+  - &a_macs3 {id: macs3, name: MACS3 peaks, kind: folder, path: results/bwa/merged_library/macs3/broad_peak/peaks/}
+  - &a_peak_pass {id: peak_pass, name: IP samples with peaks, kind: folder, path: work/lists/peak_pass/}
+  - &a_antibodies {id: antibodies, name: Antibodies, kind: folder, path: work/lists/antibodies/}
+  - &a_frip {id: frip, name: FRiP, kind: folder, path: work/frip/}
+  - &a_peak_mqc {id: peak_mqc, name: Peak count and FRiP tables, kind: folder, path: results/bwa/merged_library/macs3/broad_peak/qc/samples/}
+  - &a_homer {id: homer, name: HOMER peak annotation, kind: folder, path: results/bwa/merged_library/macs3/broad_peak/annotation/}
+  - &a_macs3_qc {id: macs3_qc, name: MACS3 QC plots, kind: folder, path: results/bwa/merged_library/macs3/broad_peak/qc/macs3/}
+  - &a_homer_qc {id: homer_qc, name: HOMER annotation QC plots, kind: folder, path: results/bwa/merged_library/macs3/broad_peak/qc/homer/}
+  - &a_consensus {id: consensus, name: Consensus peaks, kind: folder, path: results/bwa/merged_library/macs3/broad_peak/consensus/peaks/}
+  - &a_homer_consensus {id: homer_consensus, name: HOMER consensus annotation, kind: folder, path: results/bwa/merged_library/macs3/broad_peak/consensus/annotation/}
+  - &a_boolean_annot {id: boolean_annot, name: Annotated boolean consensus, kind: folder, path: results/bwa/merged_library/macs3/broad_peak/consensus/boolean/}
+  - &a_featurecounts {id: featurecounts, name: featureCounts, kind: folder, path: results/bwa/merged_library/macs3/broad_peak/consensus/featurecounts/}
+  - &a_deseq2 {id: deseq2, name: DESeq2 QC, kind: folder, path: results/bwa/merged_library/macs3/broad_peak/consensus/deseq2/}
+  - &a_igv {id: igv, name: IGV session, kind: folder, path: results/igv/broad_peak/}
+  - &a_multiqc {id: multiqc, name: MultiQC report, kind: folder, path: results/multiqc/broad_peak/}
+
+artifacts:
+  - <<: *a_samplesheet
+    description: >-
+      nf-core/chipseq samplesheet (sample,fastq_1,fastq_2,replicate,antibody,control,control_replicate).
+      Reads may be URLs or paths relative to the samplesheet. Default: the test
+      profile samplesheet (two SPT5 time points, two replicates each, with input controls).
+  - <<: *a_nfcore
+    description: nf-core/chipseq 2.1.0 bin/ scripts and assets (MIT).
+  - <<: *a_stage_py
+    description: Fetches the reference and reads and writes the library and sample lists.
+  - <<: *a_decide_py
+    description: The pipeline's Groovy-side peak decisions as a script.
+  - <<: *a_mirror
+    description: >-
+      Folder searched for each input file by name before downloading it (e.g. a
+      local copy of the test data). Empty downloads everything.
+    value: ""
+    pattern: '[^"`$\\]*'
+  - {<<: *a_fasta_url, pattern: '[^"`$\\]*', description: "--fasta (plain fasta)", value: "https://raw.githubusercontent.com/nf-core/test-datasets/cd022b097372b078a68d8afadb172ad7342fd91f/reference/genome.fa"}
+  - {<<: *a_gtf_url, pattern: '[^"`$\\]*', description: "--gtf (plain GTF)", value: "https://raw.githubusercontent.com/nf-core/test-datasets/cd022b097372b078a68d8afadb172ad7342fd91f/reference/genes.gtf"}
+  - {<<: *a_read_length, value: 50, min: 1, description: "--read_length (k-mer size for the MACS3 genome size)"}
+  - {<<: *a_fingerprint_bins, value: 100, min: 1, description: "--fingerprint_bins"}
+  - {<<: *a_min_reps, value: 1, min: 1, description: "--min_reps_consensus"}
+
+tasks:
+  # ---------------------------------------------------------------- inputs
+  - kind: horus_task
+    id: fetch_reference
+    name: Fetch reference files
+    description: Downloads the genome fasta and GTF (or copies them from the mirror).
+    inputs: [*a_stage_py, *a_mirror, *a_fasta_url, *a_gtf_url]
+    outputs: [*a_reference]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: reference --fasta ${fasta_url} --gtf ${gtf_url} --mirror ${input_mirror} --out ${reference}
+    target: *target
+
+  - kind: horus_task
+    id: samplesheet_check
+    name: SAMPLESHEET_CHECK
+    inputs: [*a_samplesheet, *a_nfcore]
+    outputs: [*a_pipeline_info]
+    resources: *single
+    executor: *python
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH="${nfcore}/bin:$$PATH"
+        rm -rf ${pipeline_info} && mkdir -p ${pipeline_info} && cd ${pipeline_info}
+        ln -s ${samplesheet} $$(basename ${samplesheet})
+        check_samplesheet.py \
+            $$(basename ${samplesheet}) \
+            samplesheet.valid.csv
+        rm $$(basename ${samplesheet})
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: stage_samples
+    name: Split the samplesheet into libraries
+    description: Fetches each library's reads and writes the library, sample and IP lists.
+    inputs: [*a_stage_py, *a_samplesheet, *a_pipeline_info, *a_mirror]
+    outputs: [*a_reads, *a_libs, *a_samples, *a_ips]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: >-
+        samples --samplesheet ${pipeline_info}/samplesheet.valid.csv --origin ${samplesheet}
+        --mirror ${input_mirror} --reads ${reads} --libs ${libs} --samples ${samples} --ips ${ips}
+    target: *target
+
+  # ---------------------------------------------------------------- genome
+  - kind: horus_task
+    id: gtf2bed
+    name: GTF2BED
+    inputs: [*a_reference, *a_nfcore]
+    outputs: [*a_gene_bed]
+    resources: *multi
+    executor: *perl
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH="${nfcore}/bin:$$PATH"
+        . ${reference}/refs.env
+        rm -rf ${gene_bed} && mkdir -p ${gene_bed} && cd ${gene_bed}
+        ln -s ${reference}/$$ref_gtf $$ref_gtf
+        gtf2bed \
+            $$ref_gtf \
+            > $${ref_gtf%.*}.bed
+        rm $$ref_gtf
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: getchromsizes
+    name: CUSTOM_GETCHROMSIZES
+    inputs: [*a_reference]
+    outputs: [*a_chromsizes]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${chromsizes} && mkdir -p ${chromsizes} && cd ${chromsizes}
+        ln -s ${reference}/$$ref_fasta $$ref_fasta
+        samtools faidx $$ref_fasta
+        cut -f 1,2 $$ref_fasta.fai > $$ref_fasta.sizes
+        rm $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: blacklist_regions
+    name: GENOME_BLACKLIST_REGIONS
+    inputs: [*a_chromsizes]
+    outputs: [*a_include_bed]
+    resources: *single
+    executor: *bedtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${include_bed} && mkdir -p ${include_bed} && cd ${include_bed}
+        sizes=$$(basename ${chromsizes}/*.sizes)
+        ln -s ${chromsizes}/$$sizes $$sizes
+        awk '{print $$1, '0' , $$2}' OFS='\t' $$sizes > $${sizes%%.*}.include_regions.bed
+        rm $$sizes
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: bwa_index
+    name: BWA_INDEX
+    inputs: [*a_reference]
+    outputs: [*a_bwa_index]
+    resources: *single
+    executor: *bwa
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${bwa_index} && mkdir -p ${bwa_index} && cd ${bwa_index}
+        ln -s ${reference}/$$ref_fasta $$ref_fasta
+        mkdir bwa
+        bwa \
+            index \
+             \
+            -p bwa/$${ref_fasta%.*} \
+            $$ref_fasta
+        rm $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: khmer
+    name: KHMER_UNIQUEKMERS
+    inputs: [*a_reference, *a_read_length]
+    outputs: [*a_kmers]
+    resources: *multi
+    executor: *khmer
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${kmers} && mkdir -p ${kmers} && cd ${kmers}
+        ln -s ${reference}/$$ref_fasta $$ref_fasta
+        unique-kmers.py \
+            -k ${read_length} \
+            -R report.txt \
+             \
+            $$ref_fasta
+
+        grep ^number report.txt | sed 's/^.*:.[[:blank:]]//g' > kmers.txt
+        rm $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- per library
+  - kind: horus_map
+    id: fastqc
+    name: FASTQC
+    over: {input_id: libs, as: lib}
+    max_concurrency: 16
+    inputs: [*a_libs, *a_reads]
+    outputs: [*a_fastqc]
+    resources: *multi
+    executor: *fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${lib}); . ${lib}
+        rm -rf ${fastqc} && mkdir -p ${fastqc} && cd ${fastqc}
+        set -- $$(sed "s#^#${reads}/$$id/#" ${reads}/$$id/reads.txt)
+        pairs=""; names=""; i=0
+        for f in "$$@"; do
+            i=$$((i + 1)); ln -s $$f $$(basename $$f)
+            if [ $$# -eq 1 ]; then new=$${id}.$${f##*.}; else new=$${id}_$$i.$${f##*.}; fi
+            pairs="$$pairs $$(basename $$f) $$new"; names="$$names $$new"
+        done
+        printf "%s %s\n" $$pairs | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            --memory $$(( ${task.resources.memory_gb} * 1024 )) \
+            $${names# }
+        rm $$names; for f in "$$@"; do rm $$(basename $$f); done
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: trimgalore
+    name: TRIMGALORE
+    over: {input_id: libs, as: lib}
+    max_concurrency: 16
+    inputs: [*a_libs, *a_reads]
+    outputs: [*a_trimgalore]
+    resources: *multi
+    executor: *trimgalore
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${lib}); . ${lib}
+        rm -rf ${trimgalore} && mkdir -p ${trimgalore} && cd ${trimgalore}
+        set -- $$(sed "s#^#${reads}/$$id/#" ${reads}/$$id/reads.txt)
+        # --cores: task.cpus - 4 (paired) or - 3 (single), clamped to 1..8
+        cores=$$(( ${task.resources.cpus} - 4 ))
+        [ $$single_end = true ] && cores=$$(( ${task.resources.cpus} - 3 ))
+        [ $$cores -lt 1 ] && cores=1
+        [ $$cores -gt 8 ] && cores=8
+        for f in "$$@"; do ln -s $$f $$(basename $$f); done
+        if [ $$single_end = true ]; then
+        [ ! -f  $${id}.fastq.gz ] && ln -s $$(basename $$1) $${id}.fastq.gz
+        trim_galore \
+            --fastqc \
+            --cores $$cores \
+            --gzip \
+            $${id}.fastq.gz
+        rm $${id}.fastq.gz
+        else
+        [ ! -f  $${id}_1.fastq.gz ] && ln -s $$(basename $$1) $${id}_1.fastq.gz
+        [ ! -f  $${id}_2.fastq.gz ] && ln -s $$(basename $$2) $${id}_2.fastq.gz
+        trim_galore \
+            --fastqc \
+            --cores $$cores \
+            --paired \
+            --gzip \
+            $${id}_1.fastq.gz \
+            $${id}_2.fastq.gz
+        rm $${id}_1.fastq.gz $${id}_2.fastq.gz
+        fi
+        for f in "$$@"; do rm $$(basename $$f); done
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: bwa_mem
+    name: BWA_MEM
+    over: {input_id: libs, as: lib}
+    max_concurrency: 16
+    inputs: [*a_libs, *a_trimgalore, *a_bwa_index]
+    outputs: [*a_bwa_mem]
+    resources: *multi
+    executor: *bwamem
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${lib}); . ${lib}
+        rm -rf ${bwa_mem} && mkdir -p ${bwa_mem} && cd ${bwa_mem}
+        if [ $$single_end = true ]; then set -- ${trimgalore}/*/$${id}_trimmed.fq.gz
+        else set -- ${trimgalore}/*/$${id}_1_val_1.fq.gz ${trimgalore}/*/$${id}_2_val_2.fq.gz; fi
+        for f in "$$@"; do ln -s $$f $$(basename $$f); done
+        ln -s ${bwa_index}/bwa bwa
+        INDEX=`find -L ./ -name "*.amb" | sed 's/\.amb$$//'`
+        bwa mem \
+            -M -R "@RG\tID:$${id}\tSM:$${sample}\tPL:ILLUMINA\tLB:$${id}\tPU:1" \
+            -t ${task.resources.cpus} \
+            $$INDEX \
+            $$(for f in "$$@"; do basename $$f; done) \
+            | samtools view -bhS -F 0x0100 -O BAM  --threads ${task.resources.cpus} -o $${id}.Lb.bam -
+        rm bwa; for f in "$$@"; do rm $$(basename $$f); done
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: lib_sort
+    name: SAMTOOLS_SORT
+    over: {input_id: libs, as: lib}
+    max_concurrency: 16
+    inputs: [*a_libs, *a_bwa_mem, *a_reference]
+    outputs: [*a_lib_sort]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${lib}); . ${reference}/refs.env
+        rm -rf ${lib_sort} && mkdir -p ${lib_sort} && cd ${lib_sort}
+        ln -s ${bwa_mem}/*/$${id}.Lb.bam .; ln -s ${reference}/$$ref_fasta $$ref_fasta
+        samtools cat \
+            --threads ${task.resources.cpus} \
+            $${id}.Lb.bam \
+        | \
+        samtools sort \
+             \
+            -T $${id}.Lb.sorted \
+            --threads ${task.resources.cpus} \
+            --reference $$ref_fasta \
+            -o $${id}.Lb.sorted.bam \
+            -
+        rm $${id}.Lb.bam $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: lib_index
+    name: SAMTOOLS_INDEX
+    over: {input_id: libs, as: lib}
+    max_concurrency: 16
+    inputs: [*a_libs, *a_lib_sort]
+    outputs: [*a_lib_index]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${lib})
+        rm -rf ${lib_index} && mkdir -p ${lib_index} && cd ${lib_index}
+        ln -s ${lib_sort}/*/$${id}.Lb.sorted.bam .
+        samtools \
+            index \
+            -@ $$(( ${task.resources.cpus} - 1 )) \
+             \
+            $${id}.Lb.sorted.bam
+        rm $${id}.Lb.sorted.bam
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: lib_stats
+    name: SAMTOOLS_STATS
+    over: {input_id: libs, as: lib}
+    max_concurrency: 16
+    inputs: [*a_libs, *a_lib_sort, *a_lib_index, *a_reference]
+    outputs: [*a_lib_stats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${lib}); . ${reference}/refs.env
+        rm -rf ${lib_stats} && mkdir -p ${lib_stats} && cd ${lib_stats}
+        b=$${id}.Lb.sorted.bam
+        ln -s ${lib_sort}/*/$$b .; ln -s ${lib_index}/*/$$b.bai .; ln -s ${reference}/$$ref_fasta $$ref_fasta
+        samtools \
+            stats \
+            --threads ${task.resources.cpus} \
+            --reference $$ref_fasta \
+            $$b \
+            > $$b.stats
+        rm $$b $$b.bai $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: lib_flagstat
+    name: SAMTOOLS_FLAGSTAT
+    over: {input_id: libs, as: lib}
+    max_concurrency: 16
+    inputs: [*a_libs, *a_lib_sort, *a_lib_index]
+    outputs: [*a_lib_flagstat]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${lib})
+        rm -rf ${lib_flagstat} && mkdir -p ${lib_flagstat} && cd ${lib_flagstat}
+        b=$${id}.Lb.sorted.bam
+        ln -s ${lib_sort}/*/$$b .; ln -s ${lib_index}/*/$$b.bai .
+        samtools \
+            flagstat \
+            --threads ${task.resources.cpus} \
+            $$b \
+            > $$b.flagstat
+        rm $$b $$b.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: lib_idxstats
+    name: SAMTOOLS_IDXSTATS
+    over: {input_id: libs, as: lib}
+    max_concurrency: 16
+    inputs: [*a_libs, *a_lib_sort, *a_lib_index]
+    outputs: [*a_lib_idxstats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${lib})
+        rm -rf ${lib_idxstats} && mkdir -p ${lib_idxstats} && cd ${lib_idxstats}
+        b=$${id}.Lb.sorted.bam
+        ln -s ${lib_sort}/*/$$b .; ln -s ${lib_index}/*/$$b.bai .
+        samtools \
+            idxstats \
+            --threads $$(( ${task.resources.cpus} - 1 )) \
+            $$b \
+            > $$b.idxstats
+        rm $$b $$b.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- per merged sample
+  # One library: the module links it (ln -s); here it is copied, so the
+  # folder holds no link into another task's output.
+  - kind: horus_map
+    id: merge
+    name: PICARD_MERGESAMFILES
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_lib_sort]
+    outputs: [*a_merge]
+    resources: *multi
+    executor: *picard
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${merge} && mkdir -p ${merge} && cd ${merge}
+        set -- $$(for l in $$libs; do echo $$l.Lb.sorted.bam; done | sort)
+        if [ $$# -gt 1 ]; then
+        for b in "$$@"; do ln -s ${lib_sort}/*/$$b .; done
+        picard \
+            -Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M \
+            MergeSamFiles \
+            --SORT_ORDER coordinate --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp \
+            $$(printf -- '--INPUT %s ' "$$@") \
+            --OUTPUT $${id}.mLb.sorted.bam
+        rm "$$@"; rm -rf tmp
+        else
+        cp ${lib_sort}/*/$$1 $${id}.mLb.sorted.bam
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: markdup
+    name: PICARD_MARKDUPLICATES
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_merge, *a_reference, *a_chromsizes]
+    outputs: [*a_markdup]
+    resources: *multi
+    executor: *picard
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${reference}/refs.env
+        rm -rf ${markdup} && mkdir -p ${markdup} && cd ${markdup}
+        ln -s ${merge}/*/$${id}.mLb.sorted.bam .; ln -s ${reference}/$$ref_fasta $$ref_fasta; ln -s ${chromsizes}/$$ref_fasta.fai .
+        picard \
+            -Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M \
+            MarkDuplicates \
+            --ASSUME_SORTED true --REMOVE_DUPLICATES false --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp \
+            --INPUT $${id}.mLb.sorted.bam \
+            --OUTPUT $${id}.mLb.mkD.sorted.bam \
+            --REFERENCE_SEQUENCE $$ref_fasta \
+            --METRICS_FILE $${id}.mLb.mkD.sorted.MarkDuplicates.metrics.txt
+        rm $${id}.mLb.sorted.bam $$ref_fasta $$ref_fasta.fai; rm -rf tmp
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: md_index
+    name: SAMTOOLS_INDEX
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_markdup]
+    outputs: [*a_md_index]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${md_index} && mkdir -p ${md_index} && cd ${md_index}
+        ln -s ${markdup}/*/$${id}.mLb.mkD.sorted.bam .
+        samtools \
+            index \
+            -@ $$(( ${task.resources.cpus} - 1 )) \
+             \
+            $${id}.mLb.mkD.sorted.bam
+        rm $${id}.mLb.mkD.sorted.bam
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: md_stats
+    name: SAMTOOLS_STATS
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_markdup, *a_md_index, *a_reference]
+    outputs: [*a_md_stats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${reference}/refs.env
+        rm -rf ${md_stats} && mkdir -p ${md_stats} && cd ${md_stats}
+        b=$${id}.mLb.mkD.sorted.bam
+        ln -s ${markdup}/*/$$b .; ln -s ${md_index}/*/$$b.bai .; ln -s ${reference}/$$ref_fasta $$ref_fasta
+        samtools \
+            stats \
+            --threads ${task.resources.cpus} \
+            --reference $$ref_fasta \
+            $$b \
+            > $$b.stats
+        rm $$b $$b.bai $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: md_flagstat
+    name: SAMTOOLS_FLAGSTAT
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_markdup, *a_md_index]
+    outputs: [*a_md_flagstat]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${md_flagstat} && mkdir -p ${md_flagstat} && cd ${md_flagstat}
+        b=$${id}.mLb.mkD.sorted.bam
+        ln -s ${markdup}/*/$$b .; ln -s ${md_index}/*/$$b.bai .
+        samtools \
+            flagstat \
+            --threads ${task.resources.cpus} \
+            $$b \
+            > $$b.flagstat
+        rm $$b $$b.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: md_idxstats
+    name: SAMTOOLS_IDXSTATS
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_markdup, *a_md_index]
+    outputs: [*a_md_idxstats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${md_idxstats} && mkdir -p ${md_idxstats} && cd ${md_idxstats}
+        b=$${id}.mLb.mkD.sorted.bam
+        ln -s ${markdup}/*/$$b .; ln -s ${md_index}/*/$$b.bai .
+        samtools \
+            idxstats \
+            --threads $$(( ${task.resources.cpus} - 1 )) \
+            $$b \
+            > $$b.idxstats
+        rm $$b $$b.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # BAMTOOLS_FILTER, then for paired-end samples SAMTOOLS_SORT -n,
+  # BAM_REMOVE_ORPHANS and SAMTOOLS_SORT. Single-end samples come out of the
+  # filter as the final .mLb.clN.sorted.bam; filter_sort copies that one.
+  - kind: horus_map
+    id: filter
+    name: BAMTOOLS_FILTER
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_markdup, *a_md_index, *a_include_bed, *a_nfcore]
+    outputs: [*a_filter]
+    resources: *multi
+    executor: *bamtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${filter} && mkdir -p ${filter} && cd ${filter}
+        b=$${id}.mLb.mkD.sorted.bam; bed=$$(basename ${include_bed}/*.bed)
+        if [ $$single_end = true ]; then
+            args="-F 0x004 -F 0x0400 -q 1"; prefix=$${id}.mLb.clN.sorted; config=bamtools_filter_se.json
+        else
+            args="-F 0x004 -F 0x0008 -f 0x001 -F 0x0400 -q 1"; prefix=$${id}.mLb.flT.sorted; config=bamtools_filter_pe.json
+        fi
+        ln -s ${markdup}/*/$$b .; ln -s ${md_index}/*/$$b.bai .; ln -s ${include_bed}/$$bed .; ln -s ${nfcore}/assets/$$config .
+        samtools view \
+            $$args \
+            -L $$bed \
+            -b $$b \
+            | bamtools filter \
+                -out $${prefix}.bam \
+                -script $$config
+        rm $$b $$b.bai $$bed $$config
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: name_sort
+    name: SAMTOOLS_SORT
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_filter, *a_reference]
+    outputs: [*a_name_sort]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}; . ${reference}/refs.env
+        rm -rf ${name_sort} && mkdir -p ${name_sort} && cd ${name_sort}
+        if [ $$single_end = false ]; then
+        ln -s ${filter}/*/$${id}.mLb.flT.sorted.bam .; ln -s ${reference}/$$ref_fasta $$ref_fasta
+        samtools cat \
+            --threads ${task.resources.cpus} \
+            $${id}.mLb.flT.sorted.bam \
+        | \
+        samtools sort \
+            -n \
+            -T $${id}.mLb.flT.name_sorted \
+            --threads ${task.resources.cpus} \
+            --reference $$ref_fasta \
+            -o $${id}.mLb.flT.name_sorted.bam \
+            -
+        rm $${id}.mLb.flT.sorted.bam $$ref_fasta
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: orphans
+    name: BAM_REMOVE_ORPHANS
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_name_sort, *a_nfcore]
+    outputs: [*a_orphans]
+    resources: *multi
+    executor: *orphans
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH="${nfcore}/bin:$$PATH"
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${orphans} && mkdir -p ${orphans} && cd ${orphans}
+        if [ $$single_end = false ]; then
+        ln -s ${name_sort}/*/$${id}.mLb.flT.name_sorted.bam .
+        samtools sort -n -@ ${task.resources.cpus} -o $${id}.mLb.clN.name.sorted.bam -T $${id}.mLb.clN.name.sorted $${id}.mLb.flT.name_sorted.bam
+        bampe_rm_orphan.py $${id}.mLb.clN.name.sorted.bam $${id}.mLb.clN.bam --only_fr_pairs
+        rm $${id}.mLb.flT.name_sorted.bam
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: filter_sort
+    name: SAMTOOLS_SORT
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_orphans, *a_filter, *a_reference]
+    outputs: [*a_clean]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}; . ${reference}/refs.env
+        rm -rf ${clean} && mkdir -p ${clean} && cd ${clean}
+        if [ $$single_end = true ]; then
+        cp ${filter}/*/$${id}.mLb.clN.sorted.bam .
+        else
+        ln -s ${orphans}/*/$${id}.mLb.clN.bam .; ln -s ${reference}/$$ref_fasta $$ref_fasta
+        samtools cat \
+            --threads ${task.resources.cpus} \
+            $${id}.mLb.clN.bam \
+        | \
+        samtools sort \
+             \
+            -T $${id}.mLb.clN.sorted \
+            --threads ${task.resources.cpus} \
+            --reference $$ref_fasta \
+            -o $${id}.mLb.clN.sorted.bam \
+            -
+        rm $${id}.mLb.clN.bam $$ref_fasta
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: filter_index
+    name: SAMTOOLS_INDEX
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_clean]
+    outputs: [*a_clean_index]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${clean_index} && mkdir -p ${clean_index} && cd ${clean_index}
+        ln -s ${clean}/*/$${id}.mLb.clN.sorted.bam .
+        samtools \
+            index \
+            -@ $$(( ${task.resources.cpus} - 1 )) \
+             \
+            $${id}.mLb.clN.sorted.bam
+        rm $${id}.mLb.clN.sorted.bam
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: filter_stats
+    name: SAMTOOLS_STATS
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_clean, *a_clean_index, *a_reference]
+    outputs: [*a_clean_stats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${reference}/refs.env
+        rm -rf ${clean_stats} && mkdir -p ${clean_stats} && cd ${clean_stats}
+        b=$${id}.mLb.clN.sorted.bam
+        ln -s ${clean}/*/$$b .; ln -s ${clean_index}/*/$$b.bai .; ln -s ${reference}/$$ref_fasta $$ref_fasta
+        samtools \
+            stats \
+            --threads ${task.resources.cpus} \
+            --reference $$ref_fasta \
+            $$b \
+            > $$b.stats
+        rm $$b $$b.bai $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: filter_flagstat
+    name: SAMTOOLS_FLAGSTAT
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_clean, *a_clean_index]
+    outputs: [*a_clean_flagstat]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${clean_flagstat} && mkdir -p ${clean_flagstat} && cd ${clean_flagstat}
+        b=$${id}.mLb.clN.sorted.bam
+        ln -s ${clean}/*/$$b .; ln -s ${clean_index}/*/$$b.bai .
+        samtools \
+            flagstat \
+            --threads ${task.resources.cpus} \
+            $$b \
+            > $$b.flagstat
+        rm $$b $$b.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: filter_idxstats
+    name: SAMTOOLS_IDXSTATS
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_clean, *a_clean_index]
+    outputs: [*a_clean_idxstats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${clean_idxstats} && mkdir -p ${clean_idxstats} && cd ${clean_idxstats}
+        b=$${id}.mLb.clN.sorted.bam
+        ln -s ${clean}/*/$$b .; ln -s ${clean_index}/*/$$b.bai .
+        samtools \
+            idxstats \
+            --threads $$(( ${task.resources.cpus} - 1 )) \
+            $$b \
+            > $$b.idxstats
+        rm $$b $$b.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: collect_metrics
+    name: PICARD_COLLECTMULTIPLEMETRICS
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_clean, *a_reference, *a_chromsizes]
+    outputs: [*a_picard_metrics]
+    resources: *single
+    executor: *picard
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${reference}/refs.env
+        rm -rf ${picard_metrics} && mkdir -p ${picard_metrics} && cd ${picard_metrics}
+        ln -s ${clean}/*/$${id}.mLb.clN.sorted.bam .; ln -s ${reference}/$$ref_fasta $$ref_fasta; ln -s ${chromsizes}/$$ref_fasta.fai .
+        picard \
+            -Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M \
+            CollectMultipleMetrics \
+            --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp \
+            --INPUT $${id}.mLb.clN.sorted.bam \
+            --OUTPUT $${id}.mLb.clN.sorted.CollectMultipleMetrics \
+            --REFERENCE_SEQUENCE $$ref_fasta
+        rm $${id}.mLb.clN.sorted.bam $$ref_fasta $$ref_fasta.fai; rm -rf tmp
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: phantompeakqualtools
+    name: PHANTOMPEAKQUALTOOLS
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_clean]
+    outputs: [*a_phantom]
+    resources: *multi
+    executor: *phantom
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${phantom} && mkdir -p ${phantom} && cd ${phantom}
+        ln -s ${clean}/*/$${id}.mLb.clN.sorted.bam .
+        RUN_SPP=`which run_spp.R`
+        Rscript --max-ppsize=500000 -e "library(caTools); source(\"$$RUN_SPP\")" -c="$${id}.mLb.clN.sorted.bam" -savp="$${id}.spp.pdf" -savd="$${id}.spp.Rdata" -out="$${id}.spp.out" -p=${task.resources.cpus}
+        rm $${id}.mLb.clN.sorted.bam
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: phantompeakqualtools_mqc
+    name: MULTIQC_CUSTOM_PHANTOMPEAKQUALTOOLS
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_phantom, *a_nfcore]
+    outputs: [*a_phantom_mqc]
+    resources: *single
+    executor: *rbase
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); h=${nfcore}/assets/multiqc
+        rm -rf ${phantom_mqc} && mkdir -p ${phantom_mqc} && cd ${phantom_mqc}
+        ln -s ${phantom}/*/$${id}.spp.out .; ln -s ${phantom}/*/$${id}.spp.Rdata .
+        for f in spp_nsc_header.txt spp_rsc_header.txt spp_correlation_header.txt; do ln -s $$h/$$f .; done
+        cp spp_correlation_header.txt $${id}.spp_correlation_mqc.tsv
+        Rscript --max-ppsize=500000 -e "load('$${id}.spp.Rdata'); write.table(crosscorr\$$cross.correlation, file=\"$${id}.spp_correlation_mqc.tsv\", sep=",", quote=FALSE, row.names=FALSE, col.names=FALSE,append=TRUE)"
+
+        awk -v OFS='\t' '{print "'$$id'", $$9}'  $${id}.spp.out | cat spp_nsc_header.txt - > $${id}.spp_nsc_mqc.tsv
+        awk -v OFS='\t' '{print "'$$id'", $$10}' $${id}.spp.out | cat spp_rsc_header.txt - > $${id}.spp_rsc_mqc.tsv
+        rm $${id}.spp.out $${id}.spp.Rdata spp_nsc_header.txt spp_rsc_header.txt spp_correlation_header.txt
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: genomecov
+    name: BEDTOOLS_GENOMECOV
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_clean, *a_clean_flagstat]
+    outputs: [*a_genomecov]
+    resources: *multi
+    executor: *bedtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); . ${sample}
+        rm -rf ${genomecov} && mkdir -p ${genomecov} && cd ${genomecov}
+        b=$${id}.mLb.clN.sorted.bam
+        ln -s ${clean}/*/$$b .; ln -s ${clean_flagstat}/*/$$b.flagstat .
+        # ext.args: -fs <fragment_size> for single-end reads
+        if [ $$single_end = true ]; then pe=""; args="-fs 200"; else pe="-pc"; args=""; fi
+        SCALE_FACTOR=$$(grep '[0-9] mapped (' $$b.flagstat | awk '{print 1000000/$$1}')
+        echo $$SCALE_FACTOR > $${id}.mLB.clN.scale_factor.txt
+
+        bedtools \
+            genomecov \
+            -ibam $$b \
+            -bg \
+            -scale $$SCALE_FACTOR \
+            $$pe \
+            $$args \
+            | sort -T '.' -k1,1 -k2,2n > $${id}.mLB.clN.bedGraph
+        rm $$b $$b.flagstat
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: bigwig
+    name: UCSC_BEDGRAPHTOBIGWIG
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_genomecov, *a_chromsizes]
+    outputs: [*a_bigwig]
+    resources: *single
+    executor: *ucsc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); sizes=$$(basename ${chromsizes}/*.sizes)
+        rm -rf ${bigwig} && mkdir -p ${bigwig} && cd ${bigwig}
+        ln -s ${genomecov}/*/$${id}.mLB.clN.bedGraph .; ln -s ${chromsizes}/$$sizes .
+        bedGraphToBigWig \
+            $${id}.mLB.clN.bedGraph \
+            $$sizes \
+            $${id}.mLb.clN.bigWig
+        rm $${id}.mLB.clN.bedGraph $$sizes
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: computematrix
+    name: DEEPTOOLS_COMPUTEMATRIX
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_bigwig, *a_gene_bed]
+    outputs: [*a_matrix]
+    resources: *multi
+    executor: *deeptools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample}); bed=$$(basename ${gene_bed}/*.bed)
+        rm -rf ${matrix} && mkdir -p ${matrix} && cd ${matrix}
+        ln -s ${bigwig}/*/$${id}.mLb.clN.bigWig .; ln -s ${gene_bed}/$$bed .
+        computeMatrix \
+            scale-regions --regionBodyLength 1000 --beforeRegionStartLength 3000 --afterRegionStartLength 3000 --missingDataAsZero --skipZeros --smartLabels \
+            --regionsFileName $$bed \
+            --scoreFileName $${id}.mLb.clN.bigWig \
+            --outFileName $${id}.mLb.clN.computeMatrix.mat.gz \
+            --outFileNameMatrix $${id}.mLb.clN.computeMatrix.vals.mat.tab \
+            --numberOfProcessors ${task.resources.cpus}
+        rm $${id}.mLb.clN.bigWig $$bed
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: plotprofile
+    name: DEEPTOOLS_PLOTPROFILE
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_matrix]
+    outputs: [*a_plotprofile]
+    resources: *multi
+    executor: *deeptools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${plotprofile} && mkdir -p ${plotprofile} && cd ${plotprofile}
+        ln -s ${matrix}/*/$${id}.mLb.clN.computeMatrix.mat.gz .
+        plotProfile \
+             \
+            --matrixFile $${id}.mLb.clN.computeMatrix.mat.gz \
+            --outFileName $${id}.mLb.clN.plotProfile.pdf \
+            --outFileNameData $${id}.mLb.clN.plotProfile.tab
+        rm $${id}.mLb.clN.computeMatrix.mat.gz
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: plotheatmap
+    name: DEEPTOOLS_PLOTHEATMAP
+    over: {input_id: samples, as: sample}
+    max_concurrency: 16
+    inputs: [*a_samples, *a_matrix]
+    outputs: [*a_plotheatmap]
+    resources: *multi
+    executor: *deeptools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${sample})
+        rm -rf ${plotheatmap} && mkdir -p ${plotheatmap} && cd ${plotheatmap}
+        ln -s ${matrix}/*/$${id}.mLb.clN.computeMatrix.mat.gz .
+        plotHeatmap \
+             \
+            --matrixFile $${id}.mLb.clN.computeMatrix.mat.gz \
+            --outFileName $${id}.mLb.clN.plotHeatmap.pdf \
+            --outFileNameMatrix $${id}.mLb.clN.plotHeatmap.mat.tab
+        rm $${id}.mLb.clN.computeMatrix.mat.gz
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- per IP sample (with its control)
+  - kind: horus_map
+    id: plotfingerprint
+    name: DEEPTOOLS_PLOTFINGERPRINT
+    over: {input_id: ips, as: ip}
+    max_concurrency: 16
+    inputs: [*a_ips, *a_clean, *a_clean_index, *a_fingerprint_bins]
+    outputs: [*a_fingerprint]
+    resources: *multi
+    executor: *deeptools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${ip}); . ${ip}
+        rm -rf ${fingerprint} && mkdir -p ${fingerprint} && cd ${fingerprint}
+        for s in $$id $$control; do b=$$s.mLb.clN.sorted.bam; ln -s ${clean}/*/$$b .; ln -s ${clean_index}/*/$$b.bai .; done
+        # params.fragment_size for single-end reads
+        extend=""; [ $$single_end = true ] && extend="--extendReads 200"
+        plotFingerprint \
+            --skipZeros --numberOfSamples ${fingerprint_bins} --labels $$id $$control \
+            $$extend \
+            --bamfiles $$id.mLb.clN.sorted.bam $$control.mLb.clN.sorted.bam \
+            --plotFile $${id}.mLb.clN.plotFingerprint.pdf \
+            --outRawCounts $${id}.mLb.clN.plotFingerprint.raw.txt \
+            --outQualityMetrics $${id}.mLb.clN.plotFingerprint.qcmetrics.txt \
+            --numberOfProcessors ${task.resources.cpus}
+        rm *.mLb.clN.sorted.bam *.mLb.clN.sorted.bam.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: macs3_callpeak
+    name: MACS3_CALLPEAK
+    over: {input_id: ips, as: ip}
+    max_concurrency: 16
+    inputs: [*a_ips, *a_clean, *a_kmers]
+    outputs: [*a_macs3]
+    resources: *multi
+    executor: *macs3
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${ip}); . ${ip}
+        rm -rf ${macs3} && mkdir -p ${macs3} && cd ${macs3}
+        for s in $$id $$control; do ln -s ${clean}/*/$$s.mLb.clN.sorted.bam .; done
+        if [ $$single_end = true ]; then format=BAM; else format=BAMPE; fi
+        gsize=$$(cat ${kmers}/kmers.txt)
+        macs3 \
+            callpeak \
+            --keep-dup all --broad --broad-cutoff 0.1 \
+            --gsize $$gsize \
+            --format $$format \
+            --name $$id \
+            --treatment $$id.mLb.clN.sorted.bam \
+            --control $$control.mLb.clN.sorted.bam
+        rm *.mLb.clN.sorted.bam
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: filter_peaks
+    name: Keep IP samples with peaks
+    description: Drops IP samples whose MACS3 peak file is empty and groups the rest by antibody for the consensus peaks.
+    inputs: [*a_decide_py, *a_ips, *a_macs3]
+    outputs: [*a_peak_pass, *a_antibodies]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: peaks --ips ${ips} --macs3 ${macs3} --suffix _peaks.broadPeak --peak-pass ${peak_pass} --antibodies ${antibodies}
+    target: *target
+
+  - kind: horus_map
+    id: frip_score
+    name: FRIP_SCORE
+    over: {input_id: peak_pass, as: ip}
+    max_concurrency: 16
+    inputs: [*a_peak_pass, *a_clean, *a_macs3]
+    outputs: [*a_frip]
+    resources: *multi
+    executor: *frip
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${ip})
+        rm -rf ${frip} && mkdir -p ${frip} && cd ${frip}
+        b=$${id}.mLb.clN.sorted.bam; p=$${id}_peaks.broadPeak
+        ln -s ${clean}/*/$$b .; ln -s ${macs3}/*/$$p .
+        READS_IN_PEAKS=$$(intersectBed -a $$b -b $$p -bed -c -f 0.20 | awk -F '\t' '{sum += $$NF} END {print sum}')
+        samtools flagstat $$b > $$b.flagstat
+        grep 'mapped (' $$b.flagstat | grep -v "primary" | awk -v a="$$READS_IN_PEAKS" -v OFS='\t' '{print "'$$id'", a/$$1}' > $${id}.FRiP.txt
+        rm $$b $$p
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: multiqc_custom_peaks
+    name: MULTIQC_CUSTOM_PEAKS
+    over: {input_id: peak_pass, as: ip}
+    max_concurrency: 16
+    inputs: [*a_peak_pass, *a_macs3, *a_frip, *a_nfcore]
+    outputs: [*a_peak_mqc]
+    resources: *single
+    executor: *nfubuntu
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${ip}); h=${nfcore}/assets/multiqc
+        rm -rf ${peak_mqc} && mkdir -p ${peak_mqc} && cd ${peak_mqc}
+        p=$${id}_peaks.broadPeak
+        ln -s ${macs3}/*/$$p .; ln -s ${frip}/*/$${id}.FRiP.txt .; ln -s $$h/peak_count_header.txt .; ln -s $$h/frip_score_header.txt .
+        cat $$p | wc -l | awk -v OFS='\t' '{ print "'$$id'", $$1 }' | cat peak_count_header.txt - > $${id}.peak_count_mqc.tsv
+        cat frip_score_header.txt $${id}.FRiP.txt > $${id}.FRiP_mqc.tsv
+        rm $$p $${id}.FRiP.txt peak_count_header.txt frip_score_header.txt
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: homer_annotatepeaks
+    name: HOMER_ANNOTATEPEAKS
+    over: {input_id: peak_pass, as: ip}
+    max_concurrency: 16
+    inputs: [*a_peak_pass, *a_macs3, *a_reference]
+    outputs: [*a_homer]
+    resources: *multi
+    executor: *homer
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${ip}); . ${reference}/refs.env
+        rm -rf ${homer} && mkdir -p ${homer} && cd ${homer}
+        p=$${id}_peaks.broadPeak
+        ln -s ${macs3}/*/$$p .; ln -s ${reference}/$$ref_fasta .; ln -s ${reference}/$$ref_gtf .
+        annotatePeaks.pl \
+            $$p \
+            $$ref_fasta \
+            -gid \
+            -gtf $$ref_gtf \
+            -cpu ${task.resources.cpus} \
+            > $${id}_peaks.annotatePeaks.txt
+        rm $$p $$ref_fasta $$ref_gtf
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # Nextflow passes the peak files in arrival order; here they are sorted by name.
+  - kind: horus_task
+    id: plot_macs3_qc
+    name: PLOT_MACS3_QC
+    inputs: [*a_peak_pass, *a_macs3, *a_nfcore]
+    outputs: [*a_macs3_qc]
+    resources: *multi
+    executor: *plotr
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH="${nfcore}/bin:$$PATH"
+        rm -rf ${macs3_qc} && mkdir -p ${macs3_qc} && cd ${macs3_qc}
+        ids=$$(ls ${peak_pass} | sort)
+        for i in $$ids; do ln -s ${macs3}/*/$${i}_peaks.broadPeak .; done
+        plot_macs3_qc.r \
+            -i $$(for i in $$ids; do printf '%s,' $${i}_peaks.broadPeak; done | sed 's/,$$//') \
+            -s $$(echo $$ids | tr ' ' ',') \
+            -o ./ -p macs3_peak
+        rm *_peaks.broadPeak
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: plot_homer_annotatepeaks
+    name: PLOT_HOMER_ANNOTATEPEAKS
+    inputs: [*a_peak_pass, *a_homer, *a_nfcore]
+    outputs: [*a_homer_qc]
+    resources: *multi
+    executor: *plotr
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH="${nfcore}/bin:$$PATH"
+        rm -rf ${homer_qc} && mkdir -p ${homer_qc} && cd ${homer_qc}
+        ids=$$(ls ${peak_pass} | sort)
+        for i in $$ids; do ln -s ${homer}/*/$${i}_peaks.annotatePeaks.txt .; done
+        ln -s ${nfcore}/assets/multiqc/peak_annotation_header.txt .
+        plot_homer_annotatepeaks.r \
+            -i $$(for i in $$ids; do printf '%s,' $${i}_peaks.annotatePeaks.txt; done | sed 's/,$$//') \
+            -s $$(echo $$ids | tr ' ' ',') \
+            -p macs3_annotatePeaks \
+            -o ./
+
+        find ./ -type f -name "*summary.txt" -exec cat {} \; | cat peak_annotation_header.txt - > macs3_annotatePeaks.summary_mqc.tsv
+        rm *_peaks.annotatePeaks.txt peak_annotation_header.txt
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- per antibody
+  # ext.when: MACS3_CONSENSUS runs if the antibody has several groups or
+  # replicates, DESEQ2_QC if it has both; otherwise the slot stays empty.
+  - kind: horus_map
+    id: macs3_consensus
+    name: MACS3_CONSENSUS
+    over: {input_id: antibodies, as: antibody}
+    max_concurrency: 16
+    inputs: [*a_antibodies, *a_macs3, *a_nfcore, *a_min_reps]
+    outputs: [*a_consensus]
+    resources: *long
+    executor: *consensus
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH="${nfcore}/bin:$$PATH"
+        ab=$$(basename ${antibody}); . ${antibody}
+        rm -rf ${consensus} && mkdir -p ${consensus} && cd ${consensus}
+        if [ $$multiple_groups = true ] || [ $$replicates_exist = true ]; then
+        prefix=$${ab}.consensus_peaks
+        set -- $$(for i in $$peaks; do echo $${i}_peaks.broadPeak; done | sort)
+        for p in "$$@"; do ln -s ${macs3}/*/$$p .; done
+        sort -T '.' -k1,1 -k2,2n "$$@" \
+            | mergeBed -c 2,3,4,5,6,7,8,9 -o collapse,collapse,collapse,collapse,collapse,collapse,collapse,collapse > $${prefix}.txt
+
+        macs3_merged_expand.py \
+            $${prefix}.txt \
+            $$(echo "$$@" | tr ' ' ',' | sed 's/_peaks.broadPeak//g') \
+            $${prefix}.boolean.txt \
+            --min_replicates ${min_reps_consensus} \
+             \
+
+
+        awk -v FS='\t' -v OFS='\t' 'FNR > 1 { print $$1, $$2, $$3, $$4, "0", "+" }' $${prefix}.boolean.txt > $${prefix}.bed
+
+        echo -e "GeneID\tChr\tStart\tEnd\tStrand" > $${prefix}.saf
+        awk -v FS='\t' -v OFS='\t' 'FNR > 1 { print $$4, $$1, $$2, $$3,  "+" }' $${prefix}.boolean.txt >> $${prefix}.saf
+
+        plot_peak_intersect.r -i $${prefix}.boolean.intersect.txt -o $${prefix}.boolean.intersect.plot.pdf
+
+        # Groovy turns the module's "\t" into a real tab
+        printf '%s\t%s\n' $${prefix}.bed $${ab}/$${prefix}.bed > $${prefix}.antibody.txt
+        rm "$$@"
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: homer_consensus
+    name: HOMER_ANNOTATEPEAKS
+    over: {input_id: antibodies, as: antibody}
+    max_concurrency: 16
+    inputs: [*a_antibodies, *a_consensus, *a_reference]
+    outputs: [*a_homer_consensus]
+    resources: *multi
+    executor: *homer
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        ab=$$(basename ${antibody}); . ${reference}/refs.env
+        rm -rf ${homer_consensus} && mkdir -p ${homer_consensus} && cd ${homer_consensus}
+        p=$${ab}.consensus_peaks.bed
+        if ls ${consensus}/*/$$p > /dev/null 2>&1; then
+        ln -s ${consensus}/*/$$p .; ln -s ${reference}/$$ref_fasta .; ln -s ${reference}/$$ref_gtf .
+        annotatePeaks.pl \
+            $$p \
+            $$ref_fasta \
+            -gid \
+            -gtf $$ref_gtf \
+            -cpu ${task.resources.cpus} \
+            > $${ab}.consensus_peaks.annotatePeaks.txt
+        rm $$p $$ref_fasta $$ref_gtf
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: annotate_boolean_peaks
+    name: ANNOTATE_BOOLEAN_PEAKS
+    over: {input_id: antibodies, as: antibody}
+    max_concurrency: 16
+    inputs: [*a_antibodies, *a_consensus, *a_homer_consensus]
+    outputs: [*a_boolean_annot]
+    resources: *multi
+    executor: *ubuntu
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        ab=$$(basename ${antibody}); prefix=$${ab}.consensus_peaks
+        rm -rf ${boolean_annot} && mkdir -p ${boolean_annot} && cd ${boolean_annot}
+        if ls ${homer_consensus}/*/$${prefix}.annotatePeaks.txt > /dev/null 2>&1; then
+        ln -s ${consensus}/*/$${prefix}.boolean.txt .; ln -s ${homer_consensus}/*/$${prefix}.annotatePeaks.txt .
+        cut -f2- $${prefix}.annotatePeaks.txt | awk 'NR==1; NR > 1 {print $$0 | "sort -T '.' -k1,1 -k2,2n"}' | cut -f6- > tmp.txt
+        paste $${prefix}.boolean.txt tmp.txt > $${prefix}.boolean.annotatePeaks.txt
+        rm tmp.txt $${prefix}.boolean.txt $${prefix}.annotatePeaks.txt
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # Nextflow sorts the BAMs by work-dir path (random order); here by name.
+  - kind: horus_map
+    id: featurecounts
+    name: SUBREAD_FEATURECOUNTS
+    over: {input_id: antibodies, as: antibody}
+    max_concurrency: 16
+    inputs: [*a_antibodies, *a_consensus, *a_clean, *a_ips]
+    outputs: [*a_featurecounts]
+    resources: *multi
+    executor: *subread
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        ab=$$(basename ${antibody}); . ${antibody}; prefix=$${ab}.consensus_peaks
+        rm -rf ${featurecounts} && mkdir -p ${featurecounts} && cd ${featurecounts}
+        if ls ${consensus}/*/$${prefix}.saf > /dev/null 2>&1; then
+        single_end=$$(. ${ips}/$${bams%% *}; echo $$single_end)
+        set -- $$(for i in $$bams; do echo $$i.mLb.clN.sorted.bam; done | sort)
+        for b in "$$@"; do ln -s ${clean}/*/$$b .; done; ln -s ${consensus}/*/$${prefix}.saf .
+        paired_end="-p"; [ $$single_end = true ] && paired_end=""
+        featureCounts \
+            -F SAF -O --fracOverlap 0.2 \
+            $$paired_end \
+            -T ${task.resources.cpus} \
+            -a $${prefix}.saf \
+            -s 0 \
+            -o $${prefix}.featureCounts.txt \
+            "$$@"
+        rm "$$@" $${prefix}.saf
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: deseq2_qc
+    name: DESEQ2_QC
+    over: {input_id: antibodies, as: antibody}
+    max_concurrency: 16
+    inputs: [*a_antibodies, *a_featurecounts, *a_nfcore]
+    outputs: [*a_deseq2]
+    resources: *multi
+    executor: *deseq2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH="${nfcore}/bin:$$PATH"
+        ab=$$(basename ${antibody}); . ${antibody}; prefix=$${ab}.consensus_peaks; h=${nfcore}/assets/multiqc
+        rm -rf ${deseq2} && mkdir -p ${deseq2} && cd ${deseq2}
+        if [ $$multiple_groups = true ] && [ $$replicates_exist = true ]; then
+        # task.index: this antibody's place among the antibodies that run DESeq2
+        index=$$(for f in $$(dirname ${antibody})/*; do (. $$f; [ $$multiple_groups = true ] && [ $$replicates_exist = true ] && basename $$f); done | sort | grep -nx "$$ab" | cut -d: -f1)
+        ln -s ${featurecounts}/*/$${prefix}.featureCounts.txt .; ln -s $$h/deseq2_pca_header.txt .; ln -s $$h/deseq2_clustering_header.txt .
+        deseq2_qc.r \
+            --count_file $${prefix}.featureCounts.txt \
+            --outdir ./ \
+            --outprefix $$prefix \
+            --cores ${task.resources.cpus} \
+            --id_col 1 --sample_suffix '.mLb.clN.sorted.bam' --count_col 7 --vst TRUE
+
+        sed "s/deseq2_pca/deseq2_pca_$$index/g" <deseq2_pca_header.txt >tmp.txt
+        sed -i -e "s/DESeq2 /$$ab DESeq2 /g" tmp.txt
+        cat tmp.txt $${prefix}.pca.vals.txt > $${prefix}.pca.vals_mqc.tsv
+
+        sed "s/deseq2_clustering/deseq2_clustering_$$index/g" <deseq2_clustering_header.txt >tmp.txt
+        sed -i -e "s/DESeq2 /$$ab DESeq2 /g" tmp.txt
+        cat tmp.txt $${prefix}.sample.dists.txt > $${prefix}.sample.dists_mqc.tsv
+        rm tmp.txt $${prefix}.featureCounts.txt deseq2_pca_header.txt deseq2_clustering_header.txt
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- reports
+  - kind: horus_task
+    id: igv
+    name: IGV
+    inputs: [*a_bigwig, *a_peak_pass, *a_macs3, *a_consensus, *a_reference, *a_nfcore]
+    outputs: [*a_igv]
+    resources: *single
+    executor: *python
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        export PATH="${nfcore}/bin:$$PATH"
+        . ${reference}/refs.env
+        rm -rf ${igv} && mkdir -p ${igv} && cd ${igv}
+        d=bwa/merged_library
+        mkdir -p $$d/bigwig $$d/macs3/broad_peak/consensus mappings
+        for f in ${bigwig}/*/*.bigWig; do ln -s $$f $$d/bigwig/; done
+        for i in $$(ls ${peak_pass}); do ln -s ${macs3}/*/$${i}_peaks.broadPeak $$d/macs3/broad_peak/; done
+        for f in ${consensus}/*/*.consensus_peaks.bed; do [ -e "$$f" ] && ln -s $$f $$d/macs3/broad_peak/consensus/; done
+        for f in ${consensus}/*/*.antibody.txt; do [ -e "$$f" ] && ln -s $$f mappings/; done
+        ln -s ${reference}/$$ref_fasta $$ref_fasta
+        find * -type l -name "*.bigWig" -exec echo -e ""{}"\t0,0,178" \; > bigwig.igv.txt
+        find * -type l -name "*Peak" -exec echo -e ""{}"\t0,0,178" \; > peaks.igv.txt
+        # Avoid error when consensus not produced
+        find * -type l -name "*.bed" -exec echo -e ""{}"\t0,0,178" \; | { grep "^bwa/merged_library/macs3/broad_peak/consensus/*" || test $$? = 1; } > consensus.igv.txt
+
+        touch replace_paths.txt
+        if [ -d "mappings" ]; then
+            cat mappings/* > replace_paths.txt
+        fi
+
+        cat *.igv.txt > igv_files_orig.txt
+        igv_files_to_session.py igv_session.xml igv_files_orig.txt replace_paths.txt ../../genome/$$ref_fasta --path_prefix '../../'
+        rm -r bwa mappings; rm $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # Links exactly the files nf-core/chipseq sends to MultiQC into the
+  # folders its module stages them in (multiqc_config.yml path_filters match
+  # on them). The workflow summary and software versions files come from
+  # Nextflow run metadata and are left out.
+  - kind: horus_task
+    id: multiqc
+    name: MULTIQC
+    inputs:
+      - *a_nfcore
+      - *a_fastqc
+      - *a_trimgalore
+      - *a_lib_stats
+      - *a_lib_flagstat
+      - *a_lib_idxstats
+      - *a_md_stats
+      - *a_md_flagstat
+      - *a_md_idxstats
+      - *a_markdup
+      - *a_clean_stats
+      - *a_clean_flagstat
+      - *a_clean_idxstats
+      - *a_picard_metrics
+      - *a_plotprofile
+      - *a_plotheatmap
+      - *a_fingerprint
+      - *a_phantom
+      - *a_phantom_mqc
+      - *a_peak_mqc
+      - *a_homer_qc
+      - *a_macs3_qc
+      - *a_featurecounts
+      - *a_deseq2
+      - *a_boolean_annot
+      - *a_igv
+    outputs: [*a_multiqc]
+    resources: *multi
+    executor: *multiqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${multiqc} && mkdir -p ${multiqc} && cd ${multiqc}
+        stage() { d=$$1; shift; mkdir -p $$d; for f in "$$@"; do [ -e "$$f" ] && ln -s "$$f" $$d/ && echo "$$d/$$(basename $$f)" >> multiqc_inputs.txt; done; return 0; }
+        ln -s ${nfcore}/assets/multiqc_config.yml .
+        stage fastqc ${fastqc}/*/*_fastqc.zip
+        stage trimgalore/fastqc ${trimgalore}/*/*_fastqc.zip
+        stage trimgalore ${trimgalore}/*/*_trimming_report.txt
+        stage alignment/library ${lib_stats}/*/*.stats ${lib_flagstat}/*/*.flagstat ${lib_idxstats}/*/*.idxstats
+        stage alignment/merged_library/unfiltered ${md_stats}/*/*.stats ${md_flagstat}/*/*.flagstat ${md_idxstats}/*/*.idxstats
+        stage alignment/merged_library/unfiltered/picard_metrics ${markdup}/*/*.metrics.txt
+        stage alignment/merged_library/filtered ${clean_stats}/*/*.stats ${clean_flagstat}/*/*.flagstat ${clean_idxstats}/*/*.idxstats
+        stage alignment/merged_library/filtered/picard_metrics ${picard_metrics}/*/*_metrics
+        stage preseq
+        stage deeptools ${plotprofile}/*/*.plotProfile.tab ${fingerprint}/*/*.plotFingerprint.raw.txt
+        stage phantompeakqualtools ${phantom}/*/*.spp.out ${phantom_mqc}/*/*_mqc.tsv
+        stage macs3/peaks ${peak_mqc}/*/*.FRiP_mqc.tsv ${peak_mqc}/*/*.peak_count_mqc.tsv
+        stage macs3/annotation ${homer_qc}/*.summary_mqc.tsv
+        stage macs3/featurecounts ${featurecounts}/*/*.featureCounts.txt.summary
+        stage deseq2 ${deseq2}/*/*.pca.vals_mqc.tsv ${deseq2}/*/*.sample.dists_mqc.tsv
+        multiqc \
+            -f \
+             \
+             \
+            .
+        rm -r multiqc_config.yml fastqc trimgalore alignment preseq deeptools phantompeakqualtools macs3 deseq2
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+edges:
+  - {source: artifact-stage_py, source_output: stage_py, target: fetch_reference, target_input: stage_py}
+  - {source: artifact-input_mirror, source_output: input_mirror, target: fetch_reference, target_input: input_mirror}
+  - {source: artifact-fasta_url, source_output: fasta_url, target: fetch_reference, target_input: fasta_url}
+  - {source: artifact-gtf_url, source_output: gtf_url, target: fetch_reference, target_input: gtf_url}
+  - {source: artifact-samplesheet, source_output: samplesheet, target: samplesheet_check, target_input: samplesheet}
+  - {source: artifact-nfcore, source_output: nfcore, target: samplesheet_check, target_input: nfcore}
+  - {source: artifact-stage_py, source_output: stage_py, target: stage_samples, target_input: stage_py}
+  - {source: artifact-samplesheet, source_output: samplesheet, target: stage_samples, target_input: samplesheet}
+  - {source: samplesheet_check, source_output: pipeline_info, target: stage_samples, target_input: pipeline_info}
+  - {source: artifact-input_mirror, source_output: input_mirror, target: stage_samples, target_input: input_mirror}
+  - {source: fetch_reference, source_output: reference, target: gtf2bed, target_input: reference}
+  - {source: artifact-nfcore, source_output: nfcore, target: gtf2bed, target_input: nfcore}
+  - {source: fetch_reference, source_output: reference, target: getchromsizes, target_input: reference}
+  - {source: getchromsizes, source_output: chromsizes, target: blacklist_regions, target_input: chromsizes}
+  - {source: fetch_reference, source_output: reference, target: bwa_index, target_input: reference}
+  - {source: fetch_reference, source_output: reference, target: khmer, target_input: reference}
+  - {source: artifact-read_length, source_output: read_length, target: khmer, target_input: read_length}
+  - {source: stage_samples, source_output: libs, target: fastqc, target_input: libs}
+  - {source: stage_samples, source_output: reads, target: fastqc, target_input: reads}
+  - {source: stage_samples, source_output: libs, target: trimgalore, target_input: libs}
+  - {source: stage_samples, source_output: reads, target: trimgalore, target_input: reads}
+  - {source: stage_samples, source_output: libs, target: bwa_mem, target_input: libs}
+  - {source: trimgalore, source_output: trimgalore, target: bwa_mem, target_input: trimgalore}
+  - {source: bwa_index, source_output: bwa_index, target: bwa_mem, target_input: bwa_index}
+  - {source: stage_samples, source_output: libs, target: lib_sort, target_input: libs}
+  - {source: bwa_mem, source_output: bwa_mem, target: lib_sort, target_input: bwa_mem}
+  - {source: fetch_reference, source_output: reference, target: lib_sort, target_input: reference}
+  - {source: stage_samples, source_output: libs, target: lib_index, target_input: libs}
+  - {source: lib_sort, source_output: lib_sort, target: lib_index, target_input: lib_sort}
+  - {source: stage_samples, source_output: libs, target: lib_stats, target_input: libs}
+  - {source: lib_sort, source_output: lib_sort, target: lib_stats, target_input: lib_sort}
+  - {source: lib_index, source_output: lib_index, target: lib_stats, target_input: lib_index}
+  - {source: fetch_reference, source_output: reference, target: lib_stats, target_input: reference}
+  - {source: stage_samples, source_output: libs, target: lib_flagstat, target_input: libs}
+  - {source: lib_sort, source_output: lib_sort, target: lib_flagstat, target_input: lib_sort}
+  - {source: lib_index, source_output: lib_index, target: lib_flagstat, target_input: lib_index}
+  - {source: stage_samples, source_output: libs, target: lib_idxstats, target_input: libs}
+  - {source: lib_sort, source_output: lib_sort, target: lib_idxstats, target_input: lib_sort}
+  - {source: lib_index, source_output: lib_index, target: lib_idxstats, target_input: lib_index}
+  - {source: stage_samples, source_output: samples, target: merge, target_input: samples}
+  - {source: lib_sort, source_output: lib_sort, target: merge, target_input: lib_sort}
+  - {source: stage_samples, source_output: samples, target: markdup, target_input: samples}
+  - {source: merge, source_output: merge, target: markdup, target_input: merge}
+  - {source: fetch_reference, source_output: reference, target: markdup, target_input: reference}
+  - {source: getchromsizes, source_output: chromsizes, target: markdup, target_input: chromsizes}
+  - {source: stage_samples, source_output: samples, target: md_index, target_input: samples}
+  - {source: markdup, source_output: markdup, target: md_index, target_input: markdup}
+  - {source: stage_samples, source_output: samples, target: md_stats, target_input: samples}
+  - {source: markdup, source_output: markdup, target: md_stats, target_input: markdup}
+  - {source: md_index, source_output: md_index, target: md_stats, target_input: md_index}
+  - {source: fetch_reference, source_output: reference, target: md_stats, target_input: reference}
+  - {source: stage_samples, source_output: samples, target: md_flagstat, target_input: samples}
+  - {source: markdup, source_output: markdup, target: md_flagstat, target_input: markdup}
+  - {source: md_index, source_output: md_index, target: md_flagstat, target_input: md_index}
+  - {source: stage_samples, source_output: samples, target: md_idxstats, target_input: samples}
+  - {source: markdup, source_output: markdup, target: md_idxstats, target_input: markdup}
+  - {source: md_index, source_output: md_index, target: md_idxstats, target_input: md_index}
+  - {source: stage_samples, source_output: samples, target: filter, target_input: samples}
+  - {source: markdup, source_output: markdup, target: filter, target_input: markdup}
+  - {source: md_index, source_output: md_index, target: filter, target_input: md_index}
+  - {source: blacklist_regions, source_output: include_bed, target: filter, target_input: include_bed}
+  - {source: artifact-nfcore, source_output: nfcore, target: filter, target_input: nfcore}
+  - {source: stage_samples, source_output: samples, target: name_sort, target_input: samples}
+  - {source: filter, source_output: filter, target: name_sort, target_input: filter}
+  - {source: fetch_reference, source_output: reference, target: name_sort, target_input: reference}
+  - {source: stage_samples, source_output: samples, target: orphans, target_input: samples}
+  - {source: name_sort, source_output: name_sort, target: orphans, target_input: name_sort}
+  - {source: artifact-nfcore, source_output: nfcore, target: orphans, target_input: nfcore}
+  - {source: stage_samples, source_output: samples, target: filter_sort, target_input: samples}
+  - {source: orphans, source_output: orphans, target: filter_sort, target_input: orphans}
+  - {source: filter, source_output: filter, target: filter_sort, target_input: filter}
+  - {source: fetch_reference, source_output: reference, target: filter_sort, target_input: reference}
+  - {source: stage_samples, source_output: samples, target: filter_index, target_input: samples}
+  - {source: filter_sort, source_output: clean, target: filter_index, target_input: clean}
+  - {source: stage_samples, source_output: samples, target: filter_stats, target_input: samples}
+  - {source: filter_sort, source_output: clean, target: filter_stats, target_input: clean}
+  - {source: filter_index, source_output: clean_index, target: filter_stats, target_input: clean_index}
+  - {source: fetch_reference, source_output: reference, target: filter_stats, target_input: reference}
+  - {source: stage_samples, source_output: samples, target: filter_flagstat, target_input: samples}
+  - {source: filter_sort, source_output: clean, target: filter_flagstat, target_input: clean}
+  - {source: filter_index, source_output: clean_index, target: filter_flagstat, target_input: clean_index}
+  - {source: stage_samples, source_output: samples, target: filter_idxstats, target_input: samples}
+  - {source: filter_sort, source_output: clean, target: filter_idxstats, target_input: clean}
+  - {source: filter_index, source_output: clean_index, target: filter_idxstats, target_input: clean_index}
+  - {source: stage_samples, source_output: samples, target: collect_metrics, target_input: samples}
+  - {source: filter_sort, source_output: clean, target: collect_metrics, target_input: clean}
+  - {source: fetch_reference, source_output: reference, target: collect_metrics, target_input: reference}
+  - {source: getchromsizes, source_output: chromsizes, target: collect_metrics, target_input: chromsizes}
+  - {source: stage_samples, source_output: samples, target: phantompeakqualtools, target_input: samples}
+  - {source: filter_sort, source_output: clean, target: phantompeakqualtools, target_input: clean}
+  - {source: stage_samples, source_output: samples, target: phantompeakqualtools_mqc, target_input: samples}
+  - {source: phantompeakqualtools, source_output: phantom, target: phantompeakqualtools_mqc, target_input: phantom}
+  - {source: artifact-nfcore, source_output: nfcore, target: phantompeakqualtools_mqc, target_input: nfcore}
+  - {source: stage_samples, source_output: samples, target: genomecov, target_input: samples}
+  - {source: filter_sort, source_output: clean, target: genomecov, target_input: clean}
+  - {source: filter_flagstat, source_output: clean_flagstat, target: genomecov, target_input: clean_flagstat}
+  - {source: stage_samples, source_output: samples, target: bigwig, target_input: samples}
+  - {source: genomecov, source_output: genomecov, target: bigwig, target_input: genomecov}
+  - {source: getchromsizes, source_output: chromsizes, target: bigwig, target_input: chromsizes}
+  - {source: stage_samples, source_output: samples, target: computematrix, target_input: samples}
+  - {source: bigwig, source_output: bigwig, target: computematrix, target_input: bigwig}
+  - {source: gtf2bed, source_output: gene_bed, target: computematrix, target_input: gene_bed}
+  - {source: stage_samples, source_output: samples, target: plotprofile, target_input: samples}
+  - {source: computematrix, source_output: matrix, target: plotprofile, target_input: matrix}
+  - {source: stage_samples, source_output: samples, target: plotheatmap, target_input: samples}
+  - {source: computematrix, source_output: matrix, target: plotheatmap, target_input: matrix}
+  - {source: stage_samples, source_output: ips, target: plotfingerprint, target_input: ips}
+  - {source: filter_sort, source_output: clean, target: plotfingerprint, target_input: clean}
+  - {source: filter_index, source_output: clean_index, target: plotfingerprint, target_input: clean_index}
+  - {source: artifact-fingerprint_bins, source_output: fingerprint_bins, target: plotfingerprint, target_input: fingerprint_bins}
+  - {source: stage_samples, source_output: ips, target: macs3_callpeak, target_input: ips}
+  - {source: filter_sort, source_output: clean, target: macs3_callpeak, target_input: clean}
+  - {source: khmer, source_output: kmers, target: macs3_callpeak, target_input: kmers}
+  - {source: artifact-decide_py, source_output: decide_py, target: filter_peaks, target_input: decide_py}
+  - {source: stage_samples, source_output: ips, target: filter_peaks, target_input: ips}
+  - {source: macs3_callpeak, source_output: macs3, target: filter_peaks, target_input: macs3}
+  - {source: filter_peaks, source_output: peak_pass, target: frip_score, target_input: peak_pass}
+  - {source: filter_sort, source_output: clean, target: frip_score, target_input: clean}
+  - {source: macs3_callpeak, source_output: macs3, target: frip_score, target_input: macs3}
+  - {source: filter_peaks, source_output: peak_pass, target: multiqc_custom_peaks, target_input: peak_pass}
+  - {source: macs3_callpeak, source_output: macs3, target: multiqc_custom_peaks, target_input: macs3}
+  - {source: frip_score, source_output: frip, target: multiqc_custom_peaks, target_input: frip}
+  - {source: artifact-nfcore, source_output: nfcore, target: multiqc_custom_peaks, target_input: nfcore}
+  - {source: filter_peaks, source_output: peak_pass, target: homer_annotatepeaks, target_input: peak_pass}
+  - {source: macs3_callpeak, source_output: macs3, target: homer_annotatepeaks, target_input: macs3}
+  - {source: fetch_reference, source_output: reference, target: homer_annotatepeaks, target_input: reference}
+  - {source: filter_peaks, source_output: peak_pass, target: plot_macs3_qc, target_input: peak_pass}
+  - {source: macs3_callpeak, source_output: macs3, target: plot_macs3_qc, target_input: macs3}
+  - {source: artifact-nfcore, source_output: nfcore, target: plot_macs3_qc, target_input: nfcore}
+  - {source: filter_peaks, source_output: peak_pass, target: plot_homer_annotatepeaks, target_input: peak_pass}
+  - {source: homer_annotatepeaks, source_output: homer, target: plot_homer_annotatepeaks, target_input: homer}
+  - {source: artifact-nfcore, source_output: nfcore, target: plot_homer_annotatepeaks, target_input: nfcore}
+  - {source: filter_peaks, source_output: antibodies, target: macs3_consensus, target_input: antibodies}
+  - {source: macs3_callpeak, source_output: macs3, target: macs3_consensus, target_input: macs3}
+  - {source: artifact-nfcore, source_output: nfcore, target: macs3_consensus, target_input: nfcore}
+  - {source: artifact-min_reps_consensus, source_output: min_reps_consensus, target: macs3_consensus, target_input: min_reps_consensus}
+  - {source: filter_peaks, source_output: antibodies, target: homer_consensus, target_input: antibodies}
+  - {source: macs3_consensus, source_output: consensus, target: homer_consensus, target_input: consensus}
+  - {source: fetch_reference, source_output: reference, target: homer_consensus, target_input: reference}
+  - {source: filter_peaks, source_output: antibodies, target: annotate_boolean_peaks, target_input: antibodies}
+  - {source: macs3_consensus, source_output: consensus, target: annotate_boolean_peaks, target_input: consensus}
+  - {source: homer_consensus, source_output: homer_consensus, target: annotate_boolean_peaks, target_input: homer_consensus}
+  - {source: filter_peaks, source_output: antibodies, target: featurecounts, target_input: antibodies}
+  - {source: macs3_consensus, source_output: consensus, target: featurecounts, target_input: consensus}
+  - {source: filter_sort, source_output: clean, target: featurecounts, target_input: clean}
+  - {source: stage_samples, source_output: ips, target: featurecounts, target_input: ips}
+  - {source: filter_peaks, source_output: antibodies, target: deseq2_qc, target_input: antibodies}
+  - {source: featurecounts, source_output: featurecounts, target: deseq2_qc, target_input: featurecounts}
+  - {source: artifact-nfcore, source_output: nfcore, target: deseq2_qc, target_input: nfcore}
+  - {source: bigwig, source_output: bigwig, target: igv, target_input: bigwig}
+  - {source: filter_peaks, source_output: peak_pass, target: igv, target_input: peak_pass}
+  - {source: macs3_callpeak, source_output: macs3, target: igv, target_input: macs3}
+  - {source: macs3_consensus, source_output: consensus, target: igv, target_input: consensus}
+  - {source: fetch_reference, source_output: reference, target: igv, target_input: reference}
+  - {source: artifact-nfcore, source_output: nfcore, target: igv, target_input: nfcore}
+  - {source: artifact-nfcore, source_output: nfcore, target: multiqc, target_input: nfcore}
+  - {source: fastqc, source_output: fastqc, target: multiqc, target_input: fastqc}
+  - {source: trimgalore, source_output: trimgalore, target: multiqc, target_input: trimgalore}
+  - {source: lib_stats, source_output: lib_stats, target: multiqc, target_input: lib_stats}
+  - {source: lib_flagstat, source_output: lib_flagstat, target: multiqc, target_input: lib_flagstat}
+  - {source: lib_idxstats, source_output: lib_idxstats, target: multiqc, target_input: lib_idxstats}
+  - {source: md_stats, source_output: md_stats, target: multiqc, target_input: md_stats}
+  - {source: md_flagstat, source_output: md_flagstat, target: multiqc, target_input: md_flagstat}
+  - {source: md_idxstats, source_output: md_idxstats, target: multiqc, target_input: md_idxstats}
+  - {source: markdup, source_output: markdup, target: multiqc, target_input: markdup}
+  - {source: filter_stats, source_output: clean_stats, target: multiqc, target_input: clean_stats}
+  - {source: filter_flagstat, source_output: clean_flagstat, target: multiqc, target_input: clean_flagstat}
+  - {source: filter_idxstats, source_output: clean_idxstats, target: multiqc, target_input: clean_idxstats}
+  - {source: collect_metrics, source_output: picard_metrics, target: multiqc, target_input: picard_metrics}
+  - {source: plotprofile, source_output: plotprofile, target: multiqc, target_input: plotprofile}
+  - {source: plotheatmap, source_output: plotheatmap, target: multiqc, target_input: plotheatmap}
+  - {source: plotfingerprint, source_output: fingerprint, target: multiqc, target_input: fingerprint}
+  - {source: phantompeakqualtools, source_output: phantom, target: multiqc, target_input: phantom}
+  - {source: phantompeakqualtools_mqc, source_output: phantom_mqc, target: multiqc, target_input: phantom_mqc}
+  - {source: multiqc_custom_peaks, source_output: peak_mqc, target: multiqc, target_input: peak_mqc}
+  - {source: plot_homer_annotatepeaks, source_output: homer_qc, target: multiqc, target_input: homer_qc}
+  - {source: plot_macs3_qc, source_output: macs3_qc, target: multiqc, target_input: macs3_qc}
+  - {source: featurecounts, source_output: featurecounts, target: multiqc, target_input: featurecounts}
+  - {source: deseq2_qc, source_output: deseq2, target: multiqc, target_input: deseq2}
+  - {source: annotate_boolean_peaks, source_output: boolean_annot, target: multiqc, target_input: boolean_annot}
+  - {source: igv, source_output: igv, target: multiqc, target_input: igv}
+
+orchestrator_target: {kind: local, working_directory: horus_workflow_results}
