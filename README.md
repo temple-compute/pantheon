@@ -104,6 +104,7 @@ Native Horus ports of nf-core pipelines, with the same containers, command lines
 | W-49 | [nf-core/rnaseq](workflows/nf-core-ports/w02-rnaseq/README.md) | nf-core/rnaseq 3.27.0 test route as native tasks: TrimGalore, BBSplit, STAR + Salmon and Salmon pseudo-alignment, RSeQC, Qualimap and bigWigs per sample, then tximport and MultiQC |
 | W-50 | [nf-core/sarek](workflows/nf-core-ports/w03-sarek/README.md) | nf-core/sarek 3.12.0 test route as native tasks: bwa mem per lane, GATK MarkDuplicates and BQSR, Strelka germline calling, CRAM and VCF QC, then MultiQC |
 | W-51 | [nf-core/scrnaseq](workflows/nf-core-ports/w04-scrnaseq/README.md) | nf-core/scrnaseq 4.2.0 test route as native tasks: FastQC and STARsolo per sample, h5ad, Seurat and SCE conversion per matrix, then MultiQC |
+| W-52 | [nf-core/atacseq](workflows/nf-core-ports/w05-atacseq/README.md) | nf-core/atacseq 2.1.2 test route as native tasks: TrimGalore and BWA per run, library and replicate merging, BAM filtering, deepTools, MACS2 broad peaks, HOMER, consensus peaks with featureCounts and DESeq2 QC, ataqv, then MultiQC |
 
 ### Chemistry
 
