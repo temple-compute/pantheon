@@ -1,0 +1,2103 @@
+kind: horus_workflow
+name: nf-core taxprofiler chained
+
+# Chained variant of workflow.yaml (scripts/chain.py writes it): same
+# commands and outputs. Each map that follows another map over the same jobs
+# sets `chain: true`, so an item's next step starts as soon as its own
+# previous step is done, not when the whole map is: the short-read chain
+# (fastp, BBDuk, bowtie2, samtools), the long-read chain (porechop_abi,
+# nanoq, minimap2, samtools) and each profiler's own steps (Centrifuge
+# kreport, kaiju2table, ganon report, KMCP profile, sylph-tax, Bracken). A
+# chain head copies its job file into its slot; a chained map sources it from
+# the previous slot (${up}). Bracken chains on Kraken2 and drops the Kraken2
+# items that are not Bracken jobs (exit 10, drop_exit_codes). Steps that
+# gather many items (run merging, the profilers, Krona, taxpasta, MultiQC)
+# still wait for their whole inputs. Needs horus-runtime 0.9.0 or later.
+
+
+# Native port of nf-core/taxprofiler 2.0.1, the route `-profile test,docker`
+# runs: FastQC, fastp with pair merging, porechop_abi + nanoq, Nonpareil,
+# BBDuk, bowtie2 and minimap2 host removal, run merging, Kraken2, Bracken,
+# Centrifuge, MetaPhlAn, Kaiju, DIAMOND, ganon, KMCP, sylph, Melon, MetaCache,
+# Krona, taxpasta and MultiQC. Images, rendered command lines (ext.args from
+# conf/modules.config and conf/test.config) and per-process cpus/memory are the
+# executed ones; the test profile caps every process at 4 cpus / 15 GB.
+#
+# Every command runs under `bash -C -e -u -o pipefail`, the pipeline's
+# process.shell: the script is written to /tmp/.command.sh and run with bash,
+# as .command.run does. Inputs are linked into the output folder under the
+# names Nextflow stages them with, and the links are removed afterwards.
+#
+# The pipeline's Groovy channel logic (which runs get which preprocessing,
+# run merging, the (sample, database) pairs per profiler, the Krona and
+# taxpasta groups) depends only on the two sheets, so scripts/plan.py decides
+# it up front and writes one folder of job files per process family. Each
+# per-sample or per-group process is a horus_map over its job folder. A job
+# file is bash: values plus arrays of globs rooted at upper-case variables
+# that the command sets to its input folders before sourcing it.
+#
+# capacity: memory-based admission like Nextflow's local executor. The key is
+# the target's location_id (local://<hostname>).
+
+capacity:
+  local://ubuntu-awow:
+    cpus: 16
+    memory_gb: 31
+max_concurrency: 36
+
+_target: &target
+  kind: local
+
+# Run on a remote node instead: point every task at this anchor.
+# _target: &target
+#   kind: ssh
+#   host: bench-node.example.org
+#   username: ubuntu
+#   working_directory: /home/ubuntu/horus
+
+# Containers (.command.run docker lines); `user: host` runs them as the
+# calling user, as nf-core's `-u $(id -u):$(id -g)` does.
+_img:
+  coreutils: &x_coreutils {kind: docker, user: host, image: "community.wave.seqera.io/library/coreutils_grep_gzip_lbzip2_pruned:838ba80435a629f8"}
+  fastqc: &x_fastqc {kind: docker, user: host, image: "quay.io/biocontainers/fastqc:0.12.1--hdfd78af_0"}
+  fastp: &x_fastp {kind: docker, user: host, image: "community.wave.seqera.io/library/fastp:0.24.0--62c97b06e8447690"}
+  porechop_abi: &x_porechop_abi {kind: docker, user: host, image: "quay.io/biocontainers/porechop_abi:0.5.0--py310h590eda1_0"}
+  nanoq: &x_nanoq {kind: docker, user: host, image: "quay.io/biocontainers/nanoq:0.10.0--h031d066_2"}
+  nonpareil: &x_nonpareil {kind: docker, user: host, image: "quay.io/biocontainers/nonpareil:3.5.5--r43hdcf5f25_0"}
+  bbmap: &x_bbmap {kind: docker, user: host, image: "community.wave.seqera.io/library/bbmap_pigz:07416fe99b090fa9"}
+  bowtie2: &x_bowtie2 {kind: docker, user: host, image: "community.wave.seqera.io/library/bowtie2_htslib_samtools_pigz:edeb13799090a2a6"}
+  samtools: &x_samtools {kind: docker, user: host, image: "quay.io/biocontainers/samtools:1.22.1--h96c455f_0"}
+  minimap2: &x_minimap2 {kind: docker, user: host, image: "quay.io/biocontainers/minimap2:2.29--h577a1d6_0"}
+  minimap2_samtools: &x_minimap2_samtools {kind: docker, user: host, image: "community.wave.seqera.io/library/minimap2_samtools:33bb43c18d22e29c"}
+  kraken2: &x_kraken2 {kind: docker, user: host, image: "community.wave.seqera.io/library/kraken2_coreutils_pigz:45764814c4bb5bf3"}
+  bracken: &x_bracken {kind: docker, user: host, image: "community.wave.seqera.io/library/bracken:3.1--22a4e66ce04c5e01"}
+  centrifuge: &x_centrifuge {kind: docker, user: host, image: "quay.io/biocontainers/centrifuge:1.0.4.2--hdcf5f25_0"}
+  metaphlan: &x_metaphlan {kind: docker, user: host, image: "quay.io/biocontainers/metaphlan:4.1.1--pyhdfd78af_0"}
+  kaiju: &x_kaiju {kind: docker, user: host, image: "quay.io/biocontainers/kaiju:1.10.0--h43eeafb_0"}
+  diamond: &x_diamond {kind: docker, user: host, image: "quay.io/biocontainers/diamond:2.2.1--he361c42_0"}
+  ganon: &x_ganon {kind: docker, user: host, image: "quay.io/biocontainers/ganon:2.1.0--py310hab1bfa5_1"}
+  kmcp: &x_kmcp {kind: docker, user: host, image: "quay.io/biocontainers/kmcp:0.9.4--h9ee0642_0"}
+  sylph: &x_sylph {kind: docker, user: host, image: "quay.io/biocontainers/sylph:0.7.0--h919a2d8_0"}
+  sylphtax: &x_sylphtax {kind: docker, user: host, image: "quay.io/biocontainers/sylph-tax:1.2.0--pyhdfd78af_0"}
+  melon: &x_melon {kind: docker, user: host, image: "quay.io/biocontainers/melon:0.2.5--pyhdfd78af_0"}
+  metacache: &x_metacache {kind: docker, user: host, image: "quay.io/biocontainers/metacache:2.5.0--h077b44d_0"}
+  krakentools: &x_krakentools {kind: docker, user: host, image: "quay.io/biocontainers/krakentools:1.2--pyh5e36f6f_0"}
+  krona: &x_krona {kind: docker, user: host, image: "quay.io/biocontainers/krona:2.8.1--pl5321hdfd78af_1"}
+  taxpasta: &x_taxpasta {kind: docker, user: host, image: "quay.io/biocontainers/taxpasta:0.7.0--pyhdfd78af_1"}
+  multiqc: &x_multiqc {kind: docker, user: host, image: "community.wave.seqera.io/library/multiqc:1.34--db7c73dae76bc9e6"}
+
+# Labels after the test profile's resourceLimits (trace.txt cpus / memory).
+_res:
+  single: &single {cpus: 1, memory_gb: 1, walltime: "04:00:00"}
+  low: &low {cpus: 2, memory_gb: 12, walltime: "04:00:00"}
+  medium: &medium {cpus: 4, memory_gb: 15, walltime: "06:00:00"}
+  high: &high {cpus: 4, memory_gb: 15, walltime: "06:00:00"}
+
+# Artifacts, shared by the producing task's outputs and every consumer's inputs.
+_art:
+  - &a_samplesheet {id: samplesheet, name: Samplesheet, kind: file, path: examples/samplesheet.csv}
+  - &a_databases {id: databases, name: Database sheet, kind: file, path: examples/databases.csv}
+  - &a_nfcore {id: nfcore, name: nf-core/taxprofiler files, kind: folder, path: nfcore/}
+  - &a_mirror {id: input_mirror, name: Local input mirror, kind: string, path: params/input_mirror.txt}
+  - &a_host_ref {id: hostremoval_reference, name: Host reference, kind: string, path: params/hostremoval_reference.txt}
+  - &a_sylph_tax {id: sylph_taxonomy, name: sylph taxonomy, kind: string, path: params/sylph_taxonomy.txt}
+  - &a_reads {id: reads, name: Reads, kind: folder, path: work/reads/}
+  - &a_dbs {id: dbs, name: Databases and references, kind: folder, path: work/dbs/}
+  - &j_untar {id: j_untar, name: UNTAR jobs, kind: folder, path: work/jobs/untar/}
+  - &j_raw_qc {id: j_raw_qc, name: Raw FastQC jobs, kind: folder, path: work/jobs/raw_qc/}
+  - &j_short {id: j_short, name: Short-read runs, kind: folder, path: work/jobs/short/}
+  - &j_long {id: j_long, name: Long-read runs, kind: folder, path: work/jobs/long/}
+  - &j_merge {id: j_merge, name: Samples to merge, kind: folder, path: work/jobs/merge/}
+  - &j_kraken2 {id: j_kraken2, name: Kraken2 jobs, kind: folder, path: work/jobs/kraken2/}
+  - &j_bracken {id: j_bracken, name: Bracken jobs, kind: folder, path: work/jobs/bracken/}
+  - &j_centrifuge {id: j_centrifuge, name: Centrifuge jobs, kind: folder, path: work/jobs/centrifuge/}
+  - &j_metaphlan {id: j_metaphlan, name: MetaPhlAn jobs, kind: folder, path: work/jobs/metaphlan/}
+  - &j_kaiju {id: j_kaiju, name: Kaiju jobs, kind: folder, path: work/jobs/kaiju/}
+  - &j_diamond {id: j_diamond, name: DIAMOND jobs, kind: folder, path: work/jobs/diamond/}
+  - &j_ganon {id: j_ganon, name: ganon jobs, kind: folder, path: work/jobs/ganon/}
+  - &j_kmcp {id: j_kmcp, name: KMCP jobs, kind: folder, path: work/jobs/kmcp/}
+  - &j_sylph {id: j_sylph, name: sylph jobs, kind: folder, path: work/jobs/sylph/}
+  - &j_melon {id: j_melon, name: Melon jobs, kind: folder, path: work/jobs/melon/}
+  - &j_metacache {id: j_metacache, name: MetaCache jobs, kind: folder, path: work/jobs/metacache/}
+  - &j_kreport2krona {id: j_kreport2krona, name: kreport2krona jobs, kind: folder, path: work/jobs/kreport2krona/}
+  - &j_krona {id: j_krona, name: Krona groups, kind: folder, path: work/jobs/krona/}
+  - &j_taxpasta_merge {id: j_taxpasta_merge, name: taxpasta merge groups, kind: folder, path: work/jobs/taxpasta_merge/}
+  - &j_taxpasta_standardise {id: j_taxpasta_standardise, name: taxpasta standardise groups, kind: folder, path: work/jobs/taxpasta_standardise/}
+  - &j_bracken_combine {id: j_bracken_combine, name: Bracken combine groups, kind: folder, path: work/jobs/bracken_combine/}
+  - &j_centrifuge_combine {id: j_centrifuge_combine, name: Centrifuge combine groups, kind: folder, path: work/jobs/centrifuge_combine/}
+  - &j_kaiju_combine {id: j_kaiju_combine, name: Kaiju combine groups, kind: folder, path: work/jobs/kaiju_combine/}
+  - &j_kraken2_combine {id: j_kraken2_combine, name: Kraken2 combine groups, kind: folder, path: work/jobs/kraken2_combine/}
+  - &j_metaphlan_combine {id: j_metaphlan_combine, name: MetaPhlAn merge groups, kind: folder, path: work/jobs/metaphlan_combine/}
+  - &j_ganon_combine {id: j_ganon_combine, name: ganon table groups, kind: folder, path: work/jobs/ganon_combine/}
+  - &j_sylph_combine {id: j_sylph_combine, name: sylph merge groups, kind: folder, path: work/jobs/sylph_combine/}
+  - &a_untar {id: untar, name: Untarred databases, kind: folder, path: work/untar/}
+  - &a_fastqc_raw {id: fastqc_raw, name: FastQC raw, kind: folder, path: results/fastqc/raw/}
+  - &a_fastp {id: fastp, name: fastp, kind: folder, path: results/fastp/}
+  - &a_fastqc_short {id: fastqc_short, name: FastQC processed short reads, kind: folder, path: results/fastqc/processed_short/}
+  - &a_nonpareil {id: nonpareil, name: Nonpareil, kind: folder, path: results/nonpareil/runs/}
+  - &a_nonpareil_curve {id: nonpareil_curve, name: Nonpareil curves, kind: folder, path: results/nonpareil/curve/}
+  - &a_nonpareil_set {id: nonpareil_set, name: Nonpareil set, kind: folder, path: results/nonpareil/set/}
+  - &a_nonpareil_curvesr {id: nonpareil_curvesr, name: Nonpareil curves table, kind: folder, path: results/nonpareil/curvesr/}
+  - &a_bbduk {id: bbduk, name: BBDuk, kind: folder, path: results/bbduk/}
+  - &a_bowtie2_build {id: bowtie2_build, name: bowtie2 index, kind: folder, path: results/bowtie2/build/}
+  - &a_bowtie2_align {id: bowtie2_align, name: bowtie2 alignments, kind: folder, path: results/bowtie2/align/}
+  - &a_samtools_index {id: samtools_index, name: bowtie2 BAM index, kind: folder, path: results/bowtie2/index/}
+  - &a_stats_short {id: stats_short, name: samtools stats short reads, kind: folder, path: results/samtools/stats_short/}
+  - &a_porechop {id: porechop, name: porechop_abi, kind: folder, path: results/porechop_abi/}
+  - &a_nanoq {id: nanoq, name: nanoq, kind: folder, path: results/nanoq/}
+  - &a_fastqc_long {id: fastqc_long, name: FastQC processed long reads, kind: folder, path: results/fastqc/processed_long/}
+  - &a_minimap2_index {id: minimap2_index, name: minimap2 index, kind: folder, path: results/minimap2/index/}
+  - &a_minimap2_align {id: minimap2_align, name: minimap2 alignments, kind: folder, path: results/minimap2/align/}
+  - &a_stats_long {id: stats_long, name: samtools stats long reads, kind: folder, path: results/samtools/stats_long/}
+  - &a_samtools_view {id: samtools_view, name: Unmapped long-read BAM, kind: folder, path: results/samtools/view/}
+  - &a_samtools_fastq {id: samtools_fastq, name: Unmapped long reads, kind: folder, path: results/samtools/fastq/}
+  - &a_merge_runs {id: merge_runs, name: Merged runs, kind: folder, path: results/run_merging/}
+  - &a_kraken2 {id: kraken2, name: Kraken2, kind: folder, path: results/kraken2/samples/}
+  - &a_bracken {id: bracken, name: Bracken, kind: folder, path: results/bracken/samples/}
+  - &a_centrifuge {id: centrifuge, name: Centrifuge, kind: folder, path: results/centrifuge/samples/}
+  - &a_ckreport {id: ckreport, name: Centrifuge kreports, kind: folder, path: results/centrifuge/kreport/}
+  - &a_metaphlan {id: metaphlan, name: MetaPhlAn, kind: folder, path: results/metaphlan/samples/}
+  - &a_kaiju {id: kaiju, name: Kaiju, kind: folder, path: results/kaiju/samples/}
+  - &a_kaijutable {id: kaijutable, name: Kaiju tables, kind: folder, path: results/kaiju/table/}
+  - &a_diamond {id: diamond, name: DIAMOND, kind: folder, path: results/diamond/}
+  - &a_ganon {id: ganon, name: ganon classify, kind: folder, path: results/ganon/classify/}
+  - &a_ganon_report {id: ganon_report, name: ganon report, kind: folder, path: results/ganon/report/}
+  - &a_kmcp {id: kmcp, name: KMCP search, kind: folder, path: results/kmcp/search/}
+  - &a_kmcp_profile {id: kmcp_profile, name: KMCP profile, kind: folder, path: results/kmcp/profile/}
+  - &a_sylph {id: sylph, name: sylph profile, kind: folder, path: results/sylph/profile/}
+  - &a_sylphtax {id: sylphtax, name: sylph-tax profile, kind: folder, path: results/sylph/taxprof/}
+  - &a_melon {id: melon, name: Melon, kind: folder, path: results/melon/}
+  - &a_metacache {id: metacache, name: MetaCache, kind: folder, path: results/metacache/}
+  - &a_kreport2krona {id: kreport2krona, name: kreport2krona text, kind: folder, path: work/krona/kreport2krona/}
+  - &a_kaiju2krona {id: kaiju2krona, name: kaiju2krona text, kind: folder, path: results/kaiju/krona/}
+  - &a_krona {id: krona, name: Krona, kind: folder, path: results/krona/}
+  - &a_taxpasta_merge {id: taxpasta_merge, name: taxpasta merged, kind: folder, path: results/taxpasta/merge/}
+  - &a_taxpasta_standardise {id: taxpasta_standardise, name: taxpasta standardised, kind: folder, path: results/taxpasta/standardise/}
+  - &a_bracken_combined {id: bracken_combined, name: Bracken combined, kind: folder, path: results/bracken/combined/}
+  - &a_centrifuge_combined {id: centrifuge_combined, name: Centrifuge combined, kind: folder, path: results/centrifuge/combined/}
+  - &a_kaiju_combined {id: kaiju_combined, name: Kaiju combined, kind: folder, path: results/kaiju/combined/}
+  - &a_kraken2_combined {id: kraken2_combined, name: Kraken2 combined, kind: folder, path: results/kraken2/combined/}
+  - &a_metaphlan_combined {id: metaphlan_combined, name: MetaPhlAn combined, kind: folder, path: results/metaphlan/combined/}
+  - &a_ganon_combined {id: ganon_combined, name: ganon table, kind: folder, path: results/ganon/combined/}
+  - &a_sylph_combined {id: sylph_combined, name: sylph combined, kind: folder, path: results/sylph/combined/}
+  - &a_multiqc {id: multiqc, name: MultiQC report, kind: folder, path: results/multiqc/}
+
+artifacts:
+  - <<: *a_samplesheet
+    description: >-
+      nf-core/taxprofiler samplesheet (sample,run_accession,instrument_platform,
+      fastq_1,fastq_2,fasta). Reads may be URLs or paths relative to the
+      samplesheet; rows sharing a sample are runs of one sample. Default: the
+      test profile samplesheet (7 runs, 6 samples).
+  - <<: *a_databases
+    description: >-
+      Database sheet (tool,db_name,db_params,db_type,db_path). Default: the test
+      profile's database_v2.1.csv.
+  - <<: *a_nfcore
+    description: nf-core/taxprofiler 2.0.1 MultiQC config (MIT).
+  - <<: *a_mirror
+    description: >-
+      Folder searched for each input file by name before downloading it (e.g. a
+      local copy of the test data). Empty downloads everything.
+    value: ""
+    pattern: '[^"`$\\]*'
+  - <<: *a_host_ref
+    description: "--hostremoval_reference (plain fasta)"
+    value: "https://raw.githubusercontent.com/nf-core/test-datasets/modules/data/genomics/homo_sapiens/genome/genome.fasta"
+    pattern: '[^"`$\\]*'
+  - <<: *a_sylph_tax
+    description: "--sylph_taxonomy"
+    value: "https://raw.githubusercontent.com/nf-core/test-datasets/taxprofiler/data/database/sylph/test_taxonomy.tsv.gz"
+    pattern: '[^"`$\\]*'
+
+tasks:
+  # ---------------------------------------------------------------- inputs and plan
+  - kind: horus_task
+    id: plan
+    name: Stage inputs and plan the run
+    description: Downloads reads and databases and writes the job lists the pipeline's channel logic yields.
+    inputs: [*a_samplesheet, *a_databases, *a_mirror, *a_host_ref, *a_sylph_tax]
+    outputs:
+      - *a_reads
+      - *a_dbs
+      - *j_untar
+      - *j_raw_qc
+      - *j_short
+      - *j_long
+      - *j_merge
+      - *j_kraken2
+      - *j_bracken
+      - *j_centrifuge
+      - *j_metaphlan
+      - *j_kaiju
+      - *j_diamond
+      - *j_ganon
+      - *j_kmcp
+      - *j_sylph
+      - *j_melon
+      - *j_metacache
+      - *j_kreport2krona
+      - *j_krona
+      - *j_taxpasta_merge
+      - *j_taxpasta_standardise
+      - *j_bracken_combine
+      - *j_centrifuge_combine
+      - *j_kaiju_combine
+      - *j_kraken2_combine
+      - *j_metaphlan_combine
+      - *j_ganon_combine
+      - *j_sylph_combine
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/plan.py
+      python: python3 # stdlib only
+      args: >-
+        --samplesheet ${samplesheet} --databases ${databases} --mirror ${input_mirror}
+        --hostremoval-reference ${hostremoval_reference} --sylph-taxonomy ${sylph_taxonomy}
+        --reads ${reads} --dbs ${dbs} --jobs ${j_untar}/..
+    target: *target
+
+  - kind: horus_map
+    id: untar
+    name: UNTAR
+    over: {input_id: j_untar, as: job}
+    max_concurrency: 16
+    inputs: [*j_untar, *a_dbs]
+    outputs: [*a_untar]
+    resources: *single
+    executor: *x_coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        DBS=${dbs}; . ${job}
+        rm -rf ${untar} && mkdir -p ${untar} && cd ${untar}
+        ln -s $${archive[0]} .
+        archive=$$(basename $${archive[0]})
+        mkdir $$prefix
+
+        ## Ensures --strip-components only applied when top level of tar contents is a directory
+        ## If just files or multiple directories, place all in prefix
+        if [[ $$(tar -taf $$archive | grep -o -P "^.*?\/" | uniq | wc -l) -eq 1 ]]; then
+            tar \
+                -C $$prefix --strip-components 1 \
+                -xavf \
+                 \
+                $$archive \
+
+        else
+            tar \
+                -C $$prefix \
+                -xavf \
+                 \
+                $$archive \
+
+        fi
+        rm $$archive
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- read QC
+  - kind: horus_map
+    id: fastqc_raw
+    name: FASTQC
+    over: {input_id: j_raw_qc, as: job}
+    max_concurrency: 16
+    inputs: [*j_raw_qc, *a_reads]
+    outputs: [*a_fastqc_raw]
+    resources: *low
+    executor: *x_fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW=${reads}; . ${job}
+        rm -rf ${fastqc_raw} && mkdir -p ${fastqc_raw} && cd ${fastqc_raw}
+        # the module links reads as <prefix>.<ext> (one file) or <prefix>_<n>.<ext>
+        n=$${#reads[@]}; i=0; rename_to=""; renamed_files=""
+        for f in "$${reads[@]}"; do
+            i=$$((i + 1))
+            if [ $$n -eq 1 ]; then new=$$prefix.$${f##*.}; else new=$${prefix}_$$i.$${f##*.}; fi
+            rename_to="$$rename_to $$f $$new"; renamed_files="$$renamed_files $$new"
+        done
+        printf "%s %s\n" $$rename_to | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            --memory $$(( ${task.resources.memory_gb} * 1024 / ${task.resources.cpus} )) \
+            $$renamed_files
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: fastp
+    name: FASTP
+    over: {input_id: j_short, as: job}
+    max_concurrency: 16
+    inputs: [*j_short, *a_reads]
+    outputs: [*a_fastp]
+    resources: *medium
+    executor: *x_fastp
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW=${reads} FASTP= BBDUK=; . ${job}
+        rm -rf ${fastp} && mkdir -p ${fastp} && cd ${fastp}
+        cp ${job} fastp-$$(basename ${job}).job
+        ln -s "$${reads[@]}" .
+        set -- $$(for f in "$${reads[@]}"; do basename $$f; done)
+        if [ $$single_end = true ]; then
+        # FASTP_SINGLE
+        [ ! -f  $${prefix}.fastq.gz ] && ln -sf $$1 $${prefix}.fastq.gz
+        fastp \
+            --in1 $${prefix}.fastq.gz \
+            --out1 $${prefix}.fastp.fastq.gz \
+            --thread ${task.resources.cpus} \
+            --json $${prefix}.fastp.json \
+            --html $${prefix}.fastp.html \
+             \
+             \
+            --length_required 15 \
+            2>| >(tee $${prefix}.fastp.log >&2)
+        else
+        # FASTP_PAIRED, with shortread_qc_mergepairs
+        [ ! -f  $${prefix}_1.fastq.gz ] && ln -sf $$1 $${prefix}_1.fastq.gz
+        [ ! -f  $${prefix}_2.fastq.gz ] && ln -sf $$2 $${prefix}_2.fastq.gz
+        fastp \
+            --in1 $${prefix}_1.fastq.gz \
+            --in2 $${prefix}_2.fastq.gz \
+            --out1 $${prefix}_1.fastp.fastq.gz \
+            --out2 $${prefix}_2.fastp.fastq.gz \
+            --json $${prefix}.fastp.json \
+            --html $${prefix}.fastp.html \
+             \
+             \
+            -m --merged_out $${prefix}.merged.fastq.gz \
+            --thread ${task.resources.cpus} \
+            --detect_adapter_for_pe \
+            --detect_adapter_for_pe --length_required 15 \
+            2>| >(tee $${prefix}.fastp.log >&2)
+        fi
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: fastqc_short
+    name: SHORTREAD_PREPROCESSING:FASTQC_PROCESSED
+    over: {input_id: fastp, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_fastp]
+    outputs: [*a_fastqc_short]
+    resources: *low
+    executor: *x_fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= FASTP=$$(mktemp -d) BBDUK=; ln -s ${up} $$FASTP/0; . ${up}/*.job
+        rm -rf ${fastqc_short} && mkdir -p ${fastqc_short} && cd ${fastqc_short}
+        cp ${up}/*.job .
+        f=$${fastp_reads[0]}; new=$${prefix}_processed.$${f##*.}
+        printf "%s %s\n" $$f $$new | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            --memory $$(( ${task.resources.memory_gb} * 1024 / ${task.resources.cpus} )) \
+            $$new
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: nonpareil
+    name: NONPAREIL_NONPAREIL
+    over: {input_id: fastp, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_fastp]
+    outputs: [*a_nonpareil]
+    resources: *low
+    executor: *x_nonpareil
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= FASTP=$$(mktemp -d) BBDUK=; ln -s ${up} $$FASTP/0; . ${up}/*.job
+        rm -rf ${nonpareil} && mkdir -p ${nonpareil} && cd ${nonpareil}
+        cp ${up}/*.job .
+        ln -s $${fastp_reads[0]} .
+        nonpareil \
+            -s $$(basename $${fastp_reads[0]}) \
+            -f fastq \
+            -T kmer \
+            -t ${task.resources.cpus} \
+            -R $$(( ${task.resources.memory_gb} * 1024 )) \
+            -b $$prefix \
+            -k 5
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: nonpareil_curve
+    name: NONPAREIL_CURVE
+    over: {input_id: nonpareil, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_nonpareil]
+    outputs: [*a_nonpareil_curve]
+    resources: *single
+    executor: *x_nonpareil
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= FASTP= BBDUK=; . ${up}/*.job
+        rm -rf ${nonpareil_curve} && mkdir -p ${nonpareil_curve} && cd ${nonpareil_curve}
+        cp ${up}/*.job .
+        ln -s ${up}/$$prefix.npo .
+        cat > /tmp/.command.R <<EOF
+        library(Nonpareil)
+        png(file='$${prefix}.png')
+        Nonpareil.curve('$${prefix}.npo')
+        dev.off()
+        EOF
+        Rscript /tmp/.command.R
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: nonpareil_set
+    name: NONPAREIL_SET
+    inputs: [*a_nonpareil]
+    outputs: [*a_nonpareil_set]
+    resources: *single
+    executor: *x_nonpareil
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${nonpareil_set} && mkdir -p ${nonpareil_set} && cd ${nonpareil_set}
+        ln -s ${nonpareil}/*/*.npo .
+        cat > /tmp/.command.R <<'EOF'
+        library(Nonpareil)
+        png(file='nonpareil_all_samples_mqc.png')
+        Nonpareil.set(list.files(pattern='*.npo'))
+        dev.off()
+        EOF
+        Rscript /tmp/.command.R
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: nonpareil_curvesr
+    name: NONPAREIL_NONPAREILCURVESR
+    inputs: [*a_nonpareil]
+    outputs: [*a_nonpareil_curvesr]
+    resources: *single
+    executor: *x_nonpareil
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${nonpareil_curvesr} && mkdir -p ${nonpareil_curvesr} && cd ${nonpareil_curvesr}
+        ln -s ${nonpareil}/*/*.npo .
+        NonpareilCurves.R \
+             \
+            --json nonpareil_all_samples.json \
+            --tsv nonpareil_all_samples.tsv \
+            --csv nonpareil_all_samples.csv \
+            --pdf nonpareil_all_samples.pdf \
+            $$(ls *.npo)
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: bbduk
+    name: BBMAP_BBDUK
+    over: {input_id: fastp, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_fastp]
+    outputs: [*a_bbduk]
+    resources: *medium
+    executor: *x_bbmap
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= FASTP=$$(mktemp -d) BBDUK=; ln -s ${up} $$FASTP/0; . ${up}/*.job
+        rm -rf ${bbduk} && mkdir -p ${bbduk} && cd ${bbduk}
+        cp ${up}/*.job .
+        ln -s $${fastp_reads[0]} .
+        bbduk.sh \
+            -Xmx${task.resources.memory_gb}g \
+            in=$$(basename $${fastp_reads[0]}) \
+            out=$${prefix}.fastq.gz \
+            threads=${task.resources.cpus} \
+            entropy=0.3 entropywindow=50 entropymask=f \
+             \
+            &> $${prefix}.bbduk.log
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- short-read host removal
+  - kind: horus_task
+    id: bowtie2_build
+    name: BOWTIE2_BUILD
+    inputs: [*a_dbs]
+    outputs: [*a_bowtie2_build]
+    resources: *high
+    executor: *x_bowtie2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${dbs}/refs.env
+        rm -rf ${bowtie2_build} && mkdir -p ${bowtie2_build} && cd ${bowtie2_build}
+        ln -s ${dbs}/$$host_fasta .
+        mkdir bowtie2
+        bowtie2-build  --threads ${task.resources.cpus} $$host_fasta bowtie2/$${host_fasta%.*}
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: bowtie2_align
+    name: BOWTIE2_ALIGN
+    over: {input_id: bbduk, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_bbduk, *a_bowtie2_build]
+    outputs: [*a_bowtie2_align]
+    resources: *high
+    executor: *x_bowtie2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= FASTP= BBDUK=$$(mktemp -d); ln -s ${up} $$BBDUK/0; . ${up}/*.job
+        rm -rf ${bowtie2_align} && mkdir -p ${bowtie2_align} && cd ${bowtie2_align}
+        cp ${up}/*.job .
+        ln -s $${bbduk_reads[0]} ${bowtie2_build}/bowtie2 .
+        INDEX=`find -L ./ -name "*.rev.1.bt2" | sed "s/\.rev.1.bt2$$//"`
+        [ -z "$$INDEX" ] && INDEX=`find -L ./ -name "*.rev.1.bt2l" | sed "s/\.rev.1.bt2l$$//"`
+        [ -z "$$INDEX" ] && echo "Bowtie2 index files not found" 1>&2 && exit 1
+        bowtie2 \
+            -x $$INDEX \
+            -U $$(basename $${bbduk_reads[0]}) \
+            --threads ${task.resources.cpus} \
+            --un-gz $${prefix}.unmapped.fastq.gz \
+             \
+            2>| >(tee $${prefix}.bowtie2.log >&2) \
+            | samtools sort  --threads ${task.resources.cpus}  -o $${prefix}.bam -
+        if [ -f $${prefix}.unmapped.fastq.1.gz ]; then
+            mv $${prefix}.unmapped.fastq.1.gz $${prefix}.unmapped_1.fastq.gz
+        fi
+        if [ -f $${prefix}.unmapped.fastq.2.gz ]; then
+            mv $${prefix}.unmapped.fastq.2.gz $${prefix}.unmapped_2.fastq.gz
+        fi
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: samtools_index
+    name: SAMTOOLS_INDEX
+    over: {input_id: bowtie2_align, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_bowtie2_align]
+    outputs: [*a_samtools_index]
+    resources: *low
+    executor: *x_samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= FASTP= BBDUK=; . ${up}/*.job
+        rm -rf ${samtools_index} && mkdir -p ${samtools_index} && cd ${samtools_index}
+        cp ${up}/*.job .
+        ln -s ${up}/$$prefix.bam .
+        samtools \
+            index \
+            -@ ${task.resources.cpus} \
+             \
+            $$prefix.bam
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: stats_short
+    name: SHORTREAD_HOSTREMOVAL:SAMTOOLS_STATS
+    over: {input_id: samtools_index, as: up}
+    chain: true
+    zip: [{input_id: bowtie2_align, as: aln}]
+    max_concurrency: 16
+    inputs: [*a_bowtie2_align, *a_samtools_index, *a_dbs]
+    outputs: [*a_stats_short]
+    resources: *single
+    executor: *x_samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= FASTP= BBDUK=; . ${up}/*.job; . ${dbs}/refs.env
+        rm -rf ${stats_short} && mkdir -p ${stats_short} && cd ${stats_short}
+        cp ${up}/*.job .
+        ln -s ${aln}/$$prefix.bam ${up}/$$prefix.bam.bai ${dbs}/$$host_fasta .
+        samtools \
+            stats \
+            --threads ${task.resources.cpus} \
+            --reference $$host_fasta \
+            $$prefix.bam \
+            > $${prefix}.stats
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- long reads
+  - kind: horus_map
+    id: porechop
+    name: PORECHOP_ABI
+    over: {input_id: j_long, as: job}
+    max_concurrency: 16
+    inputs: [*j_long, *a_reads]
+    outputs: [*a_porechop]
+    resources: *medium
+    executor: *x_porechop_abi
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW=${reads} PORECHOP= NANOQ=; . ${job}
+        rm -rf ${porechop} && mkdir -p ${porechop} && cd ${porechop}
+        cp ${job} porechop-$$(basename ${job}).job
+        ln -s $${reads[0]} .
+        porechop_abi \
+            --input $$(basename $${reads[0]}) \
+             \
+            --threads ${task.resources.cpus} \
+             \
+            --output $${prefix}_porechop_abi.fastq.gz \
+            | tee $${prefix}_porechop_abi.log
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: nanoq
+    name: NANOQ
+    over: {input_id: porechop, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_porechop]
+    outputs: [*a_nanoq]
+    resources: *low
+    executor: *x_nanoq
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= PORECHOP=$$(mktemp -d) NANOQ=; ln -s ${up} $$PORECHOP/0; . ${up}/*.job
+        rm -rf ${nanoq} && mkdir -p ${nanoq} && cd ${nanoq}
+        cp ${up}/*.job .
+        ln -s $${porechop_reads[0]} .
+        nanoq -i $$(basename $${porechop_reads[0]}) \
+            -vv --min-len 1000 --min-qual 7 \
+            -r $${prefix}_filtered.stats \
+            -o $${prefix}_filtered.fastq.gz
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: fastqc_long
+    name: LONGREAD_PREPROCESSING:FASTQC_PROCESSED
+    over: {input_id: nanoq, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_nanoq]
+    outputs: [*a_fastqc_long]
+    resources: *low
+    executor: *x_fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= PORECHOP= NANOQ=$$(mktemp -d); ln -s ${up} $$NANOQ/0; . ${up}/*.job
+        rm -rf ${fastqc_long} && mkdir -p ${fastqc_long} && cd ${fastqc_long}
+        cp ${up}/*.job .
+        f=$${nanoq_reads[0]}; new=$${prefix}_processed.$${f##*.}
+        printf "%s %s\n" $$f $$new | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            --memory $$(( ${task.resources.memory_gb} * 1024 / ${task.resources.cpus} )) \
+            $$new
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: minimap2_index
+    name: MINIMAP2_INDEX
+    inputs: [*a_dbs]
+    outputs: [*a_minimap2_index]
+    resources: *low
+    executor: *x_minimap2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${dbs}/refs.env
+        rm -rf ${minimap2_index} && mkdir -p ${minimap2_index} && cd ${minimap2_index}
+        ln -s ${dbs}/$$host_fasta .
+        minimap2 \
+            -t ${task.resources.cpus} \
+            -d $${host_fasta%.*}.mmi \
+            -x map-ont \
+            $$host_fasta
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: minimap2_align
+    name: MINIMAP2_ALIGN
+    over: {input_id: nanoq, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_nanoq, *a_minimap2_index]
+    outputs: [*a_minimap2_align]
+    resources: *high
+    executor: *x_minimap2_samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= PORECHOP= NANOQ=$$(mktemp -d); ln -s ${up} $$NANOQ/0; . ${up}/*.job
+        rm -rf ${minimap2_align} && mkdir -p ${minimap2_align} && cd ${minimap2_align}
+        cp ${up}/*.job .
+        mmi=$$(cd ${minimap2_index} && ls *.mmi)
+        ln -s $${nanoq_reads[0]} ${minimap2_index}/$$mmi .
+         \
+        minimap2 \
+             \
+            -t ${task.resources.cpus} \
+            $$mmi \
+            $$(basename $${nanoq_reads[0]}) \
+             \
+             \
+            -a | samtools sort -@ $$(( ${task.resources.cpus} - 1 )) -o $${prefix}.bam##idx##$${prefix}.bam.bai --write-index
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: stats_long
+    name: LONGREAD_HOSTREMOVAL:SAMTOOLS_STATS
+    over: {input_id: minimap2_align, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_minimap2_align, *a_dbs]
+    outputs: [*a_stats_long]
+    resources: *single
+    executor: *x_samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= PORECHOP= NANOQ=; . ${up}/*.job; . ${dbs}/refs.env
+        rm -rf ${stats_long} && mkdir -p ${stats_long} && cd ${stats_long}
+        cp ${up}/*.job .
+        ln -s ${up}/$$prefix.bam ${up}/$$prefix.bam.bai ${dbs}/$$host_fasta .
+        samtools \
+            stats \
+            --threads ${task.resources.cpus} \
+            --reference $$host_fasta \
+            $$prefix.bam \
+            > $${prefix}.stats
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: samtools_view
+    name: SAMTOOLS_VIEW
+    over: {input_id: minimap2_align, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_minimap2_align]
+    outputs: [*a_samtools_view]
+    resources: *low
+    executor: *x_samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= PORECHOP= NANOQ=; . ${up}/*.job
+        rm -rf ${samtools_view} && mkdir -p ${samtools_view} && cd ${samtools_view}
+        cp ${up}/*.job .
+        ln -s ${up}/$$prefix.bam .
+        # Note: --threads value represents *additional* CPUs to allocate (total CPUs = 1 + --threads).
+        samtools \
+            view \
+            --threads $$(( ${task.resources.cpus} - 1 )) \
+             \
+             \
+            -f 4 \
+            -o $${prefix}.unmapped.bam##idx##$${prefix}.unmapped.bam.bai --write-index \
+            $$prefix.bam \
+
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: samtools_fastq
+    name: SAMTOOLS_FASTQ
+    over: {input_id: samtools_view, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_samtools_view]
+    outputs: [*a_samtools_fastq]
+    resources: *low
+    executor: *x_samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        RAW= PORECHOP= NANOQ=; . ${up}/*.job
+        rm -rf ${samtools_fastq} && mkdir -p ${samtools_fastq} && cd ${samtools_fastq}
+        cp ${up}/*.job .
+        ln -s ${up}/$$prefix.unmapped.bam .
+        # Note: --threads value represents *additional* CPUs to allocate (total CPUs = 1 + --threads).
+        samtools \
+            fastq \
+             \
+            --threads $$(( ${task.resources.cpus} - 1 )) \
+            -0 $${prefix}.unmapped_other.fastq.gz \
+            $$prefix.unmapped.bam \
+            -1 $${prefix}.unmapped_1.fastq.gz -s $${prefix}.unmapped_singleton.fastq.gz
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- run merging
+  - kind: horus_map
+    id: merge_runs
+    name: MERGE_RUNS
+    over: {input_id: j_merge, as: job}
+    max_concurrency: 16
+    inputs: [*j_merge, *a_bowtie2_align, *a_samtools_fastq]
+    outputs: [*a_merge_runs]
+    resources: *single
+    executor: *x_coreutils
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        BT2=${bowtie2_align} SFQ=${samtools_fastq}; . ${job}
+        rm -rf ${merge_runs} && mkdir -p ${merge_runs} && cd ${merge_runs}
+        ln -s "$${reads[@]}" .
+        cat $$(for f in "$${reads[@]}"; do basename $$f; done) > $${prefix}.merged.fastq.gz
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- profiling
+  # Each job file has reads=(...) and db=(...); both are linked in under their names.
+  - kind: horus_map
+    id: kraken2
+    name: KRAKEN2_KRAKEN2
+    over: {input_id: j_kraken2, as: job}
+    max_concurrency: 16
+    inputs: [*j_kraken2, *a_merge_runs, *a_bowtie2_align, *a_samtools_fastq, *a_reads, *a_untar, *a_dbs]
+    outputs: [*a_kraken2]
+    resources: *high
+    executor: *x_kraken2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE=${merge_runs} BT2=${bowtie2_align} SFQ=${samtools_fastq} RAW=${reads} UNTAR=${untar} DBS=${dbs}; . ${job}
+        rm -rf ${kraken2} && mkdir -p ${kraken2} && cd ${kraken2}
+        cp ${job} kraken2-$$(basename ${job}).job
+        ln -s "$${reads[@]}" "$${db[@]}" .
+        kraken2 \
+            --db $$(basename $${db[0]}) \
+            --threads ${task.resources.cpus} \
+            --report $${prefix}.kraken2.report.txt \
+            --gzip-compressed \
+            --unclassified-out $${prefix}.unclassified.fastq \
+            --classified-out $${prefix}.classified.fastq \
+            --output /dev/null \
+             \
+            $$args \
+            $$(basename $${reads[0]})
+        pigz -p ${task.resources.cpus} *.fastq
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # errorStrategy 'ignore' in conf/base.config: a failure drops the sample's
+  # Bracken outputs and the run goes on.
+  - kind: horus_map
+    id: bracken
+    name: BRACKEN_BRACKEN
+    over: {input_id: kraken2, as: up}
+    chain: true
+    drop_exit_codes: [10]
+    max_concurrency: 16
+    inputs: [*j_bracken, *a_kraken2, *a_untar, *a_dbs]
+    outputs: [*a_bracken]
+    resources: *low
+    executor: *x_bracken
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        KRAKEN2=$$(mktemp -d) UNTAR=${untar} DBS=${dbs}; ln -s ${up} $$KRAKEN2/0; n=$$(basename ${up}/*.job .job); n=$${n#kraken2-}
+        case $$n in *_bracken) ;; *) exit 10 ;; esac  # a Kraken2-only item
+        . ${j_bracken}/$${n%_bracken}
+        rm -rf ${bracken} && mkdir -p ${bracken} && cd ${bracken}
+        ln -s "$${report[@]}" "$${db[@]}" .
+        d=$$(basename $${db[0]}); r=$$(basename $${report[0]})
+        bracken \
+            $$args \
+            -d "$$d" \
+            -i "$$r" \
+            -o "$${prefix}.tsv" \
+            -w "$${prefix}.kraken2.report_bracken.txt" \
+            || { echo "BRACKEN_BRACKEN failed (exit $$?), ignored" >&2; rm -f $${prefix}.tsv $${prefix}.kraken2.report_bracken.txt; }
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: centrifuge
+    name: CENTRIFUGE_CENTRIFUGE
+    over: {input_id: j_centrifuge, as: job}
+    max_concurrency: 16
+    inputs: [*j_centrifuge, *a_merge_runs, *a_bowtie2_align, *a_samtools_fastq, *a_reads, *a_untar, *a_dbs]
+    outputs: [*a_centrifuge]
+    resources: *high
+    executor: *x_centrifuge
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE=${merge_runs} BT2=${bowtie2_align} SFQ=${samtools_fastq} RAW=${reads} UNTAR=${untar} DBS=${dbs}; . ${job}
+        rm -rf ${centrifuge} && mkdir -p ${centrifuge} && cd ${centrifuge}
+        cp ${job} centrifuge-$$(basename ${job}).job
+        ln -s "$${reads[@]}" "$${db[@]}" .
+        ## we add "-no-name ._" to ensure silly Mac OSX metafiles files aren't included
+        db_name=`find -L $$(basename $${db[0]}) -name "*.1.cf" -not -name "._*"  | sed 's/\.1.cf$$//'`
+
+        ## make a directory for placing the pipe files in somewhere other than default /tmp
+        ## otherwise get pipefile name clashes when multiple centrifuge runs on same node
+        ## use /tmp at the same time
+        mkdir ./temp
+
+        centrifuge \
+            -x $$db_name \
+            --temp-directory ./temp \
+            -p ${task.resources.cpus} \
+            -U $$(basename $${reads[0]}) \
+            --report-file $${prefix}.report.txt \
+            -S $${prefix}.results.txt \
+            --un-gz $${prefix}.unmapped.fastq.gz \
+            --al-gz $${prefix}.mapped.fastq.gz \
+            $$args
+        rm -rf temp
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # errorStrategy: exit 255 is ignored (conf/base.config).
+  - kind: horus_map
+    id: ckreport
+    name: CENTRIFUGE_KREPORT
+    over: {input_id: centrifuge, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_centrifuge, *a_untar, *a_dbs]
+    outputs: [*a_ckreport]
+    resources: *single
+    executor: *x_centrifuge
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE= BT2= SFQ= RAW= UNTAR=${untar} DBS=${dbs}; . ${up}/*.job
+        rm -rf ${ckreport} && mkdir -p ${ckreport} && cd ${ckreport}
+        cp ${up}/*.job .
+        ln -s ${up}/$${prefix}.results.txt "$${db[@]}" .
+        db_name=`find -L $$(basename $${db[0]}) -name "*.1.cf" -not -name "._*"  | sed 's/\.1.cf$$//'`
+        rc=0
+        centrifuge-kreport \
+            $$args \
+            -x $$db_name \
+            $${prefix}.results.txt > $${prefix}.txt || rc=$$?
+        if [ $$rc -eq 255 ]; then echo "CENTRIFUGE_KREPORT exit 255, ignored" >&2; rm -f $${prefix}.txt; elif [ $$rc -ne 0 ]; then exit $$rc; fi
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: metaphlan
+    name: METAPHLAN_METAPHLAN
+    over: {input_id: j_metaphlan, as: job}
+    max_concurrency: 16
+    inputs: [*j_metaphlan, *a_merge_runs, *a_bowtie2_align, *a_samtools_fastq, *a_reads, *a_untar, *a_dbs]
+    outputs: [*a_metaphlan]
+    resources: *medium
+    executor: *x_metaphlan
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE=${merge_runs} BT2=${bowtie2_align} SFQ=${samtools_fastq} RAW=${reads} UNTAR=${untar} DBS=${dbs}; . ${job}
+        rm -rf ${metaphlan} && mkdir -p ${metaphlan} && cd ${metaphlan}
+        ln -s "$${reads[@]}" "$${db[@]}" .
+        r=$$(basename $${reads[0]}); d=$$(basename $${db[0]})
+        case $$r in
+            *.fastq*|*.fq*) input_type="--input_type fastq" ;;
+            *.fasta*|*.fna*|*.fa*) input_type="--input_type fasta" ;;
+            *) input_type="--input_type sam" ;;
+        esac
+        BT2_DB=`find -L "$$d" -name "*rev.1.bt2*" -exec dirname {} \;`
+        BT2_DB_INDEX=`find -L $$d -name "*.rev.1.bt2*" | sed 's/\.rev.1.bt2.*$$//' | sed 's/.*\///'`
+
+        metaphlan \
+            --nproc ${task.resources.cpus} \
+            $$input_type \
+            $$r \
+            $$args \
+            --bowtie2out $${prefix}.bowtie2out.txt \
+            -s $${prefix}.sam \
+            --bowtie2db $$BT2_DB \
+            --index $$BT2_DB_INDEX \
+            --biom $${prefix}.biom \
+            --output_file $${prefix}_profile.txt
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: kaiju
+    name: KAIJU_KAIJU
+    over: {input_id: j_kaiju, as: job}
+    max_concurrency: 16
+    inputs: [*j_kaiju, *a_merge_runs, *a_bowtie2_align, *a_samtools_fastq, *a_reads, *a_untar, *a_dbs]
+    outputs: [*a_kaiju]
+    resources: *high
+    executor: *x_kaiju
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE=${merge_runs} BT2=${bowtie2_align} SFQ=${samtools_fastq} RAW=${reads} UNTAR=${untar} DBS=${dbs}; . ${job}
+        rm -rf ${kaiju} && mkdir -p ${kaiju} && cd ${kaiju}
+        cp ${job} kaiju-$$(basename ${job}).job
+        ln -s "$${reads[@]}" "$${db[@]}" .
+        d=$$(basename $${db[0]})
+        dbnodes=`find -L $$d -name "*nodes.dmp"`
+        dbname=`find -L $$d -name "*.fmi" -not -name "._*"`
+        kaiju \
+            $$args \
+            -z ${task.resources.cpus} \
+            -t $$dbnodes \
+            -f $$dbname \
+            -o $${prefix}.tsv \
+            -i $$(basename $${reads[0]})
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: kaijutable
+    name: KAIJU_KAIJU2TABLE_SINGLE
+    over: {input_id: kaiju, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_kaiju, *a_untar, *a_dbs]
+    outputs: [*a_kaijutable]
+    resources: *single
+    executor: *x_kaiju
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE= BT2= SFQ= RAW= UNTAR=${untar} DBS=${dbs}; . ${up}/*.job
+        rm -rf ${kaijutable} && mkdir -p ${kaijutable} && cd ${kaijutable}
+        cp ${up}/*.job .
+        ln -s ${up}/$${prefix}.tsv "$${db[@]}" .
+        d=$$(basename $${db[0]})
+        dbnodes=`find -L $$d -name "*nodes.dmp"`
+        dbnames=`find -L $$d -name "*names.dmp"`
+        kaiju2table    \
+            -t $$dbnodes \
+            -n $$dbnames \
+            -r species \
+            -o $${krona}.kaijutable.txt \
+            $${prefix}.tsv
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: diamond
+    name: DIAMOND_BLASTX
+    over: {input_id: j_diamond, as: job}
+    max_concurrency: 16
+    inputs: [*j_diamond, *a_merge_runs, *a_bowtie2_align, *a_samtools_fastq, *a_reads, *a_untar, *a_dbs]
+    outputs: [*a_diamond]
+    resources: *high
+    executor: *x_diamond
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE=${merge_runs} BT2=${bowtie2_align} SFQ=${samtools_fastq} RAW=${reads} UNTAR=${untar} DBS=${dbs}; . ${job}
+        rm -rf ${diamond} && mkdir -p ${diamond} && cd ${diamond}
+        ln -s "$${reads[@]}" "$${db[@]}" .
+        fasta=$$(basename $${reads[0]})
+        is_compressed=false; fasta_name=$$fasta
+        case $$fasta in *.gz) is_compressed=true; fasta_name=$${fasta%.gz} ;; esac
+        if [ "$$is_compressed" == "true" ]; then
+            gzip -c -d $$fasta > $$fasta_name
+        fi
+
+        DB=`find -L ./ -name "*.dmnd" | sed 's/\.dmnd$$//'`
+
+        diamond \
+            blastx \
+            --threads ${task.resources.cpus} \
+            --db $$DB \
+            --query $$fasta_name \
+            --outfmt 102  \
+            $$args \
+            --out $${prefix}.tsv \
+            --log
+
+        mv diamond.log $${prefix}.log
+        [ "$$is_compressed" == "true" ] && rm $$fasta_name
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: ganon
+    name: GANON_CLASSIFY
+    over: {input_id: j_ganon, as: job}
+    max_concurrency: 16
+    inputs: [*j_ganon, *a_merge_runs, *a_bowtie2_align, *a_samtools_fastq, *a_reads, *a_untar, *a_dbs]
+    outputs: [*a_ganon]
+    resources: *high
+    executor: *x_ganon
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE=${merge_runs} BT2=${bowtie2_align} SFQ=${samtools_fastq} RAW=${reads} UNTAR=${untar} DBS=${dbs}; . ${job}
+        rm -rf ${ganon} && mkdir -p ${ganon} && cd ${ganon}
+        cp ${job} ganon-$$(basename ${job}).job
+        ln -s "$${reads[@]}" "$${db[@]}" .
+        dbprefix=$$(find -L . -name '*.*ibf' | sed 's/\.h\?ibf$$//')
+        ganon \
+            classify \
+            --db-prefix $${dbprefix%%.*ibf} \
+            $$args \
+            --threads ${task.resources.cpus} \
+            --output-prefix $$prefix \
+            --single-reads $$(basename $${reads[0]}) \
+            2>&1 | tee $${prefix}.log
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: ganon_report
+    name: GANON_REPORT
+    over: {input_id: ganon, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_ganon, *a_untar, *a_dbs]
+    outputs: [*a_ganon_report]
+    resources: *single
+    executor: *x_ganon
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE= BT2= SFQ= RAW= UNTAR=${untar} DBS=${dbs}; . ${up}/*.job
+        rm -rf ${ganon_report} && mkdir -p ${ganon_report} && cd ${ganon_report}
+        cp ${up}/*.job .
+        ln -s ${up}/$${prefix}.rep "$${db[@]}" .
+        dbprefix=$$(find -L . -name '*.*ibf' | sed 's/\.h\?ibf$$//')
+        ganon \
+            report \
+            --input $${prefix}.rep \
+            --output-prefix $${prefix}_report \
+            --db-prefix $${dbprefix%%.*ibf} \
+            --report-type reads  --top-percentile 0 --min-count 0 --max-count 0
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: kmcp
+    name: KMCP_SEARCH
+    over: {input_id: j_kmcp, as: job}
+    max_concurrency: 16
+    inputs: [*j_kmcp, *a_merge_runs, *a_bowtie2_align, *a_samtools_fastq, *a_reads, *a_untar, *a_dbs]
+    outputs: [*a_kmcp]
+    resources: *medium
+    executor: *x_kmcp
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE=${merge_runs} BT2=${bowtie2_align} SFQ=${samtools_fastq} RAW=${reads} UNTAR=${untar} DBS=${dbs}; . ${job}
+        rm -rf ${kmcp} && mkdir -p ${kmcp} && cd ${kmcp}
+        cp ${job} kmcp-$$(basename ${job}).job
+        ln -s "$${reads[@]}" "$${db[@]}" .
+        kmcp \
+            search \
+            $$args \
+            --threads ${task.resources.cpus} \
+            --db-dir $$(basename $${db[0]}) \
+            $$(basename $${reads[0]}) \
+            --out-file $${prefix}.gz
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: kmcp_profile
+    name: KMCP_PROFILE
+    over: {input_id: kmcp, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_kmcp, *a_untar, *a_dbs]
+    outputs: [*a_kmcp_profile]
+    resources: *medium
+    executor: *x_kmcp
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE= BT2= SFQ= RAW= UNTAR=${untar} DBS=${dbs}; . ${up}/*.job
+        rm -rf ${kmcp_profile} && mkdir -p ${kmcp_profile} && cd ${kmcp_profile}
+        cp ${up}/*.job .
+        ln -s ${up}/$${prefix}.gz "$${db[@]}" .
+        d=$$(basename $${db[0]})
+        taxid=`find -L $$d -name "*map"`
+        taxdump=`find -L $$d/*/ -type d  -not -name "R001"`
+        kmcp \
+            profile \
+            $$args_profile \
+            -X $$taxdump \
+            -T $$taxid \
+            -j ${task.resources.cpus} \
+            -o $${prefix%.kmcp_search}.kmcp.profile \
+            $${prefix}.gz
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: sylph
+    name: SYLPH_PROFILE
+    over: {input_id: j_sylph, as: job}
+    max_concurrency: 16
+    inputs: [*j_sylph, *a_merge_runs, *a_bowtie2_align, *a_samtools_fastq, *a_reads, *a_untar, *a_dbs]
+    outputs: [*a_sylph]
+    resources: *high
+    executor: *x_sylph
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE=${merge_runs} BT2=${bowtie2_align} SFQ=${samtools_fastq} RAW=${reads} UNTAR=${untar} DBS=${dbs}; . ${job}
+        rm -rf ${sylph} && mkdir -p ${sylph} && cd ${sylph}
+        cp ${job} sylph-$$(basename ${job}).job
+        ln -s "$${reads[@]}" "$${db[@]}" .
+        sylph profile \
+            -t ${task.resources.cpus} \
+            $$args \
+            $$(basename $${db[0]})\
+            $$(basename $${reads[0]}) \
+            -o $${prefix}.tsv
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # Reports that are empty files are skipped, as the pipeline's filter does.
+  - kind: horus_map
+    id: sylphtax
+    name: SYLPHTAX_TAXPROF
+    over: {input_id: sylph, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_sylph, *a_dbs]
+    outputs: [*a_sylphtax]
+    resources: *medium
+    executor: *x_sylphtax
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE= BT2= SFQ= RAW= UNTAR= DBS=${dbs}; . ${up}/*.job; . ${dbs}/refs.env
+        rm -rf ${sylphtax} && mkdir -p ${sylphtax} && cd ${sylphtax}
+        cp ${up}/*.job .
+        report=$$(ls ${up}/$${prefix}.tsv)
+        if [ -s $$report ]; then
+        ln -s $$report ${dbs}/$$sylph_taxonomy .
+        export SYLPH_TAXONOMY_CONFIG="/tmp/config.json"
+        sylph-tax \
+            taxprof \
+            $${prefix}.tsv \
+            $$args_tax \
+            -t $$sylph_taxonomy
+
+        mv *.sylphmpa $${prefix%.sylph}.sylphmpa
+        fi
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: melon
+    name: MELON
+    over: {input_id: j_melon, as: job}
+    max_concurrency: 16
+    inputs: [*j_melon, *a_merge_runs, *a_bowtie2_align, *a_samtools_fastq, *a_reads, *a_untar, *a_dbs]
+    outputs: [*a_melon]
+    resources: *medium
+    executor: *x_melon
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE=${merge_runs} BT2=${bowtie2_align} SFQ=${samtools_fastq} RAW=${reads} UNTAR=${untar} DBS=${dbs}; . ${job}
+        rm -rf ${melon} && mkdir -p ${melon} && cd ${melon}
+        ln -s "$${reads[@]}" "$${db[@]}" .
+        melon \
+            $$(basename $${reads[0]}) \
+            --db $$(basename $${db[0]}) \
+            --output $$prefix \
+            --threads ${task.resources.cpus} \
+             \
+            $$args \
+            2> >(tee $${prefix}.log >&2)
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: metacache
+    name: METACACHE_QUERY
+    over: {input_id: j_metacache, as: job}
+    max_concurrency: 16
+    inputs: [*j_metacache, *a_merge_runs, *a_bowtie2_align, *a_samtools_fastq, *a_reads, *a_untar, *a_dbs]
+    outputs: [*a_metacache]
+    resources: *medium
+    executor: *x_metacache
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE=${merge_runs} BT2=${bowtie2_align} SFQ=${samtools_fastq} RAW=${reads} UNTAR=${untar} DBS=${dbs}; . ${job}
+        rm -rf ${metacache} && mkdir -p ${metacache} && cd ${metacache}
+        ln -s "$${reads[@]}" .
+        mkdir db && ln -s "$${db[@]}" db/
+        dbmeta=`find -L db/ -name "*.meta" | head -n 1`
+        [ -n "$$dbmeta" ] || { echo 'Database file "*.meta" not found!' >&2 ; exit 1 ; }
+
+        metacache \
+            query \
+            $$dbmeta \
+            $$(basename $${reads[0]}) \
+             \
+            $$args \
+            -out $${prefix}.mapping.txt
+        find . -type l -delete; rmdir db
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- Krona
+  - kind: horus_map
+    id: kreport2krona
+    name: KRAKENTOOLS_KREPORT2KRONA
+    over: {input_id: j_kreport2krona, as: job}
+    max_concurrency: 16
+    inputs: [*j_kreport2krona, *a_kraken2, *a_ckreport]
+    outputs: [*a_kreport2krona]
+    resources: *single
+    executor: *x_krakentools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        KRAKEN2=${kraken2} CKREPORT=${ckreport}; . ${job}
+        rm -rf ${kreport2krona} && mkdir -p ${kreport2krona} && cd ${kreport2krona}
+        ln -s "$${report[@]}" .
+        kreport2krona.py \
+            -r $$(basename $${report[0]}) \
+            -o $${prefix}.txt \
+
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: kaiju2krona
+    name: KAIJU_KAIJU2KRONA
+    over: {input_id: kaiju, as: up}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_kaiju, *a_untar, *a_dbs]
+    outputs: [*a_kaiju2krona]
+    resources: *single
+    executor: *x_kaiju
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        MERGE= BT2= SFQ= RAW= UNTAR=${untar} DBS=${dbs}; . ${up}/*.job
+        rm -rf ${kaiju2krona} && mkdir -p ${kaiju2krona} && cd ${kaiju2krona}
+        cp ${up}/*.job .
+        ln -s ${up}/$${prefix}.tsv "$${db[@]}" .
+        d=$$(basename $${db[0]})
+        dbnodes=`find -L $$d -name "*nodes.dmp"`
+        dbnames=`find -L $$d -name "*names.dmp"`
+        kaiju2krona \
+            -v -u \
+            -t $$dbnodes \
+            -n $$dbnames \
+            -i $${prefix}.tsv \
+            -o $${krona}.txt
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: krona
+    name: KRONA_KTIMPORTTEXT
+    over: {input_id: j_krona, as: job}
+    max_concurrency: 16
+    inputs: [*j_krona, *a_kreport2krona, *a_kaiju2krona]
+    outputs: [*a_krona]
+    resources: *single
+    executor: *x_krona
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        KREPORT2KRONA=${kreport2krona} KAIJU2KRONA=${kaiju2krona}; . ${job}
+        rm -rf ${krona} && mkdir -p ${krona} && cd ${krona}
+        ln -s "$${reports[@]}" .
+        ktImportText  \
+             \
+            -o $${prefix}.html \
+            $$(for f in "$${reports[@]}"; do basename $$f; done)
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- standardisation
+  - kind: horus_map
+    id: taxpasta_merge
+    name: TAXPASTA_MERGE
+    over: {input_id: j_taxpasta_merge, as: job}
+    max_concurrency: 16
+    inputs: [*j_taxpasta_merge, *a_kraken2, *a_bracken, *a_ckreport, *a_metaphlan, *a_kaijutable, *a_diamond, *a_ganon_report, *a_kmcp_profile]
+    outputs: [*a_taxpasta_merge]
+    resources: *single
+    executor: *x_taxpasta
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        KRAKEN2=${kraken2} BRACKEN=${bracken} CKREPORT=${ckreport} METAPHLAN=${metaphlan} KAIJUTABLE=${kaijutable}
+        DIAMOND=${diamond} GANONREPORT=${ganon_report} KMCPPROFILE=${kmcp_profile}; . ${job}
+        rm -rf ${taxpasta_merge} && mkdir -p ${taxpasta_merge} && cd ${taxpasta_merge}
+        ln -s "$${profiles[@]}" .
+        taxpasta merge \
+            --profiler $$profiler \
+            --output $${prefix}.tsv \
+             \
+             \
+             \
+            $$(for f in "$${profiles[@]}"; do basename $$f; done)
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: taxpasta_standardise
+    name: TAXPASTA_STANDARDISE
+    over: {input_id: j_taxpasta_standardise, as: job}
+    max_concurrency: 16
+    inputs: [*j_taxpasta_standardise, *a_kraken2, *a_bracken, *a_ckreport, *a_metaphlan, *a_kaijutable, *a_diamond, *a_ganon_report, *a_kmcp_profile]
+    outputs: [*a_taxpasta_standardise]
+    resources: *single
+    executor: *x_taxpasta
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        KRAKEN2=${kraken2} BRACKEN=${bracken} CKREPORT=${ckreport} METAPHLAN=${metaphlan} KAIJUTABLE=${kaijutable}
+        DIAMOND=${diamond} GANONREPORT=${ganon_report} KMCPPROFILE=${kmcp_profile}; . ${job}
+        rm -rf ${taxpasta_standardise} && mkdir -p ${taxpasta_standardise} && cd ${taxpasta_standardise}
+        ln -s "$${profiles[@]}" .
+        taxpasta standardise \
+            --profiler $$profiler \
+            --output $${prefix}.tsv \
+             \
+             \
+            $$(basename $${profiles[0]})
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: bracken_combined
+    name: BRACKEN_COMBINEBRACKENOUTPUTS
+    over: {input_id: j_bracken_combine, as: job}
+    max_concurrency: 16
+    inputs: [*j_bracken_combine, *a_bracken]
+    outputs: [*a_bracken_combined]
+    resources: *low
+    executor: *x_bracken
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        BRACKEN=${bracken}; . ${job}
+        rm -rf ${bracken_combined} && mkdir -p ${bracken_combined} && cd ${bracken_combined}
+        ln -s "$${profiles[@]}" .
+        combine_bracken_outputs.py \
+             \
+            --files $$(for f in "$${profiles[@]}"; do basename $$f; done) \
+            -o $${prefix}.txt
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # groupTuple(sort: { -it.size() }): largest report first. errorStrategy:
+  # exit 255 and 1 are ignored (conf/base.config).
+  - kind: horus_map
+    id: centrifuge_combined
+    name: KRAKENTOOLS_COMBINEKREPORTS_CENTRIFUGE
+    over: {input_id: j_centrifuge_combine, as: job}
+    max_concurrency: 16
+    inputs: [*j_centrifuge_combine, *a_ckreport]
+    outputs: [*a_centrifuge_combined]
+    resources: *single
+    executor: *x_krakentools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        CKREPORT=${ckreport}; . ${job}
+        rm -rf ${centrifuge_combined} && mkdir -p ${centrifuge_combined} && cd ${centrifuge_combined}
+        ln -s "$${profiles[@]}" .
+        rc=0
+        combine_kreports.py \
+            -r $$(ls -S -L $$(for f in "$${profiles[@]}"; do basename $$f; done)) \
+            -o $${prefix}.txt \
+             || rc=$$?
+        if [ $$rc -eq 255 ] || [ $$rc -eq 1 ]; then echo "combine_kreports exit $$rc, ignored" >&2; rm -f $${prefix}.txt; elif [ $$rc -ne 0 ]; then exit $$rc; fi
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: kaiju_combined
+    name: KAIJU_KAIJU2TABLE_COMBINED
+    over: {input_id: j_kaiju_combine, as: job}
+    max_concurrency: 16
+    inputs: [*j_kaiju_combine, *a_kaiju, *a_untar, *a_dbs]
+    outputs: [*a_kaiju_combined]
+    resources: *single
+    executor: *x_kaiju
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        KAIJU=${kaiju} UNTAR=${untar} DBS=${dbs}; . ${job}
+        rm -rf ${kaiju_combined} && mkdir -p ${kaiju_combined} && cd ${kaiju_combined}
+        ln -s "$${profiles[@]}" "$${db[@]}" .
+        d=$$(basename $${db[0]})
+        dbnodes=`find -L $$d -name "*nodes.dmp"`
+        dbnames=`find -L $$d -name "*names.dmp"`
+        kaiju2table    \
+            -t $$dbnodes \
+            -n $$dbnames \
+            -r species \
+            -o $${prefix}.txt \
+            $$(for f in "$${profiles[@]}"; do basename $$f; done)
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: kraken2_combined
+    name: KRAKENTOOLS_COMBINEKREPORTS_KRAKEN
+    over: {input_id: j_kraken2_combine, as: job}
+    max_concurrency: 16
+    inputs: [*j_kraken2_combine, *a_kraken2]
+    outputs: [*a_kraken2_combined]
+    resources: *single
+    executor: *x_krakentools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        KRAKEN2=${kraken2}; . ${job}
+        rm -rf ${kraken2_combined} && mkdir -p ${kraken2_combined} && cd ${kraken2_combined}
+        ln -s "$${profiles[@]}" .
+        combine_kreports.py \
+            -r $$(ls -S -L $$(for f in "$${profiles[@]}"; do basename $$f; done)) \
+            -o $${prefix}.txt \
+
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: metaphlan_combined
+    name: METAPHLAN_MERGEMETAPHLANTABLES
+    over: {input_id: j_metaphlan_combine, as: job}
+    max_concurrency: 16
+    inputs: [*j_metaphlan_combine, *a_metaphlan]
+    outputs: [*a_metaphlan_combined]
+    resources: *single
+    executor: *x_metaphlan
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        METAPHLAN=${metaphlan}; . ${job}
+        rm -rf ${metaphlan_combined} && mkdir -p ${metaphlan_combined} && cd ${metaphlan_combined}
+        ln -s "$${profiles[@]}" .
+        merge_metaphlan_tables.py \
+             \
+            -o $${prefix}.txt \
+            $$(for f in "$${profiles[@]}"; do basename $$f; done)
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: ganon_combined
+    name: GANON_TABLE
+    over: {input_id: j_ganon_combine, as: job}
+    max_concurrency: 16
+    inputs: [*j_ganon_combine, *a_ganon_report]
+    outputs: [*a_ganon_combined]
+    resources: *single
+    executor: *x_ganon
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        GANONREPORT=${ganon_report}; . ${job}
+        rm -rf ${ganon_combined} && mkdir -p ${ganon_combined} && cd ${ganon_combined}
+        ln -s "$${profiles[@]}" .
+        ganon \
+            table \
+            --input $$(for f in "$${profiles[@]}"; do basename $$f; done) \
+            --output-file $${prefix}.txt \
+
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: sylph_combined
+    name: SYLPHTAX_MERGE
+    over: {input_id: j_sylph_combine, as: job}
+    max_concurrency: 16
+    inputs: [*j_sylph_combine, *a_sylphtax]
+    outputs: [*a_sylph_combined]
+    resources: *single
+    executor: *x_sylphtax
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        shopt -s nullglob
+        SYLPHTAX=${sylphtax}; . ${job}
+        rm -rf ${sylph_combined} && mkdir -p ${sylph_combined} && cd ${sylph_combined}
+        # empty sylph reports were filtered out before SYLPHTAX_TAXPROF
+        ln -s "$${profiles[@]}" .
+        export SYLPH_TAXONOMY_CONFIG="/tmp/config.json"
+        sylph-tax \
+            merge \
+            $$(for f in "$${profiles[@]}"; do basename $$f; done) \
+            --column relative_abundance \
+            --output $${prefix}.tsv
+        find . -type l -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- MultiQC
+  # The files the pipeline sends to MULTIQC (ch_multiqc_files), one per
+  # numbered folder as stageAs: "?/*" does. The software versions, workflow
+  # summary and methods description come from Nextflow run metadata and are
+  # left out.
+  - kind: horus_task
+    id: multiqc
+    name: MULTIQC
+    inputs:
+      - *a_nfcore
+      - *a_fastqc_raw
+      - *a_fastp
+      - *a_fastqc_short
+      - *a_porechop
+      - *a_nanoq
+      - *a_fastqc_long
+      - *a_nonpareil_curvesr
+      - *a_bbduk
+      - *a_bowtie2_align
+      - *a_stats_short
+      - *a_stats_long
+      - *a_kraken2
+      - *a_ckreport
+      - *a_metaphlan
+      - *a_kaijutable
+      - *a_diamond
+      - *a_kmcp_profile
+      - *a_centrifuge_combined
+      - *a_kaiju_combined
+      - *a_kraken2_combined
+      - *a_metaphlan_combined
+      - *a_ganon_combined
+      # not read: MULTIQC waits on every process through the versions topic
+      - *a_nonpareil_curve
+      - *a_nonpareil_set
+      - *a_samtools_fastq
+      - *a_merge_runs
+      - *a_bracken_combined
+      - *a_sylph_combined
+      - *a_melon
+      - *a_metacache
+      - *a_krona
+      - *a_taxpasta_merge
+      - *a_taxpasta_standardise
+    outputs: [*a_multiqc]
+    resources: *single
+    executor: *x_multiqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${multiqc} && mkdir -p ${multiqc} && cd ${multiqc}
+        i=0
+        for f in \
+            ${fastqc_raw}/*/*.zip ${fastp}/*/*.fastp.json ${fastqc_short}/*/*.zip \
+            ${porechop}/*/*.log ${nanoq}/*/*.stats ${fastqc_long}/*/*.zip \
+            ${nonpareil_curvesr}/*.json ${bbduk}/*/*.log ${bowtie2_align}/*/*.log \
+            ${stats_short}/*/*.stats ${stats_long}/*/*.stats \
+            ${kraken2}/*/*.kraken2.report.txt ${ckreport}/*/*.txt ${metaphlan}/*/*_profile.txt \
+            ${kaijutable}/*/*.txt ${diamond}/*/*.log ${kmcp_profile}/*/*.profile \
+            ${centrifuge_combined}/*/*.txt ${kaiju_combined}/*/*.txt ${kraken2_combined}/*/*.txt \
+            ${metaphlan_combined}/*/*.txt ${ganon_combined}/*/*.txt; do
+            [ -e "$$f" ] || continue
+            i=$$((i + 1)); mkdir $$i; ln -s $$f $$i/
+        done
+        i=$$((i + 1)); mkdir $$i; ln -s ${nfcore}/assets/multiqc_config.yml $$i/
+        multiqc \
+            --force \
+             \
+            --config $$i/multiqc_config.yml \
+             \
+             \
+             \
+             \
+            .
+        find . -type l -delete
+        find . -mindepth 1 -maxdepth 1 -type d -name '[0-9]*' -empty -delete
+        NF
+        exec bash -C -e -u -o pipefail /tmp/.command.sh
+    target: *target
+
+edges:
+  - {source: artifact-samplesheet, source_output: samplesheet, target: plan, target_input: samplesheet}
+  - {source: artifact-databases, source_output: databases, target: plan, target_input: databases}
+  - {source: artifact-input_mirror, source_output: input_mirror, target: plan, target_input: input_mirror}
+  - {source: artifact-hostremoval_reference, source_output: hostremoval_reference, target: plan, target_input: hostremoval_reference}
+  - {source: artifact-sylph_taxonomy, source_output: sylph_taxonomy, target: plan, target_input: sylph_taxonomy}
+  - {source: plan, source_output: j_untar, target: untar, target_input: j_untar}
+  - {source: plan, source_output: dbs, target: untar, target_input: dbs}
+  - {source: plan, source_output: j_raw_qc, target: fastqc_raw, target_input: j_raw_qc}
+  - {source: plan, source_output: reads, target: fastqc_raw, target_input: reads}
+  - {source: plan, source_output: j_short, target: fastp, target_input: j_short}
+  - {source: plan, source_output: reads, target: fastp, target_input: reads}
+  - {source: fastp, source_output: fastp, target: fastqc_short, target_input: fastp}
+  - {source: fastp, source_output: fastp, target: nonpareil, target_input: fastp}
+  - {source: nonpareil, source_output: nonpareil, target: nonpareil_curve, target_input: nonpareil}
+  - {source: nonpareil, source_output: nonpareil, target: nonpareil_set, target_input: nonpareil}
+  - {source: nonpareil, source_output: nonpareil, target: nonpareil_curvesr, target_input: nonpareil}
+  - {source: fastp, source_output: fastp, target: bbduk, target_input: fastp}
+  - {source: plan, source_output: dbs, target: bowtie2_build, target_input: dbs}
+  - {source: bbduk, source_output: bbduk, target: bowtie2_align, target_input: bbduk}
+  - {source: bowtie2_build, source_output: bowtie2_build, target: bowtie2_align, target_input: bowtie2_build}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: samtools_index, target_input: bowtie2_align}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: stats_short, target_input: bowtie2_align}
+  - {source: samtools_index, source_output: samtools_index, target: stats_short, target_input: samtools_index}
+  - {source: plan, source_output: dbs, target: stats_short, target_input: dbs}
+  - {source: plan, source_output: j_long, target: porechop, target_input: j_long}
+  - {source: plan, source_output: reads, target: porechop, target_input: reads}
+  - {source: porechop, source_output: porechop, target: nanoq, target_input: porechop}
+  - {source: nanoq, source_output: nanoq, target: fastqc_long, target_input: nanoq}
+  - {source: plan, source_output: dbs, target: minimap2_index, target_input: dbs}
+  - {source: nanoq, source_output: nanoq, target: minimap2_align, target_input: nanoq}
+  - {source: minimap2_index, source_output: minimap2_index, target: minimap2_align, target_input: minimap2_index}
+  - {source: minimap2_align, source_output: minimap2_align, target: stats_long, target_input: minimap2_align}
+  - {source: plan, source_output: dbs, target: stats_long, target_input: dbs}
+  - {source: minimap2_align, source_output: minimap2_align, target: samtools_view, target_input: minimap2_align}
+  - {source: samtools_view, source_output: samtools_view, target: samtools_fastq, target_input: samtools_view}
+  - {source: plan, source_output: j_merge, target: merge_runs, target_input: j_merge}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: merge_runs, target_input: bowtie2_align}
+  - {source: samtools_fastq, source_output: samtools_fastq, target: merge_runs, target_input: samtools_fastq}
+  - {source: plan, source_output: j_kraken2, target: kraken2, target_input: j_kraken2}
+  - {source: merge_runs, source_output: merge_runs, target: kraken2, target_input: merge_runs}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: kraken2, target_input: bowtie2_align}
+  - {source: samtools_fastq, source_output: samtools_fastq, target: kraken2, target_input: samtools_fastq}
+  - {source: plan, source_output: reads, target: kraken2, target_input: reads}
+  - {source: untar, source_output: untar, target: kraken2, target_input: untar}
+  - {source: plan, source_output: dbs, target: kraken2, target_input: dbs}
+  - {source: plan, source_output: j_bracken, target: bracken, target_input: j_bracken}
+  - {source: kraken2, source_output: kraken2, target: bracken, target_input: kraken2}
+  - {source: untar, source_output: untar, target: bracken, target_input: untar}
+  - {source: plan, source_output: dbs, target: bracken, target_input: dbs}
+  - {source: plan, source_output: j_centrifuge, target: centrifuge, target_input: j_centrifuge}
+  - {source: merge_runs, source_output: merge_runs, target: centrifuge, target_input: merge_runs}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: centrifuge, target_input: bowtie2_align}
+  - {source: samtools_fastq, source_output: samtools_fastq, target: centrifuge, target_input: samtools_fastq}
+  - {source: plan, source_output: reads, target: centrifuge, target_input: reads}
+  - {source: untar, source_output: untar, target: centrifuge, target_input: untar}
+  - {source: plan, source_output: dbs, target: centrifuge, target_input: dbs}
+  - {source: centrifuge, source_output: centrifuge, target: ckreport, target_input: centrifuge}
+  - {source: untar, source_output: untar, target: ckreport, target_input: untar}
+  - {source: plan, source_output: dbs, target: ckreport, target_input: dbs}
+  - {source: plan, source_output: j_metaphlan, target: metaphlan, target_input: j_metaphlan}
+  - {source: merge_runs, source_output: merge_runs, target: metaphlan, target_input: merge_runs}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: metaphlan, target_input: bowtie2_align}
+  - {source: samtools_fastq, source_output: samtools_fastq, target: metaphlan, target_input: samtools_fastq}
+  - {source: plan, source_output: reads, target: metaphlan, target_input: reads}
+  - {source: untar, source_output: untar, target: metaphlan, target_input: untar}
+  - {source: plan, source_output: dbs, target: metaphlan, target_input: dbs}
+  - {source: plan, source_output: j_kaiju, target: kaiju, target_input: j_kaiju}
+  - {source: merge_runs, source_output: merge_runs, target: kaiju, target_input: merge_runs}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: kaiju, target_input: bowtie2_align}
+  - {source: samtools_fastq, source_output: samtools_fastq, target: kaiju, target_input: samtools_fastq}
+  - {source: plan, source_output: reads, target: kaiju, target_input: reads}
+  - {source: untar, source_output: untar, target: kaiju, target_input: untar}
+  - {source: plan, source_output: dbs, target: kaiju, target_input: dbs}
+  - {source: kaiju, source_output: kaiju, target: kaijutable, target_input: kaiju}
+  - {source: untar, source_output: untar, target: kaijutable, target_input: untar}
+  - {source: plan, source_output: dbs, target: kaijutable, target_input: dbs}
+  - {source: plan, source_output: j_diamond, target: diamond, target_input: j_diamond}
+  - {source: merge_runs, source_output: merge_runs, target: diamond, target_input: merge_runs}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: diamond, target_input: bowtie2_align}
+  - {source: samtools_fastq, source_output: samtools_fastq, target: diamond, target_input: samtools_fastq}
+  - {source: plan, source_output: reads, target: diamond, target_input: reads}
+  - {source: untar, source_output: untar, target: diamond, target_input: untar}
+  - {source: plan, source_output: dbs, target: diamond, target_input: dbs}
+  - {source: plan, source_output: j_ganon, target: ganon, target_input: j_ganon}
+  - {source: merge_runs, source_output: merge_runs, target: ganon, target_input: merge_runs}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: ganon, target_input: bowtie2_align}
+  - {source: samtools_fastq, source_output: samtools_fastq, target: ganon, target_input: samtools_fastq}
+  - {source: plan, source_output: reads, target: ganon, target_input: reads}
+  - {source: untar, source_output: untar, target: ganon, target_input: untar}
+  - {source: plan, source_output: dbs, target: ganon, target_input: dbs}
+  - {source: ganon, source_output: ganon, target: ganon_report, target_input: ganon}
+  - {source: untar, source_output: untar, target: ganon_report, target_input: untar}
+  - {source: plan, source_output: dbs, target: ganon_report, target_input: dbs}
+  - {source: plan, source_output: j_kmcp, target: kmcp, target_input: j_kmcp}
+  - {source: merge_runs, source_output: merge_runs, target: kmcp, target_input: merge_runs}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: kmcp, target_input: bowtie2_align}
+  - {source: samtools_fastq, source_output: samtools_fastq, target: kmcp, target_input: samtools_fastq}
+  - {source: plan, source_output: reads, target: kmcp, target_input: reads}
+  - {source: untar, source_output: untar, target: kmcp, target_input: untar}
+  - {source: plan, source_output: dbs, target: kmcp, target_input: dbs}
+  - {source: kmcp, source_output: kmcp, target: kmcp_profile, target_input: kmcp}
+  - {source: untar, source_output: untar, target: kmcp_profile, target_input: untar}
+  - {source: plan, source_output: dbs, target: kmcp_profile, target_input: dbs}
+  - {source: plan, source_output: j_sylph, target: sylph, target_input: j_sylph}
+  - {source: merge_runs, source_output: merge_runs, target: sylph, target_input: merge_runs}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: sylph, target_input: bowtie2_align}
+  - {source: samtools_fastq, source_output: samtools_fastq, target: sylph, target_input: samtools_fastq}
+  - {source: plan, source_output: reads, target: sylph, target_input: reads}
+  - {source: untar, source_output: untar, target: sylph, target_input: untar}
+  - {source: plan, source_output: dbs, target: sylph, target_input: dbs}
+  - {source: sylph, source_output: sylph, target: sylphtax, target_input: sylph}
+  - {source: plan, source_output: dbs, target: sylphtax, target_input: dbs}
+  - {source: plan, source_output: j_melon, target: melon, target_input: j_melon}
+  - {source: merge_runs, source_output: merge_runs, target: melon, target_input: merge_runs}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: melon, target_input: bowtie2_align}
+  - {source: samtools_fastq, source_output: samtools_fastq, target: melon, target_input: samtools_fastq}
+  - {source: plan, source_output: reads, target: melon, target_input: reads}
+  - {source: untar, source_output: untar, target: melon, target_input: untar}
+  - {source: plan, source_output: dbs, target: melon, target_input: dbs}
+  - {source: plan, source_output: j_metacache, target: metacache, target_input: j_metacache}
+  - {source: merge_runs, source_output: merge_runs, target: metacache, target_input: merge_runs}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: metacache, target_input: bowtie2_align}
+  - {source: samtools_fastq, source_output: samtools_fastq, target: metacache, target_input: samtools_fastq}
+  - {source: plan, source_output: reads, target: metacache, target_input: reads}
+  - {source: untar, source_output: untar, target: metacache, target_input: untar}
+  - {source: plan, source_output: dbs, target: metacache, target_input: dbs}
+  - {source: plan, source_output: j_kreport2krona, target: kreport2krona, target_input: j_kreport2krona}
+  - {source: kraken2, source_output: kraken2, target: kreport2krona, target_input: kraken2}
+  - {source: ckreport, source_output: ckreport, target: kreport2krona, target_input: ckreport}
+  - {source: kaiju, source_output: kaiju, target: kaiju2krona, target_input: kaiju}
+  - {source: untar, source_output: untar, target: kaiju2krona, target_input: untar}
+  - {source: plan, source_output: dbs, target: kaiju2krona, target_input: dbs}
+  - {source: plan, source_output: j_krona, target: krona, target_input: j_krona}
+  - {source: kreport2krona, source_output: kreport2krona, target: krona, target_input: kreport2krona}
+  - {source: kaiju2krona, source_output: kaiju2krona, target: krona, target_input: kaiju2krona}
+  - {source: plan, source_output: j_taxpasta_merge, target: taxpasta_merge, target_input: j_taxpasta_merge}
+  - {source: kraken2, source_output: kraken2, target: taxpasta_merge, target_input: kraken2}
+  - {source: bracken, source_output: bracken, target: taxpasta_merge, target_input: bracken}
+  - {source: ckreport, source_output: ckreport, target: taxpasta_merge, target_input: ckreport}
+  - {source: metaphlan, source_output: metaphlan, target: taxpasta_merge, target_input: metaphlan}
+  - {source: kaijutable, source_output: kaijutable, target: taxpasta_merge, target_input: kaijutable}
+  - {source: diamond, source_output: diamond, target: taxpasta_merge, target_input: diamond}
+  - {source: ganon_report, source_output: ganon_report, target: taxpasta_merge, target_input: ganon_report}
+  - {source: kmcp_profile, source_output: kmcp_profile, target: taxpasta_merge, target_input: kmcp_profile}
+  - {source: plan, source_output: j_taxpasta_standardise, target: taxpasta_standardise, target_input: j_taxpasta_standardise}
+  - {source: kraken2, source_output: kraken2, target: taxpasta_standardise, target_input: kraken2}
+  - {source: bracken, source_output: bracken, target: taxpasta_standardise, target_input: bracken}
+  - {source: ckreport, source_output: ckreport, target: taxpasta_standardise, target_input: ckreport}
+  - {source: metaphlan, source_output: metaphlan, target: taxpasta_standardise, target_input: metaphlan}
+  - {source: kaijutable, source_output: kaijutable, target: taxpasta_standardise, target_input: kaijutable}
+  - {source: diamond, source_output: diamond, target: taxpasta_standardise, target_input: diamond}
+  - {source: ganon_report, source_output: ganon_report, target: taxpasta_standardise, target_input: ganon_report}
+  - {source: kmcp_profile, source_output: kmcp_profile, target: taxpasta_standardise, target_input: kmcp_profile}
+  - {source: plan, source_output: j_bracken_combine, target: bracken_combined, target_input: j_bracken_combine}
+  - {source: bracken, source_output: bracken, target: bracken_combined, target_input: bracken}
+  - {source: plan, source_output: j_centrifuge_combine, target: centrifuge_combined, target_input: j_centrifuge_combine}
+  - {source: ckreport, source_output: ckreport, target: centrifuge_combined, target_input: ckreport}
+  - {source: plan, source_output: j_kaiju_combine, target: kaiju_combined, target_input: j_kaiju_combine}
+  - {source: kaiju, source_output: kaiju, target: kaiju_combined, target_input: kaiju}
+  - {source: untar, source_output: untar, target: kaiju_combined, target_input: untar}
+  - {source: plan, source_output: dbs, target: kaiju_combined, target_input: dbs}
+  - {source: plan, source_output: j_kraken2_combine, target: kraken2_combined, target_input: j_kraken2_combine}
+  - {source: kraken2, source_output: kraken2, target: kraken2_combined, target_input: kraken2}
+  - {source: plan, source_output: j_metaphlan_combine, target: metaphlan_combined, target_input: j_metaphlan_combine}
+  - {source: metaphlan, source_output: metaphlan, target: metaphlan_combined, target_input: metaphlan}
+  - {source: plan, source_output: j_ganon_combine, target: ganon_combined, target_input: j_ganon_combine}
+  - {source: ganon_report, source_output: ganon_report, target: ganon_combined, target_input: ganon_report}
+  - {source: plan, source_output: j_sylph_combine, target: sylph_combined, target_input: j_sylph_combine}
+  - {source: sylphtax, source_output: sylphtax, target: sylph_combined, target_input: sylphtax}
+  - {source: artifact-nfcore, source_output: nfcore, target: multiqc, target_input: nfcore}
+  - {source: fastqc_raw, source_output: fastqc_raw, target: multiqc, target_input: fastqc_raw}
+  - {source: fastp, source_output: fastp, target: multiqc, target_input: fastp}
+  - {source: fastqc_short, source_output: fastqc_short, target: multiqc, target_input: fastqc_short}
+  - {source: porechop, source_output: porechop, target: multiqc, target_input: porechop}
+  - {source: nanoq, source_output: nanoq, target: multiqc, target_input: nanoq}
+  - {source: fastqc_long, source_output: fastqc_long, target: multiqc, target_input: fastqc_long}
+  - {source: nonpareil_curvesr, source_output: nonpareil_curvesr, target: multiqc, target_input: nonpareil_curvesr}
+  - {source: bbduk, source_output: bbduk, target: multiqc, target_input: bbduk}
+  - {source: bowtie2_align, source_output: bowtie2_align, target: multiqc, target_input: bowtie2_align}
+  - {source: stats_short, source_output: stats_short, target: multiqc, target_input: stats_short}
+  - {source: stats_long, source_output: stats_long, target: multiqc, target_input: stats_long}
+  - {source: kraken2, source_output: kraken2, target: multiqc, target_input: kraken2}
+  - {source: ckreport, source_output: ckreport, target: multiqc, target_input: ckreport}
+  - {source: metaphlan, source_output: metaphlan, target: multiqc, target_input: metaphlan}
+  - {source: kaijutable, source_output: kaijutable, target: multiqc, target_input: kaijutable}
+  - {source: diamond, source_output: diamond, target: multiqc, target_input: diamond}
+  - {source: kmcp_profile, source_output: kmcp_profile, target: multiqc, target_input: kmcp_profile}
+  - {source: centrifuge_combined, source_output: centrifuge_combined, target: multiqc, target_input: centrifuge_combined}
+  - {source: kaiju_combined, source_output: kaiju_combined, target: multiqc, target_input: kaiju_combined}
+  - {source: kraken2_combined, source_output: kraken2_combined, target: multiqc, target_input: kraken2_combined}
+  - {source: metaphlan_combined, source_output: metaphlan_combined, target: multiqc, target_input: metaphlan_combined}
+  - {source: ganon_combined, source_output: ganon_combined, target: multiqc, target_input: ganon_combined}
+  - {source: nonpareil_curve, source_output: nonpareil_curve, target: multiqc, target_input: nonpareil_curve}
+  - {source: nonpareil_set, source_output: nonpareil_set, target: multiqc, target_input: nonpareil_set}
+  - {source: samtools_fastq, source_output: samtools_fastq, target: multiqc, target_input: samtools_fastq}
+  - {source: merge_runs, source_output: merge_runs, target: multiqc, target_input: merge_runs}
+  - {source: bracken_combined, source_output: bracken_combined, target: multiqc, target_input: bracken_combined}
+  - {source: sylph_combined, source_output: sylph_combined, target: multiqc, target_input: sylph_combined}
+  - {source: melon, source_output: melon, target: multiqc, target_input: melon}
+  - {source: metacache, source_output: metacache, target: multiqc, target_input: metacache}
+  - {source: krona, source_output: krona, target: multiqc, target_input: krona}
+  - {source: taxpasta_merge, source_output: taxpasta_merge, target: multiqc, target_input: taxpasta_merge}
+  - {source: taxpasta_standardise, source_output: taxpasta_standardise, target: multiqc, target_input: taxpasta_standardise}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results
