@@ -1,0 +1,2731 @@
+kind: horus_workflow
+name: nf-core atacseq chained
+
+# Native port of nf-core/atacseq 2.1.2, the route `-profile test,docker` runs:
+# BWA, library and replicate merging with Picard, BAM filtering, deepTools,
+# MACS2 broad peaks, HOMER annotation, consensus peaks with featureCounts and
+# DESeq2 QC, ataqv, IGV session and MultiQC. Preseq is off, as in the
+# pipeline defaults. Images, rendered command lines (ext.args from
+# conf/modules.config) and per-process cpus/memory are the executed ones; the
+# test profile caps every process at 2 cpus / 6 GB.
+#
+# Every command runs under `bash -euo pipefail`, the pipeline's process.shell:
+# each command writes its script to /tmp/.command.sh and runs that with bash,
+# as .command.run does.
+#
+# Chained variant of workflow.yaml (scripts/gen_chained.py): same commands and
+# outputs. Each item space (runs, libraries, replicate groups) has a head map
+# (trimgalore, mlb_merge, mrp_merge) that writes meta.env into its slot: id
+# plus the bash-sourceable meta (single_end, library, runs, libraries). Every
+# later map of the space sets `chain: true` and iterates an upstream map of the
+# same space, so a run or library moves to its next process as soon as its own
+# slot is done, not when the whole map is. A body sources ${<item>}/meta.env
+# and reads the upstream slot ${<item>}/, or a slot of another map of the space
+# paired through `zip` (${<map>_item}/). Runs under min_trimmed_reads drop out
+# with exit 10 (drop_exit_codes). The space changes stay barriers, as in
+# Nextflow: grouping runs into libraries and libraries into replicate groups
+# waits for every run (scripts/decide.py groups). Groovy branches that depend
+# on one item (paired-end only steps, empty peak files) are guards inside the
+# command, as in workflow.yaml: the slot then holds only meta.env. Every map
+# keeps max_concurrency 16, above the item count (8 runs, 6 libraries, 2
+# replicate groups), so no clone waits for a slot. Needs horus-runtime 0.9.0
+# or later (horus_map chain, zip, drop_exit_codes).
+#
+# capacity: memory-based admission like Nextflow's local executor. The key
+# is the target's location_id (local://<hostname>); set it to the host that
+# runs the tasks, or the gate does not apply.
+
+capacity:
+  local://ubuntu-awow:
+    cpus: 16
+    memory_gb: 31
+max_concurrency: 16
+
+_target: &target
+  kind: local
+
+# Run on a remote node instead: point every task at this anchor.
+# _target: &target
+#   kind: ssh
+#   host: bench-node.example.org
+#   username: ubuntu
+#   working_directory: /home/ubuntu/horus
+
+# Containers (.command.run docker lines); `user: host` runs them as the
+# calling user, as nf-core's `-u $(id -u):$(id -g)` does.
+_img:
+  python: &python {kind: docker, user: host, image: "quay.io/biocontainers/python:3.8.3"}
+  ubuntu: &ubuntu {kind: docker, user: host, image: "quay.io/nf-core/ubuntu:20.04"}
+  perl: &perl {kind: docker, user: host, image: "quay.io/biocontainers/perl:5.26.2"}
+  samtools116: &samtools116 {kind: docker, user: host, image: "quay.io/biocontainers/samtools:1.16.1--h6899075_1"}
+  samtools: &samtools {kind: docker, user: host, image: "quay.io/biocontainers/samtools:1.17--h00cdaf9_0"}
+  bedtools: &bedtools {kind: docker, user: host, image: "quay.io/biocontainers/bedtools:2.30.0--hc088bd4_0"}
+  bwa: &bwa {kind: docker, user: host, image: "quay.io/biocontainers/bwa:0.7.17--hed695b0_7"}
+  bwamem: &bwamem {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-fe8faa35dbf6dc65a0f7f5d4ea12e31a79f73e40:219b6c272b25e7e642ae3ff0bf0c5c81a5135ab4-0"}
+  khmer: &khmer {kind: docker, user: host, image: "quay.io/biocontainers/khmer:3.0.0a3--py37haa7609a_2"}
+  fastqc: &fastqc {kind: docker, user: host, image: "quay.io/biocontainers/fastqc:0.11.9--0"}
+  trimgalore: &trimgalore {kind: docker, user: host, image: "quay.io/biocontainers/trim-galore:0.6.7--hdfd78af_0"}
+  picard: &picard {kind: docker, user: host, image: "quay.io/biocontainers/picard:3.0.0--hdfd78af_1"}
+  bamtools: &bamtools {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-0560a8046fc82aa4338588eca29ff18edab2c5aa:5687a7da26983502d0a8a9a6b05ed727c740ddc4-0"}
+  pysam: &pysam {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-57736af1eb98c01010848572c9fec9fff6ffaafd:402e865b8f6af2f3e58c6fc8d57127ff0144b2c7-0"}
+  ucsc: &ucsc {kind: docker, user: host, image: "quay.io/biocontainers/ucsc-bedgraphtobigwig:445--h954228d_0"}
+  deeptools: &deeptools {kind: docker, user: host, image: "quay.io/biocontainers/deeptools:3.5.1--py_0"}
+  macs2: &macs2 {kind: docker, user: host, image: "quay.io/biocontainers/macs2:2.2.7.1--py38h4a8c8d9_3"}
+  frip: &frip {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-8186960447c5cb2faa697666dc1e6d919ad23f3e:3127fcae6b6bdaf8181e21a26ae61231030a9fcb-0"}
+  homer: &homer {kind: docker, user: host, image: "quay.io/biocontainers/homer:4.11--pl526hc9558a2_3"}
+  ataqv: &ataqv {kind: docker, user: host, image: "quay.io/biocontainers/ataqv:1.3.1--py310ha155cf9_1"}
+  plotr: &plotr {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-ad9dd5f398966bf899ae05f8e7c54d0fb10cdfa7:05678da05b8e5a7a5130e90a9f9a6c585b965afa-0"}
+  consensus: &consensus {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-2f48cc59b03027e31ead6d383fe1b8057785dd24:5d182f583f4696f4c4d9f3be93052811b383341f-0"}
+  subread: &subread {kind: docker, user: host, image: "quay.io/biocontainers/subread:2.0.1--hed695b0_0"}
+  deseq2: &deseq2 {kind: docker, user: host, image: "quay.io/biocontainers/mulled-v2-8849acf39a43cdd6c839a369a74c0adc823e2f91:ab110436faf952a33575c64dd74615a84011450b-0"}
+  multiqc: &multiqc {kind: docker, user: host, image: "quay.io/biocontainers/multiqc:1.13--pyhdfd78af_0"}
+
+# Labels after the test profile's max_cpus / max_memory (trace.txt cpus / memory).
+_res:
+  single: &single {cpus: 1, memory_gb: 6, walltime: "06:00:00"}
+  multi: &multi {cpus: 2, memory_gb: 6, walltime: "06:00:00"}
+
+# Artifacts, shared by the producing task's outputs and every consumer's inputs.
+_art:
+  - &a_samplesheet {id: samplesheet, name: Samplesheet, kind: file, path: examples/samplesheet.csv}
+  - &a_nfcore {id: nfcore, name: nf-core/atacseq files, kind: folder, path: nfcore/}
+  - &a_mirror {id: input_mirror, name: Local input mirror, kind: string, path: params/input_mirror.txt}
+  - &a_min_trimmed {id: min_trimmed_reads, name: Min trimmed reads, kind: number, path: params/min_trimmed_reads.json}
+  - &a_read_length {id: read_length, name: Read length, kind: number, path: params/read_length.json}
+  - &a_fragment_size {id: fragment_size, name: Fragment size, kind: number, path: params/fragment_size.json}
+  - &a_fingerprint_bins {id: fingerprint_bins, name: Fingerprint bins, kind: number, path: params/fingerprint_bins.json}
+  - &a_broad_cutoff {id: broad_cutoff, name: Broad cutoff, kind: number, path: params/broad_cutoff.json}
+  - &a_min_reps {id: min_reps_consensus, name: Min replicates for consensus, kind: number, path: params/min_reps_consensus.json}
+  - &a_mito_name {id: mito_name, name: Mitochondrial chromosome, kind: string, path: params/mito_name.txt}
+  - &a_reference {id: reference, name: Reference files, kind: folder, path: work/reference/}
+  - &a_sheet_check {id: sheet_check, name: Checked samplesheet, kind: folder, path: work/samplesheet_check/}
+  - &a_reads {id: reads, name: Reads, kind: folder, path: work/reads/}
+  - &a_runs {id: runs, name: Runs, kind: folder, path: work/runs/}
+  - &a_gene_bed {id: gene_bed, name: Gene BED, kind: folder, path: work/genome/gene_bed/}
+  - &a_tss_bed {id: tss_bed, name: TSS BED, kind: folder, path: work/genome/tss_bed/}
+  - &a_chrom_sizes {id: chrom_sizes, name: Fasta index and chromosome sizes, kind: folder, path: work/genome/chrom_sizes/}
+  - &a_autosomes {id: autosomes, name: Autosomes, kind: folder, path: work/genome/autosomes/}
+  - &a_include_bed {id: include_bed, name: Include regions, kind: folder, path: work/genome/include_regions/}
+  - &a_bwa_index {id: bwa_index, name: BWA index, kind: folder, path: work/genome/bwa_index/}
+  - &a_gsize {id: gsize, name: MACS2 genome size, kind: folder, path: work/genome/macs_gsize/}
+  - &a_fastqc {id: fastqc, name: FastQC, kind: folder, path: results/fastqc/}
+  - &a_trimgalore {id: trimgalore, name: TrimGalore, kind: folder, path: results/trimgalore/}
+  - &a_filter_trimmed {id: filter_trimmed, name: Runs passing trimming, kind: folder, path: work/filter_trimmed/}
+  - &a_libraries {id: libraries, name: Libraries, kind: folder, path: work/lists/libraries/}
+  - &a_replicates {id: replicates, name: Replicate groups, kind: folder, path: work/lists/replicates/}
+  - &a_bwa_mem {id: bwa_mem, name: BWA alignments, kind: folder, path: work/bwa/library/mem/}
+  - &a_lb_sort {id: lb_sort, name: Sorted run BAM, kind: folder, path: work/bwa/library/sort/}
+  - &a_lb_index {id: lb_index, name: Sorted run BAM index, kind: folder, path: work/bwa/library/index/}
+  - &a_lb_stats {id: lb_stats, name: Run BAM stats, kind: folder, path: work/bwa/library/samtools_stats/stats/}
+  - &a_lb_flagstat {id: lb_flagstat, name: Run BAM flagstat, kind: folder, path: work/bwa/library/samtools_stats/flagstat/}
+  - &a_lb_idxstats {id: lb_idxstats, name: Run BAM idxstats, kind: folder, path: work/bwa/library/samtools_stats/idxstats/}
+  - &a_mlb_merge {id: mlb_merge, name: Merged library BAM, kind: folder, path: work/bwa/merged_library/merge/}
+  - &a_mlb_markdup {id: mlb_markdup, name: Library MarkDuplicates, kind: folder, path: results/bwa/merged_library/markdup/}
+  - &a_mlb_md_index {id: mlb_md_index, name: Library MarkDuplicates index, kind: folder, path: work/bwa/merged_library/markdup_index/}
+  - &a_mlb_md_stats {id: mlb_md_stats, name: Library MarkDuplicates stats, kind: folder, path: results/bwa/merged_library/samtools_stats/md_stats/}
+  - &a_mlb_md_flagstat {id: mlb_md_flagstat, name: Library MarkDuplicates flagstat, kind: folder, path: results/bwa/merged_library/samtools_stats/md_flagstat/}
+  - &a_mlb_md_idxstats {id: mlb_md_idxstats, name: Library MarkDuplicates idxstats, kind: folder, path: results/bwa/merged_library/samtools_stats/md_idxstats/}
+  - &a_mlb_filter {id: mlb_filter, name: Filtered library BAM, kind: folder, path: results/bwa/merged_library/filter/}
+  - &a_mlb_name_sort {id: mlb_name_sort, name: Name-sorted filtered BAM, kind: folder, path: work/bwa/merged_library/name_sort/}
+  - &a_mlb_orphans {id: mlb_orphans, name: Filtered BAM without orphans, kind: folder, path: work/bwa/merged_library/rm_orphan/}
+  - &a_mlb_clean_sort {id: mlb_clean_sort, name: Clean paired-end library BAM, kind: folder, path: results/bwa/merged_library/clean_sort/}
+  - &a_mlb_clean_index {id: mlb_clean_index, name: Clean library BAM index, kind: folder, path: results/bwa/merged_library/clean_index/}
+  - &a_mlb_stats {id: mlb_stats, name: Clean library BAM stats, kind: folder, path: results/bwa/merged_library/samtools_stats/stats/}
+  - &a_mlb_flagstat {id: mlb_flagstat, name: Clean library BAM flagstat, kind: folder, path: results/bwa/merged_library/samtools_stats/flagstat/}
+  - &a_mlb_idxstats {id: mlb_idxstats, name: Clean library BAM idxstats, kind: folder, path: results/bwa/merged_library/samtools_stats/idxstats/}
+  - &a_mlb_cmm {id: mlb_cmm, name: Library CollectMultipleMetrics, kind: folder, path: results/bwa/merged_library/picard_metrics/}
+  - &a_mlb_genomecov {id: mlb_genomecov, name: Library bedGraph, kind: folder, path: results/bwa/merged_library/bigwig/scale/}
+  - &a_mlb_bigwig {id: mlb_bigwig, name: Library bigWig, kind: folder, path: results/bwa/merged_library/bigwig/bigwig/}
+  - &a_mlb_mat_scale {id: mlb_mat_scale, name: computeMatrix scale-regions, kind: folder, path: results/bwa/merged_library/deeptools/plotprofile/scale_regions/}
+  - &a_mlb_mat_ref {id: mlb_mat_ref, name: computeMatrix reference-point, kind: folder, path: results/bwa/merged_library/deeptools/plotprofile/reference_point/}
+  - &a_mlb_profile {id: mlb_profile, name: plotProfile, kind: folder, path: results/bwa/merged_library/deeptools/plotprofile/plotprofile/}
+  - &a_mlb_heatmap {id: mlb_heatmap, name: plotHeatmap, kind: folder, path: results/bwa/merged_library/deeptools/plotprofile/plotheatmap/}
+  - &a_mlb_fingerprint {id: mlb_fingerprint, name: plotFingerprint, kind: folder, path: results/bwa/merged_library/deeptools/plotfingerprint/}
+  - &a_mlb_macs2 {id: mlb_macs2, name: Library MACS2 peaks, kind: folder, path: results/bwa/merged_library/macs2/broad_peak/peaks/}
+  - &a_mlb_frip {id: mlb_frip, name: Library FRiP, kind: folder, path: work/bwa/merged_library/frip/}
+  - &a_mlb_peaks_mqc {id: mlb_peaks_mqc, name: Library peak QC tables, kind: folder, path: results/bwa/merged_library/macs2/broad_peak/qc/peaks/}
+  - &a_mlb_homer {id: mlb_homer, name: Library HOMER annotation, kind: folder, path: results/bwa/merged_library/macs2/broad_peak/annotation/}
+  - &a_mlb_ataqv {id: mlb_ataqv, name: ataqv, kind: folder, path: results/bwa/merged_library/ataqv/broad_peak/json/}
+  - &a_mlb_mkarv {id: mlb_mkarv, name: ataqv mkarv, kind: folder, path: results/bwa/merged_library/ataqv/broad_peak/html/}
+  - &a_mlb_macs2_qc {id: mlb_macs2_qc, name: Library MACS2 QC plots, kind: folder, path: results/bwa/merged_library/macs2/broad_peak/qc/macs2/}
+  - &a_mlb_homer_qc {id: mlb_homer_qc, name: Library HOMER QC plots, kind: folder, path: results/bwa/merged_library/macs2/broad_peak/qc/homer/}
+  - &a_mlb_consensus {id: mlb_consensus, name: Library consensus peaks, kind: folder, path: results/bwa/merged_library/macs2/broad_peak/consensus/peaks/}
+  - &a_mlb_cons_homer {id: mlb_cons_homer, name: Library consensus annotation, kind: folder, path: results/bwa/merged_library/macs2/broad_peak/consensus/annotation/}
+  - &a_mlb_counts {id: mlb_counts, name: Library consensus featureCounts, kind: folder, path: results/bwa/merged_library/macs2/broad_peak/consensus/featurecounts/}
+  - &a_mlb_deseq2 {id: mlb_deseq2, name: Library DESeq2 QC, kind: folder, path: results/bwa/merged_library/macs2/broad_peak/consensus/deseq2/}
+  - &a_mrp_merge {id: mrp_merge, name: Merged replicate BAM, kind: folder, path: work/bwa/merged_replicate/merge/}
+  - &a_mrp_markdup {id: mrp_markdup, name: Replicate MarkDuplicates, kind: folder, path: results/bwa/merged_replicate/markdup/}
+  - &a_mrp_index {id: mrp_index, name: Replicate BAM index, kind: folder, path: results/bwa/merged_replicate/index/}
+  - &a_mrp_stats {id: mrp_stats, name: Replicate BAM stats, kind: folder, path: results/bwa/merged_replicate/samtools_stats/stats/}
+  - &a_mrp_flagstat {id: mrp_flagstat, name: Replicate BAM flagstat, kind: folder, path: results/bwa/merged_replicate/samtools_stats/flagstat/}
+  - &a_mrp_idxstats {id: mrp_idxstats, name: Replicate BAM idxstats, kind: folder, path: results/bwa/merged_replicate/samtools_stats/idxstats/}
+  - &a_mrp_genomecov {id: mrp_genomecov, name: Replicate bedGraph, kind: folder, path: results/bwa/merged_replicate/bigwig/scale/}
+  - &a_mrp_bigwig {id: mrp_bigwig, name: Replicate bigWig, kind: folder, path: results/bwa/merged_replicate/bigwig/bigwig/}
+  - &a_mrp_macs2 {id: mrp_macs2, name: Replicate MACS2 peaks, kind: folder, path: results/bwa/merged_replicate/macs2/broad_peak/peaks/}
+  - &a_mrp_frip {id: mrp_frip, name: Replicate FRiP, kind: folder, path: work/bwa/merged_replicate/frip/}
+  - &a_mrp_peaks_mqc {id: mrp_peaks_mqc, name: Replicate peak QC tables, kind: folder, path: results/bwa/merged_replicate/macs2/broad_peak/qc/peaks/}
+  - &a_mrp_homer {id: mrp_homer, name: Replicate HOMER annotation, kind: folder, path: results/bwa/merged_replicate/macs2/broad_peak/annotation/}
+  - &a_mrp_macs2_qc {id: mrp_macs2_qc, name: Replicate MACS2 QC plots, kind: folder, path: results/bwa/merged_replicate/macs2/broad_peak/qc/macs2/}
+  - &a_mrp_homer_qc {id: mrp_homer_qc, name: Replicate HOMER QC plots, kind: folder, path: results/bwa/merged_replicate/macs2/broad_peak/qc/homer/}
+  - &a_mrp_consensus {id: mrp_consensus, name: Replicate consensus peaks, kind: folder, path: results/bwa/merged_replicate/macs2/broad_peak/consensus/peaks/}
+  - &a_mrp_cons_homer {id: mrp_cons_homer, name: Replicate consensus annotation, kind: folder, path: results/bwa/merged_replicate/macs2/broad_peak/consensus/annotation/}
+  - &a_mrp_counts {id: mrp_counts, name: Replicate consensus featureCounts, kind: folder, path: results/bwa/merged_replicate/macs2/broad_peak/consensus/featurecounts/}
+  - &a_mrp_deseq2 {id: mrp_deseq2, name: Replicate DESeq2 QC, kind: folder, path: results/bwa/merged_replicate/macs2/broad_peak/consensus/deseq2/}
+  - &a_igv {id: igv, name: IGV session, kind: folder, path: results/igv/broad_peak/}
+  - &a_multiqc {id: multiqc, name: MultiQC report, kind: folder, path: results/multiqc/broad_peak/}
+
+artifacts:
+  - <<: *a_samplesheet
+    description: >-
+      nf-core/atacseq samplesheet (sample,fastq_1,fastq_2,replicate). Reads may be
+      URLs or paths relative to the samplesheet; rows sharing a sample and
+      replicate are runs of one library. Default: the test profile samplesheet
+      (8 runs, 6 libraries, 4 samples, paired- and single-end).
+  - <<: *a_nfcore
+    description: nf-core/atacseq 2.1.2 bin/ scripts and assets (MIT).
+  - <<: *a_mirror
+    description: >-
+      Folder searched for each input file by name before downloading it (e.g. a
+      local copy of the test data). Empty downloads everything.
+    value: ""
+    pattern: '[^"`$\\]*'
+  - {id: fasta_url, name: Genome fasta, kind: string, path: params/fasta_url.txt, pattern: '[^"`$\\]*', description: "--fasta (plain)", value: "https://raw.githubusercontent.com/nf-core/test-datasets/atacseq/reference/genome.fa"}
+  - {id: gtf_url, name: GTF, kind: string, path: params/gtf_url.txt, pattern: '[^"`$\\]*', description: "--gtf (plain)", value: "https://raw.githubusercontent.com/nf-core/test-datasets/atacseq/reference/genes.gtf"}
+  - {<<: *a_min_trimmed, value: 10000, min: 0, description: "--min_trimmed_reads"}
+  - {<<: *a_read_length, value: 50, min: 1, description: "--read_length (k-mer size for the MACS2 genome size)"}
+  - {<<: *a_fragment_size, value: 200, min: 0, description: "--fragment_size (single-end read extension)"}
+  - {<<: *a_fingerprint_bins, value: 100, min: 1, description: "--fingerprint_bins"}
+  - {<<: *a_broad_cutoff, value: 0.1, min: 0, max: 1, description: "--broad_cutoff"}
+  - {<<: *a_min_reps, value: 1, min: 1, description: "--min_reps_consensus"}
+  - {<<: *a_mito_name, value: "MT", pattern: '[A-Za-z0-9_.]*', description: "--mito_name (empty keeps every chromosome)"}
+
+tasks:
+  # ---------------------------------------------------------------- inputs
+  - kind: horus_task
+    id: fetch_reference
+    name: Fetch reference files
+    description: Downloads the genome fasta and GTF (or copies them from the mirror).
+    inputs:
+      - *a_mirror
+      - {id: fasta_url, name: Genome fasta, kind: string, path: params/fasta_url.txt}
+      - {id: gtf_url, name: GTF, kind: string, path: params/gtf_url.txt}
+    outputs: [*a_reference]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: reference --fasta ${fasta_url} --gtf ${gtf_url} --mirror ${input_mirror} --out ${reference}
+    target: *target
+
+  - kind: horus_task
+    id: samplesheet_check
+    name: SAMPLESHEET_CHECK
+    inputs: [*a_samplesheet, *a_nfcore]
+    outputs: [*a_sheet_check]
+    resources: *single
+    executor: *python
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${sheet_check} && mkdir -p ${sheet_check} && cd ${sheet_check}
+        export PATH=${nfcore}/bin:$$PATH
+        s=$$(basename ${samplesheet})
+        ln -s ${samplesheet} $$s
+        check_samplesheet.py \
+            $$s \
+            samplesheet.valid.csv
+        rm $$s
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: stage_reads
+    name: Stage the reads of every run
+    description: Fetches each run's reads and writes one meta file per run.
+    inputs: [*a_sheet_check, *a_samplesheet, *a_mirror]
+    outputs: [*a_reads, *a_runs]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: >-
+        reads --valid ${sheet_check}/samplesheet.valid.csv --samplesheet ${samplesheet}
+        --mirror ${input_mirror} --reads ${reads} --runs ${runs}
+    target: *target
+
+  # ---------------------------------------------------------------- genome
+  - kind: horus_task
+    id: gene_bed
+    name: GTF2BED
+    inputs: [*a_reference, *a_nfcore]
+    outputs: [*a_gene_bed]
+    resources: *multi
+    executor: *perl
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${gene_bed} && mkdir -p ${gene_bed} && cd ${gene_bed}
+        export PATH=${nfcore}/bin:$$PATH
+        ln -s ${reference}/$$ref_gtf $$ref_gtf
+        gtf2bed \
+            $$ref_gtf \
+            > $${ref_gtf%.*}.bed
+        rm $$ref_gtf
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: tss_bed
+    name: TSS_EXTRACT
+    inputs: [*a_gene_bed]
+    outputs: [*a_tss_bed]
+    resources: *single
+    executor: *ubuntu
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${tss_bed} && mkdir -p ${tss_bed} && cd ${tss_bed}
+        bed=$$(cd ${gene_bed} && ls *.bed)
+        ln -s ${gene_bed}/$$bed $$bed
+        cat $$bed | awk -v FS='\t' -v OFS='\t' '{ if($$6=="+") $$3=$$2+1; else $$2=$$3-1; print $$1, $$2, $$3, $$4, $$5, $$6;}' > $${bed%.bed}.tss.bed
+        rm $$bed
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: chrom_sizes
+    name: CUSTOM_GETCHROMSIZES
+    inputs: [*a_reference]
+    outputs: [*a_chrom_sizes]
+    resources: *single
+    executor: *samtools116
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${chrom_sizes} && mkdir -p ${chrom_sizes} && cd ${chrom_sizes}
+        ln -s ${reference}/$$ref_fasta $$ref_fasta
+        samtools faidx $$ref_fasta
+        cut -f 1,2 $$ref_fasta.fai > $$ref_fasta.sizes
+        rm $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: autosomes
+    name: GET_AUTOSOMES
+    inputs: [*a_chrom_sizes, *a_nfcore]
+    outputs: [*a_autosomes]
+    resources: *single
+    executor: *python
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${autosomes} && mkdir -p ${autosomes} && cd ${autosomes}
+        export PATH=${nfcore}/bin:$$PATH
+        fai=$$(cd ${chrom_sizes} && ls *.fai)
+        ln -s ${chrom_sizes}/$$fai $$fai
+        get_autosomes.py \
+            $$fai \
+            $${fai%.fai}.autosomes.txt
+        rm $$fai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: include_bed
+    name: GENOME_BLACKLIST_REGIONS
+    description: No --blacklist, so the include regions are every chromosome but mito_name.
+    inputs: [*a_chrom_sizes, *a_mito_name]
+    outputs: [*a_include_bed]
+    resources: *single
+    executor: *bedtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${include_bed} && mkdir -p ${include_bed} && cd ${include_bed}
+        sizes=$$(cd ${chrom_sizes} && ls *.sizes)
+        ln -s ${chrom_sizes}/$$sizes $$sizes
+        if [ -n ${mito_name} ]; then
+        awk '{print $$1, '0' , $$2}' OFS='\t' $$sizes | awk '$$1 !~ /${mito_name}/ {print $$0}' > $${sizes%%.*}.include_regions.bed
+        else
+        awk '{print $$1, '0' , $$2}' OFS='\t' $$sizes  > $${sizes%%.*}.include_regions.bed
+        fi
+        rm $$sizes
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: bwa_index
+    name: BWA_INDEX
+    inputs: [*a_reference]
+    outputs: [*a_bwa_index]
+    resources: *single
+    executor: *bwa
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${bwa_index} && mkdir -p ${bwa_index} && cd ${bwa_index}
+        ln -s ${reference}/$$ref_fasta $$ref_fasta
+        mkdir bwa
+        bwa \
+            index \
+             \
+            -p bwa/$${ref_fasta%.*} \
+            $$ref_fasta
+        rm $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: gsize
+    name: KHMER_UNIQUEKMERS
+    inputs: [*a_reference, *a_read_length]
+    outputs: [*a_gsize]
+    resources: *multi
+    executor: *khmer
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${gsize} && mkdir -p ${gsize} && cd ${gsize}
+        ln -s ${reference}/$$ref_fasta $$ref_fasta
+        unique-kmers.py \
+            -k ${read_length} \
+            -R report.txt \
+             \
+            $$ref_fasta
+
+        grep ^number report.txt | sed 's/^.*:.[[:blank:]]//g' > kmers.txt
+        rm $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- reads
+  - kind: horus_map
+    id: fastqc
+    name: FASTQC
+    over: {input_id: runs, as: run}
+    max_concurrency: 16
+    inputs: [*a_runs, *a_reads]
+    outputs: [*a_fastqc]
+    resources: *multi
+    executor: *fastqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${run}); . ${run}
+        rm -rf ${fastqc} && mkdir -p ${fastqc} && cd ${fastqc}
+        set -- $$(cat ${reads}/$$id/reads.txt)
+        pairs=""; names=""; i=0
+        for f in "$$@"; do
+            i=$$((i + 1))
+            ln -s ${reads}/$$id/$$f $$f
+            if [ $$# -eq 1 ]; then new=$${id}.$${f##*.}; else new=$${id}_$$i.$${f##*.}; fi
+            pairs="$$pairs $$f $$new"; names="$$names $$new"
+        done
+        printf "%s %s\n" $$pairs | while read old_name new_name; do
+            [ -f "$${new_name}" ] || ln -s $$old_name $$new_name
+        done
+
+        fastqc \
+            --quiet \
+            --threads ${task.resources.cpus} \
+            $${names# }
+        rm $$names "$$@"
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: trimgalore
+    name: TRIMGALORE
+    over: {input_id: runs, as: run}
+    max_concurrency: 16
+    inputs: [*a_runs, *a_reads]
+    outputs: [*a_trimgalore]
+    resources: *multi
+    executor: *trimgalore
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${run}); . ${run}
+        rm -rf ${trimgalore} && mkdir -p ${trimgalore} && cd ${trimgalore}
+        { echo id=$$id; cat ${run}; } > meta.env
+        set -- $$(cat ${reads}/$$id/reads.txt)
+        for f in "$$@"; do ln -s ${reads}/$$id/$$f $$f; done
+        # cores: task.cpus - 4 (paired) or - 3 (single), within 1..8
+        if [ $$single_end = true ]; then cores=$$(( ${task.resources.cpus} - 3 )); else cores=$$(( ${task.resources.cpus} - 4 )); fi
+        [ $$cores -lt 1 ] && cores=1
+        [ $$cores -gt 8 ] && cores=8
+        if [ $$single_end = true ]; then
+        [ ! -f  $${id}.fastq.gz ] && ln -s $$1 $${id}.fastq.gz
+        trim_galore \
+            --fastqc \
+            --cores $$cores \
+            --gzip \
+            $${id}.fastq.gz
+        rm $${id}.fastq.gz
+        else
+        [ ! -f  $${id}_1.fastq.gz ] && ln -s $$1 $${id}_1.fastq.gz
+        [ ! -f  $${id}_2.fastq.gz ] && ln -s $$2 $${id}_2.fastq.gz
+        trim_galore \
+            --fastqc \
+            --cores $$cores \
+            --paired \
+            --gzip \
+            $${id}_1.fastq.gz \
+            $${id}_2.fastq.gz
+        rm $${id}_1.fastq.gz $${id}_2.fastq.gz
+        fi
+        rm -rf "?"  # FastQC's Java prefs dir: the host uid has no home in the image
+        rm "$$@"
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: filter_trimmed
+    name: Filter runs by trimmed reads
+    description: Drops a run under min_trimmed_reads after trimming (exit 10).
+    over: {input_id: trimgalore, as: run}
+    chain: true
+    drop_exit_codes: [10]
+    max_concurrency: 16
+    inputs: [*a_trimgalore, *a_min_trimmed]
+    outputs: [*a_filter_trimmed]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: trim-item --slot ${run} --min-trimmed-reads ${min_trimmed_reads} --out ${filter_trimmed}
+    target: *target
+
+  - kind: horus_task
+    id: decide_groups
+    name: Group libraries and replicates
+    description: Groups the passing runs into libraries and libraries into replicate groups.
+    inputs: [*a_filter_trimmed]
+    outputs: [*a_libraries, *a_replicates]
+    executor: {kind: shell}
+    runtime:
+      kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      args: groups --runs ${filter_trimmed} --libraries ${libraries} --replicates ${replicates}
+    target: *target
+
+  # ---------------------------------------------------------------- alignment, per run
+  - kind: horus_map
+    id: bwa_mem
+    name: BWA_MEM
+    over: {input_id: filter_trimmed, as: run}
+    chain: true
+    zip: [{input_id: trimgalore, as: trimgalore_item}]
+    max_concurrency: 16
+    inputs: [*a_filter_trimmed, *a_trimgalore, *a_bwa_index]
+    outputs: [*a_bwa_mem]
+    resources: *multi
+    executor: *bwamem
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${run}/meta.env
+        rm -rf ${bwa_mem} && mkdir -p ${bwa_mem} && cd ${bwa_mem} && cp ${run}/meta.env .
+        if [ $$single_end = true ]; then set -- $${id}_trimmed.fq.gz; else set -- $${id}_1_val_1.fq.gz $${id}_2_val_2.fq.gz; fi
+        for f in "$$@"; do ln -s ${trimgalore_item}/$$f $$f; done
+        ln -s ${bwa_index}/bwa bwa
+        INDEX=`find -L ./ -name "*.amb" | sed 's/\.amb$$//'`
+
+        bwa mem \
+            -M  -R '@RG\tID:'$${id}'\tSM:'$${library}'\tPL:ILLUMINA\tLB:'$${id}'\tPU:1' \
+            -t ${task.resources.cpus} \
+            $$INDEX \
+            $$@ \
+            | samtools view -bhS -F 0x0100 -O BAM --threads ${task.resources.cpus} -o $${id}.Lb.bam -
+        rm bwa "$$@"
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: lb_sort
+    name: FASTQ_ALIGN_BWA SAMTOOLS_SORT
+    over: {input_id: bwa_mem, as: run}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_bwa_mem]
+    outputs: [*a_lb_sort]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${run}/meta.env
+        rm -rf ${lb_sort} && mkdir -p ${lb_sort} && cd ${lb_sort} && cp ${run}/meta.env .
+        ln -s ${run}/$${id}.Lb.bam $${id}.Lb.bam
+        samtools sort \
+             \
+            -@ ${task.resources.cpus} \
+            -o $${id}.Lb.sorted.bam \
+            -T $${id}.Lb.sorted \
+            $${id}.Lb.bam
+        rm $${id}.Lb.bam
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: lb_index
+    name: FASTQ_ALIGN_BWA SAMTOOLS_INDEX
+    over: {input_id: lb_sort, as: run}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_lb_sort]
+    outputs: [*a_lb_index]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${run}/meta.env
+        rm -rf ${lb_index} && mkdir -p ${lb_index} && cd ${lb_index} && cp ${run}/meta.env .
+        bam=$${id}.Lb.sorted.bam
+        ln -s ${run}/$$bam $$bam
+        samtools \
+            index \
+            -@ $$(( ${task.resources.cpus} - 1 )) \
+             \
+            $$bam
+        rm $$bam
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: lb_stats
+    name: FASTQ_ALIGN_BWA SAMTOOLS_STATS
+    over: {input_id: lb_index, as: run}
+    chain: true
+    zip: [{input_id: lb_sort, as: lb_sort_item}]
+    max_concurrency: 16
+    inputs: [*a_lb_sort, *a_lb_index, *a_reference]
+    outputs: [*a_lb_stats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${run}/meta.env; . ${reference}/refs.env
+        rm -rf ${lb_stats} && mkdir -p ${lb_stats} && cd ${lb_stats} && cp ${run}/meta.env .
+        bam=$${id}.Lb.sorted.bam
+        ln -s ${lb_sort_item}/$$bam $$bam; ln -s ${run}/$$bam.bai $$bam.bai; ln -s ${reference}/$$ref_fasta $$ref_fasta
+        samtools \
+            stats \
+            --threads ${task.resources.cpus} \
+            --reference $$ref_fasta \
+            $$bam \
+            > $$bam.stats
+        rm $$bam $$bam.bai $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: lb_flagstat
+    name: FASTQ_ALIGN_BWA SAMTOOLS_FLAGSTAT
+    over: {input_id: lb_index, as: run}
+    chain: true
+    zip: [{input_id: lb_sort, as: lb_sort_item}]
+    max_concurrency: 16
+    inputs: [*a_lb_sort, *a_lb_index]
+    outputs: [*a_lb_flagstat]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${run}/meta.env
+        rm -rf ${lb_flagstat} && mkdir -p ${lb_flagstat} && cd ${lb_flagstat} && cp ${run}/meta.env .
+        bam=$${id}.Lb.sorted.bam
+        ln -s ${lb_sort_item}/$$bam $$bam; ln -s ${run}/$$bam.bai $$bam.bai
+        samtools \
+            flagstat \
+            --threads ${task.resources.cpus} \
+            $$bam \
+            > $$bam.flagstat
+        rm $$bam $$bam.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: lb_idxstats
+    name: FASTQ_ALIGN_BWA SAMTOOLS_IDXSTATS
+    over: {input_id: lb_index, as: run}
+    chain: true
+    zip: [{input_id: lb_sort, as: lb_sort_item}]
+    max_concurrency: 16
+    inputs: [*a_lb_sort, *a_lb_index]
+    outputs: [*a_lb_idxstats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${run}/meta.env
+        rm -rf ${lb_idxstats} && mkdir -p ${lb_idxstats} && cd ${lb_idxstats} && cp ${run}/meta.env .
+        bam=$${id}.Lb.sorted.bam
+        ln -s ${lb_sort_item}/$$bam $$bam; ln -s ${run}/$$bam.bai $$bam.bai
+        samtools \
+            idxstats \
+            --threads $$(( ${task.resources.cpus} - 1 )) \
+            $$bam \
+            > $$bam.idxstats
+        rm $$bam $$bam.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- merged library
+  - kind: horus_map
+    id: mlb_merge
+    name: PICARD_MERGESAMFILES_LIBRARY
+    over: {input_id: libraries, as: lib}
+    max_concurrency: 16
+    inputs: [*a_libraries, *a_lb_sort]
+    outputs: [*a_mlb_merge]
+    resources: *multi
+    executor: *picard
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${lib}); . ${lib}
+        rm -rf ${mlb_merge} && mkdir -p ${mlb_merge} && cd ${mlb_merge}
+        { echo id=$$id; cat ${lib}; } > meta.env
+        bams=$$(for r in $$runs; do echo $$r.Lb.sorted.bam; done | LC_ALL=C sort)
+        for b in $$bams; do ln -s ${lb_sort}/*/$$b $$b; done
+        set -- $$bams
+        if [ $$# -gt 1 ]; then
+        picard \
+            -Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M \
+            MergeSamFiles \
+            --SORT_ORDER coordinate --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp \
+            $$(printf -- '--INPUT %s ' "$$@") \
+            --OUTPUT $${id}.mLb.sorted.bam
+        rm -rf tmp
+        else
+        # Nextflow links the single BAM; a copy keeps the output folder self-contained.
+        cp $$1 $${id}.mLb.sorted.bam
+        fi
+        rm $$bams
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_markdup
+    name: MERGED_LIBRARY_MARKDUPLICATES_PICARD PICARD_MARKDUPLICATES
+    over: {input_id: mlb_merge, as: lib}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mlb_merge, *a_reference, *a_chrom_sizes]
+    outputs: [*a_mlb_markdup]
+    resources: *multi
+    executor: *picard
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env; . ${reference}/refs.env
+        rm -rf ${mlb_markdup} && mkdir -p ${mlb_markdup} && cd ${mlb_markdup} && cp ${lib}/meta.env .
+        ln -s ${lib}/$${id}.mLb.sorted.bam $${id}.mLb.sorted.bam
+        ln -s ${reference}/$$ref_fasta $$ref_fasta; ln -s ${chrom_sizes}/$$ref_fasta.fai $$ref_fasta.fai
+        picard \
+            -Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M \
+            MarkDuplicates \
+            --ASSUME_SORTED true --REMOVE_DUPLICATES false --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp \
+            --INPUT $${id}.mLb.sorted.bam \
+            --OUTPUT $${id}.mLb.mkD.sorted.bam \
+            --REFERENCE_SEQUENCE $$ref_fasta \
+            --METRICS_FILE $${id}.mLb.mkD.sorted.MarkDuplicates.metrics.txt
+        rm -rf tmp $${id}.mLb.sorted.bam $$ref_fasta $$ref_fasta.fai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_md_index
+    name: MERGED_LIBRARY_MARKDUPLICATES_PICARD SAMTOOLS_INDEX
+    over: {input_id: mlb_markdup, as: lib}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mlb_markdup]
+    outputs: [*a_mlb_md_index]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_md_index} && mkdir -p ${mlb_md_index} && cd ${mlb_md_index} && cp ${lib}/meta.env .
+        bam=$${id}.mLb.mkD.sorted.bam
+        ln -s ${lib}/$$bam $$bam
+        samtools \
+            index \
+            -@ $$(( ${task.resources.cpus} - 1 )) \
+             \
+            $$bam
+        rm $$bam
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_md_stats
+    name: MERGED_LIBRARY_MARKDUPLICATES_PICARD SAMTOOLS_STATS
+    over: {input_id: mlb_md_index, as: lib}
+    chain: true
+    zip: [{input_id: mlb_markdup, as: mlb_markdup_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_markdup, *a_mlb_md_index, *a_reference]
+    outputs: [*a_mlb_md_stats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env; . ${reference}/refs.env
+        rm -rf ${mlb_md_stats} && mkdir -p ${mlb_md_stats} && cd ${mlb_md_stats} && cp ${lib}/meta.env .
+        bam=$${id}.mLb.mkD.sorted.bam
+        ln -s ${mlb_markdup_item}/$$bam $$bam; ln -s ${lib}/$$bam.bai $$bam.bai; ln -s ${reference}/$$ref_fasta $$ref_fasta
+        samtools \
+            stats \
+            --threads ${task.resources.cpus} \
+            --reference $$ref_fasta \
+            $$bam \
+            > $$bam.stats
+        rm $$bam $$bam.bai $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_md_flagstat
+    name: MERGED_LIBRARY_MARKDUPLICATES_PICARD SAMTOOLS_FLAGSTAT
+    over: {input_id: mlb_md_index, as: lib}
+    chain: true
+    zip: [{input_id: mlb_markdup, as: mlb_markdup_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_markdup, *a_mlb_md_index]
+    outputs: [*a_mlb_md_flagstat]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_md_flagstat} && mkdir -p ${mlb_md_flagstat} && cd ${mlb_md_flagstat} && cp ${lib}/meta.env .
+        bam=$${id}.mLb.mkD.sorted.bam
+        ln -s ${mlb_markdup_item}/$$bam $$bam; ln -s ${lib}/$$bam.bai $$bam.bai
+        samtools \
+            flagstat \
+            --threads ${task.resources.cpus} \
+            $$bam \
+            > $$bam.flagstat
+        rm $$bam $$bam.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_md_idxstats
+    name: MERGED_LIBRARY_MARKDUPLICATES_PICARD SAMTOOLS_IDXSTATS
+    over: {input_id: mlb_md_index, as: lib}
+    chain: true
+    zip: [{input_id: mlb_markdup, as: mlb_markdup_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_markdup, *a_mlb_md_index]
+    outputs: [*a_mlb_md_idxstats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_md_idxstats} && mkdir -p ${mlb_md_idxstats} && cd ${mlb_md_idxstats} && cp ${lib}/meta.env .
+        bam=$${id}.mLb.mkD.sorted.bam
+        ln -s ${mlb_markdup_item}/$$bam $$bam; ln -s ${lib}/$$bam.bai $$bam.bai
+        samtools \
+            idxstats \
+            --threads $$(( ${task.resources.cpus} - 1 )) \
+            $$bam \
+            > $$bam.idxstats
+        rm $$bam $$bam.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_filter
+    name: BAMTOOLS_FILTER
+    over: {input_id: mlb_md_index, as: lib}
+    chain: true
+    zip: [{input_id: mlb_markdup, as: mlb_markdup_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_markdup, *a_mlb_md_index, *a_include_bed, *a_nfcore]
+    outputs: [*a_mlb_filter]
+    resources: *multi
+    executor: *bamtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_filter} && mkdir -p ${mlb_filter} && cd ${mlb_filter} && cp ${lib}/meta.env .
+        bam=$${id}.mLb.mkD.sorted.bam
+        bed=$$(cd ${include_bed} && ls *.bed)
+        ln -s ${mlb_markdup_item}/$$bam $$bam; ln -s ${lib}/$$bam.bai $$bam.bai; ln -s ${include_bed}/$$bed $$bed
+        if [ $$single_end = true ]; then
+            args='-F 0x004 -F 0x0400 -q 1'; prefix=$${id}.mLb.clN.sorted; config=bamtools_filter_se.json
+        else
+            args='-F 0x004 -F 0x0008 -f 0x001 -F 0x0400 -q 1'; prefix=$${id}.mLb.flT.sorted; config=bamtools_filter_pe.json
+        fi
+        ln -s ${nfcore}/assets/$$config $$config
+        samtools view \
+            $$args \
+            -L $$bed \
+            -b $$bam \
+            | bamtools filter \
+                -out $${prefix}.bam \
+                -script $$config
+        rm $$bam $$bam.bai $$bed $$config
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_name_sort
+    name: MERGED_LIBRARY_FILTER_BAM SAMTOOLS_SORT
+    description: Paired-end libraries only; single-end slots stay empty.
+    over: {input_id: mlb_filter, as: lib}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mlb_filter]
+    outputs: [*a_mlb_name_sort]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_name_sort} && mkdir -p ${mlb_name_sort} && cd ${mlb_name_sort} && cp ${lib}/meta.env .
+        if [ $$single_end = false ]; then
+        ln -s ${lib}/$${id}.mLb.flT.sorted.bam $${id}.mLb.flT.sorted.bam
+        samtools sort \
+            -n \
+            -@ ${task.resources.cpus} \
+            -o $${id}.mLb.flT.name_sorted.bam \
+            -T $${id}.mLb.flT.name_sorted \
+            $${id}.mLb.flT.sorted.bam
+        rm $${id}.mLb.flT.sorted.bam
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_orphans
+    name: BAM_REMOVE_ORPHANS
+    description: Paired-end libraries only; single-end slots stay empty.
+    over: {input_id: mlb_name_sort, as: lib}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mlb_name_sort, *a_nfcore]
+    outputs: [*a_mlb_orphans]
+    resources: *multi
+    executor: *pysam
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_orphans} && mkdir -p ${mlb_orphans} && cd ${mlb_orphans} && cp ${lib}/meta.env .
+        if [ $$single_end = false ]; then
+        export PATH=${nfcore}/bin:$$PATH
+        ln -s ${lib}/$${id}.mLb.flT.name_sorted.bam $${id}.mLb.flT.name_sorted.bam
+        bampe_rm_orphan.py \
+            $${id}.mLb.flT.name_sorted.bam \
+            $${id}.mLb.clN.bam \
+            --only_fr_pairs
+        rm $${id}.mLb.flT.name_sorted.bam
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_clean_sort
+    name: MERGED_LIBRARY_FILTER_BAM BAM_SORT_STATS_SAMTOOLS SAMTOOLS_SORT
+    description: Paired-end libraries only; single-end slots stay empty.
+    over: {input_id: mlb_orphans, as: lib}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mlb_orphans]
+    outputs: [*a_mlb_clean_sort]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_clean_sort} && mkdir -p ${mlb_clean_sort} && cd ${mlb_clean_sort} && cp ${lib}/meta.env .
+        if [ $$single_end = false ]; then
+        ln -s ${lib}/$${id}.mLb.clN.bam $${id}.mLb.clN.bam
+        samtools sort \
+             \
+            -@ ${task.resources.cpus} \
+            -o $${id}.mLb.clN.sorted.bam \
+            -T $${id}.mLb.clN.sorted \
+            $${id}.mLb.clN.bam
+        rm $${id}.mLb.clN.bam
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # The clean library BAM (<id>.mLb.clN.sorted.bam): mlb_filter for single-end
+  # libraries, mlb_clean_sort for paired-end ones.
+  - kind: horus_map
+    id: mlb_clean_index
+    name: MERGED_LIBRARY_FILTER_BAM SAMTOOLS_INDEX
+    over: {input_id: mlb_clean_sort, as: lib}
+    chain: true
+    zip: [{input_id: mlb_filter, as: mlb_filter_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_filter, *a_mlb_clean_sort]
+    outputs: [*a_mlb_clean_index]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_clean_index} && mkdir -p ${mlb_clean_index} && cd ${mlb_clean_index} && cp ${lib}/meta.env .
+        if [ $$single_end = true ]; then src=${mlb_filter_item}; else src=${lib}; fi
+        bam=$${id}.mLb.clN.sorted.bam
+        ln -s $$src/$$bam $$bam
+        samtools \
+            index \
+            -@ $$(( ${task.resources.cpus} - 1 )) \
+             \
+            $$bam
+        rm $$bam
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_stats
+    name: MERGED_LIBRARY_FILTER_BAM SAMTOOLS_STATS
+    over: {input_id: mlb_clean_index, as: lib}
+    chain: true
+    zip: [{input_id: mlb_filter, as: mlb_filter_item}, {input_id: mlb_clean_sort, as: mlb_clean_sort_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_filter, *a_mlb_clean_sort, *a_mlb_clean_index, *a_reference]
+    outputs: [*a_mlb_stats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env; . ${reference}/refs.env
+        rm -rf ${mlb_stats} && mkdir -p ${mlb_stats} && cd ${mlb_stats} && cp ${lib}/meta.env .
+        if [ $$single_end = true ]; then src=${mlb_filter_item}; else src=${mlb_clean_sort_item}; fi
+        bam=$${id}.mLb.clN.sorted.bam
+        ln -s $$src/$$bam $$bam; ln -s ${lib}/$$bam.bai $$bam.bai; ln -s ${reference}/$$ref_fasta $$ref_fasta
+        samtools \
+            stats \
+            --threads ${task.resources.cpus} \
+            --reference $$ref_fasta \
+            $$bam \
+            > $$bam.stats
+        rm $$bam $$bam.bai $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_flagstat
+    name: MERGED_LIBRARY_FILTER_BAM SAMTOOLS_FLAGSTAT
+    over: {input_id: mlb_clean_index, as: lib}
+    chain: true
+    zip: [{input_id: mlb_filter, as: mlb_filter_item}, {input_id: mlb_clean_sort, as: mlb_clean_sort_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_filter, *a_mlb_clean_sort, *a_mlb_clean_index]
+    outputs: [*a_mlb_flagstat]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_flagstat} && mkdir -p ${mlb_flagstat} && cd ${mlb_flagstat} && cp ${lib}/meta.env .
+        if [ $$single_end = true ]; then src=${mlb_filter_item}; else src=${mlb_clean_sort_item}; fi
+        bam=$${id}.mLb.clN.sorted.bam
+        ln -s $$src/$$bam $$bam; ln -s ${lib}/$$bam.bai $$bam.bai
+        samtools \
+            flagstat \
+            --threads ${task.resources.cpus} \
+            $$bam \
+            > $$bam.flagstat
+        rm $$bam $$bam.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_idxstats
+    name: MERGED_LIBRARY_FILTER_BAM SAMTOOLS_IDXSTATS
+    over: {input_id: mlb_clean_index, as: lib}
+    chain: true
+    zip: [{input_id: mlb_filter, as: mlb_filter_item}, {input_id: mlb_clean_sort, as: mlb_clean_sort_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_filter, *a_mlb_clean_sort, *a_mlb_clean_index]
+    outputs: [*a_mlb_idxstats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_idxstats} && mkdir -p ${mlb_idxstats} && cd ${mlb_idxstats} && cp ${lib}/meta.env .
+        if [ $$single_end = true ]; then src=${mlb_filter_item}; else src=${mlb_clean_sort_item}; fi
+        bam=$${id}.mLb.clN.sorted.bam
+        ln -s $$src/$$bam $$bam; ln -s ${lib}/$$bam.bai $$bam.bai
+        samtools \
+            idxstats \
+            --threads $$(( ${task.resources.cpus} - 1 )) \
+            $$bam \
+            > $$bam.idxstats
+        rm $$bam $$bam.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_cmm
+    name: MERGED_LIBRARY_PICARD_COLLECTMULTIPLEMETRICS
+    over: {input_id: mlb_clean_sort, as: lib}
+    chain: true
+    zip: [{input_id: mlb_filter, as: mlb_filter_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_filter, *a_mlb_clean_sort, *a_reference, *a_chrom_sizes]
+    outputs: [*a_mlb_cmm]
+    resources: *single
+    executor: *picard
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env; . ${reference}/refs.env
+        rm -rf ${mlb_cmm} && mkdir -p ${mlb_cmm} && cd ${mlb_cmm} && cp ${lib}/meta.env .
+        if [ $$single_end = true ]; then src=${mlb_filter_item}; else src=${lib}; fi
+        bam=$${id}.mLb.clN.sorted.bam
+        ln -s $$src/$$bam $$bam; ln -s ${reference}/$$ref_fasta $$ref_fasta; ln -s ${chrom_sizes}/$$ref_fasta.fai $$ref_fasta.fai
+        picard \
+            -Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M \
+            CollectMultipleMetrics \
+            --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp \
+            --INPUT $$bam \
+            --OUTPUT $${id}.mLb.clN.CollectMultipleMetrics \
+            --REFERENCE_SEQUENCE $$ref_fasta
+        rm -rf tmp $$bam $$ref_fasta $$ref_fasta.fai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_genomecov
+    name: MERGED_LIBRARY_BAM_TO_BIGWIG BEDTOOLS_GENOMECOV
+    over: {input_id: mlb_flagstat, as: lib}
+    chain: true
+    zip: [{input_id: mlb_filter, as: mlb_filter_item}, {input_id: mlb_clean_sort, as: mlb_clean_sort_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_filter, *a_mlb_clean_sort, *a_mlb_flagstat, *a_fragment_size]
+    outputs: [*a_mlb_genomecov]
+    resources: *multi
+    executor: *bedtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_genomecov} && mkdir -p ${mlb_genomecov} && cd ${mlb_genomecov} && cp ${lib}/meta.env .
+        if [ $$single_end = true ]; then src=${mlb_filter_item}; else src=${mlb_clean_sort_item}; fi
+        bam=$${id}.mLb.clN.sorted.bam
+        ln -s $$src/$$bam $$bam; ln -s ${lib}/$$bam.flagstat $$bam.flagstat
+        prefix=$${id}.mLb.clN
+        if [ $$single_end = true ]; then pe=''; [ ${fragment_size} -gt 0 ] && args="-fs ${fragment_size}" || args=''; else pe='-pc'; args=''; fi
+        SCALE_FACTOR=$$(grep '[0-9] mapped (' $$bam.flagstat | awk '{print 1000000/$$1}')
+        echo $$SCALE_FACTOR > $${prefix}.scale_factor.txt
+
+        bedtools \
+            genomecov \
+            -ibam $$bam \
+            -bg \
+            -scale $$SCALE_FACTOR \
+            $$pe \
+            $$args \
+        > tmp.bg
+
+        bedtools sort -i tmp.bg > $${prefix}.bedGraph
+        rm tmp.bg $$bam $$bam.flagstat
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_bigwig
+    name: MERGED_LIBRARY_BAM_TO_BIGWIG UCSC_BEDGRAPHTOBIGWIG
+    over: {input_id: mlb_genomecov, as: lib}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mlb_genomecov, *a_chrom_sizes]
+    outputs: [*a_mlb_bigwig]
+    resources: *single
+    executor: *ucsc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_bigwig} && mkdir -p ${mlb_bigwig} && cd ${mlb_bigwig} && cp ${lib}/meta.env .
+        sizes=$$(cd ${chrom_sizes} && ls *.sizes)
+        ln -s ${lib}/$${id}.mLb.clN.bedGraph $${id}.mLb.clN.bedGraph; ln -s ${chrom_sizes}/$$sizes $$sizes
+        bedGraphToBigWig \
+            $${id}.mLb.clN.bedGraph \
+            $$sizes \
+            $${id}.mLb.clN.bigWig
+        rm $${id}.mLb.clN.bedGraph $$sizes
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_mat_scale
+    name: DEEPTOOLS_COMPUTEMATRIX_SCALE_REGIONS
+    over: {input_id: mlb_bigwig, as: lib}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mlb_bigwig, *a_gene_bed]
+    outputs: [*a_mlb_mat_scale]
+    resources: *multi
+    executor: *deeptools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_mat_scale} && mkdir -p ${mlb_mat_scale} && cd ${mlb_mat_scale} && cp ${lib}/meta.env .
+        bed=$$(cd ${gene_bed} && ls *.bed)
+        ln -s ${lib}/$${id}.mLb.clN.bigWig $${id}.mLb.clN.bigWig; ln -s ${gene_bed}/$$bed $$bed
+        prefix=$${id}.mLb.clN.scale_regions
+        computeMatrix \
+            scale-regions --regionBodyLength 1000 --beforeRegionStartLength 3000 --afterRegionStartLength 3000 --missingDataAsZero --skipZeros --smartLabels \
+            --regionsFileName $$bed \
+            --scoreFileName $${id}.mLb.clN.bigWig \
+            --outFileName $${prefix}.computeMatrix.mat.gz \
+            --outFileNameMatrix $${prefix}.computeMatrix.vals.mat.tab \
+            --numberOfProcessors ${task.resources.cpus}
+        rm $${id}.mLb.clN.bigWig $$bed
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_mat_ref
+    name: DEEPTOOLS_COMPUTEMATRIX_REFERENCE_POINT
+    over: {input_id: mlb_bigwig, as: lib}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mlb_bigwig, *a_tss_bed]
+    outputs: [*a_mlb_mat_ref]
+    resources: *multi
+    executor: *deeptools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_mat_ref} && mkdir -p ${mlb_mat_ref} && cd ${mlb_mat_ref} && cp ${lib}/meta.env .
+        bed=$$(cd ${tss_bed} && ls *.bed)
+        ln -s ${lib}/$${id}.mLb.clN.bigWig $${id}.mLb.clN.bigWig; ln -s ${tss_bed}/$$bed $$bed
+        prefix=$${id}.mLb.clN.reference_point
+        computeMatrix \
+            reference-point --missingDataAsZero --skipZeros --smartLabels --upstream 3000 --downstream 3000 \
+            --regionsFileName $$bed \
+            --scoreFileName $${id}.mLb.clN.bigWig \
+            --outFileName $${prefix}.computeMatrix.mat.gz \
+            --outFileNameMatrix $${prefix}.computeMatrix.vals.mat.tab \
+            --numberOfProcessors ${task.resources.cpus}
+        rm $${id}.mLb.clN.bigWig $$bed
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # plotProfile reads the scale-regions matrix under the reference_point
+  # prefix and plotHeatmap the reverse, as conf/modules.config sets them.
+  - kind: horus_map
+    id: mlb_profile
+    name: DEEPTOOLS_PLOTPROFILE
+    over: {input_id: mlb_mat_scale, as: lib}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mlb_mat_scale]
+    outputs: [*a_mlb_profile]
+    resources: *multi
+    executor: *deeptools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_profile} && mkdir -p ${mlb_profile} && cd ${mlb_profile} && cp ${lib}/meta.env .
+        m=$${id}.mLb.clN.scale_regions.computeMatrix.mat.gz
+        ln -s ${lib}/$$m $$m
+        prefix=$${id}.mLb.clN.reference_point
+        plotProfile \
+             \
+            --matrixFile $$m \
+            --outFileName $${prefix}.plotProfile.pdf \
+            --outFileNameData $${prefix}.plotProfile.tab
+        rm $$m
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_heatmap
+    name: DEEPTOOLS_PLOTHEATMAP
+    over: {input_id: mlb_mat_ref, as: lib}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mlb_mat_ref]
+    outputs: [*a_mlb_heatmap]
+    resources: *multi
+    executor: *deeptools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_heatmap} && mkdir -p ${mlb_heatmap} && cd ${mlb_heatmap} && cp ${lib}/meta.env .
+        m=$${id}.mLb.clN.reference_point.computeMatrix.mat.gz
+        ln -s ${lib}/$$m $$m
+        prefix=$${id}.mLb.clN.scale_regions
+        plotHeatmap \
+             \
+            --matrixFile $$m \
+            --outFileName $${prefix}.plotHeatmap.pdf \
+            --outFileNameMatrix $${prefix}.plotHeatmap.mat.tab
+        rm $$m
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_fingerprint
+    name: MERGED_LIBRARY_DEEPTOOLS_PLOTFINGERPRINT
+    over: {input_id: mlb_clean_index, as: lib}
+    chain: true
+    zip: [{input_id: mlb_filter, as: mlb_filter_item}, {input_id: mlb_clean_sort, as: mlb_clean_sort_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_filter, *a_mlb_clean_sort, *a_mlb_clean_index, *a_fingerprint_bins, *a_fragment_size]
+    outputs: [*a_mlb_fingerprint]
+    resources: *multi
+    executor: *deeptools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_fingerprint} && mkdir -p ${mlb_fingerprint} && cd ${mlb_fingerprint} && cp ${lib}/meta.env .
+        if [ $$single_end = true ]; then src=${mlb_filter_item}; else src=${mlb_clean_sort_item}; fi
+        bam=$${id}.mLb.clN.sorted.bam
+        ln -s $$src/$$bam $$bam; ln -s ${lib}/$$bam.bai $$bam.bai
+        extend=''
+        if [ $$single_end = true ] && [ ${fragment_size} -gt 0 ]; then extend="--extendReads ${fragment_size}"; fi
+        prefix=$${id}.mLb.clN
+        plotFingerprint \
+            --skipZeros --numberOfSamples ${fingerprint_bins} --labels $${id}.mLb.clN \
+            $$extend \
+            --bamfiles $$bam \
+            --plotFile $${prefix}.plotFingerprint.pdf \
+            --outRawCounts $${prefix}.plotFingerprint.raw.txt \
+            --outQualityMetrics $${prefix}.plotFingerprint.qcmetrics.txt \
+            --numberOfProcessors ${task.resources.cpus}
+        rm $$bam $$bam.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_macs2
+    name: MERGED_LIBRARY_CALL_ANNOTATE_PEAKS MACS2_CALLPEAK
+    over: {input_id: mlb_clean_index, as: lib}
+    chain: true
+    zip: [{input_id: mlb_filter, as: mlb_filter_item}, {input_id: mlb_clean_sort, as: mlb_clean_sort_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_filter, *a_mlb_clean_sort, *a_mlb_clean_index, *a_gsize, *a_broad_cutoff]
+    outputs: [*a_mlb_macs2]
+    resources: *multi
+    executor: *macs2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_macs2} && mkdir -p ${mlb_macs2} && cd ${mlb_macs2} && cp ${lib}/meta.env .
+        if [ $$single_end = true ]; then src=${mlb_filter_item}; format=BAM; else src=${mlb_clean_sort_item}; format=BAMPE; fi
+        bam=$${id}.mLb.clN.sorted.bam
+        ln -s $$src/$$bam $$bam; ln -s ${lib}/$$bam.bai $$bam.bai
+        macs2 \
+            callpeak \
+            --keep-dup all --nomodel --broad --broad-cutoff ${broad_cutoff} \
+            --gsize $$(cat ${gsize}/kmers.txt) \
+            --format $$format \
+            --name $${id}.mLb.clN \
+            --treatment $$bam \
+
+        rm $$bam $$bam.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # Libraries whose peak file is empty drop out here (the pipeline's
+  # `peaks.size() > 0` filter): their FRiP, peak QC, HOMER and ataqv slots stay empty.
+  - kind: horus_map
+    id: mlb_frip
+    name: MERGED_LIBRARY_CALL_ANNOTATE_PEAKS FRIP_SCORE
+    over: {input_id: mlb_macs2, as: lib}
+    chain: true
+    zip: [{input_id: mlb_filter, as: mlb_filter_item}, {input_id: mlb_clean_sort, as: mlb_clean_sort_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_filter, *a_mlb_clean_sort, *a_mlb_macs2]
+    outputs: [*a_mlb_frip]
+    resources: *multi
+    executor: *frip
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_frip} && mkdir -p ${mlb_frip} && cd ${mlb_frip} && cp ${lib}/meta.env .
+        peak=$${id}.mLb.clN_peaks.broadPeak
+        if [ -s $$(echo ${lib}/$$peak) ]; then
+        if [ $$single_end = true ]; then src=${mlb_filter_item}; else src=${mlb_clean_sort_item}; fi
+        bam=$${id}.mLb.clN.sorted.bam
+        ln -s $$src/$$bam $$bam; ln -s ${lib}/$$peak $$peak
+        READS_IN_PEAKS=$$(intersectBed -a $$bam -b $$peak -bed -c -f 0.20 | awk -F '\t' '{sum += $$NF} END {print sum}')
+        samtools flagstat $$bam > $$bam.flagstat
+        grep 'mapped (' $$bam.flagstat | grep -v "primary" | awk -v a="$$READS_IN_PEAKS" -v OFS='\t' '{print "'$$id'", a/$$1}' > $${id}.FRiP.txt
+        rm $$bam $$peak
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_peaks_mqc
+    name: MERGED_LIBRARY_CALL_ANNOTATE_PEAKS MULTIQC_CUSTOM_PEAKS
+    over: {input_id: mlb_frip, as: lib}
+    chain: true
+    zip: [{input_id: mlb_macs2, as: mlb_macs2_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_macs2, *a_mlb_frip, *a_nfcore]
+    outputs: [*a_mlb_peaks_mqc]
+    resources: *single
+    executor: *ubuntu
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_peaks_mqc} && mkdir -p ${mlb_peaks_mqc} && cd ${mlb_peaks_mqc} && cp ${lib}/meta.env .
+        peak=$${id}.mLb.clN_peaks.broadPeak
+        if [ -s $$(echo ${mlb_macs2_item}/$$peak) ]; then
+        prefix=$${id}.mLb.clN_peaks
+        h1=merged_library_peak_count_header.txt; h2=merged_library_frip_score_header.txt
+        ln -s ${mlb_macs2_item}/$$peak $$peak; ln -s ${lib}/$${id}.FRiP.txt $${id}.FRiP.txt
+        ln -s ${nfcore}/assets/multiqc/$$h1 $$h1; ln -s ${nfcore}/assets/multiqc/$$h2 $$h2
+        cat $$peak | wc -l | awk -v OFS='\t' '{ print "'$$prefix'", $$1 }' | cat $$h1 - > $${prefix}.count_mqc.tsv
+        cat $$h2 $${id}.FRiP.txt > $${prefix}.FRiP_mqc.tsv
+        rm $$peak $${id}.FRiP.txt $$h1 $$h2
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_homer
+    name: MERGED_LIBRARY_CALL_ANNOTATE_PEAKS HOMER_ANNOTATEPEAKS
+    over: {input_id: mlb_macs2, as: lib}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mlb_macs2, *a_reference]
+    outputs: [*a_mlb_homer]
+    resources: *multi
+    executor: *homer
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env; . ${reference}/refs.env
+        rm -rf ${mlb_homer} && mkdir -p ${mlb_homer} && cd ${mlb_homer} && cp ${lib}/meta.env .
+        peak=$${id}.mLb.clN_peaks.broadPeak
+        if [ -s $$(echo ${lib}/$$peak) ]; then
+        ln -s ${lib}/$$peak $$peak; ln -s ${reference}/$$ref_fasta $$ref_fasta; ln -s ${reference}/$$ref_gtf $$ref_gtf
+        annotatePeaks.pl \
+            $$peak \
+            $$ref_fasta \
+            -gid \
+            -gtf $$ref_gtf \
+            -cpu ${task.resources.cpus} \
+            > $${id}.mLb.clN_peaks.annotatePeaks.txt
+        rm $$peak $$ref_fasta $$ref_gtf
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mlb_ataqv
+    name: MERGED_LIBRARY_ATAQV_ATAQV
+    over: {input_id: mlb_macs2, as: lib}
+    chain: true
+    zip: [{input_id: mlb_markdup, as: mlb_markdup_item}, {input_id: mlb_md_index, as: mlb_md_index_item}]
+    max_concurrency: 16
+    inputs: [*a_mlb_markdup, *a_mlb_md_index, *a_mlb_macs2, *a_tss_bed, *a_autosomes, *a_mito_name]
+    outputs: [*a_mlb_ataqv]
+    resources: *multi
+    executor: *ataqv
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${lib}/meta.env
+        rm -rf ${mlb_ataqv} && mkdir -p ${mlb_ataqv} && cd ${mlb_ataqv} && cp ${lib}/meta.env .
+        peak=$${id}.mLb.clN_peaks.broadPeak
+        if [ -s $$(echo ${lib}/$$peak) ]; then
+        bam=$${id}.mLb.mkD.sorted.bam
+        tss=$$(cd ${tss_bed} && ls *.bed); auto=$$(cd ${autosomes} && ls *.txt)
+        ln -s ${mlb_markdup_item}/$$bam $$bam; ln -s ${mlb_md_index_item}/$$bam.bai $$bam.bai; ln -s ${lib}/$$peak $$peak
+        ln -s ${tss_bed}/$$tss $$tss; ln -s ${autosomes}/$$auto $$auto
+        mito=''; [ -n ${mito_name} ] && mito="--mitochondrial-reference-name ${mito_name}"
+        ataqv \
+            --ignore-read-groups \
+            $$mito \
+            --peak-file $$peak \
+            --tss-file $$tss \
+             \
+            --autosomal-reference-file $$auto \
+            --metrics-file "$${id}.ataqv.json" \
+            --threads ${task.resources.cpus} \
+            --name $$id \
+            NA \
+            $$bam
+        rm $$bam $$bam.bai $$peak $$tss $$auto
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- merged library, aggregates
+  - kind: horus_task
+    id: mlb_mkarv
+    name: MERGED_LIBRARY_ATAQV_MKARV
+    inputs: [*a_mlb_ataqv]
+    outputs: [*a_mlb_mkarv]
+    resources: *multi
+    executor: *ataqv
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${mlb_mkarv} && mkdir -p ${mlb_mkarv} && cd ${mlb_mkarv}
+        mkdir jsons && for f in ${mlb_ataqv}/*/*.ataqv.json; do ln -s $$f jsons/; done
+        mkarv \
+             \
+            --concurrency ${task.resources.cpus} \
+            --force \
+            ./html/ \
+            jsons/*
+        rm -r jsons
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: mlb_macs2_qc
+    name: MERGED_LIBRARY_CALL_ANNOTATE_PEAKS PLOT_MACS2_QC
+    inputs: [*a_mlb_macs2, *a_nfcore]
+    outputs: [*a_mlb_macs2_qc]
+    resources: *multi
+    executor: *plotr
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${mlb_macs2_qc} && mkdir -p ${mlb_macs2_qc} && cd ${mlb_macs2_qc}
+        export PATH=${nfcore}/bin:$$PATH
+        peaks=""
+        for f in ${mlb_macs2}/*/*_peaks.broadPeak; do [ -s $$f ] && ln -s $$f . && peaks="$$peaks,$$(basename $$f)"; done
+        peaks=$${peaks#,}
+        plot_macs2_qc.r \
+            -i $$peaks \
+            -s $$(echo $$peaks | sed 's/_peaks\.broadPeak//g') \
+            -o ./ -p macs2_peak.mLb.clN
+        rm $$(echo $$peaks | tr , ' ')
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: mlb_homer_qc
+    name: MERGED_LIBRARY_CALL_ANNOTATE_PEAKS PLOT_HOMER_ANNOTATEPEAKS
+    inputs: [*a_mlb_homer, *a_nfcore]
+    outputs: [*a_mlb_homer_qc]
+    resources: *multi
+    executor: *plotr
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${mlb_homer_qc} && mkdir -p ${mlb_homer_qc} && cd ${mlb_homer_qc}
+        export PATH=${nfcore}/bin:$$PATH
+        h=merged_library_peak_annotation_header.txt
+        ln -s ${nfcore}/assets/multiqc/$$h $$h
+        annos=""
+        for f in ${mlb_homer}/*/*.annotatePeaks.txt; do ln -s $$f . && annos="$$annos,$$(basename $$f)"; done
+        annos=$${annos#,}
+        plot_homer_annotatepeaks.r \
+            -i $$annos \
+            -s $$(echo $$annos | sed 's/\.mLb\.clN_peaks\.annotatePeaks\.txt//g') \
+            -p macs2_annotatePeaks.mLb.clN \
+            -o ./
+
+        find ./ -type f -name "*summary.txt" -exec cat {} \; | cat $$h - > macs2_annotatePeaks.mLb.clN.summary_mqc.tsv
+        rm $$h $$(echo $$annos | tr , ' ')
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # Consensus peaks, featureCounts and DESeq2 QC run only with more than one
+  # peak file; otherwise their outputs stay empty.
+  - kind: horus_task
+    id: mlb_consensus
+    name: MERGED_LIBRARY_CONSENSUS_PEAKS MACS2_CONSENSUS
+    inputs: [*a_mlb_macs2, *a_nfcore, *a_min_reps]
+    outputs: [*a_mlb_consensus]
+    resources: *single
+    executor: *consensus
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${mlb_consensus} && mkdir -p ${mlb_consensus} && cd ${mlb_consensus}
+        export PATH=${nfcore}/bin:$$PATH
+        for f in ${mlb_macs2}/*/*_peaks.broadPeak; do [ -s $$f ] && ln -s $$f .; done
+        set -- $$(ls *_peaks.broadPeak 2>/dev/null | LC_ALL=C sort)
+        if [ $$# -gt 1 ]; then
+        prefix=consensus_peaks.mLb.clN
+        sort -T '.' -k1,1 -k2,2n $$@ \
+            | mergeBed -c 2,3,4,5,6,7,8,9 -o collapse,collapse,collapse,collapse,collapse,collapse,collapse,collapse > $${prefix}.txt
+
+        macs2_merged_expand.py \
+            $${prefix}.txt \
+            $$(echo $$@ | tr ' ' , | sed 's/_peaks\.broadPeak//g') \
+            $${prefix}.boolean.txt \
+            --min_replicates ${min_reps_consensus} \
+
+
+        awk -v FS='\t' -v OFS='\t' 'FNR > 1 { print $$1, $$2, $$3, $$4, "0", "+" }' $${prefix}.boolean.txt > $${prefix}.bed
+
+        echo -e "GeneID\tChr\tStart\tEnd\tStrand" > $${prefix}.saf
+        awk -v FS='\t' -v OFS='\t' 'FNR > 1 { print $$4, $$1, $$2, $$3,  "+" }' $${prefix}.boolean.txt >> $${prefix}.saf
+
+        plot_peak_intersect.r -i $${prefix}.boolean.intersect.txt -o $${prefix}.boolean.intersect.plot.pdf
+        fi
+        rm -f *_peaks.broadPeak
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: mlb_cons_homer
+    name: MERGED_LIBRARY_CONSENSUS_PEAKS HOMER_ANNOTATEPEAKS
+    inputs: [*a_mlb_consensus, *a_reference]
+    outputs: [*a_mlb_cons_homer]
+    resources: *multi
+    executor: *homer
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${mlb_cons_homer} && mkdir -p ${mlb_cons_homer} && cd ${mlb_cons_homer}
+        prefix=consensus_peaks.mLb.clN
+        if [ -e ${mlb_consensus}/$$prefix.bed ]; then
+        ln -s ${mlb_consensus}/$$prefix.bed $$prefix.bed; ln -s ${reference}/$$ref_fasta $$ref_fasta; ln -s ${reference}/$$ref_gtf $$ref_gtf
+        annotatePeaks.pl \
+            $$prefix.bed \
+            $$ref_fasta \
+            -gid \
+            -gtf $$ref_gtf \
+            -cpu ${task.resources.cpus} \
+            > $$prefix.annotatePeaks.txt
+        rm $$prefix.bed $$ref_fasta $$ref_gtf
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: mlb_counts
+    name: MERGED_LIBRARY_CONSENSUS_PEAKS SUBREAD_FEATURECOUNTS
+    inputs: [*a_mlb_consensus, *a_mlb_macs2, *a_mlb_filter, *a_mlb_clean_sort]
+    outputs: [*a_mlb_counts]
+    resources: *multi
+    executor: *subread
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${mlb_counts} && mkdir -p ${mlb_counts} && cd ${mlb_counts}
+        prefix=consensus_peaks.mLb.clN
+        # BAMs of the libraries that have peaks
+        bams=""
+        for p in ${mlb_macs2}/*/*.mLb.clN_peaks.broadPeak; do
+            [ -s $$p ] || continue
+            b=$$(basename $$p .mLb.clN_peaks.broadPeak).mLb.clN.sorted.bam
+            ln -s $$(ls ${mlb_filter}/*/$$b ${mlb_clean_sort}/*/$$b 2>/dev/null) $$b
+            bams="$$bams $$b"
+        done
+        set -- $$bams
+        if [ -e ${mlb_consensus}/$$prefix.saf ] && [ $$# -gt 1 ]; then
+        ln -s ${mlb_consensus}/$$prefix.saf $$prefix.saf
+        featureCounts \
+            -F SAF -O --fracOverlap 0.2 \
+            -p \
+            -T ${task.resources.cpus} \
+            -a $$prefix.saf \
+            -s 0 \
+            -o $$prefix.featureCounts.txt \
+            $$@
+        rm $$prefix.saf
+        fi
+        rm -f $$bams
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: mlb_deseq2
+    name: MERGED_LIBRARY_CONSENSUS_PEAKS DESEQ2_QC
+    inputs: [*a_mlb_counts, *a_nfcore]
+    outputs: [*a_mlb_deseq2]
+    resources: *multi
+    executor: *deseq2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${mlb_deseq2} && mkdir -p ${mlb_deseq2} && cd ${mlb_deseq2}
+        export PATH=${nfcore}/bin:$$PATH
+        counts=consensus_peaks.mLb.clN.featureCounts.txt
+        if [ -e ${mlb_counts}/$$counts ]; then
+        prefix=consensus_peaks.mLb.clN; id=consensus_peaks; index=1
+        h1=merged_library_deseq2_pca_header.txt; h2=merged_library_deseq2_clustering_header.txt
+        ln -s ${mlb_counts}/$$counts $$counts; ln -s ${nfcore}/assets/multiqc/$$h1 $$h1; ln -s ${nfcore}/assets/multiqc/$$h2 $$h2
+        deseq2_qc.r \
+            --count_file $$counts \
+            --outdir ./ \
+            --outprefix $$prefix \
+            --cores ${task.resources.cpus} \
+            --id_col 1 --sample_suffix '.mLb.clN.sorted.bam' --count_col 7 --vst TRUE
+
+        sed "s/deseq2_pca/deseq2_pca_$$index/g" <$$h1 >tmp.txt
+        sed -i -e "s/DESeq2 /$$id DESeq2 /g" tmp.txt
+        cat tmp.txt $${prefix}.pca.vals.txt > $${prefix}.pca.vals_mqc.tsv
+
+        sed "s/deseq2_clustering/deseq2_clustering_$$index/g" <$$h2 >tmp.txt
+        sed -i -e "s/DESeq2 /$$id DESeq2 /g" tmp.txt
+        cat tmp.txt $${prefix}.sample.dists.txt > $${prefix}.sample.dists_mqc.tsv
+        rm tmp.txt $$counts $$h1 $$h2
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- merged replicate
+  - kind: horus_map
+    id: mrp_merge
+    name: PICARD_MERGESAMFILES_REPLICATE
+    over: {input_id: replicates, as: rep}
+    max_concurrency: 16
+    inputs: [*a_replicates, *a_mlb_filter, *a_mlb_clean_sort]
+    outputs: [*a_mrp_merge]
+    resources: *multi
+    executor: *picard
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        id=$$(basename ${rep}); . ${rep}
+        rm -rf ${mrp_merge} && mkdir -p ${mrp_merge} && cd ${mrp_merge}
+        { echo id=$$id; cat ${rep}; } > meta.env
+        if [ $$single_end = true ]; then src=${mlb_filter}; else src=${mlb_clean_sort}; fi
+        bams=$$(for l in $$libraries; do echo $$l.mLb.clN.sorted.bam; done | LC_ALL=C sort)
+        for b in $$bams; do ln -s $$src/*/$$b $$b; done
+        picard \
+            -Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M \
+            MergeSamFiles \
+            --SORT_ORDER coordinate --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp \
+            $$(printf -- '--INPUT %s ' $$bams) \
+            --OUTPUT $${id}.mRp.sorted.bam
+        rm -rf tmp $$bams
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mrp_markdup
+    name: MERGED_REPLICATE_MARKDUPLICATES_PICARD PICARD_MARKDUPLICATES
+    over: {input_id: mrp_merge, as: rep}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mrp_merge, *a_reference, *a_chrom_sizes]
+    outputs: [*a_mrp_markdup]
+    resources: *multi
+    executor: *picard
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${rep}/meta.env; . ${reference}/refs.env
+        rm -rf ${mrp_markdup} && mkdir -p ${mrp_markdup} && cd ${mrp_markdup} && cp ${rep}/meta.env .
+        ln -s ${rep}/$${id}.mRp.sorted.bam $${id}.mRp.sorted.bam
+        ln -s ${reference}/$$ref_fasta $$ref_fasta; ln -s ${chrom_sizes}/$$ref_fasta.fai $$ref_fasta.fai
+        picard \
+            -Xmx$$(( ${task.resources.memory_gb} * 1024 * 8 / 10 ))M \
+            MarkDuplicates \
+            --ASSUME_SORTED true --REMOVE_DUPLICATES true --VALIDATION_STRINGENCY LENIENT --TMP_DIR tmp \
+            --INPUT $${id}.mRp.sorted.bam \
+            --OUTPUT $${id}.mRp.clN.sorted.bam \
+            --REFERENCE_SEQUENCE $$ref_fasta \
+            --METRICS_FILE $${id}.mRp.clN.sorted.MarkDuplicates.metrics.txt
+        rm -rf tmp $${id}.mRp.sorted.bam $$ref_fasta $$ref_fasta.fai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mrp_index
+    name: MERGED_REPLICATE_MARKDUPLICATES_PICARD SAMTOOLS_INDEX
+    over: {input_id: mrp_markdup, as: rep}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mrp_markdup]
+    outputs: [*a_mrp_index]
+    resources: *multi
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${rep}/meta.env
+        rm -rf ${mrp_index} && mkdir -p ${mrp_index} && cd ${mrp_index} && cp ${rep}/meta.env .
+        bam=$${id}.mRp.clN.sorted.bam
+        ln -s ${rep}/$$bam $$bam
+        samtools \
+            index \
+            -@ $$(( ${task.resources.cpus} - 1 )) \
+             \
+            $$bam
+        rm $$bam
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mrp_stats
+    name: MERGED_REPLICATE_MARKDUPLICATES_PICARD SAMTOOLS_STATS
+    over: {input_id: mrp_index, as: rep}
+    chain: true
+    zip: [{input_id: mrp_markdup, as: mrp_markdup_item}]
+    max_concurrency: 16
+    inputs: [*a_mrp_markdup, *a_mrp_index, *a_reference]
+    outputs: [*a_mrp_stats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${rep}/meta.env; . ${reference}/refs.env
+        rm -rf ${mrp_stats} && mkdir -p ${mrp_stats} && cd ${mrp_stats} && cp ${rep}/meta.env .
+        bam=$${id}.mRp.clN.sorted.bam
+        ln -s ${mrp_markdup_item}/$$bam $$bam; ln -s ${rep}/$$bam.bai $$bam.bai; ln -s ${reference}/$$ref_fasta $$ref_fasta
+        samtools \
+            stats \
+            --threads ${task.resources.cpus} \
+            --reference $$ref_fasta \
+            $$bam \
+            > $$bam.stats
+        rm $$bam $$bam.bai $$ref_fasta
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mrp_flagstat
+    name: MERGED_REPLICATE_MARKDUPLICATES_PICARD SAMTOOLS_FLAGSTAT
+    over: {input_id: mrp_index, as: rep}
+    chain: true
+    zip: [{input_id: mrp_markdup, as: mrp_markdup_item}]
+    max_concurrency: 16
+    inputs: [*a_mrp_markdup, *a_mrp_index]
+    outputs: [*a_mrp_flagstat]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${rep}/meta.env
+        rm -rf ${mrp_flagstat} && mkdir -p ${mrp_flagstat} && cd ${mrp_flagstat} && cp ${rep}/meta.env .
+        bam=$${id}.mRp.clN.sorted.bam
+        ln -s ${mrp_markdup_item}/$$bam $$bam; ln -s ${rep}/$$bam.bai $$bam.bai
+        samtools \
+            flagstat \
+            --threads ${task.resources.cpus} \
+            $$bam \
+            > $$bam.flagstat
+        rm $$bam $$bam.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mrp_idxstats
+    name: MERGED_REPLICATE_MARKDUPLICATES_PICARD SAMTOOLS_IDXSTATS
+    over: {input_id: mrp_index, as: rep}
+    chain: true
+    zip: [{input_id: mrp_markdup, as: mrp_markdup_item}]
+    max_concurrency: 16
+    inputs: [*a_mrp_markdup, *a_mrp_index]
+    outputs: [*a_mrp_idxstats]
+    resources: *single
+    executor: *samtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${rep}/meta.env
+        rm -rf ${mrp_idxstats} && mkdir -p ${mrp_idxstats} && cd ${mrp_idxstats} && cp ${rep}/meta.env .
+        bam=$${id}.mRp.clN.sorted.bam
+        ln -s ${mrp_markdup_item}/$$bam $$bam; ln -s ${rep}/$$bam.bai $$bam.bai
+        samtools \
+            idxstats \
+            --threads $$(( ${task.resources.cpus} - 1 )) \
+            $$bam \
+            > $$bam.idxstats
+        rm $$bam $$bam.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mrp_genomecov
+    name: MERGED_REPLICATE_BAM_TO_BIGWIG BEDTOOLS_GENOMECOV
+    over: {input_id: mrp_flagstat, as: rep}
+    chain: true
+    zip: [{input_id: mrp_markdup, as: mrp_markdup_item}]
+    max_concurrency: 16
+    inputs: [*a_mrp_markdup, *a_mrp_flagstat, *a_fragment_size]
+    outputs: [*a_mrp_genomecov]
+    resources: *multi
+    executor: *bedtools
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${rep}/meta.env
+        rm -rf ${mrp_genomecov} && mkdir -p ${mrp_genomecov} && cd ${mrp_genomecov} && cp ${rep}/meta.env .
+        bam=$${id}.mRp.clN.sorted.bam
+        ln -s ${mrp_markdup_item}/$$bam $$bam; ln -s ${rep}/$$bam.flagstat $$bam.flagstat
+        prefix=$${id}.mRp.clN
+        if [ $$single_end = true ]; then pe=''; [ ${fragment_size} -gt 0 ] && args="-fs ${fragment_size}" || args=''; else pe='-pc'; args=''; fi
+        SCALE_FACTOR=$$(grep '[0-9] mapped (' $$bam.flagstat | awk '{print 1000000/$$1}')
+        echo $$SCALE_FACTOR > $${prefix}.scale_factor.txt
+
+        bedtools \
+            genomecov \
+            -ibam $$bam \
+            -bg \
+            -scale $$SCALE_FACTOR \
+            $$pe \
+            $$args \
+        > tmp.bg
+
+        bedtools sort -i tmp.bg > $${prefix}.bedGraph
+        rm tmp.bg $$bam $$bam.flagstat
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mrp_bigwig
+    name: MERGED_REPLICATE_BAM_TO_BIGWIG UCSC_BEDGRAPHTOBIGWIG
+    over: {input_id: mrp_genomecov, as: rep}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mrp_genomecov, *a_chrom_sizes]
+    outputs: [*a_mrp_bigwig]
+    resources: *single
+    executor: *ucsc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${rep}/meta.env
+        rm -rf ${mrp_bigwig} && mkdir -p ${mrp_bigwig} && cd ${mrp_bigwig} && cp ${rep}/meta.env .
+        sizes=$$(cd ${chrom_sizes} && ls *.sizes)
+        ln -s ${rep}/$${id}.mRp.clN.bedGraph $${id}.mRp.clN.bedGraph; ln -s ${chrom_sizes}/$$sizes $$sizes
+        bedGraphToBigWig \
+            $${id}.mRp.clN.bedGraph \
+            $$sizes \
+            $${id}.mRp.clN.bigWig
+        rm $${id}.mRp.clN.bedGraph $$sizes
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mrp_macs2
+    name: MERGED_REPLICATE_CALL_ANNOTATE_PEAKS MACS2_CALLPEAK
+    over: {input_id: mrp_index, as: rep}
+    chain: true
+    zip: [{input_id: mrp_markdup, as: mrp_markdup_item}]
+    max_concurrency: 16
+    inputs: [*a_mrp_markdup, *a_mrp_index, *a_gsize, *a_broad_cutoff]
+    outputs: [*a_mrp_macs2]
+    resources: *multi
+    executor: *macs2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${rep}/meta.env
+        rm -rf ${mrp_macs2} && mkdir -p ${mrp_macs2} && cd ${mrp_macs2} && cp ${rep}/meta.env .
+        if [ $$single_end = true ]; then format=BAM; else format=BAMPE; fi
+        bam=$${id}.mRp.clN.sorted.bam
+        ln -s ${mrp_markdup_item}/$$bam $$bam; ln -s ${rep}/$$bam.bai $$bam.bai
+        macs2 \
+            callpeak \
+            --keep-dup all --nomodel --broad --broad-cutoff ${broad_cutoff} \
+            --gsize $$(cat ${gsize}/kmers.txt) \
+            --format $$format \
+            --name $${id}.mRp.clN \
+            --treatment $$bam \
+
+        rm $$bam $$bam.bai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mrp_frip
+    name: MERGED_REPLICATE_CALL_ANNOTATE_PEAKS FRIP_SCORE
+    over: {input_id: mrp_macs2, as: rep}
+    chain: true
+    zip: [{input_id: mrp_markdup, as: mrp_markdup_item}]
+    max_concurrency: 16
+    inputs: [*a_mrp_markdup, *a_mrp_macs2]
+    outputs: [*a_mrp_frip]
+    resources: *multi
+    executor: *frip
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${rep}/meta.env
+        rm -rf ${mrp_frip} && mkdir -p ${mrp_frip} && cd ${mrp_frip} && cp ${rep}/meta.env .
+        peak=$${id}.mRp.clN_peaks.broadPeak
+        if [ -s $$(echo ${rep}/$$peak) ]; then
+        bam=$${id}.mRp.clN.sorted.bam
+        ln -s ${mrp_markdup_item}/$$bam $$bam; ln -s ${rep}/$$peak $$peak
+        READS_IN_PEAKS=$$(intersectBed -a $$bam -b $$peak -bed -c -f 0.20 | awk -F '\t' '{sum += $$NF} END {print sum}')
+        samtools flagstat $$bam > $$bam.flagstat
+        grep 'mapped (' $$bam.flagstat | grep -v "primary" | awk -v a="$$READS_IN_PEAKS" -v OFS='\t' '{print "'$$id'", a/$$1}' > $${id}.FRiP.txt
+        rm $$bam $$peak
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mrp_peaks_mqc
+    name: MERGED_REPLICATE_CALL_ANNOTATE_PEAKS MULTIQC_CUSTOM_PEAKS
+    over: {input_id: mrp_frip, as: rep}
+    chain: true
+    zip: [{input_id: mrp_macs2, as: mrp_macs2_item}]
+    max_concurrency: 16
+    inputs: [*a_mrp_macs2, *a_mrp_frip, *a_nfcore]
+    outputs: [*a_mrp_peaks_mqc]
+    resources: *single
+    executor: *ubuntu
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${rep}/meta.env
+        rm -rf ${mrp_peaks_mqc} && mkdir -p ${mrp_peaks_mqc} && cd ${mrp_peaks_mqc} && cp ${rep}/meta.env .
+        peak=$${id}.mRp.clN_peaks.broadPeak
+        if [ -s $$(echo ${mrp_macs2_item}/$$peak) ]; then
+        prefix=$${id}.mRp.clN_peaks
+        h1=merged_replicate_peak_count_header.txt; h2=merged_replicate_frip_score_header.txt
+        ln -s ${mrp_macs2_item}/$$peak $$peak; ln -s ${rep}/$${id}.FRiP.txt $${id}.FRiP.txt
+        ln -s ${nfcore}/assets/multiqc/$$h1 $$h1; ln -s ${nfcore}/assets/multiqc/$$h2 $$h2
+        cat $$peak | wc -l | awk -v OFS='\t' '{ print "'$$prefix'", $$1 }' | cat $$h1 - > $${prefix}.count_mqc.tsv
+        cat $$h2 $${id}.FRiP.txt > $${prefix}.FRiP_mqc.tsv
+        rm $$peak $${id}.FRiP.txt $$h1 $$h2
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_map
+    id: mrp_homer
+    name: MERGED_REPLICATE_CALL_ANNOTATE_PEAKS HOMER_ANNOTATEPEAKS
+    over: {input_id: mrp_macs2, as: rep}
+    chain: true
+    max_concurrency: 16
+    inputs: [*a_mrp_macs2, *a_reference]
+    outputs: [*a_mrp_homer]
+    resources: *multi
+    executor: *homer
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${rep}/meta.env; . ${reference}/refs.env
+        rm -rf ${mrp_homer} && mkdir -p ${mrp_homer} && cd ${mrp_homer} && cp ${rep}/meta.env .
+        peak=$${id}.mRp.clN_peaks.broadPeak
+        if [ -s $$(echo ${rep}/$$peak) ]; then
+        ln -s ${rep}/$$peak $$peak; ln -s ${reference}/$$ref_fasta $$ref_fasta; ln -s ${reference}/$$ref_gtf $$ref_gtf
+        annotatePeaks.pl \
+            $$peak \
+            $$ref_fasta \
+            -gid \
+            -gtf $$ref_gtf \
+            -cpu ${task.resources.cpus} \
+            > $${id}.mRp.clN_peaks.annotatePeaks.txt
+        rm $$peak $$ref_fasta $$ref_gtf
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- merged replicate, aggregates
+  - kind: horus_task
+    id: mrp_macs2_qc
+    name: MERGED_REPLICATE_CALL_ANNOTATE_PEAKS PLOT_MACS2_QC
+    inputs: [*a_mrp_macs2, *a_nfcore]
+    outputs: [*a_mrp_macs2_qc]
+    resources: *multi
+    executor: *plotr
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${mrp_macs2_qc} && mkdir -p ${mrp_macs2_qc} && cd ${mrp_macs2_qc}
+        export PATH=${nfcore}/bin:$$PATH
+        peaks=""
+        for f in ${mrp_macs2}/*/*_peaks.broadPeak; do [ -s $$f ] && ln -s $$f . && peaks="$$peaks,$$(basename $$f)"; done
+        peaks=$${peaks#,}
+        if [ -n "$$peaks" ]; then
+        plot_macs2_qc.r \
+            -i $$peaks \
+            -s $$(echo $$peaks | sed 's/_peaks\.broadPeak//g') \
+            -o ./ -p macs2_peak.mRp.clN
+        rm $$(echo $$peaks | tr , ' ')
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: mrp_homer_qc
+    name: MERGED_REPLICATE_CALL_ANNOTATE_PEAKS PLOT_HOMER_ANNOTATEPEAKS
+    inputs: [*a_mrp_homer, *a_nfcore]
+    outputs: [*a_mrp_homer_qc]
+    resources: *multi
+    executor: *plotr
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${mrp_homer_qc} && mkdir -p ${mrp_homer_qc} && cd ${mrp_homer_qc}
+        export PATH=${nfcore}/bin:$$PATH
+        annos=""
+        for f in ${mrp_homer}/*/*.annotatePeaks.txt; do [ -e $$f ] && ln -s $$f . && annos="$$annos,$$(basename $$f)"; done
+        annos=$${annos#,}
+        if [ -n "$$annos" ]; then
+        h=merged_replicate_peak_annotation_header.txt
+        ln -s ${nfcore}/assets/multiqc/$$h $$h
+        plot_homer_annotatepeaks.r \
+            -i $$annos \
+            -s $$(echo $$annos | sed 's/\.mRp\.clN_peaks\.annotatePeaks\.txt//g') \
+            -p macs2_annotatePeaks.mRp.clN \
+            -o ./
+
+        find ./ -type f -name "*summary.txt" -exec cat {} \; | cat $$h - > macs2_annotatePeaks.mRp.clN.summary_mqc.tsv
+        rm $$h $$(echo $$annos | tr , ' ')
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: mrp_consensus
+    name: MERGED_REPLICATE_CONSENSUS_PEAKS MACS2_CONSENSUS
+    inputs: [*a_mrp_macs2, *a_nfcore]
+    outputs: [*a_mrp_consensus]
+    resources: *single
+    executor: *consensus
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${mrp_consensus} && mkdir -p ${mrp_consensus} && cd ${mrp_consensus}
+        export PATH=${nfcore}/bin:$$PATH
+        for f in ${mrp_macs2}/*/*_peaks.broadPeak; do [ -s $$f ] && ln -s $$f .; done
+        set -- $$(ls *_peaks.broadPeak 2>/dev/null | LC_ALL=C sort)
+        if [ $$# -gt 1 ]; then
+        prefix=consensus_peaks.mRp.clN
+        sort -T '.' -k1,1 -k2,2n $$@ \
+            | mergeBed -c 2,3,4,5,6,7,8,9 -o collapse,collapse,collapse,collapse,collapse,collapse,collapse,collapse > $${prefix}.txt
+
+        macs2_merged_expand.py \
+            $${prefix}.txt \
+            $$(echo $$@ | tr ' ' , | sed 's/_peaks\.broadPeak//g') \
+            $${prefix}.boolean.txt \
+             \
+
+
+        awk -v FS='\t' -v OFS='\t' 'FNR > 1 { print $$1, $$2, $$3, $$4, "0", "+" }' $${prefix}.boolean.txt > $${prefix}.bed
+
+        echo -e "GeneID\tChr\tStart\tEnd\tStrand" > $${prefix}.saf
+        awk -v FS='\t' -v OFS='\t' 'FNR > 1 { print $$4, $$1, $$2, $$3,  "+" }' $${prefix}.boolean.txt >> $${prefix}.saf
+
+        plot_peak_intersect.r -i $${prefix}.boolean.intersect.txt -o $${prefix}.boolean.intersect.plot.pdf
+        fi
+        rm -f *_peaks.broadPeak
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: mrp_cons_homer
+    name: MERGED_REPLICATE_CONSENSUS_PEAKS HOMER_ANNOTATEPEAKS
+    inputs: [*a_mrp_consensus, *a_reference]
+    outputs: [*a_mrp_cons_homer]
+    resources: *multi
+    executor: *homer
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${mrp_cons_homer} && mkdir -p ${mrp_cons_homer} && cd ${mrp_cons_homer}
+        prefix=consensus_peaks.mRp.clN
+        if [ -e ${mrp_consensus}/$$prefix.bed ]; then
+        ln -s ${mrp_consensus}/$$prefix.bed $$prefix.bed; ln -s ${reference}/$$ref_fasta $$ref_fasta; ln -s ${reference}/$$ref_gtf $$ref_gtf
+        annotatePeaks.pl \
+            $$prefix.bed \
+            $$ref_fasta \
+            -gid \
+            -gtf $$ref_gtf \
+            -cpu ${task.resources.cpus} \
+            > $$prefix.annotatePeaks.txt
+        rm $$prefix.bed $$ref_fasta $$ref_gtf
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # featureCounts on the library BAMs of every replicate group with peaks.
+  - kind: horus_task
+    id: mrp_counts
+    name: MERGED_REPLICATE_CONSENSUS_PEAKS SUBREAD_FEATURECOUNTS
+    inputs: [*a_mrp_consensus, *a_mrp_macs2, *a_replicates, *a_mlb_filter, *a_mlb_clean_sort]
+    outputs: [*a_mrp_counts]
+    resources: *multi
+    executor: *subread
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${mrp_counts} && mkdir -p ${mrp_counts} && cd ${mrp_counts}
+        prefix=consensus_peaks.mRp.clN
+        bams=""
+        for p in ${mrp_macs2}/*/*.mRp.clN_peaks.broadPeak; do
+            [ -s $$p ] || continue
+            libraries=$$(. ${replicates}/$$(basename $$p .mRp.clN_peaks.broadPeak); echo $$libraries)
+            for l in $$libraries; do
+                b=$$l.mLb.clN.sorted.bam
+                ln -s $$(ls ${mlb_filter}/*/$$b ${mlb_clean_sort}/*/$$b 2>/dev/null) $$b
+                bams="$$bams $$b"
+            done
+        done
+        set -- $$bams
+        if [ -e ${mrp_consensus}/$$prefix.saf ] && [ $$# -gt 1 ]; then
+        ln -s ${mrp_consensus}/$$prefix.saf $$prefix.saf
+        featureCounts \
+            -F SAF -O --fracOverlap 0.2 \
+            -p \
+            -T ${task.resources.cpus} \
+            -a $$prefix.saf \
+            -s 0 \
+            -o $$prefix.featureCounts.txt \
+            $$@
+        rm $$prefix.saf
+        fi
+        rm -f $$bams
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  - kind: horus_task
+    id: mrp_deseq2
+    name: MERGED_REPLICATE_CONSENSUS_PEAKS DESEQ2_QC
+    inputs: [*a_mrp_counts, *a_nfcore]
+    outputs: [*a_mrp_deseq2]
+    resources: *multi
+    executor: *deseq2
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${mrp_deseq2} && mkdir -p ${mrp_deseq2} && cd ${mrp_deseq2}
+        export PATH=${nfcore}/bin:$$PATH
+        counts=consensus_peaks.mRp.clN.featureCounts.txt
+        if [ -e ${mrp_counts}/$$counts ]; then
+        prefix=consensus_peaks.mRp.clN; id=consensus_peaks; index=1
+        h1=merged_replicate_deseq2_pca_header.txt; h2=merged_replicate_deseq2_clustering_header.txt
+        ln -s ${mrp_counts}/$$counts $$counts; ln -s ${nfcore}/assets/multiqc/$$h1 $$h1; ln -s ${nfcore}/assets/multiqc/$$h2 $$h2
+        deseq2_qc.r \
+            --count_file $$counts \
+            --outdir ./ \
+            --outprefix $$prefix \
+            --cores ${task.resources.cpus} \
+            --id_col 1 --sample_suffix '.mLb.clN.sorted.bam' --count_col 7 --vst TRUE
+
+        sed "s/deseq2_pca/deseq2_pca_$$index/g" <$$h1 >tmp.txt
+        sed -i -e "s/DESeq2 /$$id DESeq2 /g" tmp.txt
+        cat tmp.txt $${prefix}.pca.vals.txt > $${prefix}.pca.vals_mqc.tsv
+
+        sed "s/deseq2_clustering/deseq2_clustering_$$index/g" <$$h2 >tmp.txt
+        sed -i -e "s/DESeq2 /$$id DESeq2 /g" tmp.txt
+        cat tmp.txt $${prefix}.sample.dists.txt > $${prefix}.sample.dists_mqc.tsv
+        rm tmp.txt $$counts $$h1 $$h2
+        fi
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # ---------------------------------------------------------------- reports
+  - kind: horus_task
+    id: igv
+    name: IGV
+    description: IGV session over the published bigWigs, peaks and consensus BEDs, with paths as in the Nextflow outdir.
+    inputs: [*a_reference, *a_chrom_sizes, *a_mlb_bigwig, *a_mlb_macs2, *a_mlb_consensus, *a_mrp_bigwig, *a_mrp_macs2, *a_mrp_consensus, *a_nfcore]
+    outputs: [*a_igv]
+    resources: *single
+    executor: *python
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        . ${reference}/refs.env
+        rm -rf ${igv} && mkdir -p ${igv} && cd ${igv}
+        export PATH=${nfcore}/bin:$$PATH
+        ln -s ${reference}/$$ref_fasta $$ref_fasta; ln -s ${chrom_sizes}/$$ref_fasta.fai $$ref_fasta.fai
+        stage() { d=$$1; shift; mkdir -p $$d; for f in "$$@"; do [ -s "$$f" ] && ln -s "$$f" $$d/ || true; done; }
+        stage bwa/merged_library/bigwig ${mlb_bigwig}/*/*.bigWig
+        stage bwa/merged_library/macs2/broad_peak ${mlb_macs2}/*/*Peak
+        stage bwa/merged_library/macs2/broad_peak/consensus ${mlb_consensus}/*.bed
+        stage bwa/merged_replicate/bigwig ${mrp_bigwig}/*/*.bigWig
+        stage bwa/merged_replicate/macs2/broad_peak ${mrp_macs2}/*/*Peak
+        stage bwa/merged_replicate/macs2/broad_peak/consensus ${mrp_consensus}/*.bed
+        find * -type l -name "*.bigWig" -exec echo -e ""{}"\t0,0,178" \; | { grep "^bwa/merged_library/bigwig" || test $$? = 1; } > mLb_bigwig.igv.txt
+        find * -type l -name "*Peak" -exec echo -e ""{}"\t0,0,178" \; | { grep "^bwa/merged_library/macs2/broad_peak" || test $$? = 1; } > mLb_peaks.igv.txt
+        find * -type l -name "*.bed" -exec echo -e ""{}"\t0,0,0" \; | { grep "^bwa/merged_library/macs2/broad_peak/consensus" || test $$? = 1; } > mLb_bed.igv.txt
+        find * -type l -name "*.bigWig" -exec echo -e ""{}"\t0,0,178" \; | { grep "^bwa/merged_replicate/bigwig" || test $$? = 1; } > mRp_bigwig.igv.txt
+        find * -type l -name "*Peak" -exec echo -e ""{}"\t0,0,178" \; | { grep "^bwa/merged_replicate/macs2/broad_peak" || test $$? = 1; } > mRp_peaks.igv.txt
+        find * -type l -name "*.bed" -exec echo -e ""{}"\t0,0,0" \; | { grep "^bwa/merged_replicate/macs2/broad_peak/consensus" || test $$? = 1; } > mRp_bed.igv.txt
+
+        cat *.txt > igv_files.txt
+        igv_files_to_session.py igv_session.xml igv_files.txt ../../genome/$$ref_fasta --path_prefix '../../'
+        rm -r bwa $$ref_fasta $$ref_fasta.fai
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+  # MultiQC stages the same files under the same folders as the MULTIQC
+  # module's inputs; multiqc_config.yml in the work dir is read by MultiQC.
+  - kind: horus_task
+    id: multiqc
+    name: MULTIQC
+    inputs:
+      - *a_nfcore
+      - *a_fastqc
+      - *a_trimgalore
+      - *a_lb_stats
+      - *a_lb_flagstat
+      - *a_lb_idxstats
+      - *a_mlb_md_stats
+      - *a_mlb_md_flagstat
+      - *a_mlb_md_idxstats
+      - *a_mlb_markdup
+      - *a_mlb_stats
+      - *a_mlb_flagstat
+      - *a_mlb_idxstats
+      - *a_mlb_cmm
+      - *a_mlb_profile
+      - *a_mlb_fingerprint
+      - *a_mlb_peaks_mqc
+      - *a_mlb_homer_qc
+      - *a_mlb_counts
+      - *a_mrp_stats
+      - *a_mrp_flagstat
+      - *a_mrp_idxstats
+      - *a_mrp_markdup
+      - *a_mrp_peaks_mqc
+      - *a_mrp_homer_qc
+      - *a_mrp_counts
+      - *a_mlb_deseq2
+      - *a_mrp_deseq2
+      # not read: the pipeline's MULTIQC waits for these through the versions channel
+      - *a_mlb_mkarv
+      - *a_mlb_heatmap
+      - *a_mlb_macs2_qc
+      - *a_mrp_macs2_qc
+      - *a_mlb_cons_homer
+      - *a_mrp_cons_homer
+      - *a_mrp_bigwig
+      - *a_igv
+    outputs: [*a_multiqc]
+    resources: *multi
+    executor: *multiqc
+    runtime:
+      kind: command
+      command: |
+        cat > /tmp/.command.sh <<'NF'
+        rm -rf ${multiqc} && mkdir -p ${multiqc} && cd ${multiqc}
+        stage() { d=$$1; shift; mkdir -p $$d; for f in "$$@"; do [ -e "$$f" ] && ln -s "$$f" $$d/ && echo "$$d/$$(basename $$f)" >> multiqc_inputs.txt || true; done; }
+        ln -s ${nfcore}/assets/multiqc_config.yml multiqc_config.yml
+        stage fastqc ${fastqc}/*/*.zip
+        stage trimgalore/fastqc ${trimgalore}/*/*.zip
+        stage trimgalore ${trimgalore}/*/*report.txt
+        stage alignment/library ${lb_stats}/*/*.stats ${lb_flagstat}/*/*.flagstat ${lb_idxstats}/*/*.idxstats
+        stage alignment/merged_library/unfiltered ${mlb_md_stats}/*/*.stats ${mlb_md_flagstat}/*/*.flagstat ${mlb_md_idxstats}/*/*.idxstats
+        stage alignment/merged_library/unfiltered/picard_metrics ${mlb_markdup}/*/*.metrics.txt
+        stage alignment/merged_library/filtered ${mlb_stats}/*/*.stats ${mlb_flagstat}/*/*.flagstat ${mlb_idxstats}/*/*.idxstats
+        stage alignment/merged_library/filtered/picard_metrics ${mlb_cmm}/*/*_metrics
+        stage preseq
+        stage deeptools ${mlb_profile}/*/*.plotProfile.tab ${mlb_fingerprint}/*/*.raw.txt
+        stage macs2/merged_library/peaks ${mlb_peaks_mqc}/*/*_mqc.tsv
+        stage macs2/merged_library/annotation ${mlb_homer_qc}/*.summary_mqc.tsv
+        stage macs2/merged_library/featurecounts ${mlb_counts}/*.featureCounts.txt.summary
+        stage alignment/merged_replicate ${mrp_stats}/*/*.stats ${mrp_flagstat}/*/*.flagstat ${mrp_idxstats}/*/*.idxstats
+        stage alignment/merged_replicate/picard_metrics ${mrp_markdup}/*/*.metrics.txt
+        stage macs2/merged_replicate/peaks ${mrp_peaks_mqc}/*/*_mqc.tsv
+        stage macs2/merged_replicate/annotation ${mrp_homer_qc}/*.summary_mqc.tsv
+        stage macs2/merged_replicate/featurecounts ${mrp_counts}/*.featureCounts.txt.summary
+        stage deseq2_library ${mlb_deseq2}/*.pca.vals_mqc.tsv ${mlb_deseq2}/*.sample.dists_mqc.tsv
+        stage deseq2_replicate ${mrp_deseq2}/*.pca.vals_mqc.tsv ${mrp_deseq2}/*.sample.dists_mqc.tsv
+        multiqc \
+            -f \
+             \
+             \
+            .
+        rm -r multiqc_config.yml fastqc trimgalore alignment preseq deeptools macs2 deseq2_library deseq2_replicate
+        NF
+        exec bash -euo pipefail /tmp/.command.sh
+    target: *target
+
+edges:
+  - {source: artifact-input_mirror, source_output: input_mirror, target: fetch_reference, target_input: input_mirror}
+  - {source: artifact-fasta_url, source_output: fasta_url, target: fetch_reference, target_input: fasta_url}
+  - {source: artifact-gtf_url, source_output: gtf_url, target: fetch_reference, target_input: gtf_url}
+  - {source: artifact-samplesheet, source_output: samplesheet, target: samplesheet_check, target_input: samplesheet}
+  - {source: artifact-nfcore, source_output: nfcore, target: samplesheet_check, target_input: nfcore}
+  - {source: samplesheet_check, source_output: sheet_check, target: stage_reads, target_input: sheet_check}
+  - {source: artifact-samplesheet, source_output: samplesheet, target: stage_reads, target_input: samplesheet}
+  - {source: artifact-input_mirror, source_output: input_mirror, target: stage_reads, target_input: input_mirror}
+  - {source: fetch_reference, source_output: reference, target: gene_bed, target_input: reference}
+  - {source: artifact-nfcore, source_output: nfcore, target: gene_bed, target_input: nfcore}
+  - {source: gene_bed, source_output: gene_bed, target: tss_bed, target_input: gene_bed}
+  - {source: fetch_reference, source_output: reference, target: chrom_sizes, target_input: reference}
+  - {source: chrom_sizes, source_output: chrom_sizes, target: autosomes, target_input: chrom_sizes}
+  - {source: artifact-nfcore, source_output: nfcore, target: autosomes, target_input: nfcore}
+  - {source: chrom_sizes, source_output: chrom_sizes, target: include_bed, target_input: chrom_sizes}
+  - {source: artifact-mito_name, source_output: mito_name, target: include_bed, target_input: mito_name}
+  - {source: fetch_reference, source_output: reference, target: bwa_index, target_input: reference}
+  - {source: fetch_reference, source_output: reference, target: gsize, target_input: reference}
+  - {source: artifact-read_length, source_output: read_length, target: gsize, target_input: read_length}
+  - {source: stage_reads, source_output: runs, target: fastqc, target_input: runs}
+  - {source: stage_reads, source_output: reads, target: fastqc, target_input: reads}
+  - {source: stage_reads, source_output: runs, target: trimgalore, target_input: runs}
+  - {source: stage_reads, source_output: reads, target: trimgalore, target_input: reads}
+  - {source: trimgalore, source_output: trimgalore, target: filter_trimmed, target_input: trimgalore}
+  - {source: artifact-min_trimmed_reads, source_output: min_trimmed_reads, target: filter_trimmed, target_input: min_trimmed_reads}
+  - {source: filter_trimmed, source_output: filter_trimmed, target: decide_groups, target_input: filter_trimmed}
+  - {source: filter_trimmed, source_output: filter_trimmed, target: bwa_mem, target_input: filter_trimmed}
+  - {source: trimgalore, source_output: trimgalore, target: bwa_mem, target_input: trimgalore}
+  - {source: bwa_index, source_output: bwa_index, target: bwa_mem, target_input: bwa_index}
+  - {source: bwa_mem, source_output: bwa_mem, target: lb_sort, target_input: bwa_mem}
+  - {source: lb_sort, source_output: lb_sort, target: lb_index, target_input: lb_sort}
+  - {source: lb_sort, source_output: lb_sort, target: lb_stats, target_input: lb_sort}
+  - {source: lb_index, source_output: lb_index, target: lb_stats, target_input: lb_index}
+  - {source: fetch_reference, source_output: reference, target: lb_stats, target_input: reference}
+  - {source: lb_sort, source_output: lb_sort, target: lb_flagstat, target_input: lb_sort}
+  - {source: lb_index, source_output: lb_index, target: lb_flagstat, target_input: lb_index}
+  - {source: lb_sort, source_output: lb_sort, target: lb_idxstats, target_input: lb_sort}
+  - {source: lb_index, source_output: lb_index, target: lb_idxstats, target_input: lb_index}
+  - {source: decide_groups, source_output: libraries, target: mlb_merge, target_input: libraries}
+  - {source: lb_sort, source_output: lb_sort, target: mlb_merge, target_input: lb_sort}
+  - {source: mlb_merge, source_output: mlb_merge, target: mlb_markdup, target_input: mlb_merge}
+  - {source: fetch_reference, source_output: reference, target: mlb_markdup, target_input: reference}
+  - {source: chrom_sizes, source_output: chrom_sizes, target: mlb_markdup, target_input: chrom_sizes}
+  - {source: mlb_markdup, source_output: mlb_markdup, target: mlb_md_index, target_input: mlb_markdup}
+  - {source: mlb_markdup, source_output: mlb_markdup, target: mlb_md_stats, target_input: mlb_markdup}
+  - {source: mlb_md_index, source_output: mlb_md_index, target: mlb_md_stats, target_input: mlb_md_index}
+  - {source: fetch_reference, source_output: reference, target: mlb_md_stats, target_input: reference}
+  - {source: mlb_markdup, source_output: mlb_markdup, target: mlb_md_flagstat, target_input: mlb_markdup}
+  - {source: mlb_md_index, source_output: mlb_md_index, target: mlb_md_flagstat, target_input: mlb_md_index}
+  - {source: mlb_markdup, source_output: mlb_markdup, target: mlb_md_idxstats, target_input: mlb_markdup}
+  - {source: mlb_md_index, source_output: mlb_md_index, target: mlb_md_idxstats, target_input: mlb_md_index}
+  - {source: mlb_markdup, source_output: mlb_markdup, target: mlb_filter, target_input: mlb_markdup}
+  - {source: mlb_md_index, source_output: mlb_md_index, target: mlb_filter, target_input: mlb_md_index}
+  - {source: include_bed, source_output: include_bed, target: mlb_filter, target_input: include_bed}
+  - {source: artifact-nfcore, source_output: nfcore, target: mlb_filter, target_input: nfcore}
+  - {source: mlb_filter, source_output: mlb_filter, target: mlb_name_sort, target_input: mlb_filter}
+  - {source: mlb_name_sort, source_output: mlb_name_sort, target: mlb_orphans, target_input: mlb_name_sort}
+  - {source: artifact-nfcore, source_output: nfcore, target: mlb_orphans, target_input: nfcore}
+  - {source: mlb_orphans, source_output: mlb_orphans, target: mlb_clean_sort, target_input: mlb_orphans}
+  - {source: mlb_filter, source_output: mlb_filter, target: mlb_clean_index, target_input: mlb_filter}
+  - {source: mlb_clean_sort, source_output: mlb_clean_sort, target: mlb_clean_index, target_input: mlb_clean_sort}
+  - {source: mlb_filter, source_output: mlb_filter, target: mlb_stats, target_input: mlb_filter}
+  - {source: mlb_clean_sort, source_output: mlb_clean_sort, target: mlb_stats, target_input: mlb_clean_sort}
+  - {source: mlb_clean_index, source_output: mlb_clean_index, target: mlb_stats, target_input: mlb_clean_index}
+  - {source: fetch_reference, source_output: reference, target: mlb_stats, target_input: reference}
+  - {source: mlb_filter, source_output: mlb_filter, target: mlb_flagstat, target_input: mlb_filter}
+  - {source: mlb_clean_sort, source_output: mlb_clean_sort, target: mlb_flagstat, target_input: mlb_clean_sort}
+  - {source: mlb_clean_index, source_output: mlb_clean_index, target: mlb_flagstat, target_input: mlb_clean_index}
+  - {source: mlb_filter, source_output: mlb_filter, target: mlb_idxstats, target_input: mlb_filter}
+  - {source: mlb_clean_sort, source_output: mlb_clean_sort, target: mlb_idxstats, target_input: mlb_clean_sort}
+  - {source: mlb_clean_index, source_output: mlb_clean_index, target: mlb_idxstats, target_input: mlb_clean_index}
+  - {source: mlb_filter, source_output: mlb_filter, target: mlb_cmm, target_input: mlb_filter}
+  - {source: mlb_clean_sort, source_output: mlb_clean_sort, target: mlb_cmm, target_input: mlb_clean_sort}
+  - {source: fetch_reference, source_output: reference, target: mlb_cmm, target_input: reference}
+  - {source: chrom_sizes, source_output: chrom_sizes, target: mlb_cmm, target_input: chrom_sizes}
+  - {source: mlb_filter, source_output: mlb_filter, target: mlb_genomecov, target_input: mlb_filter}
+  - {source: mlb_clean_sort, source_output: mlb_clean_sort, target: mlb_genomecov, target_input: mlb_clean_sort}
+  - {source: mlb_flagstat, source_output: mlb_flagstat, target: mlb_genomecov, target_input: mlb_flagstat}
+  - {source: artifact-fragment_size, source_output: fragment_size, target: mlb_genomecov, target_input: fragment_size}
+  - {source: mlb_genomecov, source_output: mlb_genomecov, target: mlb_bigwig, target_input: mlb_genomecov}
+  - {source: chrom_sizes, source_output: chrom_sizes, target: mlb_bigwig, target_input: chrom_sizes}
+  - {source: mlb_bigwig, source_output: mlb_bigwig, target: mlb_mat_scale, target_input: mlb_bigwig}
+  - {source: gene_bed, source_output: gene_bed, target: mlb_mat_scale, target_input: gene_bed}
+  - {source: mlb_bigwig, source_output: mlb_bigwig, target: mlb_mat_ref, target_input: mlb_bigwig}
+  - {source: tss_bed, source_output: tss_bed, target: mlb_mat_ref, target_input: tss_bed}
+  - {source: mlb_mat_scale, source_output: mlb_mat_scale, target: mlb_profile, target_input: mlb_mat_scale}
+  - {source: mlb_mat_ref, source_output: mlb_mat_ref, target: mlb_heatmap, target_input: mlb_mat_ref}
+  - {source: mlb_filter, source_output: mlb_filter, target: mlb_fingerprint, target_input: mlb_filter}
+  - {source: mlb_clean_sort, source_output: mlb_clean_sort, target: mlb_fingerprint, target_input: mlb_clean_sort}
+  - {source: mlb_clean_index, source_output: mlb_clean_index, target: mlb_fingerprint, target_input: mlb_clean_index}
+  - {source: artifact-fingerprint_bins, source_output: fingerprint_bins, target: mlb_fingerprint, target_input: fingerprint_bins}
+  - {source: artifact-fragment_size, source_output: fragment_size, target: mlb_fingerprint, target_input: fragment_size}
+  - {source: mlb_filter, source_output: mlb_filter, target: mlb_macs2, target_input: mlb_filter}
+  - {source: mlb_clean_sort, source_output: mlb_clean_sort, target: mlb_macs2, target_input: mlb_clean_sort}
+  - {source: mlb_clean_index, source_output: mlb_clean_index, target: mlb_macs2, target_input: mlb_clean_index}
+  - {source: gsize, source_output: gsize, target: mlb_macs2, target_input: gsize}
+  - {source: artifact-broad_cutoff, source_output: broad_cutoff, target: mlb_macs2, target_input: broad_cutoff}
+  - {source: mlb_filter, source_output: mlb_filter, target: mlb_frip, target_input: mlb_filter}
+  - {source: mlb_clean_sort, source_output: mlb_clean_sort, target: mlb_frip, target_input: mlb_clean_sort}
+  - {source: mlb_macs2, source_output: mlb_macs2, target: mlb_frip, target_input: mlb_macs2}
+  - {source: mlb_macs2, source_output: mlb_macs2, target: mlb_peaks_mqc, target_input: mlb_macs2}
+  - {source: mlb_frip, source_output: mlb_frip, target: mlb_peaks_mqc, target_input: mlb_frip}
+  - {source: artifact-nfcore, source_output: nfcore, target: mlb_peaks_mqc, target_input: nfcore}
+  - {source: mlb_macs2, source_output: mlb_macs2, target: mlb_homer, target_input: mlb_macs2}
+  - {source: fetch_reference, source_output: reference, target: mlb_homer, target_input: reference}
+  - {source: mlb_markdup, source_output: mlb_markdup, target: mlb_ataqv, target_input: mlb_markdup}
+  - {source: mlb_md_index, source_output: mlb_md_index, target: mlb_ataqv, target_input: mlb_md_index}
+  - {source: mlb_macs2, source_output: mlb_macs2, target: mlb_ataqv, target_input: mlb_macs2}
+  - {source: tss_bed, source_output: tss_bed, target: mlb_ataqv, target_input: tss_bed}
+  - {source: autosomes, source_output: autosomes, target: mlb_ataqv, target_input: autosomes}
+  - {source: artifact-mito_name, source_output: mito_name, target: mlb_ataqv, target_input: mito_name}
+  - {source: mlb_ataqv, source_output: mlb_ataqv, target: mlb_mkarv, target_input: mlb_ataqv}
+  - {source: mlb_macs2, source_output: mlb_macs2, target: mlb_macs2_qc, target_input: mlb_macs2}
+  - {source: artifact-nfcore, source_output: nfcore, target: mlb_macs2_qc, target_input: nfcore}
+  - {source: mlb_homer, source_output: mlb_homer, target: mlb_homer_qc, target_input: mlb_homer}
+  - {source: artifact-nfcore, source_output: nfcore, target: mlb_homer_qc, target_input: nfcore}
+  - {source: mlb_macs2, source_output: mlb_macs2, target: mlb_consensus, target_input: mlb_macs2}
+  - {source: artifact-nfcore, source_output: nfcore, target: mlb_consensus, target_input: nfcore}
+  - {source: artifact-min_reps_consensus, source_output: min_reps_consensus, target: mlb_consensus, target_input: min_reps_consensus}
+  - {source: mlb_consensus, source_output: mlb_consensus, target: mlb_cons_homer, target_input: mlb_consensus}
+  - {source: fetch_reference, source_output: reference, target: mlb_cons_homer, target_input: reference}
+  - {source: mlb_consensus, source_output: mlb_consensus, target: mlb_counts, target_input: mlb_consensus}
+  - {source: mlb_macs2, source_output: mlb_macs2, target: mlb_counts, target_input: mlb_macs2}
+  - {source: mlb_filter, source_output: mlb_filter, target: mlb_counts, target_input: mlb_filter}
+  - {source: mlb_clean_sort, source_output: mlb_clean_sort, target: mlb_counts, target_input: mlb_clean_sort}
+  - {source: mlb_counts, source_output: mlb_counts, target: mlb_deseq2, target_input: mlb_counts}
+  - {source: artifact-nfcore, source_output: nfcore, target: mlb_deseq2, target_input: nfcore}
+  - {source: decide_groups, source_output: replicates, target: mrp_merge, target_input: replicates}
+  - {source: mlb_filter, source_output: mlb_filter, target: mrp_merge, target_input: mlb_filter}
+  - {source: mlb_clean_sort, source_output: mlb_clean_sort, target: mrp_merge, target_input: mlb_clean_sort}
+  - {source: mrp_merge, source_output: mrp_merge, target: mrp_markdup, target_input: mrp_merge}
+  - {source: fetch_reference, source_output: reference, target: mrp_markdup, target_input: reference}
+  - {source: chrom_sizes, source_output: chrom_sizes, target: mrp_markdup, target_input: chrom_sizes}
+  - {source: mrp_markdup, source_output: mrp_markdup, target: mrp_index, target_input: mrp_markdup}
+  - {source: mrp_markdup, source_output: mrp_markdup, target: mrp_stats, target_input: mrp_markdup}
+  - {source: mrp_index, source_output: mrp_index, target: mrp_stats, target_input: mrp_index}
+  - {source: fetch_reference, source_output: reference, target: mrp_stats, target_input: reference}
+  - {source: mrp_markdup, source_output: mrp_markdup, target: mrp_flagstat, target_input: mrp_markdup}
+  - {source: mrp_index, source_output: mrp_index, target: mrp_flagstat, target_input: mrp_index}
+  - {source: mrp_markdup, source_output: mrp_markdup, target: mrp_idxstats, target_input: mrp_markdup}
+  - {source: mrp_index, source_output: mrp_index, target: mrp_idxstats, target_input: mrp_index}
+  - {source: mrp_markdup, source_output: mrp_markdup, target: mrp_genomecov, target_input: mrp_markdup}
+  - {source: mrp_flagstat, source_output: mrp_flagstat, target: mrp_genomecov, target_input: mrp_flagstat}
+  - {source: artifact-fragment_size, source_output: fragment_size, target: mrp_genomecov, target_input: fragment_size}
+  - {source: mrp_genomecov, source_output: mrp_genomecov, target: mrp_bigwig, target_input: mrp_genomecov}
+  - {source: chrom_sizes, source_output: chrom_sizes, target: mrp_bigwig, target_input: chrom_sizes}
+  - {source: mrp_markdup, source_output: mrp_markdup, target: mrp_macs2, target_input: mrp_markdup}
+  - {source: mrp_index, source_output: mrp_index, target: mrp_macs2, target_input: mrp_index}
+  - {source: gsize, source_output: gsize, target: mrp_macs2, target_input: gsize}
+  - {source: artifact-broad_cutoff, source_output: broad_cutoff, target: mrp_macs2, target_input: broad_cutoff}
+  - {source: mrp_markdup, source_output: mrp_markdup, target: mrp_frip, target_input: mrp_markdup}
+  - {source: mrp_macs2, source_output: mrp_macs2, target: mrp_frip, target_input: mrp_macs2}
+  - {source: mrp_macs2, source_output: mrp_macs2, target: mrp_peaks_mqc, target_input: mrp_macs2}
+  - {source: mrp_frip, source_output: mrp_frip, target: mrp_peaks_mqc, target_input: mrp_frip}
+  - {source: artifact-nfcore, source_output: nfcore, target: mrp_peaks_mqc, target_input: nfcore}
+  - {source: mrp_macs2, source_output: mrp_macs2, target: mrp_homer, target_input: mrp_macs2}
+  - {source: fetch_reference, source_output: reference, target: mrp_homer, target_input: reference}
+  - {source: mrp_macs2, source_output: mrp_macs2, target: mrp_macs2_qc, target_input: mrp_macs2}
+  - {source: artifact-nfcore, source_output: nfcore, target: mrp_macs2_qc, target_input: nfcore}
+  - {source: mrp_homer, source_output: mrp_homer, target: mrp_homer_qc, target_input: mrp_homer}
+  - {source: artifact-nfcore, source_output: nfcore, target: mrp_homer_qc, target_input: nfcore}
+  - {source: mrp_macs2, source_output: mrp_macs2, target: mrp_consensus, target_input: mrp_macs2}
+  - {source: artifact-nfcore, source_output: nfcore, target: mrp_consensus, target_input: nfcore}
+  - {source: mrp_consensus, source_output: mrp_consensus, target: mrp_cons_homer, target_input: mrp_consensus}
+  - {source: fetch_reference, source_output: reference, target: mrp_cons_homer, target_input: reference}
+  - {source: mrp_consensus, source_output: mrp_consensus, target: mrp_counts, target_input: mrp_consensus}
+  - {source: mrp_macs2, source_output: mrp_macs2, target: mrp_counts, target_input: mrp_macs2}
+  - {source: decide_groups, source_output: replicates, target: mrp_counts, target_input: replicates}
+  - {source: mlb_filter, source_output: mlb_filter, target: mrp_counts, target_input: mlb_filter}
+  - {source: mlb_clean_sort, source_output: mlb_clean_sort, target: mrp_counts, target_input: mlb_clean_sort}
+  - {source: mrp_counts, source_output: mrp_counts, target: mrp_deseq2, target_input: mrp_counts}
+  - {source: artifact-nfcore, source_output: nfcore, target: mrp_deseq2, target_input: nfcore}
+  - {source: fetch_reference, source_output: reference, target: igv, target_input: reference}
+  - {source: chrom_sizes, source_output: chrom_sizes, target: igv, target_input: chrom_sizes}
+  - {source: mlb_bigwig, source_output: mlb_bigwig, target: igv, target_input: mlb_bigwig}
+  - {source: mlb_macs2, source_output: mlb_macs2, target: igv, target_input: mlb_macs2}
+  - {source: mlb_consensus, source_output: mlb_consensus, target: igv, target_input: mlb_consensus}
+  - {source: mrp_bigwig, source_output: mrp_bigwig, target: igv, target_input: mrp_bigwig}
+  - {source: mrp_macs2, source_output: mrp_macs2, target: igv, target_input: mrp_macs2}
+  - {source: mrp_consensus, source_output: mrp_consensus, target: igv, target_input: mrp_consensus}
+  - {source: artifact-nfcore, source_output: nfcore, target: igv, target_input: nfcore}
+  - {source: artifact-nfcore, source_output: nfcore, target: multiqc, target_input: nfcore}
+  - {source: fastqc, source_output: fastqc, target: multiqc, target_input: fastqc}
+  - {source: trimgalore, source_output: trimgalore, target: multiqc, target_input: trimgalore}
+  - {source: lb_stats, source_output: lb_stats, target: multiqc, target_input: lb_stats}
+  - {source: lb_flagstat, source_output: lb_flagstat, target: multiqc, target_input: lb_flagstat}
+  - {source: lb_idxstats, source_output: lb_idxstats, target: multiqc, target_input: lb_idxstats}
+  - {source: mlb_md_stats, source_output: mlb_md_stats, target: multiqc, target_input: mlb_md_stats}
+  - {source: mlb_md_flagstat, source_output: mlb_md_flagstat, target: multiqc, target_input: mlb_md_flagstat}
+  - {source: mlb_md_idxstats, source_output: mlb_md_idxstats, target: multiqc, target_input: mlb_md_idxstats}
+  - {source: mlb_markdup, source_output: mlb_markdup, target: multiqc, target_input: mlb_markdup}
+  - {source: mlb_stats, source_output: mlb_stats, target: multiqc, target_input: mlb_stats}
+  - {source: mlb_flagstat, source_output: mlb_flagstat, target: multiqc, target_input: mlb_flagstat}
+  - {source: mlb_idxstats, source_output: mlb_idxstats, target: multiqc, target_input: mlb_idxstats}
+  - {source: mlb_cmm, source_output: mlb_cmm, target: multiqc, target_input: mlb_cmm}
+  - {source: mlb_profile, source_output: mlb_profile, target: multiqc, target_input: mlb_profile}
+  - {source: mlb_fingerprint, source_output: mlb_fingerprint, target: multiqc, target_input: mlb_fingerprint}
+  - {source: mlb_peaks_mqc, source_output: mlb_peaks_mqc, target: multiqc, target_input: mlb_peaks_mqc}
+  - {source: mlb_homer_qc, source_output: mlb_homer_qc, target: multiqc, target_input: mlb_homer_qc}
+  - {source: mlb_counts, source_output: mlb_counts, target: multiqc, target_input: mlb_counts}
+  - {source: mrp_stats, source_output: mrp_stats, target: multiqc, target_input: mrp_stats}
+  - {source: mrp_flagstat, source_output: mrp_flagstat, target: multiqc, target_input: mrp_flagstat}
+  - {source: mrp_idxstats, source_output: mrp_idxstats, target: multiqc, target_input: mrp_idxstats}
+  - {source: mrp_markdup, source_output: mrp_markdup, target: multiqc, target_input: mrp_markdup}
+  - {source: mrp_peaks_mqc, source_output: mrp_peaks_mqc, target: multiqc, target_input: mrp_peaks_mqc}
+  - {source: mrp_homer_qc, source_output: mrp_homer_qc, target: multiqc, target_input: mrp_homer_qc}
+  - {source: mrp_counts, source_output: mrp_counts, target: multiqc, target_input: mrp_counts}
+  - {source: mlb_deseq2, source_output: mlb_deseq2, target: multiqc, target_input: mlb_deseq2}
+  - {source: mrp_deseq2, source_output: mrp_deseq2, target: multiqc, target_input: mrp_deseq2}
+  - {source: mlb_mkarv, source_output: mlb_mkarv, target: multiqc, target_input: mlb_mkarv}
+  - {source: mlb_heatmap, source_output: mlb_heatmap, target: multiqc, target_input: mlb_heatmap}
+  - {source: mlb_macs2_qc, source_output: mlb_macs2_qc, target: multiqc, target_input: mlb_macs2_qc}
+  - {source: mrp_macs2_qc, source_output: mrp_macs2_qc, target: multiqc, target_input: mrp_macs2_qc}
+  - {source: mlb_cons_homer, source_output: mlb_cons_homer, target: multiqc, target_input: mlb_cons_homer}
+  - {source: mrp_cons_homer, source_output: mrp_cons_homer, target: multiqc, target_input: mrp_cons_homer}
+  - {source: mrp_bigwig, source_output: mrp_bigwig, target: multiqc, target_input: mrp_bigwig}
+  - {source: igv, source_output: igv, target: multiqc, target_input: igv}
+
+orchestrator_target:
+  kind: local
+  working_directory: horus_workflow_results

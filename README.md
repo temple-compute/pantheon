@@ -102,6 +102,14 @@ Native Horus ports of nf-core pipelines, with the same containers, command lines
 |---|---|---|
 | W-48 | [nf-core/demo](workflows/nf-core-ports/w01-demo/README.md) | nf-core/demo 1.2.0 as native tasks: FastQC and seqtk per sample as `horus_map` stages, then a MultiQC report |
 | W-49 | [nf-core/rnaseq](workflows/nf-core-ports/w02-rnaseq/README.md) | nf-core/rnaseq 3.27.0 test route as native tasks: TrimGalore, BBSplit, STAR + Salmon and Salmon pseudo-alignment, RSeQC, Qualimap and bigWigs per sample, then tximport and MultiQC |
+| W-50 | [nf-core/sarek](workflows/nf-core-ports/w03-sarek/README.md) | nf-core/sarek 3.12.0 test route as native tasks: bwa mem per lane, GATK MarkDuplicates and BQSR, Strelka germline calling, CRAM and VCF QC, then MultiQC |
+| W-51 | [nf-core/scrnaseq](workflows/nf-core-ports/w04-scrnaseq/README.md) | nf-core/scrnaseq 4.2.0 test route as native tasks: FastQC and STARsolo per sample, h5ad, Seurat and SCE conversion per matrix, then MultiQC |
+| W-52 | [nf-core/atacseq](workflows/nf-core-ports/w05-atacseq/README.md) | nf-core/atacseq 2.1.2 test route as native tasks: TrimGalore and BWA per run, library and replicate merging, BAM filtering, deepTools, MACS2 broad peaks, HOMER, consensus peaks with featureCounts and DESeq2 QC, ataqv, then MultiQC |
+| W-53 | [nf-core/chipseq](workflows/nf-core-ports/w06-chipseq/README.md) | nf-core/chipseq 2.1.0 test route as native tasks: BWA, Picard and BAMTools filtering, MACS3 broad peaks with HOMER annotation, consensus peaks with featureCounts and DESeq2 QC, then MultiQC |
+| W-54 | [nf-core/fetchngs](workflows/nf-core-ports/w07-fetchngs/README.md) | nf-core/fetchngs 1.13.0 test route as native tasks: run metadata from ENA and NCBI per id, reads over FTP or through sra-tools per run, then an nf-core samplesheet |
+| W-55 | [nf-core/ampliseq](workflows/nf-core-ports/w08-ampliseq/README.md) | nf-core/ampliseq 3.1.0 test route as native tasks: Cutadapt and DADA2 per sample and run, VSEARCH, decontam and Barrnap filters, DADA2 and QIIME2 taxonomy, QIIME2 diversity and ANCOM-BC fan-outs, MultiQC and the summary report |
+| W-57 | [nf-core/viralrecon](workflows/nf-core-ports/w10-viralrecon/README.md) | nf-core/viralrecon 3.0.0 test route as native tasks: fastp, Kraken2, Bowtie2, iVar variants, SnpEff, Freyja, a BCFtools consensus with Nextclade and Pangolin, SPAdes and Unicycler assemblies per sample, then QUAST and MultiQC |
+| W-58 | [nf-core/taxprofiler](workflows/nf-core-ports/w11-taxprofiler/README.md) | nf-core/taxprofiler 2.0.1 test route as native tasks: read QC, host removal and run merging, then eleven profilers per sample and database, Krona, taxpasta and MultiQC |
 | W-59 | [nf-core/methylseq](workflows/nf-core-ports/w12-methylseq/README.md) | nf-core/methylseq 4.2.0 test route as native tasks: TrimGalore, Bismark align, deduplicate and methylation extractor per sample, then Bismark summary and MultiQC |
 
 ### Chemistry
