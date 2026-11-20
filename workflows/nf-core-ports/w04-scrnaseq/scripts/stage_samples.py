@@ -8,8 +8,9 @@ order (R1, R2 per row), and they must all be single-end or all paired-end.
 Each folder holds the reads under their original file names, ``reads.txt``
 (the read order) and ``meta.env``, the first row's meta as bash-sourceable
 lines (``expected_cells``, ``seq_center``), as ``groupTuple`` keeps
-``metas[0]``. ``fastq_1``/``fastq_2`` may be URLs (downloaded) or paths
-relative to the samplesheet.
+``metas[0]``. ``fastq_1``/``fastq_2`` may be URLs (downloaded), paths
+relative to the samplesheet (copied) or absolute paths (symlinked, as
+Nextflow stages local inputs).
 
 stdlib only.
 
@@ -62,11 +63,16 @@ def group_rows(rows: list[dict[str, str]]) -> dict[str, dict]:
 
 
 def fetch(src: str, base: Path, dest: Path) -> None:
-    """Download a URL or copy a local path to *dest*, atomically."""
+    """Download a URL or copy a relative path to *dest*, atomically; link an absolute path."""
     part = dest.with_name(dest.name + ".part")
     if "://" in src:
         with urllib.request.urlopen(src) as resp, open(part, "wb") as fh:
             shutil.copyfileobj(resp, fh)
+    elif Path(src).is_absolute():
+        # Nextflow stages local inputs as symlinks; a copy would move every byte.
+        Path(src).stat()  # a missing input fails here, as the copy would
+        part.unlink(missing_ok=True)
+        part.symlink_to(src)
     else:
         shutil.copyfile(base / src, part)
     os.replace(part, dest)
@@ -116,6 +122,9 @@ def selftest() -> None:
         stage(sheet, t / "out")
         assert (t / "out/B/reads.txt").read_text() == "b1.fq.gz\nb2.fq.gz\nb3.fq.gz\nb4.fq.gz\n"
         assert (t / "out/A/meta.env").read_text() == "expected_cells=5000\nseq_center='Broad Institute'\n"
+        assert not (t / "out/A/a1.fq.gz").is_symlink()
+        fetch(str(t / "a1.fq.gz"), t, t / "abs.fq.gz")
+        assert (t / "abs.fq.gz").is_symlink() and (t / "abs.fq.gz").read_text() == "a1.fq.gz"
 
 
 def main() -> int:
