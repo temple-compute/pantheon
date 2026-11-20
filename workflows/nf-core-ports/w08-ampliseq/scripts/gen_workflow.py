@@ -65,6 +65,15 @@ IMAGES = {
     "r-base:4.2.1": "rbase",
     "nf-core/ubuntu": "ubuntu",
     "qiime2/qiime2": "qiime2",
+    # test_full route
+    "hmmer:3.3.2": "hmmer332",
+    "hmmer:3.4": "hmmer34",
+    "gawk_gzip": "gawkgzip",
+    "seqtk": "seqtk",
+    "mulled-v2-4cefc385": "clustalo",
+    "epa-ng": "epang",
+    "gappa": "gappa",
+    "picrust2": "picrust2",
 }
 
 PAT = "pattern: '[^\"`$\\\\]*', "  # no quotes, backticks, $ or backslashes
@@ -84,6 +93,39 @@ ROOT = [
      PAT + 'description: "Folder searched for each input file by name before downloading it. Empty downloads everything.", value: ""'),
 ]
 
+# Root artifacts of the test_full route (gen_workflow.py --profile test_full).
+ROOT_FULL = [
+    ("samplesheet", "Samplesheet", "file", "examples/Samplesheet_full_v3.tsv",
+     'description: "--input: sample, fastq_1, fastq_2 and optional run (tab separated). Default: the test_full samplesheet (12 paired-end 16S samples)."'),
+    ROOT[1],
+    ("metadata_url", "Metadata", "string", "params/metadata_url.txt",
+     PAT + 'description: "--metadata", value: "https://raw.githubusercontent.com/nf-core/test-datasets/ampliseq/samplesheets/Metadata_full.tsv"'),
+    ("dada_ref_urls", "DADA2 reference", "string", "params/dada_ref_urls.txt",
+     PAT + 'description: "--dada_ref_taxonomy sbdi-gtdb files (assignTaxonomy, addSpecies), comma separated", value: "https://ndownloader.figshare.com/files/64711203,https://ndownloader.figshare.com/files/64711218"'),
+    ROOT[4],
+    ("pplace_targets", "Placement targets", "string", "params/pplace_targets.txt",
+     PAT + 'description: "--run_pplace: the sbdi-gtdb pplace entries, <target>=<hmm>,<refseq>,<tree>,<taxonomy> joined by +", value: "arc16s=https://raw.githubusercontent.com/tseemann/barrnap/refs/tags/0.9/db/arc.hmm,https://ndownloader.figshare.com/files/64711191,https://ndownloader.figshare.com/files/64711188,https://ndownloader.figshare.com/files/64711194+bac16s=https://raw.githubusercontent.com/tseemann/barrnap/refs/tags/0.9/db/bac.hmm,https://ndownloader.figshare.com/files/64711224,https://ndownloader.figshare.com/files/64711197,https://ndownloader.figshare.com/files/64711209"'),
+    ROOT[5],
+]
+
+# Inputs Nextflow stages from outside a process (Groovy-built or downloaded): file name -> shell path,
+# and a regex of the names stage_inputs fetches into reference/ (set per profile in main).
+EXTERNAL = {
+    "ASV_tax_species.gtdb_R07-RS207.tsv": "${dada2_addspecies}/ASV_tax_species.gtdb_R07-RS207.tsv",
+    "decontam_metadata.tsv": "${reference}/decontam_metadata.tsv",
+    "Metadata.tsv": "${reference}/Metadata.tsv",
+    "Samplesheet_v3.tsv": "${samplesheet}",
+}
+EXTERNAL_REF = r"(?!)"
+EXTERNAL_FULL = {
+    "ASV_tax_species.sbdi-gtdb.tsv": "${dada2_species}/ASV_tax_species.sbdi-gtdb.tsv",
+    "ASV_tax.sbdi-gtdb.tsv": "${dada2_tax}/ASV_tax.sbdi-gtdb.tsv",
+    "concatenated_taxonomy.tsv": "${pplace_tax}/concatenated_taxonomy.tsv",
+    "Metadata_full.tsv": "${reference}/Metadata_full.tsv",
+    "Samplesheet_full_v3.tsv": "${samplesheet}",
+}
+EXTERNAL_REF_FULL = r"\d+|(arc|bac)\.hmm"  # figshare file ids and the barrnap HMMs of the pplace targets
+
 # id -> (name, path) for every folder an internal task writes.
 ART: dict[str, tuple[str, str]] = {}
 
@@ -91,7 +133,7 @@ ART: dict[str, tuple[str, str]] = {}
 class Task:
     def __init__(self, id, proc, *, tag=None, full=None, name=None, over=None, inputs=(), outputs=None,
                  subs=(), path_subs=None, skip=(), stage=(), pre="", post="", stdout=None, image=None, runtime=None,
-                 executor=None, comment=None, chain=None):
+                 executor=None, comment=None, chain=None, pick=None):
         self.id, self.proc, self.tag, self.full = id, proc, tag, full
         self.name = name or proc
         self.over = over          # (artifact id, as)
@@ -104,6 +146,7 @@ class Task:
         self.pre, self.post, self.stdout = pre, post, stdout
         self.image, self.runtime, self.executor, self.comment = image, runtime, executor, comment
         self.chain = chain or {}  # attribute overrides for --chained; an `over` here means chain: true
+        self.pick = pick          # substring of the template task's script, when tags do not tell the slots apart
         self.zip: list[tuple[str, str]] = []  # (map artifact id, as), paired by slot
         self.chained = False
 
@@ -114,8 +157,11 @@ def proc_spec(spec, t: Task):
         cands = [p for p in cands if t.full in p["full_names"]]
     (p,) = cands
     tasks = p["per_task"]
-    task = next(x for x in tasks if x["tag"] == t.tag) if t.tag else tasks[0]
-    return p, task
+    if t.tag:
+        tasks = [x for x in tasks if x["tag"] == t.tag]
+    if t.pick:
+        tasks = [x for x in tasks if t.pick in x["script"]]
+    return p, tasks[0]
 
 
 def gb(mem: str) -> int:
@@ -136,6 +182,8 @@ def interpreter(script: str) -> str:
         return "bash -C -e -u -o pipefail"
     if first == "#!/usr/bin/env Rscript":
         return "Rscript"
+    if first == "#!/usr/bin/env bash":  # a module's own shebang: .command.run runs `/usr/bin/env bash .command.sh`
+        return "bash"
     raise SystemExit(f"unknown shebang {first!r}")
 
 
@@ -151,12 +199,10 @@ def source_of(inp, producers, t: Task) -> str | None:
     if "pipeline_asset" in inp:
         return "${nfcore}/" + inp["pipeline_asset"]
     name = inp["path"].rsplit("/", 1)[-1]
-    if name == "ASV_tax_species.gtdb_R07-RS207.tsv":
-        return "${dada2_addspecies}/ASV_tax_species.gtdb_R07-RS207.tsv"
-    if name == "decontam_metadata.tsv" or name == "Metadata.tsv":
+    if name in EXTERNAL:
+        return EXTERNAL[name]
+    if re.fullmatch(EXTERNAL_REF, name):
         return "${reference}/" + name
-    if name == "Samplesheet_v3.tsv":
-        return "${samplesheet}"
     raise SystemExit(f"{t.id}: no source for input {inp}")
 
 
@@ -398,6 +444,215 @@ def tasks() -> list[Task]:
     ]
 
 
+GLUE = """kind: python_script
+      script: scripts/glue.py
+      python: python3 # stdlib only
+      args: """
+LEVEL = (r"(?<=lvl)2|(?<=level )2|(?<=level-)2|(?<=--p-level )2|(?<=echo )2|(?<=level:)2|(?<=_level_)2", "level")
+
+
+def tasks_full() -> list[Task]:
+    """The route `-profile test_full` takes (conf/test_full.config): sbdi-gtdb DADA2 taxonomy in chunks,
+    phylogenetic placement (pplace), QIIME2 ANCOM, PICRUSt2; no clustering, decontam or ASV filters."""
+    S = [(r"SRR10070133", "id")]
+    D = [(r"\bFW\b|(?<=\")FW|FW(?=_)", "direction")]
+    RUN = [(r"(?<=\")1(?=[._])", "run")]
+    RUNP = [(r"(?:(?<=^)|(?<=/))1(?=[._])", "run")]
+    CH = [(r"(?<=ASV_seqs\.)1(?=\.)", "n")]
+    # one pplace target as the template: its name and its files (stage_inputs' pplace/<target> meta)
+    P = [(r"arc16s", "target"), (r"arc\.hmm", "hmm"), (r"64711191", "refseq"), (r"64711188", "tree"), (r"64711194", "taxonomy")]
+    COL = [(r"habitat", "col")]
+    T = Task
+    sample = dict(tag="SRR10070133", over=("samples", "sample"), subs=S)
+    target = dict(over=("pplace", "tgt"), subs=P, pre=". ${tgt}", pick="arc16s")
+    return [
+        # ------------------------------------------------------------ inputs
+        T("stage_inputs", None, name="Stage the reads, metadata and references",
+          outputs=["reads", "samples", "runs", "directions", "reference", "pplace"],
+          inputs=["samplesheet", "metadata_url", "dada_ref_urls", "qiime_ref_urls", "pplace_targets", "input_mirror"],
+          runtime="""kind: python_script
+      script: scripts/stage_inputs.py
+      python: python3 # stdlib only
+      args: --samplesheet ${samplesheet} --metadata ${metadata_url} --ref ${dada_ref_urls} --ref ${qiime_ref_urls} --pplace-targets ${pplace_targets} --mirror ${input_mirror} --no-decontam --reads ${reads} --samples ${samples} --runs ${runs} --directions ${directions} --reference ${reference} --pplace ${pplace}"""),
+        T("format_taxonomy", "FORMAT_TAXONOMY", skip=[r"^\d+$"],
+          stage=["for f in $$(echo ${dada_ref_urls} | tr ',' ' '); do lnas $${f##*/} ${reference}/$${f##*/}; done"],
+          inputs=["dada_ref_urls"]),
+        T("format_taxonomy_qiime", "FORMAT_TAXONOMY_QIIME", skip=[r"."],
+          stage=["for f in $$(echo ${qiime_ref_urls} | tr ',' ' '); do cp ${reference}/$${f##*/} .; done"],
+          inputs=["qiime_ref_urls"]),
+        # ------------------------------------------------------------ per sample
+        T("fastqc", "FASTQC", skip=[r"."], pre=". ${sample}",
+          stage=["lnas 1/$${id}_1.fastq.gz ${reads}/$${id}/$${id}_1.fastq.gz",
+                 "lnas 2/$${id}_2.fastq.gz ${reads}/$${id}/$${id}_2.fastq.gz"],
+          post="rm -f $${id}_1.gz $${id}_2.gz && rmdir 1 2", **sample),
+        T("cutadapt", "CUTADAPT_BASIC", skip=[r"."], pre=". ${sample}",
+          stage=["lnk . ${reads}/$${id}/$${id}_1.fastq.gz ${reads}/$${id}/$${id}_2.fastq.gz"],
+          chain=dict(post="cp ${sample} meta.env"), **sample),
+        T("cutadapt_summary", "CUTADAPT_SUMMARY_STD", skip=[r"."], stage=["lnk . ${cutadapt}/*/*.cutadapt.log"]),
+        T("cutadapt_summary_merge", "CUTADAPT_SUMMARY_MERGE"),
+        # ------------------------------------------------------------ DADA2 preprocessing
+        T("dada2_quality1", "DADA2_QUALITY1", tag="FW", over=("directions", "direction"), subs=D, skip=[r"."],
+          pre='. ${direction}; n=1; [ $$direction = RV ] && n=2',
+          stage=["lnk . ${cutadapt}/*/*.trimmed_$${n}.trim.fastq.gz"]),
+        T("trunclen", "TRUNCLEN", tag="FW", over=("directions", "direction"), subs=D,
+          pre=". ${direction}", stdout="$${direction}.trunc.txt"),
+        T("dada2_filtntrim", "DADA2_FILTNTRIM", tag="SRR10070133", over=("samples", "sample"),
+          subs=S + [(r"(?<=truncLen = c\()[^)]*(?=\))", "trunc")], inputs=["trunclen"],
+          pre='. ${sample}; trunc="$$(cat ${trunclen}/*/FW.trunc.txt), $$(cat ${trunclen}/*/RV.trunc.txt)"',
+          chain=dict(over=("cutadapt", "sample"),
+                     pre='. ${sample}/meta.env; trunc="$$(cat ${trunclen}/*/FW.trunc.txt), $$(cat ${trunclen}/*/RV.trunc.txt)"')),
+        T("dada2_quality2", "DADA2_QUALITY2", tag="FW", over=("directions", "direction"), subs=D, skip=[r"."],
+          pre='. ${direction}; n=1; [ $$direction = RV ] && n=2',
+          stage=["lnk . ${dada2_filtntrim}/*/*_$${n}.filt.fastq.gz"]),
+        # ------------------------------------------------------------ DADA2 per run
+        T("dada2_err", "DADA2_ERR", over=("runs", "run_item"), subs=RUN, skip=[r"."],
+          pre=". ${run_item}",
+          stage=["for s in $$samples; do lnk . ${dada2_filtntrim}/*/$${s}_1.filt.fastq.gz ${dada2_filtntrim}/*/$${s}_2.filt.fastq.gz; done"],
+          inputs=["dada2_filtntrim"], chain=dict(post="cp ${run_item} meta.env")),
+        T("dada2_denoising", "DADA2_DENOISING", over=("runs", "run_item"), path_subs=RUNP, subs=RUN, skip=[r"^filtered/"],
+          pre=". ${run_item}",
+          stage=["for s in $$samples; do lnk filtered ${dada2_filtntrim}/*/$${s}_1.filt.fastq.gz ${dada2_filtntrim}/*/$${s}_2.filt.fastq.gz; done"],
+          inputs=["dada2_filtntrim"], post="rmdir filtered",
+          chain=dict(over=("dada2_err", "run_item"), pre=". ${run_item}/meta.env", post="rmdir filtered && cp ${run_item}/meta.env .")),
+        T("dada2_rmchimera", "DADA2_RMCHIMERA", over=("runs", "run_item"), path_subs=RUNP,
+          subs=RUN + [(r"(?<=if \( )\d+(?= == 1 \))", "nsamples"), (r"(?<=<- \")[^\"]+(?=\" \})", "first")],
+          pre='. ${run_item}; set -- $$samples; nsamples=$$#; first=$$1',
+          chain=dict(over=("dada2_denoising", "run_item"), pre='. ${run_item}/meta.env; set -- $$samples; nsamples=$$#; first=$$1',
+                     post="cp ${run_item}/meta.env .")),
+        T("dada2_stats", "DADA2_STATS", over=("runs", "run_item"), path_subs=RUNP, subs=RUN, skip=[r"^filter_and_trim_files/"],
+          pre=". ${run_item}",
+          stage=["for s in $$samples; do lnk filter_and_trim_files ${dada2_filtntrim}/*/$${s}.filter_stats.tsv; done"],
+          inputs=["dada2_filtntrim"], post="rmdir filter_and_trim_files",
+          chain=dict(over=("dada2_rmchimera", "run_item"), zip=[("dada2_denoising", "den")], pre=". ${run_item}/meta.env")),
+        T("dada2_merge", "DADA2_MERGE", skip=[r"."],
+          stage=["lnk . ${dada2_stats}/*/*.stats.tsv ${dada2_rmchimera}/*/*.ASVtable.rds"]),
+        T("merge_stats_dada", "MERGE_STATS_DADA"),
+        T("summary_table_counts", "SUMMARY_TABLE_COUNTS"),
+        T("duckdb_counts", "DUCKDB_TABLE2PARQUET", tag="ampliseq.counts"),
+        T("barrnap", "BARRNAP"),
+        T("barrnapsummary", "BARRNAPSUMMARY"),
+        T("build_asv_annotations", "BUILD_ASV_ANNOTATIONS"),
+        # ------------------------------------------------------------ DADA2 taxonomy (sbdi-gtdb), in chunks
+        T("dada2_chunks", None, name="Split the ASVs into DADA2 taxonomy chunks", outputs=["dada2_chunks"],
+          inputs=["dada2_merge"],
+          runtime=GLUE + "split-fasta --in ${dada2_merge}/ASV_seqs.fasta --by 10000 --out ${dada2_chunks}  # --dada_assign_chunksize"),
+        T("dada2_taxonomy", "DADA2_TAXONOMY", over=("dada2_chunks", "chunk"), subs=CH, skip=[r"^ASV_seqs\.\d+\.fasta$"],
+          pre='n=$${chunk##*/}; n=$${n%.fasta}; n=$${n##*.}', stage=["lnas ASV_seqs.$${n}.fasta ${chunk}"],
+          chain=dict(post="echo n=$${n} > meta.env")),
+        T("dada2_addspecies", "DADA2_ADDSPECIES", over=("dada2_chunks", "chunk"), subs=CH,
+          pre='n=$${chunk##*/}; n=$${n%.fasta}; n=$${n##*.}',
+          chain=dict(over=("dada2_taxonomy", "chunk"), pre=". ${chunk}/meta.env")),
+        T("dada2_tax", None, name="Merge the DADA2 taxonomy chunks", outputs=["dada2_tax"], inputs=["dada2_taxonomy"],
+          runtime=GLUE + "collect-tsv --out ${dada2_tax}/ASV_tax.sbdi-gtdb.tsv --pattern 'ASV_seqs[.][0-9]+[.]ASV_tax[.]sbdi-gtdb[.]tsv' ${dada2_taxonomy}"),
+        T("dada2_species", None, name="Merge the DADA2 species chunks", outputs=["dada2_species"], inputs=["dada2_addspecies"],
+          runtime=GLUE + "collect-tsv --out ${dada2_species}/ASV_tax_species.sbdi-gtdb.tsv --pattern 'ASV_seqs[.][0-9]+[.]ASV_tax[.]sbdi-gtdb[.]species[.]tsv' ${dada2_addspecies}"),
+        # ------------------------------------------------------------ phylogenetic placement, per target
+        T("hmmer_hmmextract", "HMMER_HMMEXTRACT", tag="arc16s", chain=dict(post="cp ${tgt} meta.env"), **target),
+        T("hmmer_hmmsearch", "HMMER_HMMSEARCH", tag="arc16s", chain=dict(over=("hmmer_hmmextract", "tgt"), pre=". ${tgt}/meta.env"), **target),
+        T("hmmer_formattsv", "HMMER_FORMATTSV_TBLOUT"),
+        T("duckdb_tblout", "DUCKDB_TABLE2PARQUET_TBLOUT"),
+        T("hmmer_hmmrank", "HMMER_HMMRANK"),
+        # the target's ASVs: hmmrank rows with rank 1 for this profile (the subworkflow's splitCsv/filter/collectFile)
+        T("seqtk_subseq", "SEQTK_SUBSEQ", skip=[r"\.txt$"], inputs=["hmmer_hmmrank"],
+          stage=["gzip -dc ${hmmer_hmmrank}/rank.hmmrank.tsv.gz | awk -F '\\t' -v t=$${target} 'NR > 1 && $$6 == 1 && $$1 == t { print $$2 }' > $${target}.txt",
+                 "echo $${target}.txt >> /tmp/.staged"],
+          chain=dict(post="cp ${tgt} meta.env"), **target),
+        T("clustalo_align", "CLUSTALO_ALIGN", tag="arc16s", chain=dict(over=("seqtk_subseq", "tgt"), pre=". ${tgt}/meta.env", post="cp ${tgt}/meta.env ."), **target),
+        T("epang_split", "EPANG_SPLIT_CLUSTALO", tag="arc16s", chain=dict(over=("clustalo_align", "tgt"), pre=". ${tgt}/meta.env", post="cp ${tgt}/meta.env ."), **target),
+        T("epang_place", "EPANG_PLACE", tag="arc16s", chain=dict(over=("epang_split", "tgt"), pre=". ${tgt}/meta.env", post="cp ${tgt}/meta.env ."), **target),
+        T("gappa_graft", "GAPPA_GRAFT", tag="arc16s", chain=dict(over=("epang_place", "tgt"), pre=". ${tgt}/meta.env"), **target),
+        T("gappa_assign", "GAPPA_ASSIGN", tag="arc16s", chain=dict(over=("epang_place", "tgt"), pre=". ${tgt}/meta.env", post="cp ${tgt}/meta.env ."), **target),
+        T("gappa_heattree", "GAPPA_HEATTREE", tag="arc16s", chain=dict(over=("gappa_assign", "tgt"), pre=". ${tgt}/meta.env"), **target),
+        T("pplaceformattax", "PPLACEFORMATTAX_SHEET", chain=dict(over=("gappa_assign", "tgt"), pre=". ${tgt}/meta.env"), **target),
+        T("pplace_tax", None, name="Merge the placement taxonomies", outputs=["pplace_tax"], inputs=["pplaceformattax"],
+          runtime=GLUE + "pplace-tax --out ${pplace_tax}/concatenated_taxonomy.tsv --pattern '.*[.]taxonomy[.]per_query[.]tsv' ${pplaceformattax}"),
+        # ------------------------------------------------------------ QIIME2 taxonomy
+        T("qiime2_extract", "QIIME2_EXTRACT", skip=[r"."],
+          stage=["lnas greengenes85.fna ${format_taxonomy_qiime}/greengenes85.fna",
+                 "lnas greengenes85.tax ${format_taxonomy_qiime}/greengenes85.tax"],
+          inputs=["format_taxonomy_qiime"]),
+        T("qiime2_train", "QIIME2_TRAIN"),
+        T("qiime2_inseq_tax", "QIIME2_TAXONOMY:QIIME2_INSEQ"),
+        T("qiime2_classify", "QIIME2_CLASSIFY"),
+        T("phyloseq_intax_qiime2", "PHYLOSEQ_INTAX_QIIME2"),
+        T("qiime2_inseq", "AMPLISEQ:QIIME2_INSEQ"),
+        T("summary_table_tax_qiime2", "SUMMARY_TABLE_TAXONOMY", tag="QIIME2.greengenes85"),
+        T("summary_table_tax_dada2", "SUMMARY_TABLE_TAXONOMY", tag="DADA2.sbdi-gtdb"),
+        T("summary_table_tax_pplace", "SUMMARY_TABLE_TAXONOMY", tag="PPLACE.PPLACE"),
+        T("duckdb_tax_qiime2", "DUCKDB_TABLE2PARQUET", tag="ampliseq.taxonomy.QIIME2.greengenes85"),
+        T("duckdb_tax_dada2", "DUCKDB_TABLE2PARQUET", tag="ampliseq.taxonomy.DADA2.sbdi-gtdb"),
+        T("duckdb_tax_pplace", "DUCKDB_TABLE2PARQUET", tag="ampliseq.taxonomy.PPLACE.PPLACE"),
+        # ------------------------------------------------------------ QIIME2 tables
+        T("filter_samples", "FILTER_SAMPLES", post="rmdir input"),
+        T("metadata_all", "METADATA_ALL", stdout="category.txt"),
+        T("metadata_pairwise", "METADATA_PAIRWISE", stdout="category.txt"),
+        T("decide", None, name="Fan out the QIIME2 statistics",
+          outputs=["l_ancom", "l_ancom_tax", "l_formula", "l_formula_tax", "l_formula2", "l_formula2_tax",
+                   "l_alpha", "l_betaord", "l_beta", "l_adonis"],
+          inputs=["metadata_all", "metadata_pairwise"],
+          runtime="""kind: python_script
+      script: scripts/decide.py
+      python: python3 # stdlib only
+      # --qiime_adonis_formula of the test_full profile; no ANCOM-BC formulas; --tax_agglom_min/max defaults
+      args: --all ${metadata_all}/category.txt --pairwise ${metadata_pairwise}/category.txt --adonis-formula habitat --tax-agglom-min 2 --tax-agglom-max 6 --out ancom=${l_ancom} --out ancom_tax=${l_ancom_tax} --out formula=${l_formula} --out formula_tax=${l_formula_tax} --out formula2=${l_formula2} --out formula2_tax=${l_formula2_tax} --out alpha=${l_alpha} --out betaord=${l_betaord} --out beta=${l_beta} --out adonis=${l_adonis}"""),
+        T("qiime2_inasv", "QIIME2_INASV"),
+        T("qiime2_intax", "QIIME2_INTAX"),
+        T("tablefiltertaxa", "QIIME2_TABLEFILTERTAXA"),
+        T("seqfiltertable", "QIIME2_SEQFILTERTABLE"),
+        T("filter_stats", "FILTER_STATS"),
+        T("merge_stats_filtertaxa", "MERGE_STATS_FILTERTAXA"),
+        T("barplot", "QIIME2_BARPLOT"),
+        T("export_relasv", "QIIME2_EXPORT_RELASV"),
+        T("export_reltax", "QIIME2_EXPORT_RELTAX"),
+        T("export_absolute", "QIIME2_EXPORT_ABSOLUTE"),
+        T("phyloseq_inasv", "PHYLOSEQ_INASV"),
+        T("inasv_bpavg", "QIIME2_INASV_BPAVG"),
+        T("featuretable_group", "QIIME2_FEATURETABLE_GROUP"),
+        T("bpavg", "QIIME2_BPAVG"),
+        T("combine_table_qiime2", "COMBINE_TABLE", tag="QIIME2-greengenes85"),
+        T("combine_table_dada2", "COMBINE_TABLE", tag="DADA2-sbdi-gtdb"),
+        T("combine_table_pplace", "COMBINE_TABLE", tag="PPLACE-PPLACE"),
+        T("picrust", "PICRUST"),
+        # ------------------------------------------------------------ diversity
+        T("qiime2_tree", "QIIME2_TREE"),
+        T("alpha_rarefaction", "QIIME2_ALPHARAREFACTION"),
+        T("diversity_core", "QIIME2_DIVERSITY_CORE"),
+        T("diversity_alpha", "QIIME2_DIVERSITY_ALPHA", tag="evenness_vector", over=("l_alpha", "item"),
+          subs=[(r"evenness_vector", "name")], pre=". ${item}"),
+        T("diversity_betaord", "QIIME2_DIVERSITY_BETAORD", tag="bray_curtis_pcoa_results", over=("l_betaord", "item"),
+          subs=[(r"bray_curtis_pcoa_results", "name")], pre=". ${item}"),
+        T("diversity_beta", "QIIME2_DIVERSITY_BETA", tag="bray_curtis_distance_matrix-habitat", over=("l_beta", "item"),
+          subs=[(r"bray_curtis_distance_matrix", "matrix")] + COL, pre=". ${item}"),
+        T("diversity_adonis", "QIIME2_DIVERSITY_ADONIS", tag="bray_curtis_distance_matrix-habitat", over=("l_adonis", "item"),
+          subs=[(r"bray_curtis_distance_matrix", "matrix"), (r"habitat", "formula")], pre=". ${item}"),
+        # ------------------------------------------------------------ differential abundance
+        T("filtersamples_ancom", "QIIME2_FILTERSAMPLES_ANCOM", tag="habitat", over=("l_ancom", "item"),
+          subs=COL, pre=". ${item}", chain=dict(post="cp ${item} meta.env")),
+        T("ancom_asv", "QIIME2_ANCOM_ASV", tag="habitat", over=("l_ancom", "item"), subs=COL, pre=". ${item}",
+          chain=dict(over=("filtersamples_ancom", "item"), pre=". ${item}/meta.env")),
+        T("ancom_tax", "QIIME2_ANCOM_TAX", tag="habitat-taxonomic_level:2", over=("l_ancom_tax", "item"),
+          subs=COL + [LEVEL], pre=". ${item}"),
+        T("ancombc_asv", "QIIME2_ANCOMBC_ASV", tag="habitat-", over=("l_ancom", "item"), subs=COL, pre=". ${item}",
+          chain=dict(over=("filtersamples_ancom", "item"), pre=". ${item}/meta.env")),
+        T("ancombc_tax", "QIIME2_ANCOMBC_TAX", tag="habitat--2", over=("l_ancom_tax", "item"),
+          subs=COL + [LEVEL], pre=". ${item}"),
+        T("ancombc2_asv", "QIIME2_ANCOMBC2_ASV", tag="habitat-", over=("l_ancom", "item"), subs=COL, pre=". ${item}",
+          chain=dict(over=("filtersamples_ancom", "item"), pre=". ${item}/meta.env")),
+        T("ancombc2_tax", "QIIME2_ANCOMBC2_TAX", tag="habitat--2", over=("l_ancom_tax", "item"),
+          subs=COL + [LEVEL], pre=". ${item}"),
+        # ------------------------------------------------------------ R objects
+        T("tse_qiime2", "TREESUMMARIZEDEXPERIMENT", tag="qiime2"),
+        T("tse_dada2", "TREESUMMARIZEDEXPERIMENT", tag="dada2"),
+        T("phyloseq_qiime2", "PHYLOSEQ", tag="qiime2"),
+        T("phyloseq_dada2", "PHYLOSEQ", tag="dada2"),
+        # ------------------------------------------------------------ reports
+        T("multiqc", "MULTIQC", skip=[r"."],
+          stage=['n=1; lnas 1/multiqc_config.yml ${nfcore}/assets/multiqc_config.yml',
+                 'for f in ${fastqc}/*/*_fastqc.zip ${cutadapt}/*/*.cutadapt.log; do n=$$((n + 1)); lnas $$n/$${f##*/} $$f; done'],
+          inputs=["fastqc", "cutadapt"], post="rmdir $$(seq 1 $$n)"),
+    ]
+
+
 def report_task() -> Task:
     """SUMMARY_REPORT: the data-derived render params are computed from the staged files."""
     lists = {
@@ -455,9 +710,15 @@ def main() -> None:
     ap = argparse.ArgumentParser()
     ap.add_argument("--spec", required=True)
     ap.add_argument("--chained", action="store_true", help="write workflow.chained.yaml")
+    ap.add_argument("--profile", choices=("test", "test_full"), default="test",
+                    help="test: workflow[.chained].yaml; test_full: workflow.full[.chained].yaml (spec of a test_full run)")
     a = ap.parse_args()
     spec = json.load(open(a.spec))
-    ts = tasks()
+    full = a.profile == "test_full"
+    global ROOT, EXTERNAL, EXTERNAL_REF
+    if full:
+        ROOT, EXTERNAL, EXTERNAL_REF = ROOT_FULL, EXTERNAL_FULL, EXTERNAL_REF_FULL
+    ts = tasks_full() if full else tasks()
     if a.chained:
         for t in ts:
             for k, v in t.chain.items():
@@ -475,6 +736,8 @@ def main() -> None:
 
     out_paths = {"reads": "work/reads/", "samples": "work/samples/", "runs": "work/runs/",
                  "directions": "work/directions/", "reference": "work/reference/"}
+    if full:
+        out_paths |= {"pplace": "work/pplace/", "dada2_chunks": "work/dada2_chunks/"}
     for t in ts:
         for o in t.outputs:
             if o.startswith("l_"):
@@ -521,7 +784,9 @@ def main() -> None:
             edges.append(f"  - {{source: {src}, source_output: {i}, target: {t.id}, target_input: {i}}}")
 
     names = {o: o.replace("_", " ") for o in out_paths}
-    out = [(HEADER.replace("name: nf-core ampliseq\n", "name: nf-core ampliseq chained\n" + CHAINED) if a.chained else HEADER).rstrip()]
+    header = HEADER_FULL if full else HEADER
+    name = "name: nf-core ampliseq test_full" if full else "name: nf-core ampliseq"
+    out = [(header.replace(name + "\n", name + " chained\n" + (CHAINED_FULL if full else CHAINED)) if a.chained else header).rstrip()]
     out.append("_img:")
     out += [f'  {k}: &{k} {{kind: docker, user: host, image: "{v}"}}' for k, v in sorted(images.items())]
     out.append("\n# Artifacts, shared by the producing task's outputs and every consumer's inputs.")
@@ -595,6 +860,33 @@ CHAINED = """
 # ancombc_asv, ancombc2_asv) set `chain: true`, so each item starts as soon
 # as its own upstream slot is done, as Nextflow channels do. Needs
 # horus-runtime >= 0.9.0.
+"""
+
+HEADER_FULL = HEADER.replace("name: nf-core ampliseq\n", "name: nf-core ampliseq test_full\n").replace("""# Native port of nf-core/ampliseq 3.1.0, the route `-profile test,docker`
+# runs: Cutadapt, DADA2 (quality profiles, automatic truncation, filtering,
+# error models, denoising, chimera removal), VSEARCH clustering, decontam,
+# Barrnap SSU and length filters, DADA2 (GTDB R07-RS207) and QIIME2
+# (Greengenes 85%) taxonomy, QIIME2 filtering, barplots, abundance tables,
+# diversity, ANCOM-BC and ANCOM-BC2, phyloseq and TreeSummarizedExperiment
+# objects, MultiQC and the summary report.""", """# Native port of nf-core/ampliseq 3.1.0, the route `-profile test_full`
+# runs (conf/test_full.config): Cutadapt, DADA2 (quality profiles, automatic
+# truncation, filtering, error models, denoising, chimera removal), Barrnap,
+# DADA2 taxonomy (SBDI-GTDB R11-RS232-1, in chunks of 10000 ASVs) and
+# QIIME2 (Greengenes 85%) taxonomy, phylogenetic placement on the
+# SBDI-GTDB archaea and bacteria trees (HMMER, Clustal Omega, EPA-ng,
+# gappa), QIIME2 filtering, barplots, abundance tables, diversity, ANCOM,
+# ANCOM-BC and ANCOM-BC2, PICRUSt2, phyloseq and TreeSummarizedExperiment
+# objects, MultiQC and the summary report.""").replace(
+    "# test profile parameters as rendered), in the same image, with the same\n# cpus/memory (the test profile caps processes at 4 cpus / 15 GB).",
+    "# test_full parameters as rendered), in the same image, with the same\n# cpus/memory as the harvested run.")
+assert HEADER_FULL.count("test_full") == 4, "HEADER changed: update HEADER_FULL"
+
+CHAINED_FULL = """
+# Chained variant of workflow.full.yaml (gen_workflow.py --profile test_full
+# --chained): the same tasks and commands, but maps over the same items in
+# sequence (per sample, per run, per DADA2 taxonomy chunk, per placement
+# target, per ANCOM column) set `chain: true`, so each item starts as soon as
+# its own upstream slot is done, as Nextflow channels do.
 """
 
 

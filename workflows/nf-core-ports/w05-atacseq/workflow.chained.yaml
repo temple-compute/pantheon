@@ -97,6 +97,7 @@ _art:
   - &a_broad_cutoff {id: broad_cutoff, name: Broad cutoff, kind: number, path: params/broad_cutoff.json}
   - &a_min_reps {id: min_reps_consensus, name: Min replicates for consensus, kind: number, path: params/min_reps_consensus.json}
   - &a_mito_name {id: mito_name, name: Mitochondrial chromosome, kind: string, path: params/mito_name.txt}
+  - &a_blacklist {id: blacklist, name: Blacklist BED, kind: string, path: params/blacklist.txt}
   - &a_reference {id: reference, name: Reference files, kind: folder, path: work/reference/}
   - &a_sheet_check {id: sheet_check, name: Checked samplesheet, kind: folder, path: work/samplesheet_check/}
   - &a_reads {id: reads, name: Reads, kind: folder, path: work/reads/}
@@ -198,6 +199,7 @@ artifacts:
   - {<<: *a_broad_cutoff, value: 0.1, min: 0, max: 1, description: "--broad_cutoff"}
   - {<<: *a_min_reps, value: 1, min: 1, description: "--min_reps_consensus"}
   - {<<: *a_mito_name, value: "MT", pattern: '[A-Za-z0-9_.]*', description: "--mito_name (empty keeps every chromosome)"}
+  - {<<: *a_blacklist, value: "", pattern: '[^"`$\\]*', description: "--blacklist: BED file, absolute or relative to the nfcore folder (hg19: assets/blacklists/v1.0/hg19-blacklist.v1.bed). Empty: none"}
 
 tasks:
   # ---------------------------------------------------------------- inputs
@@ -348,8 +350,10 @@ tasks:
   - kind: horus_task
     id: include_bed
     name: GENOME_BLACKLIST_REGIONS
-    description: No --blacklist, so the include regions are every chromosome but mito_name.
-    inputs: [*a_chrom_sizes, *a_mito_name]
+    description: >-
+      The include regions: every chromosome but mito_name, minus the blacklist
+      regions when --blacklist is set (--genome hg19 sets one).
+    inputs: [*a_chrom_sizes, *a_mito_name, *a_blacklist, *a_nfcore]
     outputs: [*a_include_bed]
     resources: *single
     executor: *bedtools
@@ -360,7 +364,18 @@ tasks:
         rm -rf ${include_bed} && mkdir -p ${include_bed} && cd ${include_bed}
         sizes=$$(cd ${chrom_sizes} && ls *.sizes)
         ln -s ${chrom_sizes}/$$sizes $$sizes
+        bl=${blacklist}
+        if [ -n "$$bl" ]; then
+        case $$bl in /*) ;; *) bl=${nfcore}/$$bl ;; esac
+        b=$$(basename $$bl)
+        ln -s $$bl $$b
         if [ -n ${mito_name} ]; then
+        sortBed -i $$b -g $$sizes | complementBed -i stdin -g $$sizes | awk '$$1 !~ /${mito_name}/ {print $$0}' > $${sizes%%.*}.include_regions.bed
+        else
+        sortBed -i $$b -g $$sizes | complementBed -i stdin -g $$sizes  > $${sizes%%.*}.include_regions.bed
+        fi
+        rm $$b
+        elif [ -n ${mito_name} ]; then
         awk '{print $$1, '0' , $$2}' OFS='\t' $$sizes | awk '$$1 !~ /${mito_name}/ {print $$0}' > $${sizes%%.*}.include_regions.bed
         else
         awk '{print $$1, '0' , $$2}' OFS='\t' $$sizes  > $${sizes%%.*}.include_regions.bed
@@ -2524,6 +2539,8 @@ edges:
   - {source: artifact-nfcore, source_output: nfcore, target: autosomes, target_input: nfcore}
   - {source: chrom_sizes, source_output: chrom_sizes, target: include_bed, target_input: chrom_sizes}
   - {source: artifact-mito_name, source_output: mito_name, target: include_bed, target_input: mito_name}
+  - {source: artifact-blacklist, source_output: blacklist, target: include_bed, target_input: blacklist}
+  - {source: artifact-nfcore, source_output: nfcore, target: include_bed, target_input: nfcore}
   - {source: fetch_reference, source_output: reference, target: bwa_index, target_input: reference}
   - {source: fetch_reference, source_output: reference, target: gsize, target_input: reference}
   - {source: artifact-read_length, source_output: read_length, target: gsize, target_input: read_length}

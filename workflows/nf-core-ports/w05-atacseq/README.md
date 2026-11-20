@@ -55,6 +55,7 @@ Outputs match the Nextflow run (tc-os `scripts/bench/nfcore/atacseq/compare.py`)
 | `broad_cutoff` | `0.1` | MACS2 `--broad-cutoff` |
 | `min_reps_consensus` | `1` | Libraries a consensus peak needs |
 | `mito_name` | `MT` | Mitochondrial chromosome to exclude; empty keeps all |
+| `blacklist` | empty | Regions to exclude (`--blacklist`): a BED path, absolute or relative to `nfcore/`. `--genome hg19` uses `assets/blacklists/v1.0/hg19-blacklist.v1.bed` |
 
 ## References
 
