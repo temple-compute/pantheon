@@ -6,12 +6,11 @@ Dock a ligand with AutoDock Vina into a binding site inferred from PDB Cluster90
 
 ## Overview
 
-Docks one ligand into a receptor with AutoDock Vina (default p38-alpha MAP kinase, PDB 3HEC, imatinib STI). The docking box is placed where the `site_ligand` binds across the Cluster90 homologs of the receptor. The top pose is assembled into a protein-ligand complex. The workflow has 14 tasks.
+Docks one ligand into a receptor with AutoDock Vina (default p38-alpha MAP kinase, PDB 3HEC, imatinib STI). The docking box is placed where the `site_ligand` binds across the Cluster90 homologs of the receptor. The top pose is assembled into a protein-ligand complex. The workflow has 13 tasks.
 
 ## Pipeline
 
 ```
-create_results_folder     Create results folder
 fetch_pdb                 Download pdb_id
 extract_molecule          Extract protein
 pdb_cluster_zip           Download the Cluster90 collection

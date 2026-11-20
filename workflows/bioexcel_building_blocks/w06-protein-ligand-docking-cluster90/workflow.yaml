@@ -84,29 +84,10 @@ artifacts:
     step: 1
 tasks:
   - kind: horus_task
-    id: create_results_folder
-    name: Create results folder
-    description: Creates the results output directory used by all downstream tasks.
-    outputs:
-      - id: results_dir
-        name: Results directory
-        kind: folder
-        path: results
-    executor: *executor
-    runtime:
-      kind: command
-      command: mkdir -p ${results_dir}
-    target:
-      kind: local
-  - kind: horus_task
     id: fetch_pdb
     name: Download the receptor from the PDB
     description: Runs the biobb `pdb` tool to fetch the pdb_id receptor structure from the RCSB PDB.
     inputs:
-      - id: results_dir
-        name: Results directory
-        kind: folder
-        path: results
       - id: pdb_id
         name: PDB ID
         kind: string
@@ -153,10 +134,6 @@ tasks:
     name: Download the PDB Cluster90 collection
     description: Runs the biobb `pdb_cluster_zip` tool to download a zip of Cluster90 (90% sequence identity) homologous structures for the target.
     inputs:
-      - id: results_dir
-        name: Results directory
-        kind: folder
-        path: results
       - id: pdb_id
         name: PDB ID
         kind: string
@@ -235,10 +212,6 @@ tasks:
     name: Fetch (ligand code) or load the uploaded ligand
     description: Downloads the idealized SDF of ligand_code from the PDB Chemical Component Dictionary, or copies the uploaded SDF when the code is empty.
     inputs:
-      - id: results_dir
-        name: Results directory
-        kind: folder
-        path: results
       - id: ligand_code
         name: Ligand code (PDB CCD)
         kind: string
@@ -548,21 +521,6 @@ edges:
     source_output: output_pdb_model
     target: cat_pdb
     target_input: output_pdb_model
-
-  - source: create_results_folder
-    source_output: results_dir
-    target: fetch_pdb
-    target_input: results_dir
-
-  - source: create_results_folder
-    source_output: results_dir
-    target: pdb_cluster_zip
-    target_input: results_dir
-
-  - source: create_results_folder
-    source_output: results_dir
-    target: ideal_sdf
-    target_input: results_dir
 
   - source: artifact-babel_convert_pdb2pdbqt_config
     source_output: babel_convert_pdb2pdbqt_config
