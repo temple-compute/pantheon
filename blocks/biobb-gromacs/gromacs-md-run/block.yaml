@@ -1,0 +1,7 @@
+name: GROMACS MD run
+tags:
+- biobb
+- gromacs
+- md
+- pantheon
+example_inputs: []

@@ -1,0 +1,37 @@
+kind: horus_workflow
+name: GROMACS energy plot
+tasks:
+- kind: horus_task
+  id: gromacs_energy
+  name: GROMACS energy plot
+  description: Pull energy terms (potential, temperature, pressure) from an edr file.
+  inputs:
+  - id: energy
+    name: Energies (edr)
+    kind: file
+    path: ener.edr
+  - id: config
+    name: Settings
+    kind: file
+    path: configs/energy.yaml
+  outputs:
+  - id: plot
+    name: Energy plot (xvg)
+    kind: file
+    path: results/energy.xvg
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_gromacs==5.2.1
+    - biobb_analysis==5.2.1
+    - gromacs==2026.0
+  runtime:
+    kind: command
+    command: gmx_energy --config ${config} --input_energy_path ${energy} --output_xvg_path ${plot}
+  target:
+    kind: local

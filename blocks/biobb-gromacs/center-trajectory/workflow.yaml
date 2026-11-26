@@ -1,0 +1,41 @@
+kind: horus_workflow
+name: Center trajectory
+tasks:
+- kind: horus_task
+  id: center_trajectory
+  name: Center trajectory
+  description: Re-center the protein and remove periodic jumps from a trajectory.
+  inputs:
+  - id: trajectory
+    name: Trajectory
+    kind: file
+    path: traj.trr
+  - id: run_input
+    name: Run input (tpr)
+    kind: file
+    path: run.tpr
+  - id: config
+    name: Settings
+    kind: file
+    path: configs/center.yaml
+  outputs:
+  - id: centered
+    name: Centered trajectory
+    kind: file
+    path: results/centered.xtc
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_gromacs==5.2.1
+    - biobb_analysis==5.2.1
+    - gromacs==2026.0
+  runtime:
+    kind: command
+    command: gmx_image --config ${config} --input_traj_path ${trajectory} --input_top_path ${run_input} --output_traj_path ${centered}
+  target:
+    kind: local

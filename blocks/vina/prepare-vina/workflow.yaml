@@ -1,0 +1,64 @@
+kind: horus_workflow
+name: Prepare for Vina docking
+tasks:
+- kind: horus_task
+  id: prepare_vina
+  name: Prepare for Vina docking
+  description: Convert a receptor and ligands to PDBQT and set the docking box.
+  inputs:
+  - id: receptor
+    name: Receptor (PDB)
+    kind: file
+    path: examples/receptor.pdb
+  - id: ligands
+    name: Ligands (SMILES or SDF)
+    kind: file
+    path: examples/ligands.smi
+  - id: pdb_id
+    name: PDB ID
+    kind: string
+    path: params/pdb_id.txt
+    value: ''
+    pattern: ([0-9][A-Za-z0-9]{3})?
+  - id: box_center
+    name: Box center (X Y Z, Å)
+    kind: string
+    path: params/box_center.txt
+    value: 15.190 53.903 16.917
+    pattern: (\s*-?[0-9]+(\.[0-9]+)?\s+-?[0-9]+(\.[0-9]+)?\s+-?[0-9]+(\.[0-9]+)?\s*)?
+  - id: box_size
+    name: Box edge (Å)
+    kind: number
+    path: params/box_size.txt
+    value: 20
+    min: 10
+    max: 60
+    step: 1
+  outputs:
+  - id: vina_inputs
+    name: Vina inputs
+    kind: file
+    path: results/vina_inputs.tar.gz
+  resources:
+    cpus: 2
+    memory_gb: 4
+    walltime: 00:30:00
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.11'
+    channels:
+    - conda-forge
+    conda_requirements:
+    - openbabel==3.2.1
+    - meeko==0.8.0
+    - rdkit==2026.09.2
+    - gemmi==0.7.5
+    - numpy
+    - scipy
+  runtime:
+    kind: python_script
+    script: scripts/prep.py
+    args: --receptor ${receptor} --ligands ${ligands} --out ${vina_inputs} --pdb-id=${pdb_id} --center=${box_center} --size ${box_size} ${box_size} ${box_size}
+  target:
+    kind: local

@@ -1,0 +1,51 @@
+kind: horus_workflow
+name: Ligand parameters for GROMACS
+tasks:
+- kind: horus_task
+  id: ligand_params_gromacs
+  name: Ligand parameters for GROMACS
+  description: Build GAFF parameters (gro, itp, top) for a ligand with ACPype.
+  inputs:
+  - id: ligand
+    name: Ligand (MOL2)
+    kind: file
+    path: ligand.mol2
+  - id: charge
+    name: Net charge
+    kind: number
+    path: params/charge.txt
+    value: 0
+    min: -5
+    max: 5
+    step: 1
+  outputs:
+  - id: ligand_gro
+    name: Ligand coordinates
+    kind: file
+    path: results/ligand.gro
+  - id: ligand_itp
+    name: Ligand topology (itp)
+    kind: file
+    path: results/ligand.itp
+  - id: ligand_top
+    name: Ligand topology (top)
+    kind: file
+    path: results/ligand.top
+  resources:
+    cpus: 2
+    memory_gb: 4
+    walltime: 00:30:00
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_chemistry==5.2.1
+  runtime:
+    kind: command
+    command: acpype_params_gmx --config '{"properties":{"basename":"LIG","charge":${charge}}}' --input_path ${ligand} --output_path_gro ${ligand_gro} --output_path_itp ${ligand_itp} --output_path_top ${ligand_top}
+  target:
+    kind: local

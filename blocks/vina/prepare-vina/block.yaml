@@ -1,0 +1,9 @@
+name: Prepare for Vina docking
+tags:
+- vina
+- docking
+- drug-discovery
+- pantheon
+example_inputs:
+- receptor
+- ligands

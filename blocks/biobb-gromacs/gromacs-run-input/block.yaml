@@ -1,0 +1,8 @@
+name: GROMACS run input
+tags:
+- biobb
+- gromacs
+- md
+- pantheon
+example_inputs:
+- config

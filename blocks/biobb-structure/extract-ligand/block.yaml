@@ -1,0 +1,7 @@
+name: Extract ligand
+tags:
+- biobb
+- ligand
+- pantheon
+example_inputs:
+- structure

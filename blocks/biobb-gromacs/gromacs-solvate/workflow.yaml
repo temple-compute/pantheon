@@ -1,0 +1,41 @@
+kind: horus_workflow
+name: GROMACS solvate
+tasks:
+- kind: horus_task
+  id: gromacs_solvate
+  name: GROMACS solvate
+  description: Fill the box with water.
+  inputs:
+  - id: coordinates
+    name: Coordinates
+    kind: file
+    path: boxed.gro
+  - id: topology
+    name: Topology (zip)
+    kind: file
+    path: topology.zip
+  outputs:
+  - id: solvated
+    name: Solvated coordinates
+    kind: file
+    path: results/solvated.gro
+  - id: solvated_topology
+    name: Solvated topology (zip)
+    kind: file
+    path: results/solvated_topology.zip
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_gromacs==5.2.1
+    - biobb_analysis==5.2.1
+    - gromacs==2026.0
+  runtime:
+    kind: command
+    command: solvate --input_solute_gro_path ${coordinates} --input_top_zip_path ${topology} --output_gro_path ${solvated} --output_top_zip_path ${solvated_topology}
+  target:
+    kind: local

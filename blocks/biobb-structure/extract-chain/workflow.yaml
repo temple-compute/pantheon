@@ -1,0 +1,40 @@
+kind: horus_workflow
+name: Extract chain
+tasks:
+- kind: horus_task
+  id: extract_chain
+  name: Extract chain
+  description: Keep one chain of a structure.
+  inputs:
+  - id: structure
+    name: Structure
+    kind: file
+    path: examples/1aki.pdb
+  - id: chain
+    name: Chain
+    kind: string
+    path: params/chain.txt
+    value: A
+    pattern: '[A-Za-z0-9]'
+    max_length: 1
+  outputs:
+  - id: chain_structure
+    name: Chain
+    kind: file
+    path: results/chain.pdb
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_io==5.2.3
+    - biobb_structure_utils==5.2.1
+    - biobb_model==5.2.1
+  runtime:
+    kind: command
+    command: extract_chain --config '{"properties":{"chains":["${chain}"]}}' --input_structure_path ${structure} --output_structure_path ${chain_structure}
+  target:
+    kind: local

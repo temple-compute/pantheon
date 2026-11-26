@@ -1,0 +1,8 @@
+name: GROMACS energy plot
+tags:
+- biobb
+- gromacs
+- analysis
+- pantheon
+example_inputs:
+- config

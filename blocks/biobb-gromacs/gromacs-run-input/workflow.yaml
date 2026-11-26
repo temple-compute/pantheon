@@ -1,0 +1,41 @@
+kind: horus_workflow
+name: GROMACS run input
+tasks:
+- kind: horus_task
+  id: gromacs_run_input
+  name: GROMACS run input
+  description: Compile a run input (tpr) from mdp settings, coordinates and topology.
+  inputs:
+  - id: coordinates
+    name: Coordinates
+    kind: file
+    path: system.gro
+  - id: topology
+    name: Topology (zip)
+    kind: file
+    path: topology.zip
+  - id: config
+    name: Settings
+    kind: file
+    path: configs/grompp.yaml
+  outputs:
+  - id: run_input
+    name: Run input (tpr)
+    kind: file
+    path: results/run.tpr
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_gromacs==5.2.1
+    - biobb_analysis==5.2.1
+    - gromacs==2026.0
+  runtime:
+    kind: command
+    command: grompp --config ${config} --input_gro_path ${coordinates} --input_top_zip_path ${topology} --output_tpr_path ${run_input}
+  target:
+    kind: local

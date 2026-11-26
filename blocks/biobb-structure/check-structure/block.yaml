@@ -1,0 +1,8 @@
+name: Check structure
+tags:
+- biobb
+- structure
+- qc
+- pantheon
+example_inputs:
+- structure

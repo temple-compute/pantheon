@@ -1,0 +1,57 @@
+kind: horus_workflow
+name: GROMACS MD run
+tasks:
+- kind: horus_task
+  id: gromacs_md_run
+  name: GROMACS MD run
+  description: Run minimization or MD from a tpr with mdrun.
+  inputs:
+  - id: run_input
+    name: Run input (tpr)
+    kind: file
+    path: run.tpr
+  - id: threads
+    name: Threads
+    kind: number
+    path: params/threads.txt
+    value: 2
+    min: 1
+    max: 128
+    step: 1
+  outputs:
+  - id: final
+    name: Final coordinates
+    kind: file
+    path: results/final.gro
+  - id: trajectory
+    name: Trajectory
+    kind: file
+    path: results/traj.trr
+  - id: energy
+    name: Energies (edr)
+    kind: file
+    path: results/ener.edr
+  - id: log
+    name: Log
+    kind: file
+    path: results/md.log
+  resources:
+    cpus: 2
+    memory_gb: 4
+    walltime: 01:00:00
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_gromacs==5.2.1
+    - biobb_analysis==5.2.1
+    - gromacs==2026.0
+  runtime:
+    kind: command
+    command: mdrun --config '{"properties":{"num_threads":${threads}}}' --input_tpr_path ${run_input} --output_gro_path ${final} --output_trr_path ${trajectory} --output_edr_path ${energy} --output_log_path ${log}
+  target:
+    kind: local

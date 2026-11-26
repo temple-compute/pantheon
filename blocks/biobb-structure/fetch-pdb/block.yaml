@@ -1,0 +1,7 @@
+name: Fetch PDB structure
+tags:
+- biobb
+- structure
+- pdb
+- pantheon
+example_inputs: []

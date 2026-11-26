@@ -1,0 +1,7 @@
+name: Extract protein
+tags:
+- biobb
+- structure
+- pantheon
+example_inputs:
+- structure

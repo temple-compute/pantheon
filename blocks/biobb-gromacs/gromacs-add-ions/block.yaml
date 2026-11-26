@@ -1,0 +1,7 @@
+name: GROMACS add ions
+tags:
+- biobb
+- gromacs
+- md-setup
+- pantheon
+example_inputs: []

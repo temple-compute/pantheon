@@ -1,0 +1,9 @@
+name: Minimize ligand
+tags:
+- biobb
+- ligand
+- chemistry
+- openbabel
+- pantheon
+example_inputs:
+- config

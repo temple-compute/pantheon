@@ -1,0 +1,9 @@
+name: Convert molecule format
+tags:
+- biobb
+- chemistry
+- openbabel
+- pantheon
+example_inputs:
+- molecule
+- config

@@ -1,0 +1,35 @@
+kind: horus_workflow
+name: Convert molecule format
+tasks:
+- kind: horus_task
+  id: convert_molecule
+  name: Convert molecule format
+  description: Convert between PDB, SDF, MOL2 and PDBQT with Open Babel.
+  inputs:
+  - id: molecule
+    name: Molecule
+    kind: file
+    path: examples/sti_ideal.sdf
+  - id: config
+    name: Settings
+    kind: file
+    path: configs/babel_convert.yaml
+  outputs:
+  - id: converted
+    name: Converted molecule
+    kind: file
+    path: results/converted.pdb
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_chemistry==5.2.1
+  runtime:
+    kind: command
+    command: babel_convert --config ${config} --input_path ${molecule} --output_path ${converted}
+  target:
+    kind: local

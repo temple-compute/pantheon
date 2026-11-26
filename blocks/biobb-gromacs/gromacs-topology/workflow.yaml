@@ -1,0 +1,37 @@
+kind: horus_workflow
+name: GROMACS topology
+tasks:
+- kind: horus_task
+  id: gromacs_topology
+  name: GROMACS topology
+  description: Build coordinates and an AMBER99SB-ILDN topology from a PDB with pdb2gmx.
+  inputs:
+  - id: structure
+    name: Structure (PDB)
+    kind: file
+    path: structure.pdb
+  outputs:
+  - id: coordinates
+    name: Coordinates
+    kind: file
+    path: results/system.gro
+  - id: topology
+    name: Topology (zip)
+    kind: file
+    path: results/topology.zip
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_gromacs==5.2.1
+    - biobb_analysis==5.2.1
+    - gromacs==2026.0
+  runtime:
+    kind: command
+    command: pdb2gmx --input_pdb_path ${structure} --output_gro_path ${coordinates} --output_top_zip_path ${topology}
+  target:
+    kind: local

@@ -1,0 +1,8 @@
+name: Center trajectory
+tags:
+- biobb
+- gromacs
+- analysis
+- pantheon
+example_inputs:
+- config

@@ -1,0 +1,7 @@
+name: Remove waters
+tags:
+- biobb
+- structure
+- pantheon
+example_inputs:
+- structure

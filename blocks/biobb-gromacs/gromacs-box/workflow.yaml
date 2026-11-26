@@ -1,0 +1,41 @@
+kind: horus_workflow
+name: GROMACS box
+tasks:
+- kind: horus_task
+  id: gromacs_box
+  name: GROMACS box
+  description: Put the system in a cubic box with set padding.
+  inputs:
+  - id: coordinates
+    name: Coordinates
+    kind: file
+    path: system.gro
+  - id: padding_nm
+    name: Padding (nm)
+    kind: number
+    path: params/padding_nm.txt
+    value: 1.0
+    min: 0.5
+    max: 3.0
+    step: 0.1
+  outputs:
+  - id: boxed
+    name: Boxed coordinates
+    kind: file
+    path: results/boxed.gro
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_gromacs==5.2.1
+    - biobb_analysis==5.2.1
+    - gromacs==2026.0
+  runtime:
+    kind: command
+    command: editconf --config '{"properties":{"box_type":"cubic","distance_to_molecule":${padding_nm}}}' --input_gro_path ${coordinates} --output_gro_path ${boxed}
+  target:
+    kind: local

@@ -1,0 +1,8 @@
+name: Add hydrogens to ligand
+tags:
+- biobb
+- ligand
+- chemistry
+- pantheon
+example_inputs:
+- config

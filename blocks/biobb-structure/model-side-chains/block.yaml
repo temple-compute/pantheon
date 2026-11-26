@@ -1,0 +1,8 @@
+name: Model missing side chains
+tags:
+- biobb
+- structure
+- modelling
+- pantheon
+example_inputs:
+- structure

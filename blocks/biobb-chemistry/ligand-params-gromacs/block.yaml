@@ -1,0 +1,8 @@
+name: Ligand parameters for GROMACS
+tags:
+- biobb
+- ligand
+- gromacs
+- forcefield
+- pantheon
+example_inputs: []

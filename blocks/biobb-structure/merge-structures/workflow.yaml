@@ -1,0 +1,37 @@
+kind: horus_workflow
+name: Merge structures
+tasks:
+- kind: horus_task
+  id: merge_structures
+  name: Merge structures
+  description: Join a protein and a ligand into one PDB file.
+  inputs:
+  - id: protein
+    name: Protein
+    kind: file
+    path: protein.pdb
+  - id: ligand
+    name: Ligand
+    kind: file
+    path: ligand.pdb
+  outputs:
+  - id: complex
+    name: Complex
+    kind: file
+    path: results/complex.pdb
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_io==5.2.3
+    - biobb_structure_utils==5.2.1
+    - biobb_model==5.2.1
+  runtime:
+    kind: command
+    command: cat_pdb --input_structure1 ${protein} --input_structure2 ${ligand} --output_structure_path ${complex}
+  target:
+    kind: local

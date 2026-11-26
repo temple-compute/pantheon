@@ -1,0 +1,33 @@
+kind: horus_workflow
+name: Model missing side chains
+tasks:
+- kind: horus_task
+  id: model_side_chains
+  name: Model missing side chains
+  description: Rebuild side-chain atoms missing from a structure.
+  inputs:
+  - id: structure
+    name: Structure
+    kind: file
+    path: examples/1aki.pdb
+  outputs:
+  - id: fixed_structure
+    name: Fixed structure
+    kind: file
+    path: results/fixed.pdb
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_io==5.2.3
+    - biobb_structure_utils==5.2.1
+    - biobb_model==5.2.1
+  runtime:
+    kind: command
+    command: fix_side_chain --input_pdb_path ${structure} --output_pdb_path ${fixed_structure}
+  target:
+    kind: local
