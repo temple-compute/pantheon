@@ -1,0 +1,35 @@
+kind: horus_workflow
+name: Add hydrogens to ligand
+tasks:
+- kind: horus_task
+  id: add_hydrogens_ligand
+  name: Add hydrogens to ligand
+  description: Protonate a ligand with Reduce.
+  inputs:
+  - id: ligand
+    name: Ligand (PDB)
+    kind: file
+    path: ligand.pdb
+  - id: config
+    name: Settings
+    kind: file
+    path: configs/reduce.yaml
+  outputs:
+  - id: ligand_h
+    name: Ligand with hydrogens
+    kind: file
+    path: results/ligand_h.pdb
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_chemistry==5.2.1
+  runtime:
+    kind: command
+    command: ln -sf ${ligand} in_ligand.pdb && reduce_add_hydrogens --config ${config} --input_path in_ligand.pdb --output_path ${ligand_h}
+  target:
+    kind: local

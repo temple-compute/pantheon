@@ -1,0 +1,49 @@
+kind: horus_workflow
+name: GROMACS add ions
+tasks:
+- kind: horus_task
+  id: gromacs_add_ions
+  name: GROMACS add ions
+  description: Neutralize the system and add salt.
+  inputs:
+  - id: run_input
+    name: Run input (tpr)
+    kind: file
+    path: ions.tpr
+  - id: topology
+    name: Topology (zip)
+    kind: file
+    path: topology.zip
+  - id: concentration_m
+    name: NaCl (M)
+    kind: number
+    path: params/concentration_m.txt
+    value: 0
+    min: 0
+    max: 1
+    step: 0.01
+  outputs:
+  - id: ionized
+    name: Ionized coordinates
+    kind: file
+    path: results/ionized.gro
+  - id: ionized_topology
+    name: Ionized topology (zip)
+    kind: file
+    path: results/ionized_topology.zip
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_gromacs==5.2.1
+    - biobb_analysis==5.2.1
+    - gromacs==2026.0
+  runtime:
+    kind: command
+    command: ln -sf ${run_input} in_run_input.tpr && ln -sf ${topology} in_topology.zip && genion --config '{"properties":{"neutral":true,"concentration":${concentration_m}}}' --input_tpr_path in_run_input.tpr --input_top_zip_path in_topology.zip --output_gro_path ${ionized} --output_top_zip_path ${ionized_topology}
+  target:
+    kind: local

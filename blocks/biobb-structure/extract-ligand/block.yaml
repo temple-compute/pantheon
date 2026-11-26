@@ -1,0 +1,8 @@
+name: Extract ligand
+description: Pull a ligand out of a complex by its 3-letter code.
+tags:
+- biobb
+- ligand
+- pantheon
+example_inputs:
+- structure

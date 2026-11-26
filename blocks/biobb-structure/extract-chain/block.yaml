@@ -1,0 +1,8 @@
+name: Extract chain
+description: Keep one chain of a structure.
+tags:
+- biobb
+- structure
+- pantheon
+example_inputs:
+- structure

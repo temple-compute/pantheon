@@ -1,0 +1,8 @@
+name: GROMACS solvate
+description: Fill the box with water.
+tags:
+- biobb
+- gromacs
+- md-setup
+- pantheon
+example_inputs: []

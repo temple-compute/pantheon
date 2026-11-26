@@ -1,0 +1,9 @@
+name: Center trajectory
+description: Re-center the protein and remove periodic jumps from a trajectory.
+tags:
+- biobb
+- gromacs
+- analysis
+- pantheon
+example_inputs:
+- config

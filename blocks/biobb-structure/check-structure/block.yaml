@@ -1,0 +1,9 @@
+name: Check structure
+description: Report missing atoms, clashes, altlocs and other problems in a PDB file.
+tags:
+- biobb
+- structure
+- qc
+- pantheon
+example_inputs:
+- structure

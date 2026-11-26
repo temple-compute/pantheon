@@ -1,0 +1,10 @@
+name: Minimize ligand
+description: Clean up ligand geometry with an Open Babel minimization.
+tags:
+- biobb
+- ligand
+- chemistry
+- openbabel
+- pantheon
+example_inputs:
+- config

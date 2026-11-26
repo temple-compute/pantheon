@@ -1,0 +1,8 @@
+name: GROMACS add ions
+description: Neutralize the system and add salt.
+tags:
+- biobb
+- gromacs
+- md-setup
+- pantheon
+example_inputs: []

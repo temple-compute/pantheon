@@ -1,0 +1,10 @@
+name: Prepare for Vina docking
+description: Convert a receptor and ligands to PDBQT and set the docking box.
+tags:
+- vina
+- docking
+- drug-discovery
+- pantheon
+example_inputs:
+- receptor
+- ligands

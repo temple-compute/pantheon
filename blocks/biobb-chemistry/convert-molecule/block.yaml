@@ -1,0 +1,10 @@
+name: Convert molecule format
+description: Convert between PDB, SDF, MOL2 and PDBQT with Open Babel.
+tags:
+- biobb
+- chemistry
+- openbabel
+- pantheon
+example_inputs:
+- molecule
+- config

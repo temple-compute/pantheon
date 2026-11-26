@@ -1,0 +1,8 @@
+name: Dock with AutoDock Vina
+description: Dock each ligand into the box and score its poses.
+tags:
+- vina
+- docking
+- drug-discovery
+- pantheon
+example_inputs: []

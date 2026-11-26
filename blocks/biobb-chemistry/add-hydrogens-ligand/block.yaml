@@ -1,0 +1,9 @@
+name: Add hydrogens to ligand
+description: Protonate a ligand with Reduce.
+tags:
+- biobb
+- ligand
+- chemistry
+- pantheon
+example_inputs:
+- config

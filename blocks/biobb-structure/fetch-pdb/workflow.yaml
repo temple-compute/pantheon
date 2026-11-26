@@ -1,0 +1,37 @@
+kind: horus_workflow
+name: Fetch PDB structure
+tasks:
+- kind: horus_task
+  id: fetch_pdb
+  name: Fetch PDB structure
+  description: Download a structure from the RCSB PDB by its 4-letter code.
+  inputs:
+  - id: pdb_id
+    name: PDB ID
+    kind: string
+    path: params/pdb_id.txt
+    value: 1AKI
+    pattern: '[0-9][A-Za-z0-9]{3}'
+    min_length: 4
+    max_length: 4
+  outputs:
+  - id: structure
+    name: Structure
+    kind: file
+    path: results/structure.pdb
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_io==5.2.3
+    - biobb_structure_utils==5.2.1
+    - biobb_model==5.2.1
+  runtime:
+    kind: command
+    command: pdb --config '{"properties":{"pdb_code":"${pdb_id}","filter":["ATOM","HETATM"]}}' --output_pdb_path ${structure}
+  target:
+    kind: local

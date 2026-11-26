@@ -1,0 +1,35 @@
+kind: horus_workflow
+name: Minimize ligand
+tasks:
+- kind: horus_task
+  id: minimize_ligand
+  name: Minimize ligand
+  description: Clean up ligand geometry with an Open Babel minimization.
+  inputs:
+  - id: ligand
+    name: Ligand (PDB)
+    kind: file
+    path: ligand.pdb
+  - id: config
+    name: Settings
+    kind: file
+    path: configs/babel_minimize.yaml
+  outputs:
+  - id: ligand_min
+    name: Minimized ligand
+    kind: file
+    path: results/ligand_min.mol2
+  executor:
+    kind: conda_python_environment
+    conda: micromamba
+    python_version: '3.12'
+    channels:
+    - conda-forge
+    - bioconda
+    conda_requirements:
+    - biobb_chemistry==5.2.1
+  runtime:
+    kind: command
+    command: ln -sf ${ligand} in_ligand.pdb && babel_minimize --config ${config} --input_path in_ligand.pdb --output_path ${ligand_min}
+  target:
+    kind: local

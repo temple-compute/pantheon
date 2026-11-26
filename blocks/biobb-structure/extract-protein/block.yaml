@@ -1,0 +1,8 @@
+name: Extract protein
+description: Keep only the protein part of a structure.
+tags:
+- biobb
+- structure
+- pantheon
+example_inputs:
+- structure

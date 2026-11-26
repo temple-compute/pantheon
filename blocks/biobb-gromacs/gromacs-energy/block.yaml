@@ -1,0 +1,9 @@
+name: GROMACS energy plot
+description: Pull energy terms (potential, temperature, pressure) from an edr file.
+tags:
+- biobb
+- gromacs
+- analysis
+- pantheon
+example_inputs:
+- config
