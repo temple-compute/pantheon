@@ -1,4 +1,5 @@
 name: Remove waters
+description: Strip crystal waters from a PDB file.
 tags:
 - biobb
 - structure

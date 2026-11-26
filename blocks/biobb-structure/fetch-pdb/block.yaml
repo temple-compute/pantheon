@@ -1,4 +1,5 @@
 name: Fetch PDB structure
+description: Download a structure from the RCSB PDB by its 4-letter code.
 tags:
 - biobb
 - structure

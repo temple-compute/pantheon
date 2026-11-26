@@ -1,7 +1,3 @@
-# Prepare for Vina docking
-
-Convert a receptor and ligands to PDBQT and set the docking box.
-
 Leave the PDB ID empty to use the uploaded receptor.
 
 Connect its inputs by hand after you add it.

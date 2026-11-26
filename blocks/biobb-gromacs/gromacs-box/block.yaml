@@ -1,4 +1,5 @@
 name: GROMACS box
+description: Put the system in a cubic box with set padding.
 tags:
 - biobb
 - gromacs

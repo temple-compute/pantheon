@@ -1,4 +1,5 @@
 name: Merge structures
+description: Join a protein and a ligand into one PDB file.
 tags:
 - biobb
 - structure

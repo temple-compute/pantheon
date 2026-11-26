@@ -1,4 +1,5 @@
 name: GROMACS run input
+description: Compile a run input (tpr) from mdp settings, coordinates and topology.
 tags:
 - biobb
 - gromacs

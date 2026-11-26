@@ -1,7 +1,3 @@
-# GROMACS MD run
-
-Run minimization or MD from a tpr with mdrun.
-
 Long runs belong on a machine target.
 
 Connect its inputs by hand after you add it.

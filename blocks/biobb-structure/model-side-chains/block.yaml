@@ -1,4 +1,5 @@
 name: Model missing side chains
+description: Rebuild side-chain atoms missing from a structure.
 tags:
 - biobb
 - structure

@@ -1,4 +1,5 @@
 name: Extract chain
+description: Keep one chain of a structure.
 tags:
 - biobb
 - structure

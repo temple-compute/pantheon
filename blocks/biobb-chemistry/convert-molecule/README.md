@@ -1,7 +1,3 @@
-# Convert molecule format
-
-Convert between PDB, SDF, MOL2 and PDBQT with Open Babel.
-
 Set the formats in Settings; the output name keeps `.pdb`.
 
 Connect its inputs by hand after you add it.

@@ -1,4 +1,5 @@
 name: GROMACS MD run
+description: Run minimization or MD from a tpr with mdrun.
 tags:
 - biobb
 - gromacs

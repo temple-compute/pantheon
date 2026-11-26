@@ -1,4 +1,5 @@
 name: Ligand parameters for GROMACS
+description: Build GAFF parameters (gro, itp, top) for a ligand with ACPype.
 tags:
 - biobb
 - ligand

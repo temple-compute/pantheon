@@ -1,4 +1,5 @@
 name: GROMACS topology
+description: Build coordinates and an AMBER99SB-ILDN topology from a PDB with pdb2gmx.
 tags:
 - biobb
 - gromacs

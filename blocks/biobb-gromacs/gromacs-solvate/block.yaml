@@ -1,4 +1,5 @@
 name: GROMACS solvate
+description: Fill the box with water.
 tags:
 - biobb
 - gromacs
