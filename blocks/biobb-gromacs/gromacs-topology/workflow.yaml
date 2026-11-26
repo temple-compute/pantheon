@@ -32,6 +32,6 @@ tasks:
     - gromacs==2026.0
   runtime:
     kind: command
-    command: pdb2gmx --input_pdb_path ${structure} --output_gro_path ${coordinates} --output_top_zip_path ${topology}
+    command: ln -sf ${structure} in_structure.pdb && pdb2gmx --input_pdb_path in_structure.pdb --output_gro_path ${coordinates} --output_top_zip_path ${topology}
   target:
     kind: local

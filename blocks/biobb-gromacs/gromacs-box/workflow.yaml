@@ -36,6 +36,6 @@ tasks:
     - gromacs==2026.0
   runtime:
     kind: command
-    command: editconf --config '{"properties":{"box_type":"cubic","distance_to_molecule":${padding_nm}}}' --input_gro_path ${coordinates} --output_gro_path ${boxed}
+    command: ln -sf ${coordinates} in_coordinates.gro && editconf --config '{"properties":{"box_type":"cubic","distance_to_molecule":${padding_nm}}}' --input_gro_path in_coordinates.gro --output_gro_path ${boxed}
   target:
     kind: local

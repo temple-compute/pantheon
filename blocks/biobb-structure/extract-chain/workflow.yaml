@@ -35,6 +35,6 @@ tasks:
     - biobb_model==5.2.1
   runtime:
     kind: command
-    command: extract_chain --config '{"properties":{"chains":["${chain}"]}}' --input_structure_path ${structure} --output_structure_path ${chain_structure}
+    command: ln -sf ${structure} in_structure.pdb && extract_chain --config '{"properties":{"chains":["${chain}"]}}' --input_structure_path in_structure.pdb --output_structure_path ${chain_structure}
   target:
     kind: local

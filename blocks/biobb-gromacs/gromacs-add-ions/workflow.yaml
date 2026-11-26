@@ -44,6 +44,6 @@ tasks:
     - gromacs==2026.0
   runtime:
     kind: command
-    command: genion --config '{"properties":{"neutral":true,"concentration":${concentration_m}}}' --input_tpr_path ${run_input} --input_top_zip_path ${topology} --output_gro_path ${ionized} --output_top_zip_path ${ionized_topology}
+    command: ln -sf ${run_input} in_run_input.tpr && ln -sf ${topology} in_topology.zip && genion --config '{"properties":{"neutral":true,"concentration":${concentration_m}}}' --input_tpr_path in_run_input.tpr --input_top_zip_path in_topology.zip --output_gro_path ${ionized} --output_top_zip_path ${ionized_topology}
   target:
     kind: local

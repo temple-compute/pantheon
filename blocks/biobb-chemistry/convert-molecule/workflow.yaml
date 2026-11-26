@@ -30,6 +30,6 @@ tasks:
     - biobb_chemistry==5.2.1
   runtime:
     kind: command
-    command: babel_convert --config ${config} --input_path ${molecule} --output_path ${converted}
+    command: ln -sf ${molecule} in_molecule.sdf && babel_convert --config ${config} --input_path in_molecule.sdf --output_path ${converted}
   target:
     kind: local

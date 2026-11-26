@@ -28,6 +28,6 @@ tasks:
     - biobb_model==5.2.1
   runtime:
     kind: command
-    command: fix_side_chain --input_pdb_path ${structure} --output_pdb_path ${fixed_structure}
+    command: ln -sf ${structure} in_structure.pdb && fix_side_chain --input_pdb_path in_structure.pdb --output_pdb_path ${fixed_structure}
   target:
     kind: local

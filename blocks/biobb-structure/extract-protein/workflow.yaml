@@ -28,6 +28,6 @@ tasks:
     - biobb_model==5.2.1
   runtime:
     kind: command
-    command: extract_molecule --config '{"properties":{"molecule_type":"protein"}}' --input_structure_path ${structure} --output_molecule_path ${protein}
+    command: ln -sf ${structure} in_structure.pdb && extract_molecule --config '{"properties":{"molecule_type":"protein"}}' --input_structure_path in_structure.pdb --output_molecule_path ${protein}
   target:
     kind: local

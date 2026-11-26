@@ -32,6 +32,6 @@ tasks:
     - gromacs==2026.0
   runtime:
     kind: command
-    command: gmx_energy --config ${config} --input_energy_path ${energy} --output_xvg_path ${plot}
+    command: ln -sf ${energy} in_energy.edr && gmx_energy --config ${config} --input_energy_path in_energy.edr --output_xvg_path ${plot}
   target:
     kind: local

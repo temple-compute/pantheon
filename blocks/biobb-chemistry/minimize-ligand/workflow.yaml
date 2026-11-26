@@ -7,7 +7,7 @@ tasks:
   description: Clean up ligand geometry with an Open Babel minimization.
   inputs:
   - id: ligand
-    name: Ligand
+    name: Ligand (PDB)
     kind: file
     path: ligand.pdb
   - id: config
@@ -30,6 +30,6 @@ tasks:
     - biobb_chemistry==5.2.1
   runtime:
     kind: command
-    command: babel_minimize --config ${config} --input_path ${ligand} --output_path ${ligand_min}
+    command: ln -sf ${ligand} in_ligand.pdb && babel_minimize --config ${config} --input_path in_ligand.pdb --output_path ${ligand_min}
   target:
     kind: local

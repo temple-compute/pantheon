@@ -32,6 +32,6 @@ tasks:
     - biobb_model==5.2.1
   runtime:
     kind: command
-    command: cat_pdb --input_structure1 ${protein} --input_structure2 ${ligand} --output_structure_path ${complex}
+    command: ln -sf ${protein} in_protein.pdb && ln -sf ${ligand} in_ligand.pdb && cat_pdb --input_structure1 in_protein.pdb --input_structure2 in_ligand.pdb --output_structure_path ${complex}
   target:
     kind: local

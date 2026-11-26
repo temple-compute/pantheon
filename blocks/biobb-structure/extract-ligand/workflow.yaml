@@ -36,6 +36,6 @@ tasks:
     - biobb_model==5.2.1
   runtime:
     kind: command
-    command: extract_heteroatoms --config '{"properties":{"heteroatoms":[{"name":"${ligand_code}"}]}}' --input_structure_path ${structure} --output_heteroatom_path ${ligand}
+    command: ln -sf ${structure} in_structure.pdb && extract_heteroatoms --config '{"properties":{"heteroatoms":[{"name":"${ligand_code}"}]}}' --input_structure_path in_structure.pdb --output_heteroatom_path ${ligand}
   target:
     kind: local

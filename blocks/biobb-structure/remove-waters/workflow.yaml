@@ -28,6 +28,6 @@ tasks:
     - biobb_model==5.2.1
   runtime:
     kind: command
-    command: remove_pdb_water --input_pdb_path ${structure} --output_pdb_path ${dry_structure}
+    command: ln -sf ${structure} in_structure.pdb && remove_pdb_water --input_pdb_path in_structure.pdb --output_pdb_path ${dry_structure}
   target:
     kind: local

@@ -52,6 +52,6 @@ tasks:
     - gromacs==2026.0
   runtime:
     kind: command
-    command: mdrun --config '{"properties":{"num_threads":${threads}}}' --input_tpr_path ${run_input} --output_gro_path ${final} --output_trr_path ${trajectory} --output_edr_path ${energy} --output_log_path ${log}
+    command: ln -sf ${run_input} in_run_input.tpr && mdrun --config '{"properties":{"num_threads":${threads}}}' --input_tpr_path in_run_input.tpr --output_gro_path ${final} --output_trr_path ${trajectory} --output_edr_path ${energy} --output_log_path ${log}
   target:
     kind: local

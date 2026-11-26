@@ -92,8 +92,11 @@ def parse_sdf_coords(sdf_path: Path) -> list[tuple[float, float, float]]:
 
 
 def ligand_kind(path: Path) -> str:
-    """Classify a ligand file as 'sdf' or 'smi' by extension."""
+    """Classify a ligand file as 'sdf' or 'smi' by extension, else content."""
     suffix = path.suffix.lower()
+    if not suffix and path.exists():
+        # An upload can arrive without its name: SDF records end in $$$$.
+        return "sdf" if "$$$$" in path.read_text(errors="ignore") else "smi"
     if suffix in (".sdf", ".mol", ".mdl"):
         return "sdf"
     if suffix in (".smi", ".smiles", ".txt"):
@@ -171,7 +174,7 @@ def prepare_receptor(receptor: Path, staging: Path) -> Path:
     pdbqt = staging / "receptor.pdbqt"
     _run(
         [
-            "obabel", str(receptor),
+            "obabel", "-ipdb", str(receptor),
             "-O", str(pdbqt),
             "-xr",           # rigid receptor (no rotatable bonds)
             "-p", "7.4",     # add hydrogens for pH 7.4
@@ -331,6 +334,11 @@ def _selftest() -> None:
             raise AssertionError("expected ValueError for .mol2")
         except ValueError:
             pass
+        bare_sdf, bare_smi = d / "ligands_sdf", d / "ligands_smi"
+        bare_sdf.write_text(sdf.read_text())
+        bare_smi.write_text("c1ccccc1 benzene\n")
+        assert ligand_kind(bare_sdf) == "sdf"
+        assert ligand_kind(bare_smi) == "smi"
 
         # box.json + archive assembly with fake staged files.
         staging = d / "vina_inputs"

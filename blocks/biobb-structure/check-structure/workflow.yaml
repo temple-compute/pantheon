@@ -28,6 +28,6 @@ tasks:
     - biobb_model==5.2.1
   runtime:
     kind: command
-    command: structure_check --input_structure_path ${structure} --output_summary_path ${report}
+    command: ln -sf ${structure} in_structure.pdb && structure_check --input_structure_path in_structure.pdb --output_summary_path ${report}
   target:
     kind: local

@@ -46,6 +46,6 @@ tasks:
     - biobb_chemistry==5.2.1
   runtime:
     kind: command
-    command: acpype_params_gmx --config '{"properties":{"basename":"LIG","charge":${charge}}}' --input_path ${ligand} --output_path_gro ${ligand_gro} --output_path_itp ${ligand_itp} --output_path_top ${ligand_top}
+    command: ln -sf ${ligand} in_ligand.mol2 && acpype_params_gmx --config '{"properties":{"basename":"LIG","charge":${charge}}}' --input_path in_ligand.mol2 --output_path_gro ${ligand_gro} --output_path_itp ${ligand_itp} --output_path_top ${ligand_top}
   target:
     kind: local

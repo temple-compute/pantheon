@@ -7,7 +7,7 @@ tasks:
   description: Protonate a ligand with Reduce.
   inputs:
   - id: ligand
-    name: Ligand
+    name: Ligand (PDB)
     kind: file
     path: ligand.pdb
   - id: config
@@ -30,6 +30,6 @@ tasks:
     - biobb_chemistry==5.2.1
   runtime:
     kind: command
-    command: reduce_add_hydrogens --config ${config} --input_path ${ligand} --output_path ${ligand_h}
+    command: ln -sf ${ligand} in_ligand.pdb && reduce_add_hydrogens --config ${config} --input_path in_ligand.pdb --output_path ${ligand_h}
   target:
     kind: local

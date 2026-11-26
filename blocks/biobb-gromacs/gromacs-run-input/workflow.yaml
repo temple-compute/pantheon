@@ -36,6 +36,6 @@ tasks:
     - gromacs==2026.0
   runtime:
     kind: command
-    command: grompp --config ${config} --input_gro_path ${coordinates} --input_top_zip_path ${topology} --output_tpr_path ${run_input}
+    command: ln -sf ${coordinates} in_coordinates.gro && ln -sf ${topology} in_topology.zip && grompp --config ${config} --input_gro_path in_coordinates.gro --input_top_zip_path in_topology.zip --output_tpr_path ${run_input}
   target:
     kind: local

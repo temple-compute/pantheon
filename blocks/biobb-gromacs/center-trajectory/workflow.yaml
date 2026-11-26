@@ -36,6 +36,6 @@ tasks:
     - gromacs==2026.0
   runtime:
     kind: command
-    command: gmx_image --config ${config} --input_traj_path ${trajectory} --input_top_path ${run_input} --output_traj_path ${centered}
+    command: ln -sf ${run_input} in_run_input.tpr && gmx_image --config ${config} --input_traj_path ${trajectory} --input_top_path in_run_input.tpr --output_traj_path ${centered}
   target:
     kind: local
